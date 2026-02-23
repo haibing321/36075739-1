@@ -1,0 +1,1096 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>铁路检查问题库智能查询系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: "Microsoft YaHei", Arial, sans-serif; 
+            background: #f0f2f5; 
+            padding: 20px; 
+            min-height: 100vh;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        h1 { 
+            text-align: center; 
+            color: #333; 
+            margin-bottom: 10px; 
+            font-size: 24px; 
+        }
+        .subtitle { 
+            text-align: center; 
+            color: #666; 
+            margin-bottom: 20px; 
+            font-size: 14px; 
+        }
+        
+        .control-bar {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            border: 1px solid #e0e0e0;
+        }
+        .storage-info {
+            font-size: 14px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .storage-bar-bg {
+            width: 150px;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            display: inline-block;
+            vertical-align: middle;
+            border: 1px solid #ccc;
+        }
+        .storage-bar-fill {
+            height: 100%;
+            background: #52c41a;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .storage-bar-fill.warning { background: #faad14; }
+        .storage-bar-fill.danger { background: #ff4d4f; }
+        
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary { background: #1890ff; color: white; }
+        .btn-success { background: #52c41a; color: white; }
+        .btn-warning { background: #faad14; color: white; }
+        .btn-danger { background: #ff4d4f; color: white; }
+        .btn-default { background: #d9d9d9; color: #333; }
+        .btn-info { background: #13c2c2; color: white; }
+        
+        .search-box {
+            background: #e6f7ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #91d5ff;
+        }
+        .keyword-list { margin-bottom: 15px; }
+        .keyword-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        .keyword-item label { width: 80px; font-weight: bold; color: #333; }
+        .keyword-item input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn-remove {
+            background: #ff4d4f;
+            color: white;
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 28px;
+            text-align: center;
+        }
+        .btn-add {
+            background: white;
+            border: 1px dashed #1890ff;
+            color: #1890ff;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .btn-add:disabled { border-color: #d9d9d9; color: #999; cursor: not-allowed; }
+        .search-actions {
+            text-align: center;
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .stats {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .filter-control {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .btn-toggle {
+            background: #722ed1;
+            color: white;
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+        .btn-toggle:hover { background: #531dab; }
+        
+        .result-item {
+            background: white;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            position: relative;
+            border-left: 5px solid #d9d9d9;
+            transition: all 0.3s;
+        }
+        .result-item:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateX(3px);
+        }
+        .result-item.level-a { border-left-color: #ff4d4f; background: linear-gradient(to right, rgba(255,77,79,0.05), white); }
+        .result-item.level-b { border-left-color: #faad14; background: linear-gradient(to right, rgba(250,173,20,0.05), white); }
+        .result-item.level-c { border-left-color: #1890ff; background: linear-gradient(to right, rgba(24,144,255,0.05), white); }
+        .result-item.level-hongxian { border-left-color: #cf1322; background: linear-gradient(to right, rgba(207,19,34,0.05), white); }
+        .result-item.level-kongbai { border-left-color: #999; background: linear-gradient(to right, rgba(153,153,153,0.05), white); }
+        
+        .match-tag {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #722ed1;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .result-header {
+            margin-bottom: 12px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding-right: 80px;
+        }
+        
+        /* 性质标签样式 */
+        .xingzhi-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            min-width: 50px;
+            text-align: center;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        .xz-a { background: #ff4d4f; }      /* A类-红色 */
+        .xz-b { background: #faad14; }      /* B类-橙色 */
+        .xz-c { background: #1890ff; }      /* C类-蓝色 */
+        .xz-hongxian { background: #cf1322; } /* 红线-深红 */
+        .xz-kongbai { background: #999; }   /* 空白-灰色 */
+        .xz-other { background: #666; }     /* 其他-深灰 */
+        
+        .category-tag {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #d9d9d9;
+        }
+        
+        .time-tag {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #666;
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+        }
+        
+        .highlight { 
+            background: yellow; 
+            color: red; 
+            font-weight: bold; 
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+        
+        /* 复制按钮相关样式 */
+        .content-wrapper {
+            margin-top: 10px;
+        }
+        .content-header {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #e8e8e8;
+        }
+        .btn-copy {
+            background: #1890ff;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-copy:hover {
+            background: #40a9ff;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(24,144,255,0.3);
+        }
+        .btn-copy.copied {
+            background: #52c41a;
+        }
+        .content-text { 
+            line-height: 1.8; 
+            color: #333; 
+            font-size: 15px;
+            text-align: justify;
+            padding: 10px;
+            background: #fafafa;
+            border-radius: 4px;
+            border-left: 3px solid #1890ff;
+        }
+        
+        .low-match-section {
+            margin-top: 20px;
+            border-top: 2px dashed #d9d9d9;
+            padding-top: 20px;
+        }
+        .low-match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .empty { text-align: center; padding: 40px; color: #999; font-size: 16px; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .modal-header { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }
+        .modal-body { margin-bottom: 20px; color: #666; line-height: 1.6; }
+        .modal-footer { text-align: right; display: flex; gap: 10px; justify-content: flex-end; }
+        
+        input[type="file"] { display: none; }
+        
+        .loading { text-align: center; padding: 40px; color: #1890ff; }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1890ff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e8e8e8;
+            color: #666;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .footer .dev-info {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        @media (max-width: 768px) {
+            .control-bar { flex-direction: column; align-items: stretch; }
+            .btn-group { justify-content: center; }
+            .search-actions { flex-direction: column; }
+            .search-actions .btn { width: 100%; }
+            .result-header { padding-right: 0; margin-top: 30px; }
+            .match-tag { top: 10px; left: 10px; right: auto; }
+            .stats { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>铁路检查问题库智能查询系统</h1>
+        <p class="subtitle">性质分级(A类/B类/C类/红线/空白) · 智能匹配(≥75%) · Excel导入导出</p>
+        
+        <div class="control-bar">
+            <div class="storage-info">
+                <span>💾 存储: <span id="storageText">计算中...</span></span>
+                <div class="storage-bar-bg">
+                    <div class="storage-bar-fill" id="storageBar" style="width: 0%">0%</div>
+                </div>
+                <span id="recordCount" style="margin-left:10px;color:#666;">0 条记录</span>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-success" onclick="importExcel()">📥 导入Excel</button>
+                <button class="btn btn-primary" onclick="exportExcel()">📤 导出Excel</button>
+                <button class="btn btn-info" onclick="downloadTemplate()">📄 下载模板</button>
+                <button class="btn btn-warning" onclick="showClear()">🗑️ 清空</button>
+                <button class="btn btn-default" onclick="loadDemo()">📋 加载示例</button>
+            </div>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleExcel(event)">
+        
+        <div class="search-box">
+            <div id="keywordContainer" class="keyword-list"></div>
+            <button class="btn-add" id="btnAdd" onclick="addKeyword()">+ 添加关键词 (最多4个)</button>
+            <div class="search-actions">
+                <button class="btn btn-primary" onclick="doSearch()" style="padding:10px 40px;font-size:16px;">🔍 智能搜索</button>
+                <button class="btn btn-default" onclick="clearSearch()">重置条件</button>
+            </div>
+        </div>
+        
+        <div id="statsBar" class="stats" style="display:none;">
+            <div>
+                <span>高匹配(≥75%): <strong id="highMatchCount" style="color:#1890ff;font-size:18px;">0</strong> 条</span>
+                <span id="lowMatchInfo" style="margin-left:15px;color:#999;display:none;">
+                    (低匹配<75%: <span id="lowMatchCount" style="color:#ff4d4f;font-weight:bold;">0</span> 条隐藏)
+                </span>
+            </div>
+            <div class="filter-control">
+                <button class="btn btn-toggle" id="toggleLowMatchBtn" onclick="toggleLowMatch()" style="display:none;">
+                    显示低匹配结果
+                </button>
+            </div>
+        </div>
+        
+        <div id="results"></div>
+        <div id="lowMatchResults" style="display:none;"></div>
+        
+        <div class="footer">
+            <div class="dev-info">开发者：赵海兵</div>
+            <div>© 2026 铁路检查问题库智能查询系统</div>
+        </div>
+    </div>
+
+    <div id="clearModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">⚠️ 确认清空数据</div>
+            <div class="modal-body">
+                确定要清空所有数据吗？此操作不可恢复！<br><br>
+                当前共有: <strong id="clearCount" style="color:#ff4d4f;">0</strong> 条记录
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="hideModal('clearModal')">取消</button>
+                <button class="btn btn-danger" onclick="confirmClear()">确认清空</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">📥 正在导入数据</div>
+            <div class="modal-body" style="text-align:center;">
+                <div class="spinner"></div>
+                <div id="importStatus">正在解析Excel...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DB_NAME = 'RailwayIssueDB_v2';
+        const STORE_NAME = 'issues';
+        const DB_VERSION = 1;
+        let db = null;
+        let dataCache = [];
+        let keywordNum = 0;
+        const MAX_KEYWORDS = 4;
+        let showLowMatch = false;
+        let currentResults = [];
+        let currentKeywords = [];
+        const MATCH_THRESHOLD = 75;
+
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    db = request.result;
+                    resolve(db);
+                };
+                request.onupgradeneeded = (event) => {
+                    const database = event.target.result;
+                    if (!database.objectStoreNames.contains(STORE_NAME)) {
+                        const store = database.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                        store.createIndex('性质', '性质', { unique: false });
+                        store.createIndex('datetime', 'datetime', { unique: false });
+                        store.createIndex('category', 'category', { unique: false });
+                    }
+                };
+            });
+        }
+
+        async function saveData(dataArray) {
+            if (!db) await initDB();
+            return new Promise(async (resolve, reject) => {
+                try {
+                    await clearAllData();
+                    const batchSize = 500;
+                    for (let i = 0; i < dataArray.length; i += batchSize) {
+                        const batch = dataArray.slice(i, i + batchSize);
+                        await insertBatch(batch);
+                    }
+                    dataCache = dataArray;
+                    resolve(true);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function insertBatch(batch) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                let count = 0;
+                batch.forEach(item => {
+                    const request = store.put(item);
+                    request.onsuccess = () => {
+                        count++;
+                        if (count === batch.length) resolve();
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+                transaction.onerror = () => reject(transaction.error);
+            });
+        }
+
+        async function loadData() {
+            if (!db) await initDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.getAll();
+                request.onsuccess = () => {
+                    dataCache = request.result;
+                    resolve(dataCache);
+                };
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function clearAllData() {
+            if (!db) await initDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.clear();
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function updateStorage() {
+            try {
+                const data = await loadData();
+                const count = data.length;
+                let sizeMB = 0;
+                if (count > 0) {
+                    const sample = JSON.stringify(data.slice(0, 10));
+                    const avgSize = sample.length / Math.min(10, count);
+                    sizeMB = (avgSize * count * 2 / 1024 / 1024).toFixed(2);
+                }
+                document.getElementById('recordCount').textContent = `${count} 条记录`;
+                document.getElementById('storageText').textContent = `${sizeMB} MB / 50+ MB`;
+                const percent = Math.min((sizeMB / 50) * 100, 100);
+                const bar = document.getElementById('storageBar');
+                bar.style.width = percent + '%';
+                bar.textContent = percent > 10 ? percent.toFixed(0) + '%' : '';
+                if (percent > 80) bar.className = 'storage-bar-fill danger';
+                else if (percent > 60) bar.className = 'storage-bar-fill warning';
+                else bar.className = 'storage-bar-fill';
+            } catch (e) {
+                console.error('更新存储信息失败:', e);
+            }
+        }
+
+        window.onload = async function() {
+            try {
+                await initDB();
+                await updateStorage();
+                addKeyword();
+                const data = await loadData();
+                if (data.length === 0) {
+                    await loadDemoData();
+                }
+            } catch (e) {
+                alert('初始化数据库失败: ' + e.message);
+            }
+        };
+
+        function addKeyword() {
+            if (keywordNum >= MAX_KEYWORDS) return;
+            keywordNum++;
+            const container = document.getElementById('keywordContainer');
+            const div = document.createElement('div');
+            div.className = 'keyword-item';
+            div.id = 'kw_' + keywordNum;
+            div.innerHTML = `
+                <label>关键词${keywordNum}</label>
+                <input type="text" id="input_${keywordNum}" placeholder="输入关键词${keywordNum}..." onkeypress="handleKeyPress(event, ${keywordNum})">
+                ${keywordNum > 1 ? `<button class="btn-remove" onclick="removeKeyword(${keywordNum})">×</button>` : ''}
+            `;
+            container.appendChild(div);
+            setTimeout(() => document.getElementById('input_' + keywordNum).focus(), 100);
+            updateAddBtn();
+        }
+
+        function removeKeyword(n) {
+            const el = document.getElementById('kw_' + n);
+            if (el) el.remove();
+            const items = document.querySelectorAll('.keyword-item');
+            keywordNum = 0;
+            items.forEach((item, idx) => {
+                keywordNum++;
+                item.id = 'kw_' + keywordNum;
+                item.querySelector('label').textContent = '关键词' + keywordNum;
+                const input = item.querySelector('input');
+                input.id = 'input_' + keywordNum;
+                input.placeholder = '输入关键词' + keywordNum + '...';
+                input.setAttribute('onkeypress', `handleKeyPress(event, ${keywordNum})`);
+                const btn = item.querySelector('.btn-remove');
+                if (btn) {
+                    if (keywordNum === 1) btn.remove();
+                    else btn.setAttribute('onclick', `removeKeyword(${keywordNum})`);
+                }
+            });
+            updateAddBtn();
+        }
+
+        function updateAddBtn() {
+            const btn = document.getElementById('btnAdd');
+            if (keywordNum >= MAX_KEYWORDS) {
+                btn.disabled = true;
+                btn.textContent = '已达到最大关键词数量(4个)';
+            } else {
+                btn.disabled = false;
+                btn.textContent = `+ 添加关键词 (还可添加${MAX_KEYWORDS - keywordNum}个)`;
+            }
+        }
+
+        function handleKeyPress(event, currentIndex) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (currentIndex < MAX_KEYWORDS && currentIndex === keywordNum) addKeyword();
+                else if (currentIndex < keywordNum) document.getElementById('input_' + (currentIndex + 1)).focus();
+                else doSearch();
+            }
+        }
+
+        function clearSearch() {
+            document.getElementById('keywordContainer').innerHTML = '';
+            keywordNum = 0;
+            addKeyword();
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('lowMatchResults').innerHTML = '';
+            document.getElementById('statsBar').style.display = 'none';
+            showLowMatch = false;
+        }
+
+        // 读取Excel中的"性质"列
+        function getXingzhi(item) {
+            // 优先读取"性质"字段（Excel中的列名）
+            if (item['性质'] !== undefined && item['性质'] !== null && item['性质'] !== '') {
+                return String(item['性质']).trim();
+            }
+            // 兼容其他可能的字段名
+            const fields = ['xingzhi', '问题库性质', '等级', '级别', 'level', '类型', '分类'];
+            for (let field of fields) {
+                if (item[field] !== undefined && item[field] !== null && item[field] !== '') {
+                    return String(item[field]).trim();
+                }
+            }
+            return '空白';
+        }
+
+        async function doSearch() {
+            const keywords = [];
+            for (let i = 1; i <= keywordNum; i++) {
+                const val = document.getElementById('input_' + i)?.value.trim();
+                if (val) keywords.push(val);
+            }
+            if (keywords.length === 0) {
+                alert('请输入至少一个关键词');
+                return;
+            }
+            
+            document.getElementById('results').innerHTML = '<div class="loading"><div class="spinner"></div>正在搜索...</div>';
+            const data = dataCache.length > 0 ? dataCache : await loadData();
+            
+            setTimeout(() => {
+                const results = [];
+                data.forEach(item => {
+                    const xingzhi = getXingzhi(item);
+                    const text = (xingzhi + ' ' + (item.category || '') + ' ' + (item.content || '')).toLowerCase();
+                    let match = 0;
+                    keywords.forEach(k => {
+                        if (text.includes(k.toLowerCase())) match++;
+                    });
+                    if (match > 0) {
+                        const matchRate = Math.round((match / keywords.length) * 100);
+                        results.push({
+                            ...item, 
+                            matchCount: match, 
+                            totalKw: keywords.length,
+                            matchRate: matchRate,
+                            xingzhi: xingzhi
+                        });
+                    }
+                });
+
+                results.sort((a, b) => {
+                    if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount;
+                    return new Date(b.datetime || 0) - new Date(a.datetime || 0);
+                });
+
+                currentResults = results;
+                currentKeywords = keywords;
+                displayResults(results, keywords);
+            }, 50);
+        }
+
+        function displayResults(results, keywords) {
+            const container = document.getElementById('results');
+            const lowContainer = document.getElementById('lowMatchResults');
+            const stats = document.getElementById('statsBar');
+            
+            const highMatch = results.filter(r => r.matchRate >= MATCH_THRESHOLD);
+            const lowMatch = results.filter(r => r.matchRate < MATCH_THRESHOLD);
+            
+            stats.style.display = 'flex';
+            document.getElementById('highMatchCount').textContent = highMatch.length;
+            
+            const lowMatchInfo = document.getElementById('lowMatchInfo');
+            const toggleBtn = document.getElementById('toggleLowMatchBtn');
+            
+            if (lowMatch.length > 0) {
+                lowMatchInfo.style.display = 'inline';
+                document.getElementById('lowMatchCount').textContent = lowMatch.length;
+                toggleBtn.style.display = 'inline-flex';
+                toggleBtn.textContent = showLowMatch ? '🔼 隐藏低匹配(<75%)' : '👁️ 显示低匹配(<75%)';
+                toggleBtn.style.background = showLowMatch ? '#ff4d4f' : '#722ed1';
+            } else {
+                lowMatchInfo.style.display = 'none';
+                toggleBtn.style.display = 'none';
+            }
+            
+            if (highMatch.length === 0) {
+                container.innerHTML = `<div class="empty">🔍 未找到高匹配度结果（≥${MATCH_THRESHOLD}%）</div>`;
+            } else {
+                container.innerHTML = highMatch.map(item => createResultCard(item, keywords)).join('');
+            }
+            
+            if (showLowMatch && lowMatch.length > 0) {
+                lowContainer.style.display = 'block';
+                lowContainer.innerHTML = `
+                    <div class="low-match-section">
+                        <div class="low-match-header">
+                            <span>📝 低匹配度结果（<${MATCH_THRESHOLD}%匹配，${lowMatch.length}条）</span>
+                        </div>
+                        ${lowMatch.map(item => createResultCard(item, keywords)).join('')}
+                    </div>
+                `;
+            } else {
+                lowContainer.style.display = 'none';
+                lowContainer.innerHTML = '';
+            }
+        }
+
+        function createResultCard(item, keywords) {
+            // 从Excel的"性质"列读取
+            let xingzhi = item.xingzhi || getXingzhi(item);
+            
+            let levelClass = 'level-kongbai';
+            let xingzhiClass = 'xz-kongbai';
+            
+            const xz = String(xingzhi).trim();
+            
+            // 根据Excel中的性质值设置样式
+            if (xz === 'A类' || xz.includes('A')) {
+                levelClass = 'level-a';
+                xingzhiClass = 'xz-a';
+            } else if (xz === 'B类' || xz.includes('B')) {
+                levelClass = 'level-b';
+                xingzhiClass = 'xz-b';
+            } else if (xz === 'C类' || xz.includes('C')) {
+                levelClass = 'level-c';
+                xingzhiClass = 'xz-c';
+            } else if (xz === '红线' || xz.includes('红线')) {
+                levelClass = 'level-hongxian';
+                xingzhiClass = 'xz-hongxian';
+            } else if (xz === '空白' || xz === '' || xz.includes('空白')) {
+                levelClass = 'level-kongbai';
+                xingzhiClass = 'xz-kongbai';
+                xingzhi = '空白';
+            } else {
+                levelClass = 'level-kongbai';
+                xingzhiClass = 'xz-other';
+            }
+            
+            let content = item.content || '';
+            keywords.forEach(k => {
+                const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                content = content.replace(reg, '<span class="highlight">$1</span>');
+            });
+
+            return `
+                <div class="result-item ${levelClass}">
+                    <div class="match-tag">${item.matchCount}/${item.totalKw} 匹配 ${item.matchRate}%</div>
+                    <div class="result-header">
+                        <span class="xingzhi-tag ${xingzhiClass}">${xingzhi}</span>
+                        <span class="category-tag">${item.category || '其他'}</span>
+                        <span class="time-tag">📅 ${item.datetime || '无日期'}</span>
+                    </div>
+                    <div class="content-wrapper">
+                        <div class="content-header">
+                            <button class="btn-copy" onclick="copyContent(this)">📋 复制问题内容</button>
+                        </div>
+                        <div class="content-text" data-content="${encodeURIComponent(content.replace(/"/g, '&quot;'))}">${content}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function copyContent(btn) {
+            const contentDiv = btn.closest('.content-wrapper').querySelector('.content-text');
+            const encodedContent = contentDiv.getAttribute('data-content');
+            const htmlContent = decodeURIComponent(encodedContent);
+            
+            // 去除HTML标签获取纯文本
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            const plainText = tempDiv.textContent || tempDiv.innerText || '';
+            
+            navigator.clipboard.writeText(plainText).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '✅ 已复制';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '📋 复制问题内容';
+                }, 2000);
+            }).catch(err => {
+                // 降级方案
+                const textarea = document.createElement('textarea');
+                textarea.value = plainText;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    btn.classList.add('copied');
+                    btn.innerHTML = '✅ 已复制';
+                    setTimeout(() => {
+                        btn.classList.remove('copied');
+                        btn.innerHTML = '📋 复制问题内容';
+                    }, 2000);
+                } catch (e) {
+                    alert('复制失败，请手动复制');
+                }
+                document.body.removeChild(textarea);
+            });
+        }
+
+        function toggleLowMatch() {
+            showLowMatch = !showLowMatch;
+            if (currentResults.length > 0) {
+                displayResults(currentResults, currentKeywords);
+            }
+        }
+
+        function importExcel() {
+            document.getElementById('fileInput').click();
+        }
+
+        async function handleExcel(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('importModal').style.display = 'flex';
+            try {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, {header:1});
+                
+                if (jsonData.length < 2) throw new Error('Excel文件数据不足，至少需要表头和一行数据');
+                
+                const headers = jsonData[0].map(h => String(h).trim());
+                console.log('检测到的表头:', headers);
+                
+                // 查找列（精确匹配"性质"列）
+                const findCol = (names) => {
+                    for (let i = 0; i < headers.length; i++) {
+                        const header = headers[i].toLowerCase().replace(/\s/g, ''); // 去除空格
+                        for (let name of names) {
+                            // 精确匹配或包含
+                            if (header === name.toLowerCase() || header.includes(name.toLowerCase())) {
+                                return i;
+                            }
+                        }
+                    }
+                    return -1;
+                };
+                
+                const cols = {
+                    // 优先查找"性质"列
+                    xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']),
+                    datetime: findCol(['时间', '日期', 'datetime', 'date']),
+                    category: findCol(['类别', '专业', 'category', '项目']),
+                    content: findCol(['内容', '描述', 'content', '问题', '问题描述'])
+                };
+                
+                console.log('列索引映射:', cols);
+                
+                if (cols.content === -1) {
+                    throw new Error('未找到"内容"列，请确保Excel包含内容/描述/问题描述等列');
+                }
+                
+                const newData = [];
+                let skipCount = 0;
+                
+                for (let i = 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (!row || row.length === 0) {
+                        skipCount++;
+                        continue;
+                    }
+                    
+                    const content = cols.content !== -1 ? String(row[cols.content] || '').trim() : '';
+                    if (!content) {
+                        skipCount++;
+                        continue;
+                    }
+                    
+                    // 读取Excel中的"性质"列（A类、B类、C类、红线、空白）
+                    let xz = '空白';
+                    if (cols.xingzhi !== -1 && row[cols.xingzhi] !== undefined && row[cols.xingzhi] !== null) {
+                        xz = String(row[cols.xingzhi]).trim();
+                        // 如果单元格为空，设为"空白"
+                        if (xz === '') xz = '空白';
+                    }
+                    
+                    newData.push({
+                        id: Date.now() + i,
+                        '性质': xz,  // 使用Excel原始列名"性质"存储
+                        datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'),
+                        category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他',
+                        content: content
+                    });
+                }
+                
+                if (newData.length === 0) {
+                    throw new Error(`未找到有效数据（共跳过${skipCount}行空行），请检查Excel格式`);
+                }
+                
+                // 统计性质分布
+                const xzStats = {};
+                newData.forEach(d => {
+                    const key = d['性质'] || '空白';
+                    xzStats[key] = (xzStats[key] || 0) + 1;
+                });
+                console.log('性质分布:', xzStats);
+                
+                const existingCount = dataCache.length;
+                let finalData = newData;
+                let msg = `成功解析 ${newData.length} 条记录`;
+                
+                if (Object.keys(xzStats).length > 0) {
+                    msg += '\n性质分布: ' + Object.entries(xzStats).map(([k,v]) => `${k}=${v}条`).join(', ');
+                }
+                
+                if (existingCount > 0) {
+                    const action = confirm(msg + `\n\n当前已有 ${existingCount} 条记录。\n\n点击"确定"：覆盖现有数据\n点击"取消"：追加合并`);
+                    if (!action) finalData = [...dataCache, ...newData];
+                } else {
+                    alert(msg);
+                }
+                
+                document.getElementById('importStatus').textContent = '正在保存到IndexedDB...';
+                
+                await saveData(finalData);
+                await updateStorage();
+                hideModal('importModal');
+                
+            } catch(err) {
+                hideModal('importModal');
+                console.error('导入错误:', err);
+                alert('导入失败: ' + err.message);
+            }
+            e.target.value = '';
+        }
+
+        function formatExcelDate(cell) {
+            if (!cell) return new Date().toLocaleString('zh-CN');
+            if (typeof cell === 'number') {
+                const date = XLSX.SSF.parse_date_code(cell);
+                if (date) return `${date.y}-${String(date.m).padStart(2,'0')}-${String(date.d).padStart(2,'0')} ${String(date.H).padStart(2,'0')}:${String(date.M).padStart(2,'0')}`;
+            }
+            return String(cell);
+        }
+
+        function exportExcel() {
+            if (dataCache.length === 0) {
+                alert('没有数据可导出');
+                return;
+            }
+            const exportData = dataCache.map(item => ({
+                '性质': getXingzhi(item),  // 导出为"性质"列
+                '时间': item.datetime,
+                '类别': item.category,
+                '问题描述': item.content
+            }));
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "问题库数据");
+            ws['!cols'] = [{wch:10}, {wch:20}, {wch:15}, {wch:100}];
+            XLSX.writeFile(wb, `铁路检查问题库_${new Date().toISOString().slice(0,10)}_${dataCache.length}条.xlsx`);
+        }
+
+        function downloadTemplate() {
+            // 模板使用"性质"作为列名（A类、B类、C类、红线、空白）
+            const template = [
+                {'性质':'A类', '时间':'2025-12-29 17:09', '类别':'消防安全', '问题描述':'示例：A类问题描述...'},
+                {'性质':'B类', '时间':'2025-12-29 16:32', '类别':'规章制度', '问题描述':'示例：B类问题描述...'},
+                {'性质':'C类', '时间':'2025-12-29 10:00', '类别':'设备管理', '问题描述':'示例：C类问题描述...'},
+                {'性质':'红线', '时间':'2025-12-29 09:00', '类别':'安全红线', '问题描述':'示例：红线问题描述...'},
+                {'性质':'空白', '时间':'2025-12-29 08:00', '类别':'待分类', '问题描述':'示例：空白性质问题描述...'}
+            ];
+            const ws = XLSX.utils.json_to_sheet(template);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "导入模板");
+            ws['!cols'] = [{wch:10}, {wch:20}, {wch:15}, {wch:100}];
+            XLSX.writeFile(wb, "问题库导入模板.xlsx");
+        }
+
+        async function loadDemo() {
+            if (confirm('确定加载示例数据吗？将覆盖现有数据')) {
+                await loadDemoData();
+            }
+        }
+
+        async function loadDemoData() {
+            // 示例数据使用"性质"字段（A类、B类、C类、红线、空白）
+            const demo = [
+                {id:1, '性质':"A类", datetime:"2025-12-29 17:09", category:"消防安全", content:"兰州高铁基础设施段动车所信号工区遗漏机械室门口的七氟丙烷消防柜柜门无法打开。"},
+                {id:2, '性质':"B类", datetime:"2025-12-29 16:32", category:"规章制度", content:"检查兰州高铁基础设施段注浆施工，4号道口南侧汽车吊吊装作业时支腿下未放垫木。"},
+                {id:3, '性质':"C类", datetime:"2025-12-29 10:00", category:"设备管理", content:"检查发现设备标识不清，台账记录不完整。"},
+                {id:4, '性质':"红线", datetime:"2025-12-29 09:00", category:"安全红线", content:"触碰安全红线：未设置防护上道作业。"},
+                {id:5, '性质':"空白", datetime:"2025-12-29 08:00", category:"待分类", content:"问题描述暂未完成性质判定。"}
+            ];
+            await saveData(demo);
+            await updateStorage();
+            alert('示例数据已加载（包含A类、B类、C类、红线、空白五种性质）');
+        }
+
+        function showClear() {
+            document.getElementById('clearCount').textContent = dataCache.length;
+            document.getElementById('clearModal').style.display = 'flex';
+        }
+
+        function hideModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        async function confirmClear() {
+            try {
+                await clearAllData();
+                dataCache = [];
+                await updateStorage();
+                hideModal('clearModal');
+                document.getElementById('results').innerHTML = '';
+                document.getElementById('lowMatchResults').innerHTML = '';
+                document.getElementById('statsBar').style.display = 'none';
+                alert('所有数据已清空');
+            } catch(e) {
+                alert('清空失败: ' + e.message);
+            }
+        }
+
+        window.onclick = function(e) {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
+

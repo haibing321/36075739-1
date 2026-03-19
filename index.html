@@ -1329,7 +1329,6 @@
                             <button class="btn btn-primary" onclick="saveDiary(this)">💾 保存记录</button>
                             <button class="btn btn-secondary" onclick="clearDiaryForm()">🔄 重置</button>
                             <button class="btn btn-info" onclick="copyAllToday(this)">📋 复制全部</button>
-                            <button class="btn btn-warning" onclick="openDiaryAISettings()">⚙️ API设置</button>
                         </div>
                         <div class="diary-actions" style="margin-top:12px;">
                             <button class="btn btn-success btn-lg" style="flex:1;" onclick="diaryAICheck()">✨ AI智能检查（错别字/语句）</button>
@@ -1605,48 +1604,6 @@
     </div>
 
     <!-- 工作写实模块：腾讯云API密钥配置模态框 -->
-    <div class="modal" id="diary-apiSettingsModal">
-        <div class="modal-content">
-            <div class="modal-header"><div class="modal-title">⚙️ 腾讯云API密钥配置</div></div>
-            <div class="modal-body">
-                <p style="margin-bottom:16px;color:var(--text-secondary);font-size:0.9rem;">
-                    用于AI智能检查功能，需配置腾讯云NLP的API密钥。
-                </p>
-                <div class="form-group">
-                    <label class="form-label">SecretId</label>
-                    <input type="text" id="diary-secretId" class="form-input" placeholder="请输入腾讯云SecretId">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">SecretKey</label>
-                    <input type="password" id="diary-secretKey" class="form-input" placeholder="请输入腾讯云SecretKey">
-                </div>
-                <div style="margin-top:12px;padding:12px;background:#fff3cd;border-radius:6px;font-size:0.85rem;color:#856404;">
-                    <p><strong>⚠️ 重要：必须先开通NLP服务！</strong></p>
-                    <ol style="margin:8px 0 0 16px;padding:0;">
-                        <li>在控制台搜索 <a href="https://console.cloud.tencent.com/nlp" target="_blank" style="color:#0c5460;">"NLP"</a> 进入自然语言处理</li>
-                        <li>点击 <strong>"开通服务"</strong>（需要实名认证）</li>
-                        <li>开通后再配置下方API密钥</li>
-                    </ol>
-                </div>
-                <div style="margin-top:12px;padding:10px;background:#f0f7ff;border-radius:6px;font-size:0.85rem;color:var(--info);">
-                    <p>📌 获取API密钥：</p>
-                    <ol style="margin:8px 0 0 16px;padding:0;">
-                        <li>登录 <a href="https://console.cloud.tencent.com/" target="_blank" style="color:var(--info);">腾讯云控制台</a></li>
-                        <li>点击右上角头像 → 访问管理</li>
-                        <li>点击API密钥管理，创建或查看密钥</li>
-                    </ol>
-                </div>
-                <div id="diary-apiStatus" style="margin-top:12px;font-size:0.9rem;"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('diary-apiSettingsModal')">取消</button>
-                <button class="btn btn-info" onclick="diaryTestAPI()">🔗 测试连接</button>
-                <button class="btn btn-danger" onclick="diaryClearApiKey()">清除密钥</button>
-                <button class="btn btn-primary" onclick="diarySaveApiKey()">保存密钥</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 工作写实模块：AI检查结果模态框 -->
     <div class="modal" id="diary-aiResultModal">
         <div class="modal-content wide">
@@ -3195,9 +3152,10 @@
 
         // ========== 工作写实模块：腾讯云AI智能检查 ==========
         (function() {
-            const API_KEY_STORAGE = 'diary_tc_api_keys'; // localStorage key
-            
-            // 默认API密钥（用户配置的）
+            // API密钥存储键名
+            const API_KEY_STORAGE = 'railway_diary_api_keys';
+
+            // 硬编码的默认API密钥
             const DEFAULT_API_KEYS = {
                 secretId: 'AKIDQjqmZCoP6i9QWQRFtKYbR4Ul061mNo5d',
                 secretKey: 'ShlgOxJUWO8h5ILBIDxYyEG8nHXdXGo9'
@@ -3211,32 +3169,7 @@
                 action: 'SentenceCorrection'
             };
             
-            // 初始化时检查并加载默认密钥
-            (function initDefaultKeys() {
-                if (!localStorage.getItem(API_KEY_STORAGE)) {
-                    // 如果本地没有保存的密钥，使用默认密钥
-                    localStorage.setItem(API_KEY_STORAGE, JSON.stringify(DEFAULT_API_KEYS));
-                    console.log('已加载默认API密钥');
-                }
-            })();
-
-            // 收集问题文本的函数
-            function collectIssues() {
-                const issues = [];
-                const container = document.getElementById('diary-issues-container');
-                if (!container) return issues;
-                
-                const textareas = container.querySelectorAll('textarea');
-                textareas.forEach(textarea => {
-                    const value = textarea.value.trim();
-                    if (value) {
-                        issues.push(value);
-                    }
-                });
-                return issues;
-            }
-
-            // 加载保存的API密钥
+            // 加载API密钥（优先使用用户保存的，否则使用默认密钥）
             function loadApiKeys() {
                 try {
                     const stored = localStorage.getItem(API_KEY_STORAGE);
@@ -3244,7 +3177,13 @@
                         return JSON.parse(stored);
                     }
                 } catch(e) {}
-                return null;
+                // 返回默认密钥
+                return DEFAULT_API_KEYS;
+            }
+
+            // 检查是否已配置密钥（总是返回true，因为有默认密钥）
+            function hasApiKeys() {
+                return true;
             }
 
             // 保存API密钥
@@ -3268,10 +3207,20 @@
                 }
             }
 
-            // 检查是否已配置密钥
-            function hasApiKeys() {
-                const keys = loadApiKeys();
-                return keys && keys.secretId && keys.secretKey;
+            // 收集问题文本的函数
+            function collectIssues() {
+                const issues = [];
+                const container = document.getElementById('diary-issues-container');
+                if (!container) return issues;
+                
+                const textareas = container.querySelectorAll('textarea');
+                textareas.forEach(textarea => {
+                    const value = textarea.value.trim();
+                    if (value) {
+                        issues.push(value);
+                    }
+                });
+                return issues;
             }
 
             // SHA256 哈希函数
@@ -3407,211 +3356,90 @@
                 };
 
                 const sig = await generateSignature(keys.secretId, keys.secretKey, params);
-                
+
+                // 正确的请求格式：请求体只包含业务参数，签名信息放在Headers中
                 const requestBody = {
-                    Text: text,
-                    Action: sig.action,
-                    Version: sig.version,
-                    Region: sig.region,
-                    Timestamp: sig.timestamp,
-                    Signature: sig.authorization
+                    Text: text
                 };
 
                 const apiUrl = `https://${TENCENT_CLOUD_CONFIG.endpoint}`;
 
-                try {
-                    // 尝试直接调用
-                    let response = await tryFetch(apiUrl, requestBody, 10000);
-                    
-                    // 如果直接调用失败（可能是CORS问题），尝试使用代理
-                    if (!response || !response.ok) {
-                        console.log('直接调用失败，尝试使用代理...');
-                        // 使用 allorigins 代理
-                        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
-                        response = await tryFetch(proxyUrl, requestBody, 15000, true);
-                    }
-                    
-                    // 如果代理也失败，尝试另一个代理
-                    if (!response || !response.ok) {
-                        console.log('代理1失败，尝试使用代理2...');
-                        const proxyUrl2 = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
-                        response = await tryFetch(proxyUrl2, requestBody, 15000, true);
-                    }
+                // 正确的HTTP Headers格式
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': sig.authorization,
+                    'X-TC-Action': sig.action,
+                    'X-TC-Version': sig.version,
+                    'X-TC-Region': sig.region,
+                    'X-TC-Timestamp': sig.timestamp.toString(),
+                    'Host': TENCENT_CLOUD_CONFIG.endpoint
+                };
 
-                    if (!response || !response.ok) {
-                        throw new Error('无法连接到腾讯云API（可能是网络或CORS限制）');
-                    }
+                // 尝试多种方式调用API
+                const proxies = [
+                    null, // 直接调用
+                    'https://api.allorigins.win/raw?url=', // 代理1
+                    'https://corsproxy.io/?', // 代理2
+                    'https://api.codetabs.com/v1/proxy?quest=' // 代理3
+                ];
 
-                    const resultText = await response.text();
-                    console.log('API响应:', resultText);
-                    
-                    const result = JSON.parse(resultText);
-                    
-                    // 检查响应中的错误
-                    if (result.Response && result.Response.Error) {
-                        throw new Error(`API错误: ${result.Response.Error.Message} (Code: ${result.Response.Error.Code})`);
-                    }
-                    
-                    if (result.Response && result.Response.CorrectedText) {
-                        return {
-                            originalText: text,
-                            correctedText: result.Response.CorrectedText,
-                            items: result.Response.Corrections || []
+                let lastError = null;
+                
+                for (let i = 0; i < proxies.length; i++) {
+                    try {
+                        let url = apiUrl;
+                        let fetchOptions = {
+                            method: 'POST',
+                            headers: headers,  // 总是使用完整headers
+                            body: JSON.stringify(requestBody)
                         };
-                    }
-                    
-                    // 如果没有纠错结果，返回原文本
-                    return {
-                        originalText: text,
-                        correctedText: text,
-                        items: []
-                    };
-                } catch (e) {
-                    if (e.name === 'AbortError') {
-                        throw new Error('API请求超时，请检查网络连接');
-                    }
-                    throw e;
-                }
-            }
 
-            // 打开API设置模态框
-            window.openDiaryAISettings = function() {
-                const keys = loadApiKeys();
-                document.getElementById('diary-secretId').value = keys ? keys.secretId : '';
-                document.getElementById('diary-secretKey').value = keys ? keys.secretKey : '';
-                
-                const statusEl = document.getElementById('diary-apiStatus');
-                if (hasApiKeys()) {
-                    statusEl.innerHTML = '<span style="color:var(--success);">✓ 已配置API密钥</span>';
-                } else {
-                    statusEl.innerHTML = '<span style="color:var(--warning);">未配置API密钥</span>';
-                }
-                
-                openModal('diary-apiSettingsModal');
-            };
-
-            // 保存API密钥
-            window.diarySaveApiKey = function() {
-                const secretId = document.getElementById('diary-secretId').value.trim();
-                const secretKey = document.getElementById('diary-secretKey').value.trim();
-                
-                if (!secretId || !secretKey) {
-                    alert('请输入SecretId和SecretKey');
-                    return;
-                }
-                
-                if (saveApiKeys(secretId, secretKey)) {
-                    alert('API密钥保存成功！');
-                    closeModal('diary-apiSettingsModal');
-                }
-            };
-
-            // 清除API密钥
-            window.diaryClearApiKey = function() {
-                if (confirm('确定要清除已保存的API密钥吗？')) {
-                    clearApiKeys();
-                    document.getElementById('diary-secretId').value = '';
-                    document.getElementById('diary-secretKey').value = '';
-                    document.getElementById('diary-apiStatus').innerHTML = '<span style="color:var(--warning);">未配置API密钥</span>';
-                }
-            };
-
-            // 测试API连接
-            window.diaryTestAPI = async function() {
-                const secretId = document.getElementById('diary-secretId').value.trim();
-                const secretKey = document.getElementById('diary-secretKey').value.trim();
-                
-                if (!secretId || !secretKey) {
-                    alert('请先输入SecretId和SecretKey');
-                    return;
-                }
-                
-                const statusEl = document.getElementById('diary-apiStatus');
-                statusEl.innerHTML = '<span style="color:var(--info);">1/3 检查网络连接...</span>';
-                
-                try {
-                    // 第一步：测试网络连接
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 5000);
-                    
-                    // 先测试能否访问腾讯云API
-                    const testFetch = await fetch('https://nlp.tencentcloudapi.com/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ Text: 'test' }),
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
-                    
-                    statusEl.innerHTML = '<span style="color:var(--info);">2/3 生成签名中...</span>';
-                    
-                    // 第二步：生成签名并调用API
-                    const testText = '这是一个测试句子';
-                    const params = { Text: testText };
-                    const sig = await generateSignature(secretId, secretKey, params);
-                    
-                    statusEl.innerHTML = '<span style="color:var(--info);">3/3 调用API...</span>';
-                    
-                    const requestBody = {
-                        Text: testText,
-                        Action: sig.action,
-                        Version: sig.version,
-                        Region: sig.region,
-                        Timestamp: sig.timestamp,
-                        Signature: sig.authorization
-                    };
-                    
-                    const controller2 = new AbortController();
-                    const timeoutId2 = setTimeout(() => controller2.abort(), 15000);
-                    
-                    const response = await fetch(`https://${TENCENT_CLOUD_CONFIG.endpoint}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody),
-                        signal: controller2.signal
-                    });
-                    
-                    clearTimeout(timeoutId2);
-                    
-                    const resultText = await response.text();
-                    console.log('API响应:', resultText);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${resultText}`);
-                    }
-                    
-                    const result = JSON.parse(resultText);
-                    
-                    if (result.Response && result.Response.Error) {
-                        const errCode = result.Response.Error.Code;
-                        const errMsg = result.Response.Error.Message;
+                        if (proxies[i]) {
+                            // 代理模式下，需要将headers编码到URL中或通过其他方式传递
+                            // 大多数代理不支持自定义headers，所以我们需要使用直接调用
+                            // 但先尝试直接使用完整headers
+                            url = proxies[i] + encodeURIComponent(apiUrl);
+                        }
                         
-                        if (errCode === 'InvalidParameter' || errCode === 'ResourceNotFound') {
-                            // 可能NLP服务未开通
-                            statusEl.innerHTML = `<span style="color:var(--accent);">NLP服务可能未开通: ${errMsg}</span>`;
-                        } else {
-                            statusEl.innerHTML = `<span style="color:var(--accent);">API错误[${errCode}]: ${errMsg}</span>`;
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), i === 0 ? 8000 : 15000);
+                        fetchOptions.signal = controller.signal;
+                        
+                        console.log(`尝试方式 ${i+1}: ${proxies[i] ? '代理' : '直接'}`);
+                        const response = await fetch(url, fetchOptions);
+                        clearTimeout(timeoutId);
+                        
+                        if (response.ok) {
+                            const resultText = await response.text();
+                            console.log('API响应:', resultText);
+                            const result = JSON.parse(resultText);
+                            
+                            if (result.Response && result.Response.Error) {
+                                throw new Error(`API错误: ${result.Response.Error.Message}`);
+                            }
+                            
+                            if (result.Response && result.Response.CorrectedText) {
+                                return {
+                                    originalText: text,
+                                    correctedText: result.Response.CorrectedText,
+                                    items: result.Response.Corrections || []
+                                };
+                            }
+                            
+                            return {
+                                originalText: text,
+                                correctedText: text,
+                                items: []
+                            };
                         }
-                    } else {
-                        statusEl.innerHTML = '<span style="color:var(--success);">✓ API连接成功！密钥有效。</span>';
-                    }
-                } catch (e) {
-                    console.error('API测试失败:', e);
-                    let errorMsg = e.message;
-                    
-                    if (e.name === 'AbortError') {
-                        if (errorMsg.includes('The operation was aborted') || errorMsg.includes('aborted')) {
-                            statusEl.innerHTML = '<span style="color:var(--accent);">⚠️ 网络超时，无法连接到腾讯云<br>请检查：1.网络是否正常 2.是否需要代理</span>';
-                        } else {
-                            statusEl.innerHTML = '<span style="color:var(--accent);">连接超时: ' + errorMsg + '</span>';
-                        }
-                    } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-                        statusEl.innerHTML = '<span style="color:var(--accent);">⚠️ 网络错误，无法连接到腾讯云<br>请检查网络或代理设置</span>';
-                    } else {
-                        statusEl.innerHTML = '<span style="color:var(--accent);">错误: ' + errorMsg + '</span>';
+                    } catch (e) {
+                        lastError = e;
+                        console.log(`方式${i+1}失败:`, e.message);
                     }
                 }
-            };
+                
+                throw new Error('无法连接到腾讯云API，所有方式均失败: ' + (lastError ? lastError.message : '未知错误'));
+            }
 
             // AI智能检查功能
             let _aiCheckResult = null;
@@ -3619,15 +3447,9 @@
             window.diaryAICheck = async function() {
                 const work = document.getElementById('diary-work').value.trim();
                 const issues = collectIssues();
-                
+
                 if (!work && issues.length === 0) {
                     alert('请先输入工作内容或问题');
-                    return;
-                }
-                
-                if (!hasApiKeys()) {
-                    alert('请先配置腾讯云API密钥！\n点击"API设置"按钮进行配置。');
-                    openDiaryAISettings();
                     return;
                 }
 

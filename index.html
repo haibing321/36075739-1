@@ -1,13 +1,14 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>铁路安监查询系统 · 完整六模块版</title>
-    <!-- 第三方库 (不变) -->
+    <title>铁路安监现场检查查询系统（增强版+豆包助手）</title>
+    <!-- 第三方库 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+    <!-- 新增模糊搜索和拼音库 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pinyin/2.11.0/pinyin.min.js"></script>
     <link rel="manifest" href="manifest.json">
@@ -15,7 +16,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
-        /* ========== 全局变量 & 基础样式 (完全保留原样式) ========== */
+        /* ========== 全局变量 & 基础样式 ========== */
         :root {
             --primary: #1a365d;
             --primary-light: #2c5282;
@@ -82,46 +83,6 @@
         .logo-title { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.5px; }
         .logo-subtitle { font-size: 0.75rem; opacity: 0.8; margin-top: 2px; }
         
-        /* 汉堡菜单按钮 (仅移动端显示) */
-        .nav-toggle {
-            display: none;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            width: 44px;
-            height: 44px;
-            background: rgba(255,255,255,0.15);
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            gap: 5px;
-            transition: all 0.3s;
-            flex-shrink: 0;
-        }
-        .nav-toggle:hover { background: rgba(255,255,255,0.25); }
-        .nav-toggle span {
-            display: block;
-            width: 22px;
-            height: 2px;
-            background: white;
-            border-radius: 2px;
-            transition: all 0.3s ease;
-            transform-origin: center;
-        }
-        .nav-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-        .nav-toggle.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
-        .nav-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
-
-        /* 当前激活tab标签（移动端顶部显示） */
-        .nav-current-label {
-            display: none;
-            color: white;
-            font-size: 0.95rem;
-            font-weight: 600;
-            flex: 1;
-            text-align: center;
-        }
-
         .nav { display: flex; gap: 8px; }
         .nav-btn {
             padding: 12px 24px;
@@ -851,197 +812,81 @@
             margin-top: 40px;
         }
         
-        /* ========== 检查手册模块专用样式（已统一为卡片，仅保留必要布局） ========== */
-        .selector-panel {
-            background: #f8fafc; border-radius: 12px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px;
-        }
-        .selector-row {
-            display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 20px;
-        }
-        .selector-item {
-            flex: 1 1 200px; min-width: 200px;
-        }
-        .selector-item label {
-            display: block; font-weight: 600; color: var(--primary); margin-bottom: 6px; font-size: 0.9rem;
-        }
-        .selector-item select {
-            width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px;
-            background: white; font-size: 0.95rem; cursor: pointer;
-        }
-        .selector-item select:disabled {
-            background: #edf2f7; cursor: not-allowed; color: #718096;
-        }
-
-        .content-card {
-            background: white; border-radius: 12px; padding: 24px; box-shadow: var(--shadow);
-            border-left: 6px solid var(--info); margin-top: 20px;
-        }
-        .content-header {
-            display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
-        }
-        .content-chapter {
-            background: #ebf8ff; color: var(--primary); padding: 6px 14px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
-        }
-        .content-section {
-            background: #e6fffa; color: #234e52; padding: 6px 14px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
-        }
-        .content-item {
-            background: #fef3c7; color: #744210; padding: 6px 14px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
-        }
-        .content-body {
-            background: #f7fafc; padding: 20px; border-radius: 8px; font-size: 0.95rem; line-height: 1.8;
-            white-space: pre-wrap; border-left: 4px solid var(--info);
-        }
-
-        /* 规章全文模态框内容区域 */
-        #rule-fullContentBody {
-            white-space: pre-wrap;
-            line-height: 1.9;
-            font-size: 0.95rem;
-            color: var(--text);
-            word-break: break-word;
-        }
-        #rule-fullContentBody .rule-highlight {
-            background: #fef3c7;
-            color: var(--accent);
-            font-weight: 600;
-            padding: 1px 4px;
-            border-radius: 3px;
-        }
-
-        /* 规章全文模态框 — 响应式宽度 */
-        #rule-fullViewModal .modal-content {
-            max-width: min(92vw, 860px);
-            width: 100%;
-            max-height: 94vh;
-        }
-        /* 全文高亮mark（黄色背景+橙色文字） */
-        mark.rule-fv-hl {
-            background: #fef3c7 !important;
-            color: #c05621 !important;
-            font-weight: 600 !important;
-            padding: 1px 3px !important;
-            border-radius: 3px !important;
-            border: 1px solid #f6e05e !important;
-        }
-        /* 当前聚焦高亮 */
-        mark.rule-fv-hl.fv-active {
-            background: #f6ad55 !important;
-            color: #7b341e !important;
-            outline: 2px solid #c05621 !important;
-            outline-offset: 2px !important;
-        }
-        /* 顶部提示栏 */
-        #rule-fullViewHlBar {
-            display: none;
-            background: #fef9e7;
-            border: 1px solid #f6e05e;
+        /* ========== 新增样式：搜索选项、分页、建议框 ========== */
+        .search-options {
+            background: #f0f9ff;
             border-radius: 8px;
-            padding: 10px 14px;
-            margin-bottom: 14px;
-            font-size: 0.85rem;
-            color: #744210;
-            align-items: center;
-            gap: 8px;
+            padding: 12px;
+            margin: 12px 0;
+            display: flex;
             flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
         }
-        .fv-hl-bar-info {
-            flex: 1;
-            min-width: 160px;
+        .search-option-item {
             display: flex;
             align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
+            gap: 5px;
+            font-size: 0.9rem;
         }
-        .fv-hl-total {
-            font-weight: 700;
-            color: #c05621;
-            font-size: 1rem;
+        .search-option-item select, .search-option-item input[type="number"] {
+            padding: 4px 8px;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            background: white;
         }
-        .fv-hl-nav {
+        .fuzzy-toggle {
             display: flex;
-            gap: 6px;
-            flex-shrink: 0;
+            align-items: center;
+            gap: 5px;
         }
-        .fv-hl-nav button {
-            background: var(--info);
-            color: white;
-            border: none;
-            padding: 5px 12px;
-            border-radius: 6px;
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .pagination button {
+            padding: 6px 12px;
+            border: 1px solid #cbd5e0;
+            background: white;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 0.82rem;
-            transition: background 0.2s;
         }
-        .fv-hl-nav button:hover { background: var(--primary); }
-        /* 关键词标签颜色列表 */
-        .fv-kw-tag {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.78rem;
-            font-weight: 600;
-            margin: 1px 2px;
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
-        @media (max-width: 600px) {
-            #rule-fullViewModal .modal-content {
-                max-width: 100vw;
-                border-radius: 16px 16px 0 0;
-                margin: auto 0 0 0;
-                max-height: 96vh;
-            }
-            #rule-fullViewModal.active {
-                align-items: flex-end;
-            }
-            #rule-fullContentBody {
-                max-height: 52vh !important;
-            }
+        .pagination span {
+            font-size: 0.9rem;
         }
-
-        /* 响应式调整 */
+        .search-suggestions {
+            position: absolute;
+            background: white;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 100;
+            width: 100%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .search-suggestions div {
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        .search-suggestions div:hover {
+            background: #f0f9ff;
+        }
+        
+        /* ========== 响应式调整 ========== */
         @media (max-width: 768px) {
-            .header-inner {
-                flex-direction: row;
-                padding: 10px 16px;
-                flex-wrap: wrap;
-                position: relative;
-                align-items: center;
-                gap: 8px;
-            }
-            .logo { padding: 6px 0; flex: 1; min-width: 0; }
-            .logo-title { font-size: 1.1rem; }
-            .logo-subtitle { display: none; }
-            .nav-toggle { display: flex; }
-            .nav-current-label { display: block; }
-
-            /* 导航折叠容器 */
-            .nav {
-                width: 100%;
-                flex-direction: column;
-                gap: 0;
-                max-height: 0;
-                overflow: hidden;
-                transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s;
-                background: rgba(0,0,0,0.15);
-                border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-                padding: 0 8px;
-                order: 3;
-            }
-            .nav.nav-open {
-                max-height: 400px;
-                padding: 8px;
-            }
-            .nav-btn {
-                padding: 12px 16px;
-                font-size: 0.9rem;
-                border-radius: 8px;
-                width: 100%;
-                justify-content: flex-start;
-                border-bottom: 1px solid rgba(255,255,255,0.08);
-            }
-            .nav-btn:last-child { border-bottom: none; }
+            .header-inner { flex-direction: column; padding: 12px 16px; }
+            .logo { padding: 8px 0; }
+            .nav { width: 100%; justify-content: center; }
+            .nav-btn { padding: 10px 16px; font-size: 0.85rem; border-radius: 6px; }
             .nav-btn.active::after { display: none; }
-            .nav-btn.active { background: rgba(255,255,255,0.25); border-radius: 8px; }
             
             .main { padding: 16px; }
             .card-header, .card-body { padding: 16px; }
@@ -1099,100 +944,39 @@
             <div class="logo">
                 <div class="logo-icon">🛤️</div>
                 <div class="logo-text">
-                    <div class="logo-title">铁路安监查询系统</div>
+                    <div class="logo-title">铁路安监现场检查查询系统</div>
                     <div class="logo-subtitle">SAFETY INSPECTION QUERY SYSTEM</div>
                 </div>
             </div>
-            <!-- 移动端：当前tab名称 + 汉堡按钮 -->
-            <span class="nav-current-label" id="navCurrentLabel">📖 检查手册</span>
-            <button class="nav-toggle" id="navToggle" onclick="toggleNav()" aria-label="展开导航菜单">
-                <span></span><span></span><span></span>
-            </button>
-            <nav class="nav" id="mainNav">
-                <!-- 检查手册移到最前面 -->
-                <button class="nav-btn active" onclick="switchTab('handbook')" id="tab-handbook"><span>📖</span> 检查手册</button>
-                <button class="nav-btn" onclick="switchTab('issue')" id="tab-issue"><span>🔍</span> 检查信息</button>
-                <button class="nav-btn" onclick="switchTab('rule')" id="tab-rule"><span>📋</span> 规章制度</button>
-                <button class="nav-btn" onclick="switchTab('diary')" id="tab-diary"><span>📝</span> 工作写实</button>
-                <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone"><span>📞</span> 车站电话</button>
-                <button class="nav-btn" onclick="switchTab('doubao')" id="tab-doubao"><span>🤖</span> AI助手</button>
+            <nav class="nav">
+                <button class="nav-btn active" onclick="switchTab('issue')" id="tab-issue">
+                    <span>🔍</span> 检查问题库
+                </button>
+                <button class="nav-btn" onclick="switchTab('rule')" id="tab-rule">
+                    <span>📋</span> 规章制度
+                </button>
+                <button class="nav-btn" onclick="switchTab('diary')" id="tab-diary">
+                    <span>📝</span> 工作写实
+                </button>
+                <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone">
+                    <span>📞</span> 车站电话
+                </button>
+                <!-- 新增豆包助手模块 -->
+                <button class="nav-btn" onclick="switchTab('doubao')" id="tab-doubao">
+                    <span>🤖</span> 豆包助手
+                </button>
             </nav>
         </div>
     </header>
 
     <main class="main">
-        <!-- 检查手册模块 (移最前，使用标准卡片样式) -->
-        <div id="panel-handbook" class="panel active">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">📖</div>
-                        安全检查手册
-                    </div>
-                    <div class="card-subtitle">依次选择【章】→【节】→【检查项目】，查看详细内容</div>
-                </div>
-                <div class="card-body">
-                    <div class="stats-bar">
-                        <div class="stats-left">
-                            <div class="stat-item"><span class="stat-label">📚 条目总数</span><span class="stat-value" id="handbook-total">0</span></div>
-                            <div class="stat-item"><span class="stat-label">💾 存储</span><span class="stat-value" id="handbook-size">0 KB</span><div class="storage-bar"><div class="storage-fill" id="handbook-storageBar" style="width:0%"></div></div></div>
-                        </div>
-                        <div class="btn-group">
-                            <button class="btn btn-success" id="handbook-importBtn">📥 导入JSON</button>
-                            <!-- 新增导出按钮 -->
-                            <button class="btn btn-primary" onclick="exportHandbook()">📤 导出JSON</button>
-                            <button class="btn btn-warning" onclick="clearHandbookData()">🗑️ 清空</button>
-                        </div>
-                    </div>
-
-                    <div class="selector-panel">
-                        <div class="selector-row">
-                            <div class="selector-item">
-                                <label>第一章 选择章</label>
-                                <select id="chapterSelect" onchange="onChapterChange()">
-                                    <option value="">-- 请选择章 --</option>
-                                </select>
-                            </div>
-                            <div class="selector-item">
-                                <label>第二章 选择节</label>
-                                <select id="sectionSelect" onchange="onSectionChange()" disabled>
-                                    <option value="">-- 请先选择章 --</option>
-                                </select>
-                            </div>
-                            <div class="selector-item">
-                                <label>第三章 选择检查项目</label>
-                                <select id="itemSelect" onchange="onItemChange()" disabled>
-                                    <option value="">-- 请先选择节 --</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="contentDisplay" class="content-card" style="display: none;">
-                        <div class="content-header">
-                            <span class="content-chapter" id="displayChapter"></span>
-                            <span class="content-section" id="displaySection"></span>
-                            <span class="content-item" id="displayItem"></span>
-                        </div>
-                        <div class="content-body" id="displayContent"></div>
-                    </div>
-                    <div id="emptyPlaceholder" class="empty-state">
-                        <div class="empty-state-icon">📘</div>
-                        <p>请在左侧选择章、节、检查项目</p>
-                    </div>
-
-                    <input type="file" id="handbook-jsonFile" accept=".json" style="display:none;">
-                </div>
-            </div>
-        </div>
-
-        <!-- 检查信息模块 (原第一，现第二) -->
-        <div id="panel-issue" class="panel">
+        <!-- 检查问题库（原index (6).html完整内容） -->
+        <div id="panel-issue" class="panel active">
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">🔍</div>
-                        检查信息智能查询
+                        检查问题库智能查询
                     </div>
                     <div class="card-subtitle">性质分级(A类/B类/C类/红线/空白) · 智能匹配(≥75%) · Excel导入导出</div>
                 </div>
@@ -1214,13 +998,16 @@
                             <button class="btn btn-primary" onclick="issueExportExcel()">📤 导出Excel</button>
                             <button class="btn btn-info" onclick="issueDownloadTemplate()">📄 模板</button>
                             <button class="btn btn-warning" onclick="issueShowClear()">🗑️ 清空</button>
+                            <button class="btn btn-secondary" onclick="issueLoadDemo()">📋 示例</button>
                         </div>
                     </div>
-                    <input type="file" id="issue-fileInput" accept=".xlsx,.xls" style="display:none;">
+                    <input type="file" id="issue-fileInput" accept=".xlsx,.xls" onchange="issueHandleExcel(event)" style="display:none;">
                     
                     <div class="search-box">
                         <div id="issue-keywordContainer" class="keyword-list"></div>
                         <button class="btn-add" id="issue-btnAdd" onclick="issueAddKeyword()">+ 添加关键词 (最多4个)</button>
+                        <!-- 新增搜索选项栏 -->
+                        <div id="issue-search-options" class="search-options"></div>
                         <div class="search-actions">
                             <button class="btn btn-primary btn-lg" onclick="issueDoSearch()">🔍 智能搜索</button>
                             <button class="btn btn-secondary btn-lg" onclick="issueClearSearch()">重置条件</button>
@@ -1241,7 +1028,7 @@
             </div>
         </div>
 
-        <!-- 规章制度模块 (不变) -->
+        <!-- 规章制度（原完整内容） -->
         <div id="panel-rule" class="panel">
             <div class="card">
                 <div class="card-header">
@@ -1259,7 +1046,7 @@
                             <span class="control-divider">|</span>
                             <span class="control-label">💾</span>
                             <div class="storage-bar-mini storage-bar"><div class="storage-fill" id="rule-storageBar" style="width:0%"></div></div>
-                            <span class="control-value-small stat-value" id="rule-storageText">0/500MB</span>
+                            <span class="control-value-small stat-value" id="rule-storageText">0/200MB</span>
                         </div>
                         <div class="control-btns btn-group">
                             <button class="btn btn-import btn-success" id="rule-importBtn">📥 导入</button>
@@ -1279,6 +1066,8 @@
                     <div class="search-box">
                         <div id="rule-keywordContainer" class="keyword-list"></div>
                         <button class="btn-add" id="rule-btnAdd">+ 添加关键词 (最多4个)</button>
+                        <!-- 新增搜索选项栏 -->
+                        <div id="rule-search-options" class="search-options"></div>
                         <div class="search-actions">
                             <button class="btn btn-primary btn-lg" id="rule-searchBtn">🔍 智能搜索</button>
                             <button class="btn btn-secondary btn-lg" id="rule-clearSearchBtn">重置条件</button>
@@ -1287,17 +1076,22 @@
 
                     <input type="file" id="rule-fileInput" accept=".pdf,.doc,.docx,.json" style="display:none;" multiple>
 
-                    <div class="results-header" style="display: none;">
+                    <div class="results-header">
                         <span class="results-title">📋 查询结果</span>
                         <span class="results-count" id="rule-resultCount">0 项</span>
                     </div>
 
-                    <div id="rule-resultsList" style="display: none;"></div>
+                    <div id="rule-resultsList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>选择专业或输入关键词开始搜索</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 工作写实模块 (不变) -->
+        <!-- 工作写实（原完整内容） -->
         <div id="panel-diary" class="panel">
             <div class="card">
                 <div class="card-header">
@@ -1309,6 +1103,12 @@
                 </div>
                 <div class="card-body">
                     <div class="diary-form">
+                        <!-- 按钮栏：保存记录、重置、一键复制（位于日期上方） -->
+                        <div class="diary-actions">
+                            <button class="btn btn-primary" onclick="saveDiary()">💾 保存记录</button>
+                            <button class="btn btn-secondary" onclick="clearDiaryForm()">🔄 重置</button>
+                            <button class="btn btn-info" onclick="copyAllToday()">📋 复制全部</button>
+                        </div>
                         <div class="diary-date-row">
                             <label>📅 日期:</label>
                             <input type="date" id="diary-date">
@@ -1324,29 +1124,28 @@
                             <div id="diary-issues-container"></div>
                             <button class="btn-add-issue" id="btn-add-issue" onclick="addIssueField()">+ 添加问题</button>
                         </div>
-
-                        <div class="diary-actions" style="margin-top:16px;">
-                            <button class="btn btn-primary" onclick="saveDiary(this)">💾 保存记录</button>
-                            <button class="btn btn-secondary" onclick="clearDiaryForm()">🔄 重置</button>
-                            <button class="btn btn-info" onclick="copyAllToday(this)">📋 复制全部</button>
-                        </div>
-                        <div class="diary-actions" style="margin-top:12px;">
-                            <button class="btn btn-success btn-lg" style="flex:1;" onclick="diaryAICheck()">✨ AI智能检查（错别字/语句）</button>
-                        </div>
-
-                        <div style="display: flex; gap: 12px; align-items: center; margin: 20px 0 12px;">
-                            <button class="btn btn-info" id="diary-today-btn">📅 今天信息</button>
-                            <button class="btn btn-secondary" id="diary-history-btn">📚 历史信息</button>
-                            <span>记录数: <span id="diary-count">0</span></span>
-                        </div>
                     </div>
 
-                    <div id="diary-list" class="diary-list" style="display:none;"></div>
+                    <div class="results-header">
+                        <span class="results-title">📚 历史记录</span>
+                        <span class="results-count" id="diary-count">0 条</span>
+                        <div class="btn-group" style="margin-left: auto;">
+                            <button class="btn btn-small btn-info" onclick="setDiaryFilter('today')" id="diary-filter-today">今天</button>
+                            <button class="btn btn-small btn-secondary" onclick="setDiaryFilter('all')" id="diary-filter-all">全部</button>
+                        </div>
+                    </div>
+                    
+                    <div id="diary-list" class="diary-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📝</div>
+                            <p>暂无工作记录</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 车站电话模块 (不变) -->
+        <!-- 车站电话（原完整内容） -->
         <div id="panel-phone" class="panel">
             <div class="card">
                 <div class="card-header">
@@ -1374,6 +1173,7 @@
                             <button class="btn btn-primary" onclick="phoneExportExcel()">📤 导出Excel</button>
                             <button class="btn btn-info" onclick="phoneDownloadTemplate()">📄 模板</button>
                             <button class="btn btn-warning" onclick="phoneShowClear()">🗑️ 清空</button>
+                            <button class="btn btn-secondary" onclick="phoneLoadDemo()">📋 示例</button>
                         </div>
                     </div>
                     <input type="file" id="phone-fileInput" accept=".xlsx,.xls" style="display:none;">
@@ -1391,34 +1191,39 @@
                         <span class="results-count" id="phone-resultCount">0 条</span>
                     </div>
 
-                    <div id="phone-results" class="result-list" style="display:none;"></div>
+                    <div id="phone-results" class="result-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📞</div>
+                            <p>暂无电话数据，请导入Excel或加载示例</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- AI助手模块 (不变) -->
+        <!-- 新增豆包助手面板 -->
         <div id="panel-doubao" class="panel">
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">🤖</div>
-                        AI助手
+                        豆包AI助手
                     </div>
                     <div class="card-subtitle">外部智能聊天工具 · 可点击下方按钮在新窗口打开</div>
                 </div>
                 <div class="card-body">
                     <div style="text-align: center; margin-bottom: 12px;">
-                        <a href="https://www.doubao.com/chat/" target="_blank" class="btn btn-primary btn-lg">🌐 在新窗口打开AI</a>
+                        <a href="https://www.doubao.com/chat/?channel=baidu_sem&source=dbweb_sem_pinz_pinp_sous_ssqt_ssqt_ocpc_faxx_5&keywordid=1299149977106&ad_platform_id=baidusearch_lead&account_id=62746170&a_planid=1526338037&a_unitid=13127073343&a_keywordid=1299149977106&a_creative=135706752350&a_matchtype=1&a_dongtai=0&a_trig_flag=nm&a_crowdid=0&a_kw_enc_utf8=%E8%B1%86%E5%8C%85%E5%AE%98%E7%BD%91%E7%BD%91%E9%A1%B5%E7%89%88&ug_semver=v2.0.0&bd_vid=17865977111308553445" target="_blank" class="btn btn-primary btn-lg">🌐 在新窗口打开豆包</a>
                     </div>
                     <div style="border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #f0f0f0;">
                         <iframe 
-                            src="https://www.doubao.com/chat/"
+                            src="https://www.doubao.com/chat/?channel=baidu_sem&source=dbweb_sem_pinz_pinp_sous_ssqt_ssqt_ocpc_faxx_5&keywordid=1299149977106&ad_platform_id=baidusearch_lead&account_id=62746170&a_planid=1526338037&a_unitid=13127073343&a_keywordid=1299149977106&a_creative=135706752350&a_matchtype=1&a_dongtai=0&a_trig_flag=nm&a_crowdid=0&a_kw_enc_utf8=%E8%B1%86%E5%8C%85%E5%AE%98%E7%BD%91%E7%BD%91%E9%A1%B5%E7%89%88&ug_semver=v2.0.0&bd_vid=17865977111308553445"
                             width="100%" 
                             height="600" 
                             style="border:none;" 
                             sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
                             referrerpolicy="no-referrer-when-downgrade"
-                            title="AI助手">
+                            title="豆包助手">
                         </iframe>
                     </div>
                     <p style="margin-top:8px; font-size:0.8rem; color:var(--text-secondary);">⚠️ 如果无法显示，请点击上方按钮在新窗口打开。部分浏览器可能限制嵌入。</p>
@@ -1428,11 +1233,11 @@
     </main>
 
     <footer class="footer">
-        <div>铁路安监查询系统 · 开发者：赵海兵</div>
-        <div style="margin-top:4px;opacity:0.7;">© 2026 支持离线浏览 · 新增检查手册模块</div>
+        <div>铁路安监现场检查查询系统 · 开发者：赵海兵</div>
+        <div style="margin-top:4px;opacity:0.7;">© 2026 支持离线浏览 · 新增豆包助手模块</div>
     </footer>
 
-    <!-- 原有模态框 (规章制度相关需完整保留) -->
+    <!-- 问题库模态框 -->
     <div id="issue-clearModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><div class="modal-title">⚠️ 确认清空数据</div></div>
@@ -1446,6 +1251,7 @@
             </div>
         </div>
     </div>
+
     <div id="issue-importModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><div class="modal-title">📥 正在导入数据</div></div>
@@ -1456,7 +1262,7 @@
         </div>
     </div>
 
-    <!-- 规章制度模态框组 (必须完整) -->
+    <!-- 规章制度模态框 -->
     <div id="rule-importModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><div class="modal-title" id="rule-importTitle">📥 导入规章</div></div>
@@ -1554,131 +1360,13 @@
         </div>
     </div>
 
-    <!-- 规章全文查看模态框（带关键词高亮 · 响应式宽度） -->
-    <div id="rule-fullViewModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                <div class="modal-title" id="rule-fullViewTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">规章全文</div>
-                <button onclick="closeModal('rule-fullViewModal')" style="background:rgba(255,255,255,0.2);border:none;color:white;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>
-            </div>
-            <div class="modal-body" style="padding:20px;">
-                <!-- 规章信息行 -->
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-                    <span class="rule-trade" id="rule-fullViewTrade"></span>
-                    <span style="font-size:0.8rem;color:var(--text-secondary);" id="rule-fullViewLength"></span>
-                </div>
-                <!-- 顶部关键词命中提示栏 -->
-                <div id="rule-fullViewHlBar">
-                    <div class="fv-hl-bar-info">
-                        <span>🔍</span>
-                        <span id="rule-fullViewHlBarText">已找到</span>
-                        <span class="fv-hl-total" id="rule-fullViewHlTotal">0</span>
-                        <span>处命中，关键词：</span>
-                        <span id="rule-fullViewHlKwTags"></span>
-                        <span id="rule-fullViewHlPosText" style="font-size:0.8rem;color:#a05000;margin-left:4px;"></span>
-                    </div>
-                    <div class="fv-hl-nav">
-                        <button onclick="ruleFvPrevHl()">↑ 上一处</button>
-                        <button onclick="ruleFvNextHl()">↓ 下一处</button>
-                    </div>
-                </div>
-                <!-- 全文内容区 -->
-                <div id="rule-fullContentBody" style="background:#f7fafc;padding:20px;border-radius:10px;border-left:4px solid var(--info);max-height:58vh;overflow-y:auto;font-size:0.95rem;line-height:1.9;color:var(--text);word-break:break-word;white-space:pre-wrap;"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('rule-fullViewModal')">关闭</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 新增手册模块的导入确认模态框 -->
-    <div class="modal" id="handbook-importModal">
-        <div class="modal-content">
-            <div class="modal-header"><div class="modal-title">确认导入</div></div>
-            <div class="modal-body" id="handbook-importMessage">正在处理...</div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('handbook-importModal')">取消</button>
-                <button class="btn btn-primary" id="handbook-confirmImport">确认覆盖</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 工作写实模块：腾讯云API密钥配置模态框 -->
-    <!-- 工作写实模块：AI检查结果模态框 -->
-    <div class="modal" id="diary-aiResultModal">
-        <div class="modal-content wide">
-            <div class="modal-header"><div class="modal-title">✨ AI智能检查结果</div></div>
-            <div class="modal-body" id="diary-aiResultBody" style="max-height:60vh;overflow-y:auto;">
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('diary-aiResultModal')">关闭</button>
-                <button class="btn btn-success" id="diary-applyFixBtn" onclick="diaryApplyFix()">✨ 一键应用修改</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         // ========== 全局工具函数 ==========
-        // 导航栏 Tab 名称映射
-        const TAB_LABELS = {
-            handbook: '📖 检查手册',
-            issue: '🔍 检查信息',
-            rule: '📋 规章制度',
-            diary: '📝 工作写实',
-            phone: '📞 车站电话',
-            doubao: '🤖 AI助手'
-        };
-
-        window.toggleNav = function() {
-            const nav = document.getElementById('mainNav');
-            const toggle = document.getElementById('navToggle');
-            const isOpen = nav.classList.contains('nav-open');
-            if (isOpen) {
-                nav.classList.remove('nav-open');
-                toggle.classList.remove('open');
-                toggle.setAttribute('aria-label', '展开导航菜单');
-            } else {
-                nav.classList.add('nav-open');
-                toggle.classList.add('open');
-                toggle.setAttribute('aria-label', '收起导航菜单');
-            }
-        };
-
-        // ===== 模块切换历史记录（最近5次）=====
-        const TAB_ORDER = ['handbook','issue','rule','diary','phone','doubao'];
-        const _tabHistory = []; // 最近5次切换记录 [{from, to, label}]
-
-        window.switchTab = function(tab, fromSwipe) {
-            // 记录历史（侧滑或手动切换都记录）
-            const prevActiveBtn = document.querySelector('.nav-btn.active');
-            let prevTab = null;
-            if (prevActiveBtn) {
-                const m = prevActiveBtn.id.match(/^tab-(.+)$/);
-                if (m) prevTab = m[1];
-            }
-            if (prevTab && prevTab !== tab) {
-                _tabHistory.push({ from: prevTab, to: tab, label: TAB_LABELS[tab] || tab });
-                if (_tabHistory.length > 5) _tabHistory.shift();
-            }
+        window.switchTab = function(tab) {
             document.querySelectorAll('.nav-btn').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
             document.getElementById('tab-' + tab).classList.add('active');
             document.getElementById('panel-' + tab).classList.add('active');
-            // 更新移动端当前Tab标签
-            const labelEl = document.getElementById('navCurrentLabel');
-            if (labelEl) labelEl.textContent = TAB_LABELS[tab] || '';
-            // 切换后自动收起导航菜单（移动端）
-            const nav = document.getElementById('mainNav');
-            const toggle = document.getElementById('navToggle');
-            if (nav && nav.classList.contains('nav-open')) {
-                nav.classList.remove('nav-open');
-                toggle.classList.remove('open');
-                toggle.setAttribute('aria-label', '展开导航菜单');
-            }
-            // 侧滑时不再显示 Toast 记录框
-            // if (fromSwipe) {
-            //     _showSwipeToast(tab);
-            // }
         };
 
         window.closeModal = function(id) { document.getElementById(id).classList.remove('active'); };
@@ -1699,6 +1387,22 @@
             }, 100);
         });
 
+        // 新增工具函数
+        const SEARCH_HISTORY_KEY = 'search_history';
+        function addSearchHistory(module, keywords) {
+            try {
+                let history = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || {};
+                if (!history[module]) history[module] = [];
+                history[module] = [keywords, ...history[module].filter(k => k !== keywords)].slice(0, 10);
+                localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+            } catch (e) {}
+        }
+        function getSearchHistory(module) {
+            try {
+                let history = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || {};
+                return history[module] || [];
+            } catch (e) { return []; }
+        }
         function pinyinMatch(text, keyword) {
             if (!text || !keyword) return false;
             const lowerText = text.toLowerCase();
@@ -1719,11 +1423,17 @@
         (function() {
             const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 1;
             let db = null, dataCache = [], keywordNum = 0, MAX_KEYWORDS = 4;
-            let showLowMatch = false, currentResults = [], currentKeywords = [];
-            const MATCH_THRESHOLD = 75;
-            const searchMode = 'OR';
-            const searchFields = ['性质', 'category', 'content'];
-            let currentPage = 1, pageSize = 20, totalPages = 1, allFilteredResults = [];
+            let showLowMatch = false, currentResults = [], currentKeywords = [], MATCH_THRESHOLD = 75;
+
+            // 增强变量
+            let searchMode = 'OR';
+            let fuzzyEnabled = false;
+            let searchFields = ['性质', 'category', 'content'];
+            let currentPage = 1;
+            let pageSize = 20;
+            let totalPages = 1;
+            let allFilteredResults = [];
+            let fuseIssueInstance = null;
 
             async function initDB() {
                 return new Promise((resolve, reject) => {
@@ -1881,6 +1591,66 @@
                 return '空白';
             }
 
+            function renderIssueSearchOptions() {
+                const searchBox = document.querySelector('#panel-issue .search-box');
+                if (!searchBox) return;
+                const container = document.getElementById('issue-search-options');
+                if (!container) return;
+                container.innerHTML = `
+                    <div class="search-option-item">
+                        <label>搜索模式：</label>
+                        <select id="issue-searchMode">
+                            <option value="OR">或(OR) 包含任一关键词</option>
+                            <option value="AND">且(AND) 包含所有关键词</option>
+                        </select>
+                    </div>
+                    <div class="search-option-item">
+                        <label>匹配阈值：</label>
+                        <input type="number" id="issue-threshold" min="0" max="100" value="75" style="width:60px;">%
+                    </div>
+                    <div class="search-option-item fuzzy-toggle">
+                        <label>模糊搜索：</label>
+                        <input type="checkbox" id="issue-fuzzy">
+                    </div>
+                    <div class="search-option-item">
+                        <label>搜索字段：</label>
+                        <select id="issue-fields" multiple size="1" style="height:auto; min-width:150px;">
+                            <option value="性质" selected>性质</option>
+                            <option value="category" selected>类别</option>
+                            <option value="content" selected>内容</option>
+                        </select>
+                        <small>按住Ctrl多选</small>
+                    </div>
+                `;
+                document.getElementById('issue-searchMode').addEventListener('change', function(e) {
+                    searchMode = e.target.value;
+                });
+                document.getElementById('issue-threshold').addEventListener('input', function(e) {
+                    MATCH_THRESHOLD = parseInt(e.target.value) || 75;
+                });
+                document.getElementById('issue-fuzzy').addEventListener('change', function(e) {
+                    fuzzyEnabled = e.target.checked;
+                    if (fuzzyEnabled && dataCache.length > 0) {
+                        fuseIssueInstance = new Fuse(dataCache, {
+                            keys: searchFields,
+                            threshold: 0.4,
+                            includeScore: true
+                        });
+                    }
+                });
+                document.getElementById('issue-fields').addEventListener('change', function(e) {
+                    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+                    searchFields = selected.length ? selected : ['性质', 'category', 'content'];
+                    if (fuzzyEnabled && dataCache.length > 0) {
+                        fuseIssueInstance = new Fuse(dataCache, {
+                            keys: searchFields,
+                            threshold: 0.4,
+                            includeScore: true
+                        });
+                    }
+                });
+            }
+
             window.issueDoSearch = async function() {
                 const keywords = [];
                 for (let i = 1; i <= keywordNum; i++) {
@@ -1889,30 +1659,57 @@
                 }
                 if (keywords.length === 0) { alert('请输入至少一个关键词'); return; }
 
+                addSearchHistory('issue', keywords.join(' '));
+
                 document.getElementById('issue-results').innerHTML = '<div class="loading"><div class="spinner"></div><p>正在搜索...</p></div>';
                 const data = dataCache.length > 0 ? dataCache : await loadData();
 
+                if (fuzzyEnabled) {
+                    fuseIssueInstance = new Fuse(data, {
+                        keys: searchFields,
+                        threshold: 0.4,
+                        includeScore: true
+                    });
+                }
+
                 setTimeout(() => {
                     let results = [];
-                    data.forEach(item => {
-                        const xingzhi = getXingzhi(item);
-                        let text = '';
-                        if (searchFields.includes('性质')) text += xingzhi + ' ';
-                        if (searchFields.includes('category')) text += (item.category || '') + ' ';
-                        if (searchFields.includes('content')) text += (item.content || '') + ' ';
-                        text = text.toLowerCase();
+                    if (fuzzyEnabled) {
+                        const fuseResults = fuseIssueInstance.search(keywords.join(' '));
+                        results = fuseResults.map(r => ({
+                            ...r.item,
+                            matchCount: 1,
+                            totalKw: 1,
+                            matchRate: Math.round((1 - r.score) * 100),
+                            xingzhi: getXingzhi(r.item)
+                        }));
+                    } else {
+                        data.forEach(item => {
+                            const xingzhi = getXingzhi(item);
+                            let text = '';
+                            if (searchFields.includes('性质')) text += xingzhi + ' ';
+                            if (searchFields.includes('category')) text += (item.category || '') + ' ';
+                            if (searchFields.includes('content')) text += (item.content || '') + ' ';
+                            text = text.toLowerCase();
 
-                        let match = 0;
-                        keywords.forEach(k => {
-                            if (text.includes(k.toLowerCase())) match++;
+                            let match = 0;
+                            keywords.forEach(k => {
+                                if (text.includes(k.toLowerCase())) match++;
+                            });
+
+                            let matched = false;
+                            if (searchMode === 'AND') {
+                                matched = (match === keywords.length);
+                            } else {
+                                matched = (match > 0);
+                            }
+
+                            if (matched) {
+                                const matchRate = Math.round((match / keywords.length) * 100);
+                                results.push({ ...item, matchCount: match, totalKw: keywords.length, matchRate: matchRate, xingzhi: xingzhi });
+                            }
                         });
-
-                        let matched = (searchMode === 'AND') ? (match === keywords.length) : (match > 0);
-                        if (matched) {
-                            const matchRate = Math.round((match / keywords.length) * 100);
-                            results.push({ ...item, matchCount: match, totalKw: keywords.length, matchRate: matchRate, xingzhi: xingzhi });
-                        }
-                    });
+                    }
 
                     results.sort((a, b) => {
                         if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
@@ -1955,10 +1752,10 @@
                     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>未找到高匹配度结果（≥' + MATCH_THRESHOLD + '%）</p></div>';
                 } else {
                     let html = '<div class="result-list">' + paginatedHigh.map(item => issueCreateResultCard(item, keywords)).join('') + '</div>';
-                    html += `<div class="pagination" style="margin-top:16px; display:flex; gap:12px; justify-content:center; align-items:center;">
-                        <button class="btn btn-secondary" ${currentPage === 1 ? 'disabled' : ''} onclick="changeIssuePage(${currentPage - 1})">上一页</button>
+                    html += `<div class="pagination">
+                        <button ${currentPage === 1 ? 'disabled' : ''} onclick="changeIssuePage(${currentPage - 1})">上一页</button>
                         <span>第 ${currentPage} 页 / 共 ${totalPages} 页</span>
-                        <button class="btn btn-secondary" ${currentPage === totalPages ? 'disabled' : ''} onclick="changeIssuePage(${currentPage + 1})">下一页</button>
+                        <button ${currentPage === totalPages ? 'disabled' : ''} onclick="changeIssuePage(${currentPage + 1})">下一页</button>
                     </div>`;
                     container.innerHTML = html;
                 }
@@ -2011,6 +1808,7 @@
             };
 
             window.issueImportExcel = function() { document.getElementById('issue-fileInput').click(); };
+
             window.issueHandleExcel = async function(e) {
                 const file = e.target.files[0]; if (!file) return;
                 openModal('issue-importModal');
@@ -2029,11 +1827,10 @@
                         newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content });
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
-                    const existingCount = dataCache.length; let finalData = newData;
-                    if (existingCount > 0) {
-                        const action = confirm('当前已有 ' + existingCount + ' 条记录。\n点击"确定"覆盖，点击"取消"追加');
-                        if (!action) finalData = [...dataCache, ...newData];
-                    }
+                    const xzStats = {}; newData.forEach(d => { const key = d['性质'] || '空白'; xzStats[key] = (xzStats[key] || 0) + 1; });
+                    const existingCount = dataCache.length; let finalData = newData, msg = '成功解析 ' + newData.length + ' 条记录';
+                    if (Object.keys(xzStats).length > 0) msg += '\n性质分布: ' + Object.entries(xzStats).map(([k, v]) => k + '=' + v + '条').join(', ');
+                    if (existingCount > 0) { const action = confirm(msg + '\n\n当前已有 ' + existingCount + ' 条记录。\n点击"确定"：覆盖现有数据\n点击"取消"：追加合并'); if (!action) finalData = [...dataCache, ...newData]; } else alert(msg);
                     document.getElementById('issue-importStatus').textContent = '正在保存...';
                     await saveData(finalData); await updateStorage(); closeModal('issue-importModal');
                 } catch (err) { closeModal('issue-importModal'); alert('导入失败: ' + err.message); }
@@ -2051,7 +1848,7 @@
                 const exportData = dataCache.map(item => ({ '性质': getXingzhi(item), '时间': item.datetime, '类别': item.category, '问题描述': item.content }));
                 const ws = XLSX.utils.json_to_sheet(exportData), wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, '问题库数据'); ws['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 100 }];
-                XLSX.writeFile(wb, '铁路检查信息_' + new Date().toISOString().slice(0, 10) + '_' + dataCache.length + '条.xlsx');
+                XLSX.writeFile(wb, '铁路检查问题库_' + new Date().toISOString().slice(0, 10) + '_' + dataCache.length + '条.xlsx');
             };
 
             window.issueDownloadTemplate = function() {
@@ -2061,9 +1858,10 @@
                 XLSX.writeFile(wb, '问题库导入模板.xlsx');
             };
 
+            window.issueLoadDemo = async function() { if (confirm('确定加载示例数据吗？将覆盖现有数据')) await issueLoadDemoData(); };
             async function issueLoadDemoData() {
                 const demo = [{ id: 1, '性质': 'A类', datetime: '2025-12-29 17:09', category: '消防安全', content: '兰州高铁基础设施段动车所信号工区遗漏机械室门口的七氟丙烷消防柜柜门无法打开。' }, { id: 2, '性质': 'B类', datetime: '2025-12-29 16:32', category: '规章制度', content: '检查兰州高铁基础设施段注浆施工，4号道口南侧汽车吊吊装作业时支腿下未放垫木。' }, { id: 3, '性质': 'C类', datetime: '2025-12-29 10:00', category: '设备管理', content: '检查发现设备标识不清，台账记录不完整。' }, { id: 4, '性质': '红线', datetime: '2025-12-29 09:00', category: '安全红线', content: '触碰安全红线：未设置防护上道作业。' }, { id: 5, '性质': '空白', datetime: '2025-12-29 08:00', category: '待分类', content: '问题描述暂未完成性质判定。' }];
-                await saveData(demo); await updateStorage();
+                await saveData(demo); await updateStorage(); alert('示例数据已加载');
             }
 
             window.issueShowClear = function() { document.getElementById('issue-clearCount').textContent = dataCache.length; openModal('issue-clearModal'); };
@@ -2073,112 +1871,43 @@
             };
 
             window.addEventListener('load', async function() {
-                try {
-                    await initDB();
-                    await updateStorage();
-                    issueAddKeyword();
-                    const data = await loadData();
-                    if (data.length === 0) await issueLoadDemoData();
-                    document.getElementById('issue-fileInput').addEventListener('change', issueHandleExcel);
-                } catch (e) { alert('初始化失败: ' + e.message);}
+                try { await initDB(); await updateStorage(); issueAddKeyword(); const data = await loadData(); if (data.length === 0) await issueLoadDemoData(); renderIssueSearchOptions(); } catch (e) { alert('初始化失败: ' + e.message); }
             });
         })();
 
-        // ========== Rule System (完整保留) ==========
+        // ========== Rule System 增强 ==========
         (function() {
             if (typeof pdfjsLib !== 'undefined') {
                 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
             }
 
             let rules = [];
-            const MAX_STORAGE_SIZE = 500 * 1024 * 1024; // 500MB
-            const sampleRules = [
-                { trade: '车务', title: '接发列车作业标准', content: '接发列车时，必须办理行车凭证。\n列车进站应确认信号开放。\n接发列车人员应严格执行眼看、手指、口述制度。' },
-                { trade: '车务', title: '调车作业细则', content: '调车作业前必须排风摘管，核对计划。\n驼峰调车严格控制推送速度。\n铁鞋制动时，严禁使用不符合标准的铁鞋。' },
-                { trade: '机务', title: '机车牵引操作规', content: '机车起动前确认制动缸压力，鸣笛动车。\n牵引运行中注意接触网电压，通过分相区断电降弓。' },
-                { trade: '工务', title: '线路维修安全规则', content: '天窗点内方可上道作业。\n作业前后清点工机具。\n无缝线路作业必须测量轨温，防止胀轨跑道。' },
-                { trade: '电务', title: '信号设备检修规程', content: '信号机显示距离应符合标准。\n轨道电路电压调整在规定范围。\n电缆绝缘测试每月一次。' },
-                { trade: '供电', title: '接触网安全工作规程', content: 'V停作业必须穿戴绝缘靴手套。\n地线接设位置正确，验电接地。\n作业车平台升降严禁侵入邻线。' }
-            ];
+            const STORAGE_KEY = 'railway_rules_v1', MAX_STORAGE_SIZE = 200 * 1024 * 1024;
+            const sampleRules = [{ trade: '车务', title: '接发列车作业标准', content: '接发列车时，必须办理行车凭证。\n列车进站应确认信号开放。\n接发列车人员应严格执行眼看、手指、口述制度。' }, { trade: '车务', title: '调车作业细则', content: '调车作业前必须排风摘管，核对计划。\n驼峰调车严格控制推送速度。\n铁鞋制动时，严禁使用不符合标准的铁鞋。' }, { trade: '机务', title: '机车牵引操作规', content: '机车起动前确认制动缸压力，鸣笛动车。\n牵引运行中注意接触网电压，通过分相区断电降弓。' }, { trade: '工务', title: '线路维修安全规则', content: '天窗点内方可上道作业。\n作业前后清点工机具。\n无缝线路作业必须测量轨温，防止胀轨跑道。' }, { trade: '电务', title: '信号设备检修规程', content: '信号机显示距离应符合标准。\n轨道电路电压调整在规定范围。\n电缆绝缘测试每月一次。' }, { trade: '供电', title: '接触网安全工作规程', content: 'V停作业必须穿戴绝缘靴手套。\n地线接设位置正确，验电接地。\n作业车平台升降严禁侵入邻线。' }];
             let keywordCount = 0, MAX_KEYWORDS = 4, pendingFiles = [], isProcessing = false, currentEditIndex = null;
-            const ruleSearchMode = 'paragraph'; // 固定段落模式
-            let rulePage = 1, rulePageSize = 10, ruleTotalPages = 1, ruleAllResults = [];
 
-            // IndexedDB 封装
-            const DB_NAME = 'RailwayRuleDB', STORE_NAME = 'ruleCollection', DB_VERSION = 1;
-            let db = null;
-            function initRuleDB() {
-                return new Promise((resolve, reject) => {
-                    if (db) return resolve(db);
-                    const request = indexedDB.open(DB_NAME, DB_VERSION);
-                    request.onerror = () => reject(request.error);
-                    request.onsuccess = () => { db = request.result; resolve(db); };
-                    request.onupgradeneeded = (e) => {
-                        const database = e.target.result;
-                        if (!database.objectStoreNames.contains(STORE_NAME)) {
-                            const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-                            store.put({ id: 1, data: [] });
-                        }
-                    };
-                });
+            // 增强变量
+            let ruleSearchMode = 'paragraph';
+            let ruleSortBy = 'matchCount';
+            let rulePage = 1;
+            let rulePageSize = 10;
+            let ruleTotalPages = 1;
+            let ruleAllResults = [];
+
+            function saveToStorage() {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rules)); updateStorageInfo(); return true; }
+                catch (e) { if (e.name === 'QuotaExceededError') alert('存储空间不足！'); else alert('保存失败：' + e.message); return false; }
             }
-            async function loadRulesFromDB() {
-                try {
-                    await initRuleDB();
-                    return new Promise((resolve, reject) => {
-                        const transaction = db.transaction([STORE_NAME], 'readonly');
-                        const store = transaction.objectStore(STORE_NAME);
-                        const request = store.get(1);
-                        request.onsuccess = () => {
-                            const result = request.result;
-                            if (result && Array.isArray(result.data)) {
-                                rules = result.data;
-                            } else {
-                                rules = sampleRules.map(r => ({ ...r }));
-                            }
-                            resolve(rules);
-                        };
-                        request.onerror = () => reject(request.error);
-                    });
-                } catch (e) {
-                    console.warn('IndexedDB加载失败，使用示例数据', e);
-                    rules = sampleRules.map(r => ({ ...r }));
-                    return rules;
-                }
-            }
-            async function saveRulesToDB(rulesArray) {
-                try {
-                    await initRuleDB();
-                    return new Promise((resolve, reject) => {
-                        const transaction = db.transaction([STORE_NAME], 'readwrite');
-                        const store = transaction.objectStore(STORE_NAME);
-                        const request = store.put({ id: 1, data: rulesArray });
-                        request.onsuccess = () => resolve();
-                        request.onerror = () => reject(request.error);
-                    });
-                } catch (e) {
-                    console.error('IndexedDB保存失败', e);
-                }
-            }
-            async function saveToStorage() {
-                try {
-                    await saveRulesToDB(rules);
-                    updateStorageInfo();
-                    return true;
-                } catch (e) {
-                    alert('保存失败：' + e.message);
-                    return false;
-                }
+            function loadFromStorage() {
+                try { const data = localStorage.getItem(STORAGE_KEY); if (data) { const parsed = JSON.parse(data); if (Array.isArray(parsed) && parsed.length > 0) return parsed; } } catch (e) {} return null;
             }
             function updateStorageInfo() {
                 try {
-                    const jsonStr = JSON.stringify(rules);
-                    const size = new Blob([jsonStr]).size;
-                    const percent = Math.min(100, (size / MAX_STORAGE_SIZE) * 100);
+                    const data = localStorage.getItem(STORAGE_KEY) || '', size = new Blob([data]).size, percent = Math.min(100, (size / MAX_STORAGE_SIZE) * 100);
                     const bar = document.getElementById('rule-storageBar');
                     if (bar) bar.style.width = percent + '%';
                     const text = document.getElementById('rule-storageText');
-                    if (text) text.textContent = (size / 1024 / 1024).toFixed(2) + '/500MB';
+                    if (text) text.textContent = (size / 1024 / 1024).toFixed(2) + '/200MB';
                     if (bar) {
                         bar.classList.remove('warning', 'danger');
                         if (percent > 80) bar.classList.add('danger');
@@ -2211,16 +1940,19 @@
                     importSelect.innerHTML = '<option value="">-- 选择专业 --</option>';
                     sortedTrades.forEach(trade => { const option = document.createElement('option'); option.value = trade; option.textContent = trade; importSelect.appendChild(option); });
                 }
+
                 const exportSelect = document.getElementById('rule-exportTrade');
                 if (exportSelect) {
                     exportSelect.innerHTML = '<option value="">所有专业 (全部导出)</option>';
                     sortedTrades.forEach(trade => { const option = document.createElement('option'); option.value = trade; option.textContent = trade; exportSelect.appendChild(option); });
                 }
+
                 const editSelect = document.getElementById('rule-editTrade');
                 if (editSelect) {
                     editSelect.innerHTML = '<option value="">-- 选择专业 --</option>';
                     sortedTrades.forEach(trade => { const option = document.createElement('option'); option.value = trade; option.textContent = trade; editSelect.appendChild(option); });
                 }
+
                 const catalogFilter = document.getElementById('rule-catalogTradeFilter');
                 if (catalogFilter) {
                     catalogFilter.innerHTML = '<option value="">全部专业</option>';
@@ -2230,6 +1962,7 @@
 
             function escapeHtml(unsafe) { return unsafe.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
             function escapeRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
             function highlightKeywords(text, keywords) {
                 if (!keywords || keywords.length === 0) return escapeHtml(text);
                 let result = escapeHtml(text);
@@ -2241,6 +1974,7 @@
                 return result;
             }
 
+            // 长段落最小窗口算法
             function splitLongParagraphWithAllKeywords(paragraph, keywords, maxLen = 380) {
                 const lowerPara = paragraph.toLowerCase();
                 const positions = [];
@@ -2253,9 +1987,11 @@
                 });
                 if (positions.length === 0) return [{ text: paragraph, start: 0, end: paragraph.length }];
                 positions.sort((a, b) => a.start - b.start);
+
                 let minStart = positions[0].start;
                 let maxEnd = positions[positions.length - 1].end;
                 const windowLen = maxEnd - minStart;
+
                 if (windowLen <= maxLen) {
                     const extra = maxLen - windowLen;
                     let left = Math.max(0, minStart - Math.floor(extra / 2));
@@ -2303,7 +2039,9 @@
             }
 
             function collectPrevParagraphs(paragraphs, startIdx, targetLen = 150, maxCount = 6) {
-                let collected = []; let totalLen = 0; let count = 0;
+                let collected = [];
+                let totalLen = 0;
+                let count = 0;
                 for (let i = startIdx - 1; i >= 0 && count < maxCount; i--) {
                     const para = paragraphs[i];
                     if (!para.trim()) continue;
@@ -2317,7 +2055,12 @@
 
             function processParagraph(paragraph, index, allParagraphs, keywords) {
                 const len = paragraph.length;
-                const SHORT_THRESHOLD = 50, LONG_THRESHOLD = 400, PREV_TARGET = 150, NEXT_TARGET = 190, MAX_PREV_PARAS = 6;
+                const SHORT_THRESHOLD = 50;
+                const LONG_THRESHOLD = 400;
+                const PREV_TARGET = 150;
+                const NEXT_TARGET = 190;
+                const MAX_PREV_PARAS = 6;
+
                 if (len > LONG_THRESHOLD) {
                     const fragments = splitLongParagraphWithAllKeywords(paragraph, keywords);
                     let html = '';
@@ -2424,9 +2167,13 @@
                 addKeywordInput();
                 const tradeSelect = document.getElementById('rule-tradeSelect');
                 if (tradeSelect) tradeSelect.value = '';
-                document.getElementById('rule-resultsList').style.display = 'none';
-                document.querySelector('#panel-rule .results-header').style.display = 'none';
+                renderResults();
             }
+
+            function findDuplicate(title) { return rules.findIndex(r => r.title.toLowerCase().trim() === title.toLowerCase().trim()); }
+
+            window.pendingImportFiles = [];
+            window.pendingImportTrade = '';
 
             function handleImportClick() {
                 if (isProcessing) { alert('正在处理中'); return; }
@@ -2441,7 +2188,9 @@
                 };
                 input.click();
             }
+
             window.closeImportModal = function() { closeModal('rule-importModal'); window.pendingImportFiles = []; }
+
             window.confirmImportTrade = async function() {
                 let trade = document.getElementById('rule-importTrade')?.value;
                 const newTrade = document.getElementById('rule-importNewTrade')?.value.trim();
@@ -2451,18 +2200,23 @@
                 closeModal('rule-importModal');
                 await processFiles(window.pendingImportFiles, trade);
             }
+
             async function processFiles(files, trade) {
                 isProcessing = true;
                 const btn = document.getElementById('rule-importBtn');
                 let successCount = 0, skipCount = 0;
+
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const ext = file.name.split('.').pop().toLowerCase();
                     if (btn) btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></span> ' + (i + 1) + '/' + files.length;
+
                     try {
                         let text = '';
                         if (ext === 'pdf') {
-                            if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js 库未加载');
+                            if (typeof pdfjsLib === 'undefined') {
+                                throw new Error('pdf.js 库未加载，无法解析PDF');
+                            }
                             const arrayBuffer = await file.arrayBuffer();
                             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                             for (let p = 1; p <= pdf.numPages; p++) {
@@ -2471,7 +2225,9 @@
                                 text += content.items.map(item => item.str).join(' ') + '\n';
                             }
                         } else if (ext === 'docx' || ext === 'doc') {
-                            if (typeof mammoth === 'undefined') throw new Error('mammoth 库未加载');
+                            if (typeof mammoth === 'undefined') {
+                                throw new Error('mammoth 库未加载，无法解析Word');
+                            }
                             const arrayBuffer = await file.arrayBuffer();
                             const result = await mammoth.extractRawText({ arrayBuffer });
                             text = result.value;
@@ -2481,29 +2237,40 @@
                             if (Array.isArray(data)) {
                                 data.forEach(item => {
                                     if (item.title && item.content) {
-                                        const itemTrade = item.trade || trade;
-                                        const dupIdx = rules.findIndex(r => r.title.toLowerCase().trim() === item.title.toLowerCase().trim() && r.trade === itemTrade);
-                                        if (dupIdx !== -1) rules[dupIdx] = { trade: itemTrade, title: item.title, content: item.content };
-                                        else rules.push({ trade: itemTrade, title: item.title, content: item.content });
+                                        const dupIdx = findDuplicate(item.title);
+                                        if (dupIdx !== -1) rules[dupIdx] = { trade: item.trade || trade, title: item.title, content: item.content };
+                                        else rules.push({ trade: item.trade || trade, title: item.title, content: item.content });
                                         successCount++;
                                     }
                                 });
                                 continue;
                             }
-                        } else { skipCount++; continue; }
+                        } else {
+                            skipCount++; continue;
+                        }
+
                         if (!text.trim()) { skipCount++; continue; }
                         const title = file.name.replace(/\.[^/.]+$/, '');
-                        const dupIdx = rules.findIndex(r => r.title.toLowerCase().trim() === title.toLowerCase().trim());
+                        const dupIdx = findDuplicate(title);
                         if (dupIdx !== -1) rules[dupIdx] = { trade, title, content: text };
                         else rules.push({ trade, title, content: text });
                         successCount++;
-                    } catch (err) { console.error(err); skipCount++; }
+                    } catch (err) {
+                        console.error('导入失败:', err);
+                        alert(`文件 ${file.name} 导入失败：${err.message}`);
+                        skipCount++;
+                    }
                 }
-                await saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderResults();
+
+                saveToStorage();
+                refreshTradeSelect();
+                updateTotalBadge();
+                renderResults();
                 if (btn) btn.innerHTML = '📥 导入';
                 isProcessing = false;
                 alert('导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个');
             }
+
             window.doExport = function() {
                 const selectedTrade = document.getElementById('rule-exportTrade')?.value;
                 let exportRules = rules;
@@ -2519,21 +2286,26 @@
                 URL.revokeObjectURL(url);
                 closeModal('rule-exportModal');
             }
+
             window.showCatalog = function() {
                 renderCatalog();
                 openModal('rule-catalogModal');
             };
+
             function renderCatalog() {
                 const filterText = document.getElementById('rule-catalogFilter')?.value.toLowerCase() || '';
                 const filterTrade = document.getElementById('rule-catalogTradeFilter')?.value || '';
                 let filtered = rules;
                 if (filterText) filtered = filtered.filter(r => r.title.toLowerCase().includes(filterText));
                 if (filterTrade) filtered = filtered.filter(r => r.trade === filterTrade);
+
                 const stats = document.getElementById('rule-catalogStats');
                 if (stats) stats.textContent = '共 ' + filtered.length + ' 条 / 总计 ' + rules.length + ' 条';
+
                 const list = document.getElementById('rule-catalogList');
                 if (!list) return;
                 if (filtered.length === 0) { list.innerHTML = '<div class="empty-state">暂无规章</div>'; return; }
+
                 let html = '';
                 filtered.forEach((rule, idx) => {
                     const originalIdx = rules.indexOf(rule);
@@ -2541,28 +2313,38 @@
                 });
                 list.innerHTML = html;
             }
+
             window.viewRule = function(idx) {
                 const rule = rules[idx];
-                document.getElementById('rule-viewTitle').textContent = rule.title;
-                document.getElementById('rule-viewTrade').textContent = rule.trade;
-                document.getElementById('rule-viewContent').value = rule.content;
+                const title = document.getElementById('rule-viewTitle');
+                if (title) title.textContent = rule.title;
+                const trade = document.getElementById('rule-viewTrade');
+                if (trade) trade.textContent = rule.trade;
+                const content = document.getElementById('rule-viewContent');
+                if (content) content.value = rule.content;
                 openModal('rule-viewModal');
             };
+
             window.editRule = function(idx) {
                 const rule = rules[idx];
                 currentEditIndex = idx;
-                document.getElementById('rule-editTitle').value = rule.title;
+                const title = document.getElementById('rule-editTitle');
+                if (title) title.value = rule.title;
                 const editSelect = document.getElementById('rule-editTrade');
-                editSelect.innerHTML = '<option value="">-- 选择专业 --</option>';
-                const tradesSet = new Set(); rules.forEach(r => tradesSet.add(r.trade));
-                Array.from(tradesSet).sort((a, b) => a.localeCompare(b, 'zh')).forEach(trade => {
-                    const option = document.createElement('option'); option.value = trade; option.textContent = trade; editSelect.appendChild(option);
-                });
-                if (tradesSet.has(rule.trade)) editSelect.value = rule.trade; else editSelect.value = '';
-                document.getElementById('rule-editNewTrade').value = '';
+                if (editSelect) {
+                    editSelect.innerHTML = '<option value="">-- 选择专业 --</option>';
+                    const tradesSet = new Set(); rules.forEach(r => tradesSet.add(r.trade));
+                    Array.from(tradesSet).sort((a, b) => a.localeCompare(b, 'zh')).forEach(trade => {
+                        const option = document.createElement('option'); option.value = trade; option.textContent = trade; editSelect.appendChild(option);
+                    });
+                    if (tradesSet.has(rule.trade)) editSelect.value = rule.trade; else editSelect.value = '';
+                }
+                const newTrade = document.getElementById('rule-editNewTrade');
+                if (newTrade) newTrade.value = '';
                 openModal('rule-editModal');
             };
-            window.saveRuleEdit = async function() {
+
+            window.saveRuleEdit = function() {
                 const title = document.getElementById('rule-editTitle')?.value.trim();
                 let trade = document.getElementById('rule-editTrade')?.value;
                 const newTrade = document.getElementById('rule-editNewTrade')?.value.trim();
@@ -2573,36 +2355,79 @@
                 if (dupIdx !== -1) { alert('已存在相同标题的规章'); return; }
                 rules[currentEditIndex].title = title;
                 rules[currentEditIndex].trade = trade;
-                await saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderCatalog(); renderResults(); closeModal('rule-editModal'); alert('修改保存成功！');
+                saveToStorage();
+                refreshTradeSelect();
+                updateTotalBadge();
+                renderCatalog();
+                renderResults();
+                closeModal('rule-editModal');
+                alert('修改保存成功！');
             };
-            window.deleteRule = async function(idx) {
-                if (confirm('确定要删除规章"' + rules[idx].title + '"吗？')) {
+
+            window.deleteRule = function(idx) {
+                const rule = rules[idx];
+                if (confirm('确定要删除规章"' + rule.title + '"吗？')) {
                     rules.splice(idx, 1);
-                    await saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderCatalog(); renderResults();
+                    saveToStorage();
+                    refreshTradeSelect();
+                    updateTotalBadge();
+                    renderCatalog();
+                    renderResults();
                 }
             };
-            window.clearAllRules = async function() {
+
+            window.clearAllRules = function() {
                 if (confirm('确定要清空所有规章吗？此操作不可恢复！')) {
-                    rules = []; await saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderResults(); closeModal('rule-catalogModal');
+                    rules = [];
+                    saveToStorage();
+                    refreshTradeSelect();
+                    updateTotalBadge();
+                    renderResults();
+                    closeModal('rule-catalogModal');
                 }
             };
+
+            function renderRuleSearchOptions() {
+                const container = document.getElementById('rule-search-options');
+                if (!container) return;
+                container.innerHTML = `
+                    <div class="search-option-item">
+                        <label>匹配范围：</label>
+                        <select id="rule-searchMode">
+                            <option value="paragraph">同段落内包含所有关键词</option>
+                            <option value="full">全文包含所有关键词</option>
+                        </select>
+                    </div>
+                    <div class="search-option-item">
+                        <label>排序：</label>
+                        <select id="rule-sortBy">
+                            <option value="matchCount">匹配段落数</option>
+                            <option value="title">标题</option>
+                        </select>
+                    </div>
+                `;
+                document.getElementById('rule-searchMode').addEventListener('change', e => {
+                    ruleSearchMode = e.target.value;
+                    renderResults();
+                });
+                document.getElementById('rule-sortBy').addEventListener('change', e => {
+                    ruleSortBy = e.target.value;
+                    renderResults();
+                });
+            }
 
             window.renderResults = function() {
                 const trade = document.getElementById('rule-tradeSelect')?.value || '';
                 const keywords = getKeywords();
                 const resultsList = document.getElementById('rule-resultsList');
                 const resultCount = document.getElementById('rule-resultCount');
-                const header = document.querySelector('#panel-rule .results-header');
                 if (!resultsList) return;
 
                 if (trade === '' && keywords.length === 0) {
-                    resultsList.style.display = 'none';
-                    if (header) header.style.display = 'none';
+                    resultsList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>选择专业或输入关键词开始搜索</p></div>';
+                    if (resultCount) resultCount.textContent = '0 项';
                     return;
                 }
-
-                resultsList.style.display = 'block';
-                if (header) header.style.display = 'flex';
 
                 let filtered = rules;
                 if (trade !== '') filtered = filtered.filter(r => r.trade === trade);
@@ -2635,53 +2460,47 @@
                     });
                 }
 
-                results.sort((a, b) => b.matchCount - a.matchCount);
+                if (ruleSortBy === 'matchCount') {
+                    results.sort((a, b) => b.matchCount - a.matchCount);
+                } else if (ruleSortBy === 'title') {
+                    results.sort((a, b) => a.rule.title.localeCompare(b.rule.title, 'zh'));
+                }
+
                 ruleAllResults = results;
                 ruleTotalPages = Math.ceil(results.length / rulePageSize) || 1;
                 rulePage = 1;
                 displayRulePage();
-                if (resultCount) resultCount.textContent = results.length + ' 项';
             };
 
             function displayRulePage() {
                 const resultsList = document.getElementById('rule-resultsList');
+                const resultCount = document.getElementById('rule-resultCount');
                 if (!resultsList) return;
+
                 const start = (rulePage - 1) * rulePageSize;
                 const pageResults = ruleAllResults.slice(start, start + rulePageSize);
+
+                if (resultCount) resultCount.textContent = ruleAllResults.length + ' 项';
 
                 if (pageResults.length === 0) {
                     resultsList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>未找到匹配结果</p></div>';
                     return;
                 }
 
-
                 let html = '<div class="result-list">';
                 pageResults.forEach(item => {
-                    const ruleIdx = ruleAllResults.indexOf(item);
-                    const absIdx = rules.indexOf(item.rule);
-                    // 计算首个命中段落，供全文定位使用
-                    const firstParaText = _getRuleFirstMatchPara(item.rule);
-                    if (firstParaText !== null) {
-                        _ruleFirstMatchPara[absIdx] = firstParaText;
-                    } else {
-                        delete _ruleFirstMatchPara[absIdx];
-                    }
                     html += '<div class="rule-card-item">';
-                    // 文件名改为可点击链接
-                    html += '<div class="rule-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;" onclick="ruleViewFullText(' + absIdx + ')">';
-                    html += '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--info);text-decoration:underline;text-underline-offset:3px;">' + escapeHtml(item.rule.title) + '</span>';
-                    html += '<button class="btn btn-info btn-small" style="flex-shrink:0;" onclick="event.stopPropagation();ruleViewFullText(' + absIdx + ')">📄 查看全文</button>';
-                    html += '</div>';
+                    html += '<div class="rule-title">' + escapeHtml(item.rule.title) + '</div>';
                     html += '<span class="rule-trade">' + escapeHtml(item.rule.trade) + '</span>';
                     html += '<div class="rule-snippet">' + item.snippetHtml + '</div>';
                     html += '</div>';
                 });
                 html += '</div>';
 
-                html += `<div class="pagination" style="margin-top:16px; display:flex; gap:12px; justify-content:center; align-items:center;">
-                    <button class="btn btn-secondary" ${rulePage === 1 ? 'disabled' : ''} onclick="changeRulePage(${rulePage - 1})">上一页</button>
+                html += `<div class="pagination">
+                    <button ${rulePage === 1 ? 'disabled' : ''} onclick="changeRulePage(${rulePage - 1})">上一页</button>
                     <span>第 ${rulePage} 页 / 共 ${ruleTotalPages} 页</span>
-                    <button class="btn btn-secondary" ${rulePage === ruleTotalPages ? 'disabled' : ''} onclick="changeRulePage(${rulePage + 1})">下一页</button>
+                    <button ${rulePage === ruleTotalPages ? 'disabled' : ''} onclick="changeRulePage(${rulePage + 1})">下一页</button>
                 </div>`;
 
                 resultsList.innerHTML = html;
@@ -2693,207 +2512,53 @@
                 displayRulePage();
             };
 
-            // 存储每条搜索结果对应的首个命中段落文本（key: rule绝对索引）
-            const _ruleFirstMatchPara = {};
+            document.addEventListener('DOMContentLoaded', () => {
+                const stored = loadFromStorage();
+                if (stored) rules = stored;
+                else { rules = sampleRules.map(r => ({ ...r })); saveToStorage(); }
 
-            // 根据当前关键词，找规章中第一个所有关键词同时命中的段落原文
-            function _getRuleFirstMatchPara(rule) {
-                const keywords = getKeywords().filter(k => k.trim() !== '');
-                if (keywords.length === 0) return null;
-                const paragraphs = rule.content.split(/\r?\n/).filter(p => p.trim() !== '');
-                const lowerKws = keywords.map(k => k.toLowerCase());
-                for (let i = 0; i < paragraphs.length; i++) {
-                    const lp = paragraphs[i].toLowerCase();
-                    if (lowerKws.every(kw => lp.includes(kw))) return paragraphs[i];
-                }
-                return null;
-            }
-
-            // ===== 规章全文查看（带关键词高亮 & 上下跳转） =====
-            let _fvHighlights = []; // 所有高亮 mark 元素
-            let _fvCurHl = -1;      // 当前聚焦索引
-
-            // 关键词颜色组（背景/文字），用于顶部标签
-            const KW_COLORS = [
-                { bg: '#fef3c7', text: '#c05621', border: '#f6e05e' },
-                { bg: '#e6f6ff', text: '#1a6eb5', border: '#90cdf4' },
-                { bg: '#f0fff4', text: '#276749', border: '#9ae6b4' },
-                { bg: '#fde8f8', text: '#805ad5', border: '#d6bcfa' }
-            ];
-
-            window.ruleViewFullText = function(idx) {
-                const rule = rules[idx];
-                if (!rule) return;
-                const keywords = getKeywords().filter(k => k.trim() !== '');
-
-                // 填入标题与专业
-                document.getElementById('rule-fullViewTitle').textContent = rule.title;
-                document.getElementById('rule-fullViewTrade').textContent = rule.trade;
-                document.getElementById('rule-fullViewLength').textContent = rule.content.length + ' 字';
-
-                const bodyEl = document.getElementById('rule-fullContentBody');
-                _fvHighlights = [];
-                _fvCurHl = -1;
-
-                if (keywords.length > 0) {
-                    // ---------- 构建带高亮的全文HTML ----------
-                    // 1. 按行拆分，同时记录每行在全文中的"行号"（含空行用于位置对应）
-                    const lines = rule.content.split(/\n/);
-
-                    // 2. 对每行进行 HTML 转义后多关键词高亮（每个kw用独立data-kw-idx）
-                    //    每行用 <span data-line="N"> 包裹，供后续定位使用
-                    const hlParts = lines.map((line, lineIdx) => {
-                        if (!line.trim()) return '<span data-line="' + lineIdx + '"></span>';
-                        let escaped = escapeHtml(line);
-                        keywords.forEach((kw, kwIdx) => {
-                            if (!kw) return;
-                            const color = KW_COLORS[kwIdx % KW_COLORS.length];
-                            const regex = new RegExp('(' + escapeRegExp(escapeHtml(kw)) + ')', 'gi');
-                            escaped = escaped.replace(regex,
-                                `<mark class="rule-fv-hl" data-kw-idx="${kwIdx}" data-line="${lineIdx}" style="background:${color.bg};color:${color.text};font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ${color.border};">$1</mark>`
-                            );
-                        });
-                        return '<span data-line="' + lineIdx + '">' + escaped + '</span>';
-                    });
-                    bodyEl.innerHTML = hlParts.join('<br>');
-
-                    // 3. 收集所有高亮元素（按文档顺序）
-                    _fvHighlights = Array.from(bodyEl.querySelectorAll('.rule-fv-hl'));
-                    _fvCurHl = _fvHighlights.length > 0 ? 0 : -1;
-
-                    // ---------- 统计各关键词命中数 ----------
-                    const kwHitCount = new Array(keywords.length).fill(0);
-                    _fvHighlights.forEach(el => {
-                        const ki = parseInt(el.getAttribute('data-kw-idx'));
-                        if (!isNaN(ki)) kwHitCount[ki] = (kwHitCount[ki] || 0) + 1;
-                    });
-                    const totalHits = _fvHighlights.length;
-
-                    // ---------- 顶部提示栏 ----------
-                    const hlBar    = document.getElementById('rule-fullViewHlBar');
-                    const hlTotal  = document.getElementById('rule-fullViewHlTotal');
-                    const hlKwTags = document.getElementById('rule-fullViewHlKwTags');
-                    const hlBarText = document.getElementById('rule-fullViewHlBarText');
-                    const hlPosText = document.getElementById('rule-fullViewHlPosText');
-
-                    if (totalHits > 0) {
-                        hlBar.style.display = 'flex';
-                        hlBarText.textContent = '已找到';
-                        hlTotal.textContent = totalHits;
-
-                        // 渲染关键词标签（带各自颜色和命中数）
-                        let tagsHtml = '';
-                        keywords.forEach((kw, ki) => {
-                            const c = KW_COLORS[ki % KW_COLORS.length];
-                            tagsHtml += `<span class="fv-kw-tag" style="background:${c.bg};color:${c.text};border:1px solid ${c.border};">"${escapeHtml(kw)}" ${kwHitCount[ki]} 处</span>`;
-                        });
-                        hlKwTags.innerHTML = tagsHtml;
-                        hlPosText.textContent = '';
-                    } else {
-                        hlBar.style.display = 'none';
-                        hlKwTags.innerHTML = '';
-                        hlPosText.textContent = '';
-                    }
-
-                    // ---------- 确定初始定位目标 ----------
-                    // 优先定位到搜索结果中展示的首个命中段落（与摘要同一段），
-                    // 找该段落中第一个高亮元素的位置
-                    const anchorPara = _ruleFirstMatchPara[idx] || null;
-                    let anchorHlIdx = 0; // 默认第一个高亮
-                    if (anchorPara && _fvHighlights.length > 0) {
-                        // 找全文中与 anchorPara 对应行号的第一个高亮
-                        const lines2 = rule.content.split(/\n/);
-                        const anchorLineIdx = lines2.findIndex(l => l === anchorPara);
-                        if (anchorLineIdx >= 0) {
-                            const found = _fvHighlights.findIndex(el =>
-                                parseInt(el.getAttribute('data-line')) === anchorLineIdx
-                            );
-                            if (found >= 0) anchorHlIdx = found;
-                        }
-                    }
-                    _fvCurHl = anchorHlIdx;
-
-                } else {
-                    // 无关键词：直接显示纯文本，回到顶部
-                    bodyEl.textContent = rule.content;
-                    _fvHighlights = [];
-                    _fvCurHl = -1;
-                    document.getElementById('rule-fullViewHlBar').style.display = 'none';
-                    document.getElementById('rule-fullViewHlKwTags').innerHTML = '';
-                    bodyEl.scrollTop = 0;
-                }
-
-                openModal('rule-fullViewModal');
-                // 模态框打开后滚动到目标位置（延迟确保DOM渲染完成）
-                if (_fvHighlights.length > 0) {
-                    setTimeout(() => ruleFvScrollToHl(_fvCurHl), 150);
-                }
-            };
-
-            function ruleFvScrollToHl(idx) {
-                if (_fvHighlights.length === 0) return;
-                // 移除旧的激活态
-                _fvHighlights.forEach(el => el.classList.remove('fv-active'));
-                _fvCurHl = ((idx % _fvHighlights.length) + _fvHighlights.length) % _fvHighlights.length;
-                const el = _fvHighlights[_fvCurHl];
-                el.classList.add('fv-active');
-                // 在内容容器内部精确滚动（避免 scrollIntoView 滚动整个页面）
-                const container = document.getElementById('rule-fullContentBody');
-                if (container) {
-                    const containerRect = container.getBoundingClientRect();
-                    const elRect = el.getBoundingClientRect();
-                    // 计算元素在容器中的相对位置，滚到元素居中
-                    const offset = elRect.top - containerRect.top + container.scrollTop - container.clientHeight / 2 + elRect.height / 2;
-                    container.scrollTo({ top: offset, behavior: 'smooth' });
-                } else {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-                // 更新位置提示
-                const posEl = document.getElementById('rule-fullViewHlPosText');
-                if (posEl) posEl.textContent = '（第 ' + (_fvCurHl + 1) + ' / ' + _fvHighlights.length + ' 处）';
-            }
-
-            window.ruleFvNextHl = function() { ruleFvScrollToHl(_fvCurHl + 1); };
-            window.ruleFvPrevHl = function() { ruleFvScrollToHl(_fvCurHl - 1); };
-
-            document.addEventListener('DOMContentLoaded', async function() {
-                await loadRulesFromDB();
                 refreshTradeSelect();
                 updateTotalBadge();
                 updateStorageInfo();
-                document.getElementById('rule-resultsList').style.display = 'none';
-                document.querySelector('#panel-rule .results-header').style.display = 'none';
+                const resultsList = document.getElementById('rule-resultsList');
+                if (resultsList) resultsList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>选择专业或输入关键词开始搜索</p></div>';
                 addKeywordInput();
+                renderRuleSearchOptions();
 
-                document.getElementById('rule-searchBtn').addEventListener('click', renderResults);
-                document.getElementById('rule-clearSearchBtn').addEventListener('click', clearSearch);
-                document.getElementById('rule-btnAdd').addEventListener('click', addKeywordInput);
-                document.getElementById('rule-importBtn').addEventListener('click', handleImportClick);
-                document.getElementById('rule-exportBtn').addEventListener('click', () => openModal('rule-exportModal'));
-                document.getElementById('rule-catalogBtn').addEventListener('click', showCatalog);
-                document.getElementById('rule-clearBtn').addEventListener('click', async () => {
-                    if (confirm('确定要清空所有规章吗？\n\n点击"确定"：清空\n点击"取消"：恢复示例')) {
-                        rules = [];
-                        await saveToStorage();
-                        refreshTradeSelect();
-                        updateTotalBadge();
-                        renderResults();
-                    } else {
-                        rules = sampleRules.map(r => ({ ...r }));
-                        await saveToStorage();
-                        refreshTradeSelect();
-                        updateTotalBadge();
-                        renderResults();
-                    }
-                });
-                document.getElementById('rule-totalBadge').addEventListener('click', showCatalog);
-                document.getElementById('rule-tradeSelect').addEventListener('change', renderResults);
-                document.getElementById('rule-catalogFilter')?.addEventListener('input', renderCatalog);
-                document.getElementById('rule-catalogTradeFilter')?.addEventListener('change', renderCatalog);
+                const searchBtn = document.getElementById('rule-searchBtn');
+                if (searchBtn) searchBtn.addEventListener('click', renderResults);
+                const clearBtn = document.getElementById('rule-clearSearchBtn');
+                if (clearBtn) clearBtn.addEventListener('click', clearSearch);
+                const addBtn = document.getElementById('rule-btnAdd');
+                if (addBtn) addBtn.addEventListener('click', addKeywordInput);
+                const importBtn = document.getElementById('rule-importBtn');
+                if (importBtn) importBtn.addEventListener('click', handleImportClick);
+                const exportBtn = document.getElementById('rule-exportBtn');
+                if (exportBtn) exportBtn.addEventListener('click', () => openModal('rule-exportModal'));
+                const catalogBtn = document.getElementById('rule-catalogBtn');
+                if (catalogBtn) catalogBtn.addEventListener('click', showCatalog);
+                const clearAllBtn = document.getElementById('rule-clearBtn');
+                if (clearAllBtn) {
+                    clearAllBtn.addEventListener('click', () => {
+                        if (confirm('确定要清空所有规章吗？\n\n点击"确定"：清空\n点击"取消"：恢复示例')) {
+                            rules = []; saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderResults();
+                        } else {
+                            rules = sampleRules.map(r => ({ ...r })); saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderResults();
+                        }
+                    });
+                }
+                const totalBadge = document.getElementById('rule-totalBadge');
+                if (totalBadge) totalBadge.addEventListener('click', showCatalog);
+                const tradeSelect = document.getElementById('rule-tradeSelect');
+                if (tradeSelect) tradeSelect.addEventListener('change', renderResults);
+                const catalogFilter = document.getElementById('rule-catalogFilter');
+                if (catalogFilter) catalogFilter.addEventListener('input', renderCatalog);
+                const catalogTradeFilter = document.getElementById('rule-catalogTradeFilter');
+                if (catalogTradeFilter) catalogTradeFilter.addEventListener('change', renderCatalog);
             });
         })();
 
-        // ========== 工作写实模块 ==========
+        // ========== Work Diary System (优化版，移除纠错/词典管理) ==========
         (function() {
             const STORAGE_KEY = 'railway_work_diary_v2';
             let diaries = [];
@@ -2901,9 +2566,19 @@
             const MAX_ISSUES = 20;
             let diaryFilterMode = 'today';
 
-            function loadDiaries() { try { const data = localStorage.getItem(STORAGE_KEY); if (data) diaries = JSON.parse(data); } catch (e) { diaries = []; } }
-            function saveDiaries() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries)); } catch (e) { alert('保存失败：' + e.message); } }
+            // 加载日记
+            function loadDiaries() {
+                try {
+                    const data = localStorage.getItem(STORAGE_KEY);
+                    if (data) diaries = JSON.parse(data);
+                } catch (e) { diaries = []; }
+            }
 
+            function saveDiaries() {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries)); } catch (e) { alert('保存失败：' + e.message); }
+            }
+
+            // 渲染问题输入框
             function renderIssueFields(issues = []) {
                 const container = document.getElementById('diary-issues-container');
                 container.innerHTML = '';
@@ -2913,6 +2588,7 @@
                 }
                 updateAddIssueButton();
             }
+
             function addIssueFieldToDOM(value = '', index) {
                 const container = document.getElementById('diary-issues-container');
                 const div = document.createElement('div');
@@ -2926,12 +2602,17 @@
                 const textarea = document.getElementById(`diary-issue-${index}`);
                 requestAnimationFrame(() => autoResize(textarea));
             }
+
             window.addIssueField = function() {
-                if (issueCount >= MAX_ISSUES) { alert(`最多添加 ${MAX_ISSUES} 个问题`); return; }
+                if (issueCount >= MAX_ISSUES) {
+                    alert(`最多添加 ${MAX_ISSUES} 个问题`);
+                    return;
+                }
                 addIssueFieldToDOM('', issueCount);
                 issueCount++;
                 updateAddIssueButton();
             };
+
             window.removeIssueField = function(index) {
                 const row = document.getElementById(`diary-issue-row-${index}`);
                 if (row) row.remove();
@@ -2942,65 +2623,71 @@
                     const textarea = row.querySelector('textarea');
                     textarea.id = `diary-issue-${idx}`;
                     textarea.placeholder = `问题 ${idx + 1}`;
+                    textarea.setAttribute('oninput', 'autoResize(this)');
                     const removeBtn = row.querySelector('.btn-remove-issue');
-                    if (removeBtn) removeBtn.setAttribute('onclick', `removeIssueField(${idx})`);
+                    if (removeBtn) {
+                        removeBtn.setAttribute('onclick', `removeIssueField(${idx})`);
+                    }
                     requestAnimationFrame(() => autoResize(textarea));
                 });
                 updateAddIssueButton();
             };
+
             function updateAddIssueButton() {
                 const btn = document.getElementById('btn-add-issue');
-                if (issueCount >= MAX_ISSUES) { btn.disabled = true; btn.textContent = `已达到最大问题数量(${MAX_ISSUES}个)`; }
-                else { btn.disabled = false; btn.textContent = `+ 添加问题 (还可添加 ${MAX_ISSUES - issueCount} 个)`; }
+                if (issueCount >= MAX_ISSUES) {
+                    btn.disabled = true;
+                    btn.textContent = `已达到最大问题数量(${MAX_ISSUES}个)`;
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = `+ 添加问题 (还可添加 ${MAX_ISSUES - issueCount} 个)`;
+                }
             }
+
             function collectIssues() {
                 const issues = [];
                 for (let i = 0; i < issueCount; i++) {
                     const textarea = document.getElementById(`diary-issue-${i}`);
-                    if (textarea) { const val = textarea.value.trim(); if (val) issues.push(val); }
+                    if (textarea) {
+                        const val = textarea.value.trim();
+                        if (val) issues.push(val);
+                    }
                 }
                 return issues;
             }
-            window.saveDiary = function(btnEl) {
+
+            // 保存记录
+            window.saveDiary = function() {
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();
                 if (!date) { alert('请选择日期'); return; }
                 if (!work) { alert('请输入工作内容'); return; }
+                
                 const issues = collectIssues();
+                
                 const existingIdx = diaries.findIndex(d => d.date === date);
                 if (existingIdx !== -1) {
                     if (!confirm('该日期已有记录，是否覆盖？')) return;
                     diaries[existingIdx] = { date, work, issues };
-                } else { diaries.push({ date, work, issues }); }
+                } else {
+                    diaries.push({ date, work, issues });
+                }
+                
                 diaries.sort((a, b) => new Date(b.date) - new Date(a.date));
                 saveDiaries();
-                diaryFilterMode = 'today';
                 renderDiaryList();
-                document.getElementById('diary-list').style.display = 'block';
-                document.getElementById('diary-today-btn').classList.add('btn-info');
-                document.getElementById('diary-today-btn').classList.remove('btn-secondary');
-                document.getElementById('diary-history-btn').classList.add('btn-secondary');
-                document.getElementById('diary-history-btn').classList.remove('btn-info');
-                // 自复式反馈：按钮变绿显示"已保存 ✓"，2秒后恢复
-                if (btnEl) {
-                    const orig = btnEl.innerHTML;
-                    const origBg = btnEl.style.background;
-                    btnEl.innerHTML = '✓ 已保存';
-                    btnEl.style.background = '#276749';
-                    btnEl.disabled = true;
-                    setTimeout(function() {
-                        btnEl.innerHTML = orig;
-                        btnEl.style.background = origBg;
-                        btnEl.disabled = false;
-                    }, 2000);
-                }
+                alert('保存成功！');
             };
+
+            // 清空表单
             window.clearDiaryForm = function() {
                 document.getElementById('diary-date').value = '';
                 document.getElementById('diary-work').value = '';
                 autoResize(document.getElementById('diary-work'));
                 renderIssueFields([]);
             };
+
+            // 编辑日记（加载到表单）
             window.editDiary = function(date) {
                 const diary = diaries.find(d => d.date === date);
                 if (!diary) return;
@@ -3010,54 +2697,72 @@
                 renderIssueFields(diary.issues || []);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             };
+
+            // 删除日记
             window.deleteDiary = function(date) {
                 if (!confirm('确定要删除该日期的记录吗？')) return;
                 diaries = diaries.filter(d => d.date !== date);
                 saveDiaries();
                 renderDiaryList();
-                if (diaries.length === 0) document.getElementById('diary-list').style.display = 'none';
             };
-            // 自复式复制工具函数：复制后按钮变色显示"已复制✓"，2秒后恢复
-            function _doCopy(text, btnEl, successLabel) {
-                const original = btnEl ? btnEl.innerHTML : '';
-                const originalBg = btnEl ? btnEl.style.background : '';
-                const originalColor = btnEl ? btnEl.style.color : '';
-                const doFeedback = function() {
-                    if (!btnEl) return;
-                    btnEl.innerHTML = successLabel || '已复制 ✓';
-                    btnEl.style.background = '#276749';
-                    btnEl.style.color = '#fff';
-                    btnEl.disabled = true;
-                    setTimeout(function() {
-                        btnEl.innerHTML = original;
-                        btnEl.style.background = originalBg;
-                        btnEl.style.color = originalColor;
-                        btnEl.disabled = false;
-                    }, 2000);
-                };
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(text).then(doFeedback).catch(function() {
-                        const ta = document.createElement('textarea'); ta.value = text;
-                        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-                        doFeedback();
-                    });
-                } else {
-                    const ta = document.createElement('textarea'); ta.value = text;
-                    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-                    doFeedback();
-                }
-            }
-            window.copyWork = function(text, btnEl) { _doCopy(text, btnEl, '已复制 ✓'); };
-            window.copyIssue = function(text, btnEl) { _doCopy(text, btnEl, '已复制 ✓'); };
-            window.copyAllToday = function(btnEl) {
+
+            // 复制工作内容
+            window.copyWork = function(text) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('工作内容已复制');
+                }).catch(() => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    alert('工作内容已复制');
+                });
+            };
+
+            // 复制单个问题
+            window.copyIssue = function(text) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('问题已复制');
+                }).catch(() => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    alert('问题已复制');
+                });
+            };
+
+            // 一键复制当日所有内容（工作内容 + 所有问题）
+            window.copyAllToday = function() {
                 const work = document.getElementById('diary-work').value.trim();
                 const issues = collectIssues();
-                if (!work && issues.length === 0) { alert('没有可复制的内容'); return; }
+                if (!work && issues.length === 0) {
+                    alert('没有可复制的内容');
+                    return;
+                }
                 let text = '';
                 if (work) text += `【工作内容】\n${work}\n`;
-                issues.forEach((issue, idx) => { text += `【问题${idx+1}】\n${issue}\n`; });
-                _doCopy(text, btnEl, '已复制 ✓');
+                issues.forEach((issue, idx) => {
+                    text += `【问题${idx+1}】\n${issue}\n`;
+                });
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('当日全部内容已复制');
+                }).catch(() => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    alert('当日全部内容已复制');
+                });
             };
+
+            // 删除问题（从已保存的记录中删除指定问题）
             window.deleteIssue = function(date, issueIndex) {
                 const diary = diaries.find(d => d.date === date);
                 if (!diary) return;
@@ -3066,10 +2771,34 @@
                 saveDiaries();
                 renderDiaryList();
             };
-            function escapeHtml(text) { return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-            // 当前渲染的日记列表（按显示顺序），供复制按钮取值
-            let _renderedDiaries = [];
 
+            // 过滤器
+            window.setDiaryFilter = function(mode) {
+                diaryFilterMode = mode;
+                const todayBtn = document.getElementById('diary-filter-today');
+                const allBtn = document.getElementById('diary-filter-all');
+                if (todayBtn && allBtn) {
+                    if (mode === 'today') {
+                        todayBtn.classList.remove('btn-secondary');
+                        todayBtn.classList.add('btn-info');
+                        allBtn.classList.remove('btn-info');
+                        allBtn.classList.add('btn-secondary');
+                    } else {
+                        allBtn.classList.remove('btn-secondary');
+                        allBtn.classList.add('btn-info');
+                        todayBtn.classList.remove('btn-info');
+                        todayBtn.classList.add('btn-secondary');
+                    }
+                }
+                renderDiaryList();
+            };
+
+            // 转义HTML
+            function escapeHtml(text) {
+                return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            // 渲染历史记录列表
             function renderDiaryList() {
                 const container = document.getElementById('diary-list');
                 let filteredDiaries = diaries;
@@ -3077,531 +2806,109 @@
                     const today = new Date().toISOString().slice(0,10);
                     filteredDiaries = diaries.filter(d => d.date === today);
                 }
-                _renderedDiaries = filteredDiaries; // 存储供复制按钮使用
                 document.getElementById('diary-count').textContent = filteredDiaries.length + ' 条';
+                
                 if (filteredDiaries.length === 0) {
                     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📝</div><p>暂无工作记录</p></div>';
-                    container.style.display = 'block';
                     return;
                 }
+                
                 let html = '';
-                filteredDiaries.forEach((diary, di) => {
+                filteredDiaries.forEach(diary => {
                     const dateObj = new Date(diary.date);
                     const dateStr = dateObj.getFullYear() + '年' + (dateObj.getMonth() + 1) + '月' + dateObj.getDate() + '日';
                     const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
+                    
                     html += '<div class="diary-card">';
-                    html += '<div class="diary-card-header"><div class="diary-card-date">' + dateStr + ' ' + weekDay + '</div><div class="diary-card-actions"><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button><button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div></div>';
-                    // 复制按钮用 data-di 存索引，不在 onclick 里嵌文本内容，避免引号冲突
-                    html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><div><button class="btn btn-small btn-secondary diary-copy-work-btn" data-di="' + di + '">复制</button></div></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
+                    html += '<div class="diary-card-header">';
+                    html += '<div class="diary-card-date">' + dateStr + ' ' + weekDay + '</div>';
+                    html += '<div class="diary-card-actions">';
+                    html += '<button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button>';
+                    html += '<button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button>';
+                    html += '</div></div>';
+                    
+                    // 工作内容块
+                    html += '<div class="diary-work-block">';
+                    html += '<div class="diary-work-header">';
+                    html += '<span class="diary-work-title">📋 工作内容</span>';
+                    html += '<div><button class="btn btn-small btn-secondary" onclick="copyWork(\'' + diary.work.replace(/'/g, "\\'") + '\')">复制</button></div>';
+                    html += '</div>';
+                    html += '<div class="diary-work-content">' + escapeHtml(diary.work) + '</div>';
+                    html += '</div>';
+                    
+                    // 问题列表
                     if (diary.issues && diary.issues.length > 0) {
-                        html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
+                        html += '<div class="diary-issues-block">';
+                        html += '<div class="diary-issues-header">';
+                        html += '<span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span>';
+                        html += '</div>';
                         diary.issues.forEach((issue, idx) => {
-                            html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary diary-copy-issue-btn" data-di="' + di + '" data-ii="' + idx + '">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
+                            html += '<div class="diary-issue-item">';
+                            html += '<div class="diary-issue-item-num">' + (idx + 1) + '</div>';
+                            html += '<div class="diary-issue-item-content">' + escapeHtml(issue) + '</div>';
+                            html += '<div class="diary-issue-item-actions">';
+                            // 只保留复制和删除，移除编辑按钮
+                            html += '<button class="btn btn-small btn-secondary" onclick="copyIssue(\'' + issue.replace(/'/g, "\\'") + '\')">复制</button>';
+                            html += '<button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button>';
+                            html += '</div></div>';
                         });
                         html += '</div>';
                     }
                     html += '</div>';
                 });
                 container.innerHTML = html;
-                container.style.display = 'block';
             }
-            function showToday() {
-                diaryFilterMode = 'today';
-                renderDiaryList();
-                document.getElementById('diary-today-btn').classList.add('btn-info');
-                document.getElementById('diary-today-btn').classList.remove('btn-secondary');
-                document.getElementById('diary-history-btn').classList.add('btn-secondary');
-                document.getElementById('diary-history-btn').classList.remove('btn-info');
-            }
-            function showHistory() {
-                diaryFilterMode = 'all';
-                renderDiaryList();
-                document.getElementById('diary-history-btn').classList.add('btn-info');
-                document.getElementById('diary-history-btn').classList.remove('btn-secondary');
-                document.getElementById('diary-today-btn').classList.add('btn-secondary');
-                document.getElementById('diary-today-btn').classList.remove('btn-info');
-            }
+
+            // 初始化
+            loadDiaries();
             document.addEventListener('DOMContentLoaded', () => {
-                loadDiaries();
+                renderDiaryList();
                 document.getElementById('diary-date').valueAsDate = new Date();
                 renderIssueFields([]);
-                document.getElementById('diary-list').style.display = 'none';
-                document.getElementById('diary-today-btn').addEventListener('click', showToday);
-                document.getElementById('diary-history-btn').addEventListener('click', showHistory);
-                document.getElementById('diary-count').textContent = diaries.length + ' 条';
-
-                // 事件委托：处理日记列表里的复制按钮（避免动态HTML的引号问题）
-                document.getElementById('diary-list').addEventListener('click', function(e) {
-                    const workBtn = e.target.closest('.diary-copy-work-btn');
-                    const issueBtn = e.target.closest('.diary-copy-issue-btn');
-                    if (workBtn) {
-                        const di = parseInt(workBtn.getAttribute('data-di'));
-                        const diary = _renderedDiaries[di];
-                        if (diary) _doCopy(diary.work, workBtn, '已复制 ✓');
-                    } else if (issueBtn) {
-                        const di = parseInt(issueBtn.getAttribute('data-di'));
-                        const ii = parseInt(issueBtn.getAttribute('data-ii'));
-                        const diary = _renderedDiaries[di];
-                        if (diary && diary.issues && diary.issues[ii] !== undefined) {
-                            _doCopy(diary.issues[ii], issueBtn, '已复制 ✓');
-                        }
-                    }
-                });
+                setDiaryFilter('today');
             });
         })();
 
-        // ========== 工作写实模块：腾讯云AI智能检查 ==========
-        (function() {
-            // API密钥存储键名
-            const API_KEY_STORAGE = 'railway_diary_api_keys';
-
-            // 硬编码的默认API密钥
-            const DEFAULT_API_KEYS = {
-                secretId: 'AKIDQjqmZCoP6i9QWQRFtKYbR4Ul061mNo5d',
-                secretKey: 'ShlgOxJUWO8h5ILBIDxYyEG8nHXdXGo9'
-            };
-            
-            // 腾讯云API配置
-            const TENCENT_CLOUD_CONFIG = {
-                endpoint: 'nlp.tencentcloudapi.com',
-                service: 'nlp',
-                version: '2019-04-08',
-                action: 'SentenceCorrection'
-            };
-            
-            // 加载API密钥（优先使用用户保存的，否则使用默认密钥）
-            function loadApiKeys() {
-                try {
-                    const stored = localStorage.getItem(API_KEY_STORAGE);
-                    if (stored) {
-                        return JSON.parse(stored);
-                    }
-                } catch(e) {}
-                // 返回默认密钥
-                return DEFAULT_API_KEYS;
-            }
-
-            // 检查是否已配置密钥（总是返回true，因为有默认密钥）
-            function hasApiKeys() {
-                return true;
-            }
-
-            // 保存API密钥
-            function saveApiKeys(secretId, secretKey) {
-                try {
-                    localStorage.setItem(API_KEY_STORAGE, JSON.stringify({ secretId, secretKey }));
-                    return true;
-                } catch(e) {
-                    alert('保存失败：' + e.message);
-                    return false;
-                }
-            }
-
-            // 清除API密钥
-            function clearApiKeys() {
-                try {
-                    localStorage.removeItem(API_KEY_STORAGE);
-                    return true;
-                } catch(e) {
-                    return false;
-                }
-            }
-
-            // 收集问题文本的函数
-            function collectIssues() {
-                const issues = [];
-                const container = document.getElementById('diary-issues-container');
-                if (!container) return issues;
-                
-                const textareas = container.querySelectorAll('textarea');
-                textareas.forEach(textarea => {
-                    const value = textarea.value.trim();
-                    if (value) {
-                        issues.push(value);
-                    }
-                });
-                return issues;
-            }
-
-            // SHA256 哈希函数
-            async function sha256(message) {
-                const msgBuffer = new TextEncoder().encode(message);
-                const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            }
-
-            // 生成 HMAC-SHA256
-            async function hmacSHA256(key, message) {
-                const cryptoKey = await crypto.subtle.importKey(
-                    'raw',
-                    new TextEncoder().encode(key),
-                    { name: 'HMAC', hash: 'SHA-256' },
-                    false,
-                    ['sign']
-                );
-                const signature = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(message));
-                const hashArray = Array.from(new Uint8Array(signature));
-                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            }
-
-            // 生成腾讯云API签名 (TC3-HMAC-SHA256)
-            async function generateSignature(secretId, secretKey, params) {
-                const endpoint = TENCENT_CLOUD_CONFIG.endpoint;
-                const service = TENCENT_CLOUD_CONFIG.service;
-                const action = TENCENT_CLOUD_CONFIG.action;
-                const version = TENCENT_CLOUD_CONFIG.version;
-                const region = 'ap-guangzhou';
-
-                const timestamp = Math.floor(Date.now() / 1000);
-                const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
-
-                // 拼接规范请求串
-                const httpRequestMethod = 'POST';
-                const canonicalUri = '/';
-                const canonicalQueryString = '';
-                // 注意：host需要小写
-                const canonicalHeaders = `content-type:application/json\nhost:${endpoint}\n`;
-                const signedHeaders = 'content-type;host';
-                const hashedRequestPayload = await sha256(JSON.stringify(params));
-                const canonicalRequest = [
-                    httpRequestMethod,
-                    canonicalUri,
-                    canonicalQueryString,
-                    canonicalHeaders,
-                    signedHeaders,
-                    hashedRequestPayload
-                ].join('\n');
-
-                // 拼接待签名字符串
-                const algorithm = 'TC3-HMAC-SHA256';
-                const credentialScope = `${date}/${service}/tc3_request`;
-                const hashedCanonicalRequest = await sha256(canonicalRequest);
-                const stringToSign = [
-                    algorithm,
-                    timestamp,
-                    credentialScope,
-                    hashedCanonicalRequest
-                ].join('\n');
-
-                // 计算签名
-                const secretDate = await hmacSHA256('TC3' + secretKey, date);
-                const secretService = await hmacSHA256(secretDate, service);
-                const secretSigning = await hmacSHA256(secretService, 'tc3_request');
-                const signature = await hmacSHA256(secretSigning, stringToSign);
-
-                return {
-                    authorization: `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-                    timestamp: timestamp,
-                    region: region,
-                    action: action,
-                    version: version
-                };
-            }
-
-            // 测试网络连接
-            async function testNetworkConnection() {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 5000);
-                    
-                    await fetch('https://nlp.tencentcloudapi.com/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ Action: 'DescribeTasks' }),
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
-                    return true;
-                } catch(e) {
-                    console.error('网络测试失败:', e);
-                    return false;
-                }
-            }
-
-            // 辅助函数：带超时的fetch
-            async function tryFetch(url, body, timeout, isProxy = false) {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), timeout);
-                
-                try {
-                    const fetchOptions = {
-                        method: 'POST',
-                        headers: isProxy ? 
-                            { 'Content-Type': 'application/json' } : 
-                            { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                        signal: controller.signal
-                    };
-                    
-                    const response = await fetch(url, fetchOptions);
-                    clearTimeout(timeoutId);
-                    return response;
-                } catch(e) {
-                    clearTimeout(timeoutId);
-                    console.error(`Fetch错误 (${isProxy ? '代理' : '直接'}):`, e);
-                    return null;
-                }
-            }
-
-            // 调用腾讯云句子纠错API
-            async function callTextCorrectionAPI(text, signal) {
-                if (!hasApiKeys()) {
-                    throw new Error('请先配置腾讯云API密钥');
-                }
-                
-                const keys = loadApiKeys();
-                const params = {
-                    Text: text
-                };
-
-                const sig = await generateSignature(keys.secretId, keys.secretKey, params);
-
-                // 正确的请求格式：请求体只包含业务参数，签名信息放在Headers中
-                const requestBody = {
-                    Text: text
-                };
-
-                const apiUrl = `https://${TENCENT_CLOUD_CONFIG.endpoint}`;
-
-                // 正确的HTTP Headers格式
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': sig.authorization,
-                    'X-TC-Action': sig.action,
-                    'X-TC-Version': sig.version,
-                    'X-TC-Region': sig.region,
-                    'X-TC-Timestamp': sig.timestamp.toString(),
-                    'Host': TENCENT_CLOUD_CONFIG.endpoint
-                };
-
-                // 尝试多种方式调用API
-                const proxies = [
-                    null, // 直接调用
-                    'https://api.allorigins.win/raw?url=', // 代理1
-                    'https://corsproxy.io/?', // 代理2
-                    'https://api.codetabs.com/v1/proxy?quest=' // 代理3
-                ];
-
-                let lastError = null;
-                
-                for (let i = 0; i < proxies.length; i++) {
-                    try {
-                        let url = apiUrl;
-                        let fetchOptions = {
-                            method: 'POST',
-                            headers: headers,  // 总是使用完整headers
-                            body: JSON.stringify(requestBody)
-                        };
-
-                        if (proxies[i]) {
-                            // 代理模式下，需要将headers编码到URL中或通过其他方式传递
-                            // 大多数代理不支持自定义headers，所以我们需要使用直接调用
-                            // 但先尝试直接使用完整headers
-                            url = proxies[i] + encodeURIComponent(apiUrl);
-                        }
-                        
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), i === 0 ? 8000 : 15000);
-                        fetchOptions.signal = controller.signal;
-                        
-                        console.log(`尝试方式 ${i+1}: ${proxies[i] ? '代理' : '直接'}`);
-                        const response = await fetch(url, fetchOptions);
-                        clearTimeout(timeoutId);
-                        
-                        if (response.ok) {
-                            const resultText = await response.text();
-                            console.log('API响应:', resultText);
-                            const result = JSON.parse(resultText);
-                            
-                            if (result.Response && result.Response.Error) {
-                                throw new Error(`API错误: ${result.Response.Error.Message}`);
-                            }
-                            
-                            if (result.Response && result.Response.CorrectedText) {
-                                return {
-                                    originalText: text,
-                                    correctedText: result.Response.CorrectedText,
-                                    items: result.Response.Corrections || []
-                                };
-                            }
-                            
-                            return {
-                                originalText: text,
-                                correctedText: text,
-                                items: []
-                            };
-                        }
-                    } catch (e) {
-                        lastError = e;
-                        console.log(`方式${i+1}失败:`, e.message);
-                    }
-                }
-                
-                throw new Error('无法连接到腾讯云API，所有方式均失败: ' + (lastError ? lastError.message : '未知错误'));
-            }
-
-            // AI智能检查功能
-            let _aiCheckResult = null;
-
-            window.diaryAICheck = async function() {
-                const work = document.getElementById('diary-work').value.trim();
-                const issues = collectIssues();
-
-                if (!work && issues.length === 0) {
-                    alert('请先输入工作内容或问题');
-                    return;
-                }
-
-                // 收集所有需要检查的文本
-                const textsToCheck = [];
-                if (work) textsToCheck.push({ type: 'work', label: '工作内容', text: work });
-                issues.forEach((issue, idx) => {
-                    if (issue) textsToCheck.push({ type: 'issue', label: '问题' + (idx + 1), text: issue });
-                });
-
-                // 显示加载状态
-                const resultBody = document.getElementById('diary-aiResultBody');
-                resultBody.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在进行AI智能检查（请稍候，最多15秒）...</p></div>';
-                openModal('diary-aiResultModal');
-
-                try {
-                    const results = [];
-                    
-                    for (const item of textsToCheck) {
-                        try {
-                            console.log('AI检查文本:', item.text.substring(0, 50) + '...');
-                            const result = await callTextCorrectionAPI(item.text);
-                            console.log('API返回结果:', result);
-                            results.push({
-                                ...item,
-                                ...result,
-                                hasError: result.originalText !== result.correctedText
-                            });
-                        } catch(e) {
-                            console.error('API调用错误:', e);
-                            results.push({
-                                ...item,
-                                originalText: item.text,
-                                correctedText: item.text,
-                                items: [],
-                                hasError: false,
-                                error: e.message
-                            });
-                        }
-                    }
-
-                    _aiCheckResult = results;
-                    renderAIResult(results);
-
-                } catch(e) {
-                    console.error('AI检查异常:', e);
-                    resultBody.innerHTML = `<div style="color:var(--accent);padding:20px;text-align:center;">
-                        <p style="font-size:1.2rem;">检查失败</p>
-                        <p>${escapeHtml(e.message)}</p>
-                        <p style="margin-top:12px;">请按F12打开浏览器控制台查看详细错误信息</p>
-                        <p style="margin-top:8px;">常见问题：API密钥错误、网络超时</p>
-                    </div>`;
-                    document.getElementById('diary-applyFixBtn').style.display = 'none';
-                }
-            };
-
-            // 渲染AI检查结果
-            function renderAIResult(results) {
-                const resultBody = document.getElementById('diary-aiResultBody');
-                
-                // 检查是否有错误
-                const hasErrors = results.some(r => r.hasError);
-                document.getElementById('diary-applyFixBtn').style.display = hasErrors ? 'inline-flex' : 'none';
-
-                let html = '';
-                
-                results.forEach((item, idx) => {
-                    const hasChange = item.hasError;
-                    html += `<div style="background:${hasChange ? '#fff5f5' : '#f7fafc'};border-radius:8px;padding:16px;margin-bottom:12px;border-left:4px solid ${hasChange ? 'var(--accent)' : 'var(--success)'};">`;
-                    html += `<div style="font-weight:600;margin-bottom:8px;color:var(--primary);">${item.label}</div>`;
-                    
-                    if (item.error) {
-                        html += `<div style="color:var(--accent);font-size:0.9rem;">检查失败: ${escapeHtml(item.error)}</div>`;
-                    } else if (hasChange) {
-                        html += `<div style="margin-bottom:10px;">`;
-                        html += `<div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:4px;">原文:</div>`;
-                        html += `<div style="background:white;padding:10px;border-radius:6px;font-size:0.95rem;line-height:1.6;word-break:break-word;">${escapeHtml(item.originalText)}</div>`;
-                        html += `</div>`;
-                        html += `<div style="font-size:0.85rem;color:var(--success);margin-bottom:4px;display:flex;align-items:center;gap:4px;">✓ 修改为:</div>`;
-                        html += `<div style="background:#f0fff4;padding:10px;border-radius:6px;font-size:0.95rem;line-height:1.6;word-break:break-word;border:1px solid #9ae6b4;">${escapeHtml(item.correctedText)}</div>`;
-                        
-                        // 如果有详细的纠错项目
-                        if (item.items && item.items.length > 0) {
-                            html += `<div style="margin-top:10px;font-size:0.85rem;color:var(--text-secondary);">纠错详情:</div>`;
-                            item.items.forEach(c => {
-                                html += `<div style="margin-top:4px;padding:6px;background:white;border-radius:4px;font-size:0.85rem;">
-                                    原文: <span style="color:var(--accent);">${escapeHtml(c.OriginalText || '')}</span> → 
-                                    纠正: <span style="color:var(--success);">${escapeHtml(c.CorrectedText || '')}</span>
-                                </div>`;
-                            });
-                        }
-                        html += `</div>`;
-                    } else {
-                        html += `<div style="color:var(--success);font-size:0.95rem;">✓ 文本检查通过，未发现问题</div>`;
-                        html += `<div style="background:white;padding:10px;border-radius:6px;font-size:0.9rem;line-height:1.6;margin-top:8px;word-break:break-word;">${escapeHtml(item.originalText)}</div>`;
-                    }
-                    html += `</div>`;
-                });
-
-                resultBody.innerHTML = html;
-            }
-
-            // 一键应用修改
-            window.diaryApplyFix = function() {
-                if (!_aiCheckResult) return;
-                
-                const workInput = document.getElementById('diary-work');
-                
-                // 找到工作内容的修改结果
-                const workResult = _aiCheckResult.find(r => r.type === 'work');
-                if (workResult && workResult.hasError) {
-                    workInput.value = workResult.correctedText;
-                    autoResize(workInput);
-                }
-
-                // 更新问题字段
-                const issueResults = _aiCheckResult.filter(r => r.type === 'issue');
-                issueResults.forEach((result, idx) => {
-                    if (result.hasError) {
-                        const textarea = document.getElementById(`diary-issue-${idx}`);
-                        if (textarea) {
-                            textarea.value = result.correctedText;
-                            autoResize(textarea);
-                        }
-                    }
-                });
-
-                closeModal('diary-aiResultModal');
-                alert('已应用AI修改建议！请检查后重新保存。');
-            };
-        })();
-
-        // ========== 电话模块 ==========
+        // ========== Phone Directory System 增强 ==========
         (function() {
             const STORAGE_KEY = 'railway_phone_db_v1';
             let phoneData = [];
             let phoneSuggestions = [];
 
             function loadFromStorage() {
-                try { const data = localStorage.getItem(STORAGE_KEY); if (data) phoneData = JSON.parse(data); } catch (e) { phoneData = []; }
+                try {
+                    const data = localStorage.getItem(STORAGE_KEY);
+                    if (data) {
+                        phoneData = JSON.parse(data);
+                    } else {
+                        phoneData = [];
+                    }
+                } catch (e) {
+                    phoneData = [];
+                }
                 updateStats();
-                document.getElementById('phone-results').style.display = 'none';
+                renderEmpty();
                 updatePhoneSuggestions();
             }
+
             function saveToStorage() {
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(phoneData)); updateStats(); updatePhoneSuggestions(); } catch (e) { alert('保存失败：' + e.message); }
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(phoneData));
+                    updateStats();
+                    updatePhoneSuggestions();
+                } catch (e) {
+                    alert('保存失败：' + e.message);
+                }
             }
+
             function updateStats() {
                 const count = phoneData.length;
                 document.getElementById('phone-recordCount').textContent = count + ' 条';
                 let sizeMB = 0;
-                if (count > 0) { const jsonStr = JSON.stringify(phoneData); sizeMB = (new Blob([jsonStr]).size / 1024 / 1024).toFixed(2); }
+                if (count > 0) {
+                    const jsonStr = JSON.stringify(phoneData);
+                    sizeMB = (new Blob([jsonStr]).size / 1024 / 1024).toFixed(2);
+                }
                 document.getElementById('phone-storageText').textContent = sizeMB + ' MB';
                 const percent = Math.min((sizeMB / 10) * 100, 100);
                 const bar = document.getElementById('phone-storageBar');
@@ -3610,26 +2917,41 @@
                 else if (percent > 60) bar.className = 'storage-fill warning';
                 else bar.className = 'storage-fill';
             }
+
+            function renderEmpty() {
+                document.getElementById('phone-results').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📞</div><p>暂无电话数据，请导入Excel或加载示例</p></div>';
+                document.getElementById('phone-resultCount').textContent = '0 条';
+            }
+
             function updatePhoneSuggestions() {
                 const keywords = new Set();
-                phoneData.forEach(item => { if (item.站名) keywords.add(item.站名); if (item.单位) keywords.add(item.单位); if (item.线名) keywords.add(item.线名); });
+                phoneData.forEach(item => {
+                    if (item.站名) keywords.add(item.站名);
+                    if (item.单位) keywords.add(item.单位);
+                    if (item.线名) keywords.add(item.线名);
+                });
                 phoneSuggestions = Array.from(keywords).slice(0, 20);
             }
 
             function showPhoneSuggestions(input) {
-                let container = document.getElementById('phone-suggestions');
+                const container = document.getElementById('phone-suggestions');
                 if (!container) {
-                    container = document.createElement('div');
-                    container.id = 'phone-suggestions';
-                    container.className = 'search-suggestions';
-                    input.parentNode.appendChild(container);
+                    const div = document.createElement('div');
+                    div.id = 'phone-suggestions';
+                    div.className = 'search-suggestions';
+                    input.parentNode.appendChild(div);
                 }
                 const val = input.value.toLowerCase();
                 const filtered = phoneSuggestions.filter(s => s.toLowerCase().includes(val)).slice(0, 10);
-                if (filtered.length === 0 || val === '') { container.style.display = 'none'; return; }
-                container.innerHTML = filtered.map(s => `<div onclick="selectPhoneSuggestion('${s}')">${escapeHtml(s)}</div>`).join('');
-                container.style.display = 'block';
+                const suggDiv = document.getElementById('phone-suggestions');
+                if (filtered.length === 0 || val === '') {
+                    suggDiv.style.display = 'none';
+                    return;
+                }
+                suggDiv.innerHTML = filtered.map(s => `<div onclick="selectPhoneSuggestion('${s}')">${escapeHtml(s)}</div>`).join('');
+                suggDiv.style.display = 'block';
             }
+
             window.selectPhoneSuggestion = function(s) {
                 document.getElementById('phone-searchInput').value = s;
                 document.getElementById('phone-suggestions').style.display = 'none';
@@ -3638,11 +2960,8 @@
 
             window.phoneDoSearch = function() {
                 const keyword = document.getElementById('phone-searchInput').value.trim();
-                const resultsContainer = document.getElementById('phone-results');
-                resultsContainer.style.display = 'block';
                 if (phoneData.length === 0) {
-                    resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📞</div><p>暂无电话数据，请导入Excel</p></div>';
-                    document.getElementById('phone-resultCount').textContent = '0 条';
+                    renderEmpty();
                     return;
                 }
                 let filtered = phoneData;
@@ -3660,15 +2979,19 @@
                     });
                 }
                 document.getElementById('phone-resultCount').textContent = filtered.length + ' 条';
+
+                const container = document.getElementById('phone-results');
                 if (filtered.length === 0) {
-                    resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📞</div><p>没有找到匹配的电话</p></div>';
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📞</div><p>没有找到匹配的电话</p></div>';
                     return;
                 }
+
                 let html = '';
                 filtered.forEach(item => {
                     const cityPhoneRaw = item.市电 || '';
                     const cityPhoneDigits = cityPhoneRaw.replace(/\D/g, '');
                     const telHref = cityPhoneDigits ? `tel:${cityPhoneDigits}` : '#';
+
                     html += `
                         <div class="result-card">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -3679,21 +3002,26 @@
                                 <span style="color:var(--text-secondary);">线名：</span><span>${escapeHtml(item.线名 || '')}</span>
                                 <span style="color:var(--text-secondary);">路电：</span><span>${escapeHtml(item.路电 || '')}</span>
                                 <span style="color:var(--text-secondary);">市电：</span>
-                                <span><a href="${telHref}" class="phone-link" title="点击拨号">${escapeHtml(cityPhoneRaw)}</a></span>
+                                <span>
+                                    <a href="${telHref}" class="phone-link" title="点击拨号">${escapeHtml(cityPhoneRaw)}</a>
+                                </span>
                                 ${item.备注 ? `<span style="color:var(--text-secondary);">备注：</span><span>${escapeHtml(item.备注)}</span>` : ''}
                             </div>
                         </div>
                     `;
                 });
-                resultsContainer.innerHTML = html;
+                container.innerHTML = html;
             };
 
             window.phoneClearSearch = function() {
                 document.getElementById('phone-searchInput').value = '';
-                phoneDoSearch();
+                phoneDoSearch(); // 显示全部
             };
 
-            function escapeHtml(text) { if (!text) return ''; return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+            function escapeHtml(text) {
+                if (!text) return '';
+                return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
 
             window.phoneHandleExcel = async function(e) {
                 const file = e.target.files[0];
@@ -3710,11 +3038,13 @@
                         单位: headers.findIndex(h => h.includes('单位')),
                         线名: headers.findIndex(h => h.includes('线名') || h.includes('线')),
                         站名: headers.findIndex(h => h.includes('站名') || h.includes('站')),
-                        路电: headers.findIndex(h => h.includes('路电')),
-                        市电: headers.findIndex(h => h.includes('市电')),
+                        路电: headers.findIndex(h => h.includes('路电') || h.includes('路电')),
+                        市电: headers.findIndex(h => h.includes('市电') || h.includes('市电')),
                         备注: headers.findIndex(h => h.includes('备注'))
                     };
-                    if (colIndex.单位 === -1 || colIndex.站名 === -1) throw new Error('Excel中缺少必要的"单位"或"站名"列');
+                    if (colIndex.单位 === -1 || colIndex.站名 === -1) {
+                        throw new Error('Excel中缺少必要的"单位"或"站名"列');
+                    }
                     const newData = [];
                     for (let i = 1; i < jsonData.length; i++) {
                         const row = jsonData[i];
@@ -3728,17 +3058,27 @@
                             市电: colIndex.市电 !== -1 ? String(row[colIndex.市电] || '').trim() : '',
                             备注: colIndex.备注 !== -1 ? String(row[colIndex.备注] || '').trim() : ''
                         };
-                        if (item.单位 || item.站名) newData.push(item);
+                        if (item.单位 || item.站名) {
+                            newData.push(item);
+                        }
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     if (phoneData.length > 0) {
                         const action = confirm(`成功解析 ${newData.length} 条记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"追加。`);
-                        if (action) phoneData = newData;
-                        else phoneData = [...phoneData, ...newData];
-                    } else phoneData = newData;
+                        if (action) {
+                            phoneData = newData;
+                        } else {
+                            phoneData = [...phoneData, ...newData];
+                        }
+                    } else {
+                        phoneData = newData;
+                    }
                     saveToStorage();
-                    phoneDoSearch();
-                } catch (err) { alert('导入失败: ' + err.message); }
+                    renderEmpty();
+                    alert(`导入成功，当前共 ${phoneData.length} 条记录。点击"搜索"按钮可查看全部。`);
+                } catch (err) {
+                    alert('导入失败: ' + err.message);
+                }
                 e.target.value = '';
             };
 
@@ -3749,421 +3089,56 @@
                 XLSX.utils.book_append_sheet(wb, ws, '电话表');
                 XLSX.writeFile(wb, '车站电话_' + new Date().toISOString().slice(0,10) + '.xlsx');
             };
+
             window.phoneDownloadTemplate = function() {
-                const template = [ { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' }, { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' } ];
+                const template = [
+                    { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' },
+                    { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' }
+                ];
                 const ws = XLSX.utils.json_to_sheet(template);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, '模板');
                 XLSX.writeFile(wb, '电话导入模板.xlsx');
             };
+
             window.phoneShowClear = function() {
                 if (phoneData.length === 0) { alert('没有数据可清空'); return; }
-                if (confirm('确定清空所有电话数据吗？此操作不可恢复！')) { phoneData = []; saveToStorage(); phoneDoSearch(); }
+                if (confirm('确定清空所有电话数据吗？此操作不可恢复！')) {
+                    phoneData = [];
+                    saveToStorage();
+                    renderEmpty();
+                }
+            };
+
+            window.phoneLoadDemo = function() {
+                const demo = [
+                    { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' },
+                    { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' },
+                    { '序号': 3, '单位': '天水车站', '线名': '徐兰高速', '站名': '秦安站', '路电': '072631457', '市电': '09384931457', '备注': '' },
+                    { '序号': 4, '单位': '陇西车务段', '线名': '徐兰高速', '站名': '榆中', '路电': '072684201', '市电': '09312984201', '备注': '' },
+                    { '序号': 5, '单位': '陇西车务段', '线名': '徐兰高速', '站名': '定西北', '路电': '072671505', '市电': '09325971505', '备注': '' },
+                    { '序号': 6, '单位': '陇西车务段', '线名': '徐兰高速', '站名': '下小岔', '路电': '072671504', '市电': '09325971504', '备注': '' },
+                    { '序号': 7, '单位': '陇西车务段', '线名': '徐兰高速', '站名': '通渭', '路电': '072671503', '市电': '09325971503', '备注': '' }
+                ];
+                phoneData = demo;
+                saveToStorage();
+                renderEmpty();
+                alert('示例数据已加载。点击"搜索"按钮可查看全部。');
             };
 
             const input = document.getElementById('phone-searchInput');
             if (input) {
                 input.addEventListener('input', function() { showPhoneSuggestions(this); });
-                input.addEventListener('blur', function() { setTimeout(() => { const sugg = document.getElementById('phone-suggestions'); if (sugg) sugg.style.display = 'none'; }, 200); });
+                input.addEventListener('blur', function() {
+                    setTimeout(() => {
+                        const sugg = document.getElementById('phone-suggestions');
+                        if (sugg) sugg.style.display = 'none';
+                    }, 200);
+                });
             }
+
             document.getElementById('phone-fileInput').addEventListener('change', phoneHandleExcel);
             loadFromStorage();
-        })();
-
-        // ========== 第六模块：检查手册 (三级目录) 新增导出函数 ==========
-        (function() {
-            let handbookData = [];
-            let chapters = [];
-            let sectionsMap = {};
-            let itemsMap = {};
-            let contentMap = {};
-
-            const chapterSelect = document.getElementById('chapterSelect');
-            const sectionSelect = document.getElementById('sectionSelect');
-            const itemSelect = document.getElementById('itemSelect');
-            const contentDisplay = document.getElementById('contentDisplay');
-            const emptyPlaceholder = document.getElementById('emptyPlaceholder');
-            const displayChapter = document.getElementById('displayChapter');
-            const displaySection = document.getElementById('displaySection');
-            const displayItem = document.getElementById('displayItem');
-            const displayContent = document.getElementById('displayContent');
-            const totalSpan = document.getElementById('handbook-total');
-            const sizeSpan = document.getElementById('handbook-size');
-            const storageBar = document.getElementById('handbook-storageBar');
-
-            const chineseNumMap = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,
-                '十一':11,'十二':12,'十三':13,'十四':14,'十五':15,'十六':16,'十七':17,'十八':18,'十九':19,'二十':20 };
-
-            function getChapterOrder(chapterStr) {
-                const match = chapterStr.match(/第([一二三四五六七八九十]+)章/);
-                if (match) return chineseNumMap[match[1]] || 999;
-                return 999;
-            }
-            function getSectionOrder(sectionStr) {
-                let match = sectionStr.match(/第([一二三四五六七八九十]+)节/);
-                if (match) return chineseNumMap[match[1]] || 999;
-                match = sectionStr.match(/^(\d+)\./);
-                if (match) return parseInt(match[1], 10);
-                return 999;
-            }
-            function getItemOrder(itemStr) {
-                const match = itemStr.match(/^(\d+)\./);
-                if (match) return parseInt(match[1], 10);
-                return 999;
-            }
-            function compareByChapter(a, b) { return getChapterOrder(a) - getChapterOrder(b); }
-            function compareBySection(a, b) { return getSectionOrder(a) - getSectionOrder(b); }
-            function compareByItem(a, b) { return getItemOrder(a) - getItemOrder(b); }
-
-            function rebuildMaps() {
-                const chapterSet = new Set();
-                const sectionSetByChapter = {};
-                const itemSetByChapterSection = {};
-                const contentByKey = {};
-
-                handbookData.forEach(entry => {
-                    const chap = entry.chapter || '';
-                    const sect = entry.section || '';
-                    const it = entry.item || '';
-                    const cont = entry.content || '';
-
-                    if (chap) chapterSet.add(chap);
-                    if (chap && sect) {
-                        if (!sectionSetByChapter[chap]) sectionSetByChapter[chap] = new Set();
-                        sectionSetByChapter[chap].add(sect);
-                    }
-                    if (chap && sect && it) {
-                        const key = chap + '||' + sect + '||' + it;
-                        contentByKey[key] = cont;
-                        if (!itemSetByChapterSection[chap + '||' + sect]) {
-                            itemSetByChapterSection[chap + '||' + sect] = new Set();
-                        }
-                        itemSetByChapterSection[chap + '||' + sect].add(it);
-                    }
-                });
-
-                chapters = Array.from(chapterSet).sort(compareByChapter);
-                sectionsMap = {};
-                chapters.forEach(chap => {
-                    const sectSet = sectionSetByChapter[chap] || new Set();
-                    sectionsMap[chap] = Array.from(sectSet).sort(compareBySection);
-                });
-                itemsMap = {};
-                Object.keys(itemSetByChapterSection).forEach(key => {
-                    itemsMap[key] = Array.from(itemSetByChapterSection[key]).sort(compareByItem);
-                });
-                contentMap = contentByKey;
-                updateStats();
-            }
-
-            function updateStats() {
-                const count = handbookData.length;
-                totalSpan.textContent = count;
-                const jsonStr = JSON.stringify(handbookData);
-                const sizeKB = (new Blob([jsonStr]).size / 1024).toFixed(2);
-                sizeSpan.textContent = sizeKB + ' KB';
-                const percent = Math.min((sizeKB / 5120) * 100, 100);
-                storageBar.style.width = percent + '%';
-            }
-
-            function renderChapterSelect() {
-                chapterSelect.innerHTML = '<option value="">-- 请选择章 --</option>';
-                chapters.forEach(chap => {
-                    const option = document.createElement('option');
-                    option.value = chap;
-                    option.textContent = chap;
-                    chapterSelect.appendChild(option);
-                });
-                sectionSelect.innerHTML = '<option value="">-- 请先选择章 --</option>';
-                sectionSelect.disabled = true;
-                itemSelect.innerHTML = '<option value="">-- 请先选择节 --</option>';
-                itemSelect.disabled = true;
-                contentDisplay.style.display = 'none';
-                emptyPlaceholder.style.display = 'block';
-            }
-
-            window.onChapterChange = function() {
-                const selectedChap = chapterSelect.value;
-                if (!selectedChap) {
-                    sectionSelect.innerHTML = '<option value="">-- 请先选择章 --</option>';
-                    sectionSelect.disabled = true;
-                    itemSelect.innerHTML = '<option value="">-- 请先选择节 --</option>';
-                    itemSelect.disabled = true;
-                    contentDisplay.style.display = 'none';
-                    emptyPlaceholder.style.display = 'block';
-                    return;
-                }
-                const sections = sectionsMap[selectedChap] || [];
-                sectionSelect.innerHTML = '<option value="">-- 请选择节 --</option>';
-                sections.forEach(sec => {
-                    const option = document.createElement('option');
-                    option.value = sec;
-                    option.textContent = sec;
-                    sectionSelect.appendChild(option);
-                });
-                sectionSelect.disabled = false;
-                itemSelect.innerHTML = '<option value="">-- 请先选择节 --</option>';
-                itemSelect.disabled = true;
-                contentDisplay.style.display = 'none';
-                emptyPlaceholder.style.display = 'block';
-            };
-
-            window.onSectionChange = function() {
-                const selectedChap = chapterSelect.value;
-                const selectedSec = sectionSelect.value;
-                if (!selectedChap || !selectedSec) {
-                    itemSelect.innerHTML = '<option value="">-- 请先选择节 --</option>';
-                    itemSelect.disabled = true;
-                    contentDisplay.style.display = 'none';
-                    emptyPlaceholder.style.display = 'block';
-                    return;
-                }
-                const key = selectedChap + '||' + selectedSec;
-                const items = itemsMap[key] || [];
-                itemSelect.innerHTML = '<option value="">-- 请选择检查项目 --</option>';
-                items.forEach(it => {
-                    const option = document.createElement('option');
-                    option.value = it;
-                    option.textContent = it;
-                    itemSelect.appendChild(option);
-                });
-                itemSelect.disabled = false;
-                contentDisplay.style.display = 'none';
-                emptyPlaceholder.style.display = 'block';
-            };
-
-            window.onItemChange = function() {
-                const selectedChap = chapterSelect.value;
-                const selectedSec = sectionSelect.value;
-                const selectedItem = itemSelect.value;
-                if (!selectedChap || !selectedSec || !selectedItem) {
-                    contentDisplay.style.display = 'none';
-                    emptyPlaceholder.style.display = 'block';
-                    return;
-                }
-                const key = selectedChap + '||' + selectedSec + '||' + selectedItem;
-                const content = contentMap[key] || '暂无内容';
-                displayChapter.textContent = selectedChap;
-                displaySection.textContent = selectedSec;
-                displayItem.textContent = selectedItem;
-                displayContent.innerHTML = content.replace(/\n/g, '<br>');
-                contentDisplay.style.display = 'block';
-                emptyPlaceholder.style.display = 'none';
-            };
-
-            function loadSampleData() {
-                const sample = [
-                    { chapter: "第一章 通用及专项部分", section: "第一节 安全基础管理", item: "1. “四会”制度建立落实情况", content: "（1）检查会议记录是否齐全、规范；检查安委会会议纪要、安委会部署重点工作任务清单、安全分析例会情况通报；检查是否分析突出问题，并制定了相应的整改措施；检查站段月度各车间挂网重点信息追踪覆盖情况；检查薄弱车间的确定及帮促。\n（2）检查对1号文件等重点工作是否列出责任清单推进落实并督办；检查阶段性重点安全工作是否安排，车间是否上报落实情况；检查安全生产费隐患治理项目落实情况；检查每月十专项工作安排部署及落实情况。\n（3）检查事故、故障分析（一事一档），安全信息闭环整改情况；检查安全监察指令书、通知书、意见书等指出问题是否件件专题分析整改及考核追责；检查上级检查指出典型问题是否分析整改。" },
-                    { chapter: "第一章 通用及专项部分", section: "第一节 安全基础管理", item: "2. 安全双重预防机制落实", content: "（1）检查年初安全风险库建立，站段是否召开安全风险研判专题会议；检查站段风险库是否承接集团公司、专业部门风险库；检查安全风险是否分级管控、安全风险库是否以文件公布。\n（2）检查安全风险公告、每季安全风险管控效果自评情况；检查安全风险动态研判、专项辨识开展情况；检查安全风险预警落实，是否对车间精准预警。\n（3）检查隐患库建立、常态化隐患排查开展、重大安全隐患专题立案管理情况，安全隐患是否有效整治。" },
-                    { chapter: "第二章 车务系统检查清单", section: "第一节 接发列车", item: "1. 车站值班员", content: "（1）岗位人员精神状态是否良好、是否按规定着装、佩戴臂章。岗位责任制是否按规定揭挂。\n（2）行车岗位有关簿册是否规范填记：《一班工作日志及交接班簿》交接内容是否清楚；《行车设备检查登记簿》、《行车设备施工登记簿》是否按填记样板的格式要求进行填记；日班计划、阶段计划、调度命令接收及时，认真核对、签收、转交及存档；《行车日志》需人工输入的内容是否规范填记。\n（3）非正常情况下是否执行接发列车作业标准，盯控干部是否到岗盯控，有关行车凭证是否规范填记及确认、核对、转交、联控。\n（4）是否熟知站内线路限制、清楚掌握接发超长、各级超限列车的线路。\n（5）涉及设备管理单位站内、区间人员上道作业，是否按规定与司机及相关人员提示、联控。" }
-                ];
-                handbookData = sample;
-                rebuildMaps();
-                renderChapterSelect();
-                saveToStorage();
-            }
-
-            function saveToStorage() {
-                try { localStorage.setItem('handbook_threelevel_v2', JSON.stringify(handbookData)); } catch (e) {}
-            }
-            function loadFromStorage() {
-                try {
-                    const stored = localStorage.getItem('handbook_threelevel_v2');
-                    if (stored) { handbookData = JSON.parse(stored); }
-                    else { loadSampleData(); return; }
-                } catch (e) { loadSampleData(); return; }
-                rebuildMaps();
-                renderChapterSelect();
-            }
-
-            window.clearHandbookData = function() {
-                if (confirm('确定清空所有手册数据吗？')) {
-                    handbookData = [];
-                    rebuildMaps();
-                    renderChapterSelect();
-                    saveToStorage();
-                }
-            };
-
-            // 新增导出函数
-            window.exportHandbook = function() {
-                if (handbookData.length === 0) { alert('没有数据可导出'); return; }
-                const dataStr = JSON.stringify(handbookData, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = '安全检查手册_' + new Date().toISOString().slice(0,10) + '.json';
-                a.click();
-                URL.revokeObjectURL(url);
-            };
-
-            document.getElementById('handbook-importBtn').addEventListener('click', function() {
-                document.getElementById('handbook-jsonFile').click();
-            });
-
-            document.getElementById('handbook-jsonFile').addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = function(ev) {
-                    try {
-                        const imported = JSON.parse(ev.target.result);
-                        if (!Array.isArray(imported)) throw new Error('数据必须是数组');
-                        if (imported.length > 0 && (!imported[0].chapter || !imported[0].section || !imported[0].item)) {
-                            throw new Error('缺少必要字段 chapter/section/item');
-                        }
-                        const modal = document.getElementById('handbook-importModal');
-                        document.getElementById('handbook-importMessage').innerText = `将导入 ${imported.length} 条记录，确定覆盖现有数据吗？`;
-                        modal.classList.add('active');
-                        document.getElementById('handbook-confirmImport').onclick = () => {
-                            handbookData = imported;
-                            rebuildMaps();
-                            renderChapterSelect();
-                            saveToStorage();
-                            closeModal('handbook-importModal');
-                        };
-                    } catch (err) { alert('解析失败：' + err.message); }
-                };
-                reader.readAsText(file);
-                e.target.value = '';
-            });
-
-            loadFromStorage();
-        })();
-
-        // ========== 侧滑手势：切换模块 & 退出确认 ==========
-        (function() {
-            // ---- 注入样式 ----
-            var swipeStyle = document.createElement('style');
-            swipeStyle.textContent = [
-                '#swipe-toast{',
-                '  position:fixed;bottom:80px;left:50%;',
-                '  transform:translateX(-50%) translateY(16px);',
-                '  background:rgba(26,54,93,0.93);color:#fff;',
-                '  padding:10px 20px;border-radius:20px;',
-                '  font-size:0.88rem;line-height:1.6;',
-                '  z-index:99999;pointer-events:none;',
-                '  opacity:0;transition:opacity .25s,transform .25s;',
-                '  text-align:left;max-width:86vw;word-break:break-all;',
-                '  box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:pre-line;',
-                '}',
-                '#swipe-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}',
-                '#swipe-exit-bar{',
-                '  position:fixed;bottom:0;left:0;right:0;',
-                '  background:rgba(197,48,48,.94);color:#fff;',
-                '  text-align:center;padding:16px;font-size:1rem;font-weight:700;',
-                '  z-index:99998;transform:translateY(100%);',
-                '  transition:transform .3s ease;',
-                '  box-shadow:0 -2px 12px rgba(0,0,0,.2);letter-spacing:.5px;',
-                '}',
-                '#swipe-exit-bar.show{transform:translateY(0);}'
-            ].join('');
-            document.head.appendChild(swipeStyle);
-
-            // ---- 创建 DOM ----
-            var toastEl = document.createElement('div');
-            toastEl.id = 'swipe-toast';
-            document.body.appendChild(toastEl);
-
-            var exitBar = document.createElement('div');
-            exitBar.id = 'swipe-exit-bar';
-            exitBar.textContent = '👈 再次侧滑退出应用';
-            document.body.appendChild(exitBar);
-
-            // ---- Toast 显示 ----
-            var _toastTimer = null;
-            window._showSwipeToast = function(newTab) {
-                var recent = _tabHistory.slice().reverse().slice(0, 5);
-                var lines = ['已切换至：' + (TAB_LABELS[newTab] || newTab)];
-                if (recent.length > 0) {
-                    lines.push('');
-                    lines.push('近期切换历史：');
-                    recent.forEach(function(h, i) {
-                        lines.push((i + 1) + '. ' + (TAB_LABELS[h.from] || h.from) + ' → ' + (TAB_LABELS[h.to] || h.to));
-                    });
-                }
-                toastEl.textContent = lines.join('\n');
-                toastEl.classList.add('show');
-                if (_toastTimer) clearTimeout(_toastTimer);
-                _toastTimer = setTimeout(function() { toastEl.classList.remove('show'); }, 3000);
-            };
-
-            // ---- 退出确认 ----
-            var _exitReady = false;
-            var _exitTimer = null;
-            function showExitBar() {
-                exitBar.classList.add('show');
-                _exitReady = true;
-                if (_exitTimer) clearTimeout(_exitTimer);
-                _exitTimer = setTimeout(function() {
-                    exitBar.classList.remove('show');
-                    _exitReady = false;
-                }, 3000);
-            }
-            function doExit() {
-                exitBar.classList.remove('show');
-                _exitReady = false;
-                if (_exitTimer) clearTimeout(_exitTimer);
-                try { window.close(); } catch(e) {}
-                setTimeout(function() { history.back(); }, 150);
-            }
-
-            // ---- 触摸变量 ----
-            var _tx0 = 0, _ty0 = 0, _tValid = false;
-
-            // 用 capture 模式确保最先收到事件，不被子元素吞掉
-            document.addEventListener('touchstart', function(e) {
-                if (e.touches.length !== 1) { _tValid = false; return; }
-                _tx0 = e.touches[0].clientX;
-                _ty0 = e.touches[0].clientY;
-                _tValid = true;
-            }, true);   // ← capture = true
-
-            document.addEventListener('touchend', function(e) {
-                if (!_tValid) return;
-                _tValid = false;
-                if (e.changedTouches.length < 1) return;
-
-                var tx1 = e.changedTouches[0].clientX;
-                var ty1 = e.changedTouches[0].clientY;
-                var dx = tx1 - _tx0;
-                var dy = ty1 - _ty0;
-                var adx = Math.abs(dx);
-                var ady = Math.abs(dy);
-
-                // 水平位移不够 || 垂直位移大于水平 → 忽略
-                if (adx < 50) return;
-                if (ady > adx) return;
-
-                // 模态框打开时不处理
-                if (document.querySelector('.modal.active')) return;
-                // 导航菜单展开时不处理
-                var nav = document.getElementById('mainNav');
-                if (nav && nav.classList.contains('nav-open')) return;
-
-                // 当前激活 tab
-                var activeBtn = document.querySelector('.nav-btn.active');
-                if (!activeBtn) return;
-                var m = activeBtn.id.match(/^tab-(.+)$/);
-                if (!m) return;
-                var curTab = m[1];
-                var curIdx = TAB_ORDER.indexOf(curTab);
-                if (curIdx < 0) return;
-
-                // dx<0 左滑→下一模块；dx>0 右滑→上一模块
-                var nextIdx = dx < 0 ? curIdx + 1 : curIdx - 1;
-
-                // 无限循环：到达边界时自动循环切换
-                if (nextIdx < 0) {
-                    nextIdx = TAB_ORDER.length - 1;
-                } else if (nextIdx >= TAB_ORDER.length) {
-                    nextIdx = 0;
-                }
-
-                switchTab(TAB_ORDER[nextIdx], true);
-            }, true);   // ← capture = true
-
         })();
 
         // 全局回车搜索
@@ -4171,14 +3146,25 @@
             if (e.key === 'Enter') {
                 const activePanel = document.querySelector('.panel.active');
                 if (!activePanel) return;
-                if (activePanel.id === 'panel-issue') issueDoSearch();
-                else if (activePanel.id === 'panel-rule') renderResults();
-                else if (activePanel.id === 'panel-phone') phoneDoSearch();
+                if (activePanel.id === 'panel-issue') {
+                    issueDoSearch();
+                } else if (activePanel.id === 'panel-rule') {
+                    renderResults();
+                } else if (activePanel.id === 'panel-phone') {
+                    phoneDoSearch();
+                }
             }
         });
 
-        window.onclick = function(e) { if (e.target.classList.contains('modal')) e.target.classList.remove('active'); };
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+        // 点击模态框外部关闭
+        window.onclick = function(e) {
+            if (e.target.classList.contains('modal')) e.target.classList.remove('active');
+        };
+
+        // Service Worker 注册
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(err => console.log('SW failed'));
+        }
     </script>
 </body>
 </html>

@@ -166,6 +166,13 @@
             justify-content: center;
             font-size: 24px;
             backdrop-filter: blur(10px);
+            overflow: hidden;
+        }
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 10px;
         }
         .logo-text { color: white; }
         .logo-title { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.5px; }
@@ -1826,6 +1833,14 @@
             .btn-group { flex-wrap: wrap; gap: 6px; }
             .btn-group .btn { flex: 1 1 calc(50% - 3px); }
         }
+
+        /* 历史侧边栏抽屉 - fixed定位，紧凑布局 */
+        #ds-sidebar {
+            overflow-y: auto;
+        }
+        #ds-sidebar::-webkit-scrollbar { width: 3px; }
+        #ds-sidebar::-webkit-scrollbar-track { background: transparent; }
+        #ds-sidebar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         
         /* 平滑滚动 */
         html { scroll-behavior: smooth; }
@@ -1833,13 +1848,53 @@
         /* 选中文字样式 */
         ::selection { background: rgba(30, 58, 95, 0.2); }
 
+        /* 自动对规结果区滚动条 */
+        #autoCheck-results::-webkit-scrollbar { width: 4px; }
+        #autoCheck-results::-webkit-scrollbar-track { background: transparent; }
+        #autoCheck-results::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        #autoCheck-results::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* 历史记录列表滚动条 */
+        #ds-history-list::-webkit-scrollbar { width: 4px; }
+        #ds-history-list::-webkit-scrollbar-track { background: transparent; }
+        #ds-history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        #ds-history-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* ===== 智能助手模块响应式布局 ===== */
+        /* 手机（≤600px）*/
+        @media (max-width: 600px) {
+            #autoCheck-input { font-size: 0.85rem !important; }
+            #autoCheck-results { max-height: 240px !important; }
+            #keyword-candidate-list { gap: 6px !important; }
+            .keyword-candidate-tag { font-size: 0.78rem !important; padding: 5px 8px !important; }
+            #ds-chat-box { min-height: 180px !important; height: auto !important; }
+            #ds-user-input { font-size: 0.88rem !important; }
+            #ds-send-btn { padding: 8px 12px !important; font-size: 0.88rem !important; }
+            /* 自动对规按钮行在手机上两列排布 */
+            #autoCheck-localBtn, #autoCheck-aiBtn, #autoCheck-importBtn { flex: 1 1 calc(50% - 5px) !important; min-width: 0 !important; }
+            #autoCheck-clearBtn { flex: 0 0 auto !important; }
+            /* 手机端侧边栏全宽覆盖 */
+            #ds-sidebar { width: 85vw !important; max-width: 280px !important; left: -85vw !important; border-radius: 0 12px 12px 0 !important; }
+            #ds-sidebar-toggle-text { display: none; }
+        }
+        /* 平板（601px ~ 900px）*/
+        @media (min-width: 601px) and (max-width: 900px) {
+            #autoCheck-results { max-height: 280px !important; }
+            #ds-chat-box { min-height: 240px !important; height: auto !important; }
+        }
+        /* 通用：对话区自适应高度 */
+        @media (min-width: 901px) {
+            #ds-chat-box { min-height: 300px !important; height: auto !important; }
+            #autoCheck-results { max-height: 360px !important; }
+        }
+
     </style>
 </head>
 <body>
     <header class="header">
         <div class="header-inner">
             <div class="logo">
-                <div class="logo-icon">🛤️</div>
+                <div class="logo-icon"><svg viewBox="0 0 100 100" style="width:100%;height:100%;"><defs><linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1e3a5f;stop-opacity:1" /><stop offset="100%" style="stop-color:#2d5a87;stop-opacity:1" /></linearGradient></defs><path d="M50 5 L90 20 L90 50 Q90 75 50 95 Q10 75 10 50 L10 20 Z" fill="url(#shieldGrad)" stroke="#fff" stroke-width="2"/><path d="M30 40 L70 40 M30 50 L70 50 M30 60 L70 60" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M35 35 L35 65 M50 35 L50 65 M65 35 L65 65" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>
                 <div class="logo-text">
                     <div class="logo-title">铁路安监查询系统</div>
                     <div class="logo-subtitle">SAFETY INSPECTION QUERY SYSTEM</div>
@@ -2188,48 +2243,146 @@
                     </div>
                     <div class="card-subtitle">DeepSeek AI · 业务数据联动 · 规章 &amp; 检查信息智能检索</div>
                 </div>
-                <div class="card-body">
-                    <!-- API Key 配置区 -->
-                    <div id="ds-apikey-bar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-                        <span style="font-size:0.88rem;color:var(--text-secondary);white-space:nowrap;">🔑 API Key：</span>
-                        <input type="password" id="ds-apikey-input" placeholder="请输入 DeepSeek API Key（sk-...）" autocomplete="off"
-                            style="flex:1;min-width:200px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;color:var(--text);">
-                        <button onclick="dsSetApiKey()" class="btn btn-primary btn-small">保存</button>
-                        <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">清除</button>
-                        <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
-                    </div>
-                    <!-- 联动数据选择 -->
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-                        <span style="font-size:0.88rem;color:var(--text-secondary);">📦 联动数据：</span>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.9rem;">
-                            <input type="checkbox" id="ds-ctx-rules" checked> 规章制度
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.9rem;">
-                            <input type="checkbox" id="ds-ctx-issue" checked> 检查信息
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.9rem;">
-                            <input type="checkbox" id="ds-ctx-handbook"> 检查手册
-                        </label>
-                        <span id="ds-ctx-info" style="font-size:0.8rem;color:var(--text-secondary);margin-left:4px;"></span>
-                    </div>
-                    <!-- 对话区 -->
-                    <div id="ds-chat-box" style="height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#f8fafc;display:flex;flex-direction:column;gap:10px;"></div>
-                    <!-- 输入区 -->
-                    <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;">
-                        <textarea id="ds-user-input" rows="2" placeholder="输入问题，按 Ctrl+Enter 或点击发送..." oninput="autoResize(this)"
-                            style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;resize:none;line-height:1.5;max-height:120px;"></textarea>
-                        <div style="display:flex;flex-direction:column;gap:6px;">
-                            <button onclick="dsSendMsg()" id="ds-send-btn" class="btn btn-primary" style="padding:9px 18px;">发送</button>
-                            <button onclick="dsClearChat()" class="btn btn-secondary btn-small" style="padding:6px 10px;font-size:0.82rem;">清空</button>
+                <div class="card-body" style="display:flex;flex-direction:column;gap:0;position:relative;min-height:0;">
+
+                    <!-- API Key 配置区（原顶栏，移除折叠按钮） -->
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                        <div id="ds-apikey-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">
+                            <input type="password" id="ds-apikey-input" placeholder="DeepSeek API Key（sk-...）" autocomplete="off"
+                                style="flex:1;min-width:140px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
+                            <button onclick="dsSetApiKey()" class="btn btn-primary btn-small">保存</button>
+                            <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">清除</button>
+                            <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
                         </div>
                     </div>
-                    <!-- 快捷提问 -->
-                    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
-                        <span style="font-size:0.82rem;color:var(--text-secondary);align-self:center;">快捷：</span>
-                        <button class="btn btn-secondary btn-small" onclick="dsQuick('帮我检索规章制度中关于接发列车的规定')">接发列车规定</button>
-                        <button class="btn btn-secondary btn-small" onclick="dsQuick('最近有哪些A类检查问题？')">A类检查问题</button>
-                        <button class="btn btn-secondary btn-small" onclick="dsQuick('消防安全相关的规章有哪些？')">消防安全规章</button>
-                        <button class="btn btn-secondary btn-small" onclick="dsQuick('请汇总近期检查发现的主要问题类别')">问题类别汇总</button>
+
+                    <!-- 遮罩层（点击收起侧边栏，fixed全屏） -->
+                    <div id="ds-sidebar-overlay" onclick="dsToggleSidebar()"
+                        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:299;"></div>
+
+                    <!-- 左侧抽屉：历史记录侧边栏（fixed定位，限制高度不占全屏） -->
+                    <div id="ds-sidebar"
+                        style="position:fixed;top:60px;left:-280px;width:260px;max-height:calc(100vh - 120px);z-index:300;
+                               display:flex;flex-direction:column;gap:8px;
+                               background:#f8fafc;border-right:1px solid var(--border);
+                               padding:14px;box-shadow:2px 0 16px rgba(0,0,0,0.15);
+                               transition:left 0.28s cubic-bezier(0.4,0,0.2,1);overflow:hidden;
+                               border-radius:0 12px 12px 0;">
+                        <!-- 抽屉头部 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                            <span style="font-weight:700;font-size:0.92rem;color:var(--primary);">💬 历史对话</span>
+                            <button onclick="dsToggleSidebar()"
+                                style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:var(--text-secondary);padding:4px 6px;border-radius:6px;line-height:1;"
+                                title="收起">✕</button>
+                        </div>
+                        <!-- 新建对话按钮 -->
+                        <button onclick="dsNewChat();dsToggleSidebar();" class="btn btn-primary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;padding:8px;">
+                            <span>＋</span> 新建对话
+                        </button>
+                        <!-- 历史记录列表（紧凑布局） -->
+                        <div style="flex:1;overflow-y:auto;min-height:0;" id="ds-history-list">
+                            <div style="text-align:center;color:#64748b;padding:16px 10px;font-size:0.82rem;">
+                                暂无历史记录
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 主对话区（占全宽） -->
+                    <div style="display:flex;flex-direction:column;min-width:0;flex:1;min-height:0;">
+                        <!-- 联动数据选择 -->
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+                            <span style="font-size:0.85rem;color:var(--text-secondary);">联动数据：</span>
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.85rem;">
+                                <input type="checkbox" id="ds-ctx-rules" checked> 规章
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.85rem;">
+                                <input type="checkbox" id="ds-ctx-issue" checked> 检查
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.85rem;">
+                                <input type="checkbox" id="ds-ctx-handbook"> 手册
+                            </label>
+                            <span id="ds-ctx-info" style="font-size:0.78rem;color:var(--text-secondary);margin-left:auto;"></span>
+                        </div>
+                        <!-- 自动对规模块（集成到智能助手内） -->
+                        <div style="background: linear-gradient(135deg, #e0f2fe, #e6f7ff); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                                <span style="font-size: 1.2rem;">⚖️</span>
+                                <span style="font-weight: 600; color: var(--primary);">自动对规检查</span>
+                                <span style="font-size: 0.75rem; background: #fff; padding: 2px 8px; border-radius: 20px; color: var(--info);">Beta</span>
+                            </div>
+                            <textarea id="autoCheck-input" rows="2" placeholder="输入检查问题，例如：工务作业人员在天窗点外违规上道作业，未设置防护。"
+                                style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; resize: vertical; margin-bottom: 10px; box-sizing: border-box;"
+                                oninput="acOnInputChange(this.value)"></textarea>
+                            
+                            <!-- 关键词选择区域 -->
+                            <div id="keyword-select-area" style="display:none;margin-bottom:12px;padding:12px;background:#fff;border-radius:8px;border:1px dashed var(--primary);">
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                                    <span style="font-size:0.85rem;font-weight:600;color:var(--primary);">🎯 点击候选词选中，再次点击取消</span>
+                                    <span id="keyword-select-count" style="font-size:0.75rem;color:var(--text-secondary);">已选: 0/4</span>
+                                </div>
+                                
+                                <!-- 候选关键词上栏 -->
+                                <div style="margin-bottom:8px;">
+                                    <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">候选词（词库匹配，点击选中）：</div>
+                                    <div id="keyword-candidate-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:40px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
+                                        <!-- 候选关键词将显示在这里 -->
+                                    </div>
+                                </div>
+                                
+                                <!-- 添加自定义关键词 -->
+                                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                                    <input type="text" id="keyword-custom-input" placeholder="输入自定义关键词..." 
+                                        style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;"
+                                        onkeypress="if(event.key==='Enter')acAddCustomKeyword()">
+                                    <button class="btn btn-small" onclick="acAddCustomKeyword()" style="white-space:nowrap;">➕ 添加</button>
+                                </div>
+                                
+                                <!-- 已选择关键词下栏 -->
+                                <div style="margin-bottom:8px;">
+                                    <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">已选择（点击取消）：</div>
+                                    <div id="keyword-selected-list" 
+                                        style="display:flex;flex-wrap:wrap;gap:8px;min-height:48px;padding:10px;background:linear-gradient(135deg, #e0f2fe, #e6f7ff);border-radius:6px;border:2px dashed var(--info);">
+                                        <!-- 已选关键词将显示在这里 -->
+                                    </div>
+                                </div>
+                                
+                                <div style="padding:6px 8px;background:#f8fafc;border-radius:6px;font-size:0.75rem;color:var(--text-secondary);">
+                                    💡 点击候选词选中/取消，或点击"➕"添加自定义词，然后点击「本地匹配」开始搜索。
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn btn-primary" id="autoCheck-localBtn" style="flex: 1;">🔍 本地匹配</button>
+                                <button class="btn btn-info" id="autoCheck-aiBtn" style="flex: 1;">🤖 AI 精准分析</button>
+                                <button class="btn btn-secondary" id="autoCheck-clearBtn">清空</button>
+                                <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;" onclick="importRailwayTerms()">📚 导入词库</button>
+                            </div>
+                            <div id="autoCheck-results" style="margin-top: 16px; max-height: 300px; overflow-y: auto; display: none;">
+                                <!-- 匹配结果将动态显示在此 -->
+                            </div>
+                        </div>
+                        <!-- 对话区折叠按钮栏（参考DeepSeek布局） -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);margin-top:4px;">
+                            <button id="ds-sidebar-toggle-btn" onclick="dsToggleSidebar()"
+                                style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.82rem;cursor:pointer;white-space:nowrap;transition:all 0.2s;"
+                                onmouseover="this.style.background='var(--primary-light)';this.style.borderColor='var(--primary)'"
+                                onmouseout="this.style.background='#f8fafc';this.style.borderColor='var(--border)'">
+                                <span id="ds-sidebar-toggle-icon">☰</span>
+                                <span id="ds-sidebar-toggle-text">历史记录</span>
+                            </button>
+                            <span style="font-size:0.78rem;color:var(--text-secondary);">💬 DeepSeek 对话</span>
+                        </div>
+                        <!-- 对话区 -->
+                        <div id="ds-chat-box" style="display:none;height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#f8fafc;flex-direction:column;gap:10px;flex:1;min-height:200px;"></div>
+                        <!-- 输入区 -->
+                        <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;">
+                            <textarea id="ds-user-input" rows="2" placeholder="输入问题，按 Ctrl+Enter 或点击发送..." oninput="autoResize(this)"
+                                style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;resize:none;line-height:1.5;max-height:120px;"></textarea>
+                            <div style="display:flex;flex-direction:column;gap:6px;">
+                                <button onclick="dsSendMsg()" id="ds-send-btn" class="btn btn-primary" style="padding:9px 18px;">发送</button>
+                                <button onclick="dsShowClearOptions()" class="btn btn-secondary btn-small" style="padding:6px 10px;font-size:0.82rem;">清空</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -6829,6 +6982,8 @@
             // ---- 常量 ----
             const DS_API_KEY_STORAGE = 'ds_api_key_v1';
             const DS_CHAT_STORAGE    = 'ds_chat_history_v1';
+            const DS_CONVERSATIONS_STORAGE = 'ds_conversations_v1'; // 多对话历史存储
+            const DS_CURRENT_CONV_ID = 'ds_current_conv_id_v1';     // 当前对话ID
             const DS_API_URL         = 'https://api.deepseek.com/chat/completions';
             const DS_MODEL           = 'deepseek-chat';
             const DS_MAX_CTX_CHARS   = 6000;  // 单类别最多携带的字符数
@@ -6837,6 +6992,8 @@
             let dsHistory = [];   // [{role:'user'|'assistant', content:'...'}]
             let dsApiKey  = '';
             let dsStreaming = false;
+            let dsConversations = []; // 所有对话列表 [{id, title, messages, timestamp, pinned}]
+            let dsCurrentConvId = null; // 当前对话ID
 
             // ---- 初始化 ----
             function dsInit() {
@@ -6846,12 +7003,13 @@
                     document.getElementById('ds-apikey-input').value = '';
                     document.getElementById('ds-apikey-input').placeholder = '已保存（如需修改请重新输入）';
                 }
-                // 恢复历史记录
-                try {
-                    const saved = localStorage.getItem(DS_CHAT_STORAGE);
-                    if (saved) dsHistory = JSON.parse(saved);
-                } catch(e) { dsHistory = []; }
+                // 加载多对话历史
+                dsLoadConversations();
+                // 初始化时不恢复上次对话，默认显示空白输入框
+                dsHistory = [];
+                dsCurrentConvId = null;
                 dsRenderAll();
+                dsRenderHistoryList();
                 dsUpdateCtxInfo();
                 // 绑定 Ctrl+Enter
                 document.getElementById('ds-user-input').addEventListener('keydown', function(e) {
@@ -6861,6 +7019,289 @@
                 ['ds-ctx-rules','ds-ctx-issue','ds-ctx-handbook'].forEach(id => {
                     document.getElementById(id).addEventListener('change', dsUpdateCtxInfo);
                 });
+            }
+
+            // ---- 多对话管理 ----
+            function dsLoadConversations() {
+                try {
+                    const saved = localStorage.getItem(DS_CONVERSATIONS_STORAGE);
+                    if (saved) {
+                        dsConversations = JSON.parse(saved);
+                    } else {
+                        // 兼容旧版本：从单对话迁移
+                        const oldHistory = localStorage.getItem(DS_CHAT_STORAGE);
+                        if (oldHistory) {
+                            const messages = JSON.parse(oldHistory);
+                            if (messages.length > 0) {
+                                const firstUserMsg = messages.find(m => m.role === 'user');
+                                const title = firstUserMsg ? firstUserMsg.content.slice(0, 20) : '历史对话';
+                                dsConversations = [{
+                                    id: Date.now().toString(),
+                                    title: title,
+                                    messages: messages,
+                                    timestamp: Date.now(),
+                                    pinned: false
+                                }];
+                                dsSaveConversations();
+                            }
+                        }
+                    }
+                } catch(e) { dsConversations = []; }
+            }
+
+            function dsSaveConversations() {
+                try {
+                    localStorage.setItem(DS_CONVERSATIONS_STORAGE, JSON.stringify(dsConversations));
+                } catch(e) {}
+            }
+
+            // 生成唯一ID
+            function dsGenerateId() {
+                return Date.now().toString(36) + Math.random().toString(36).substr(2);
+            }
+
+            // 获取对话标题（从第一条用户消息）
+            function dsGetConvTitle(messages) {
+                const firstUserMsg = messages.find(m => m.role === 'user');
+                if (firstUserMsg) {
+                    return firstUserMsg.content.slice(0, 25) + (firstUserMsg.content.length > 25 ? '...' : '');
+                }
+                return '新对话';
+            }
+
+            // 新建对话
+            window.dsNewChat = function(saveCurrent = true) {
+                // 保存当前对话（如果有内容）
+                if (saveCurrent && dsCurrentConvId && dsHistory.length > 0) {
+                    const currentConv = dsConversations.find(c => c.id === dsCurrentConvId);
+                    if (currentConv) {
+                        currentConv.messages = dsHistory.slice(-50);
+                        currentConv.title = dsGetConvTitle(currentConv.messages);
+                        currentConv.timestamp = Date.now();
+                    }
+                }
+                
+                // 创建新对话
+                dsCurrentConvId = dsGenerateId();
+                dsHistory = [];
+                dsConversations.unshift({
+                    id: dsCurrentConvId,
+                    title: '新对话',
+                    messages: [],
+                    timestamp: Date.now(),
+                    pinned: false
+                });
+                
+                dsSaveConversations();
+                localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
+                dsRenderAll();
+                dsRenderHistoryList();
+            };
+
+            // 切换对话
+            window.dsSwitchConv = function(convId) {
+                if (convId === dsCurrentConvId) return;
+                if (dsStreaming) {
+                    alert('请等待当前回复完成后再切换对话');
+                    return;
+                }
+                
+                // 保存当前对话
+                if (dsCurrentConvId && dsHistory.length > 0) {
+                    const currentConv = dsConversations.find(c => c.id === dsCurrentConvId);
+                    if (currentConv) {
+                        currentConv.messages = dsHistory.slice(-50);
+                        currentConv.title = dsGetConvTitle(currentConv.messages);
+                        currentConv.timestamp = Date.now();
+                    }
+                }
+                
+                // 切换到目标对话
+                dsCurrentConvId = convId;
+                const targetConv = dsConversations.find(c => c.id === convId);
+                if (targetConv) {
+                    dsHistory = targetConv.messages || [];
+                } else {
+                    dsHistory = [];
+                }
+                
+                localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
+                dsSaveConversations();
+                dsRenderAll();
+                dsRenderHistoryList();
+                // 切换对话后自动收起抽屉
+                if (_dsSidebarOpen) dsToggleSidebar();
+            };
+
+            // 置顶/取消置顶对话
+            window.dsTogglePin = function(convId, event) {
+                event.stopPropagation();
+                const conv = dsConversations.find(c => c.id === convId);
+                if (conv) {
+                    conv.pinned = !conv.pinned;
+                    // 重新排序：置顶的在前，按时间倒序
+                    dsConversations.sort((a, b) => {
+                        if (a.pinned && !b.pinned) return -1;
+                        if (!a.pinned && b.pinned) return 1;
+                        return b.timestamp - a.timestamp;
+                    });
+                    dsSaveConversations();
+                    dsRenderHistoryList();
+                }
+            };
+
+            // 删除对话
+            window.dsDeleteConv = function(convId, event) {
+                event.stopPropagation();
+                if (!confirm('确定删除此对话？')) return;
+                
+                dsConversations = dsConversations.filter(c => c.id !== convId);
+                
+                // 如果删除的是当前对话
+                if (convId === dsCurrentConvId) {
+                    if (dsConversations.length > 0) {
+                        // 切换到第一个对话
+                        dsCurrentConvId = dsConversations[0].id;
+                        dsHistory = dsConversations[0].messages || [];
+                    } else {
+                        // 没有对话了，创建新对话
+                        dsCurrentConvId = dsGenerateId();
+                        dsHistory = [];
+                        dsConversations.unshift({
+                            id: dsCurrentConvId,
+                            title: '新对话',
+                            messages: [],
+                            timestamp: Date.now(),
+                            pinned: false
+                        });
+                    }
+                    localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
+                }
+                
+                dsSaveConversations();
+                dsRenderAll();
+                dsRenderHistoryList();
+            };
+
+            // 历史侧边栏抽屉开关
+            let _dsSidebarOpen = false;
+            window.dsToggleSidebar = function() {
+                const sidebar = document.getElementById('ds-sidebar');
+                const overlay = document.getElementById('ds-sidebar-overlay');
+                const icon = document.getElementById('ds-sidebar-toggle-icon');
+                const text = document.getElementById('ds-sidebar-toggle-text');
+                if (!sidebar) return;
+                _dsSidebarOpen = !_dsSidebarOpen;
+                // 动态计算隐藏偏移量（适配手机端vw单位）
+                const sidebarWidth = sidebar.offsetWidth || 260;
+                if (_dsSidebarOpen) {
+                    sidebar.style.left = '0';
+                    if (overlay) overlay.style.display = 'block';
+                    if (icon) icon.textContent = '✕';
+                    if (text) text.textContent = '收起';
+                } else {
+                    sidebar.style.left = '-' + (sidebarWidth + 20) + 'px';
+                    if (overlay) overlay.style.display = 'none';
+                    if (icon) icon.textContent = '☰';
+                    if (text) text.textContent = '历史记录';
+                }
+            };
+
+            // 渲染历史记录列表（DeepSeek风格紧凑布局）
+            function dsRenderHistoryList() {
+                const listEl = document.getElementById('ds-history-list');
+                if (!listEl) return;
+                
+                if (dsConversations.length === 0) {
+                    listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:16px 10px;font-size:0.82rem;">暂无历史记录</div>';
+                    return;
+                }
+                
+                let html = '';
+                dsConversations.forEach(conv => {
+                    const isActive = conv.id === dsCurrentConvId;
+                    const dateStr = new Date(conv.timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+                    
+                    // DeepSeek风格：紧凑行，圆角背景，小间距
+                    const bgColor = isActive ? 'var(--primary)' : 'transparent';
+                    const textColor = isActive ? '#ffffff' : '#1e293b';
+                    const dateColor = isActive ? 'rgba(255,255,255,0.7)' : '#94a3b8';
+                    
+                    html += '<div onclick="dsSwitchConv(\'' + conv.id + '\')" style="' +
+                        'padding:7px 10px;border-radius:6px;cursor:pointer;' +
+                        'background:' + bgColor + ';' +
+                        'transition:background 0.15s;display:flex;align-items:center;gap:6px;' +
+                        'margin-bottom:2px;' +
+                        '" onmouseover="if(this.dataset.active!==\'1\'){this.style.background=\'#e0f2fe\';}" ' +
+                        'onmouseout="if(this.dataset.active!==\'1\'){this.style.background=\'transparent\';}" ' +
+                        'data-active="' + (isActive ? '1' : '0') + '">' +
+                        '<span style="font-size:0.72rem;color:' + dateColor + ';flex-shrink:0;">' + dateStr + '</span>' +
+                        '<span style="font-size:0.82rem;line-height:1.3;color:' + textColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-weight:' + (isActive ? '500' : '400') + ';">' +
+                        dsEsc(conv.title || '新对话') +
+                        '</span>' +
+                        '<div style="display:flex;gap:2px;flex-shrink:0;opacity:0;transition:opacity 0.15s;" ' +
+                        'onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'\'">' +
+                        '<button onclick="dsTogglePin(\'' + conv.id + '\', event)" style="' +
+                        'background:none;border:none;cursor:pointer;padding:2px;font-size:0.8rem;line-height:1;' +
+                        'opacity:' + (conv.pinned ? '1' : '0.4') + ';' +
+                        '" title="' + (conv.pinned ? '取消置顶' : '置顶') + '">' + (conv.pinned ? '📌' : '<span style="opacity:0.3">📌</span>') + '</button>' +
+                        '<button onclick="dsDeleteConv(\'' + conv.id + '\', event)" style="' +
+                        'background:none;border:none;cursor:pointer;padding:2px;font-size:0.8rem;color:var(--danger);opacity:0.5;' +
+                        '" title="删除" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">🗑️</button>' +
+                        '</div>' +
+                        '</div>';
+                });
+                
+                listEl.innerHTML = html;
+            }
+
+            // 显示清空选项
+            window.dsShowClearOptions = function() {
+                if (dsStreaming) return;
+                
+                const options = [
+                    '1. 清空当前对话',
+                    '2. 清空所有历史记录',
+                    '3. 取消'
+                ];
+                const choice = prompt('请选择操作：\n\n' + options.join('\n') + '\n\n请输入数字 (1-3)：');
+                
+                if (choice === '1') {
+                    dsClearCurrentChat();
+                } else if (choice === '2') {
+                    dsClearAllHistory();
+                }
+                // 选择3或取消则不执行任何操作
+            };
+
+            // 清空当前对话
+            function dsClearCurrentChat() {
+                if (!confirm('确定清空当前对话记录？')) return;
+                dsHistory = [];
+                
+                // 更新当前对话
+                const currentConv = dsConversations.find(c => c.id === dsCurrentConvId);
+                if (currentConv) {
+                    currentConv.messages = [];
+                    currentConv.title = '新对话';
+                    currentConv.timestamp = Date.now();
+                }
+                
+                dsSaveConversations();
+                dsRenderAll();
+                dsRenderHistoryList();
+            }
+
+            // 清空所有历史
+            function dsClearAllHistory() {
+                if (!confirm('⚠️ 确定清空所有对话历史？此操作不可恢复！')) return;
+                dsConversations = [];
+                dsCurrentConvId = null;
+                dsHistory = [];
+                localStorage.removeItem(DS_CONVERSATIONS_STORAGE);
+                localStorage.removeItem(DS_CURRENT_CONV_ID);
+                localStorage.removeItem(DS_CHAT_STORAGE);
+                dsNewChat(false);
             }
 
             // ---- API Key 管理 ----
@@ -6916,11 +7357,9 @@
                 if (useRules && typeof window.getRulesData === 'function') {
                     const rules = window.getRulesData();
                     if (rules.length > 0) {
-                        const relevant = kws.length > 0 ? rules.filter(r =>
-                            kws.some(k => (r.title + r.content + (r.trade||'')).includes(k))
-                        ) : rules;
-                        const slice = relevant.slice(0, 20);
-                        let txt = '【规章制度数据（共' + rules.length + '条，以下为相关摘要）】\n';
+                        // 只取前20条，避免超出token限制
+                        const slice = rules.slice(0, 20);
+                        let txt = '【规章制度数据（共' + rules.length + '条）】\n';
                         slice.forEach((r, i) => {
                             const preview = (r.content || '').replace(/<[^>]+>/g, '').slice(0, 300);
                             txt += (i+1) + '. [' + (r.trade||'未分类') + '] ' + (r.title||'无标题') + '：' + preview + (preview.length >= 300 ? '...' : '') + '\n';
@@ -6934,11 +7373,9 @@
                 if (useIssue && typeof window.getIssueData === 'function') {
                     const issues = window.getIssueData();
                     if (issues.length > 0) {
-                        const relevant = kws.length > 0 ? issues.filter(r =>
-                            kws.some(k => ((r.content||'') + (r.category||'') + (r['性质']||'')).includes(k))
-                        ) : issues;
-                        const slice = relevant.slice(0, 30);
-                        let txt = '【检查信息数据（共' + issues.length + '条，以下为相关摘要）】\n';
+                        // 只取前30条，避免超出token限制
+                        const slice = issues.slice(0, 30);
+                        let txt = '【检查信息数据（共' + issues.length + '条）】\n';
                         slice.forEach((r, i) => {
                             txt += (i+1) + '. [' + (r['性质']||'') + '][' + (r.category||'') + '] ' + (r.datetime||'') + '：' + (r.content||'').slice(0, 200) + '\n';
                         });
@@ -6951,11 +7388,9 @@
                 if (useHandbook && typeof window.getHandbookData === 'function') {
                     const hb = window.getHandbookData();
                     if (hb.length > 0) {
-                        const relevant = kws.length > 0 ? hb.filter(r =>
-                            kws.some(k => ((r.content||'') + (r.chapter||'') + (r.section||'') + (r.item||'')).includes(k))
-                        ) : hb;
-                        const slice = relevant.slice(0, 20);
-                        let txt = '【检查手册数据（共' + hb.length + '条，以下为相关摘要）】\n';
+                        // 只取前20条，避免超出token限制
+                        const slice = hb.slice(0, 20);
+                        let txt = '【检查手册数据（共' + hb.length + '条）】\n';
                         slice.forEach((r, i) => {
                             const path = [r.chapter, r.section, r.item, r.subitem].filter(Boolean).join(' > ');
                             txt += (i+1) + '. [' + path + ']：' + (r.content||'').slice(0, 200) + '\n';
@@ -7106,13 +7541,9 @@
                 dsSendMsg();
             };
 
-            // ---- 清空对话 ----
+            // ---- 清空对话（兼容旧调用，实际调用新选项） ----
             window.dsClearChat = function() {
-                if (dsStreaming) return;
-                if (!confirm('确定清空全部对话记录？')) return;
-                dsHistory = [];
-                localStorage.removeItem(DS_CHAT_STORAGE);
-                dsRenderAll();
+                dsShowClearOptions();
             };
 
             // ---- 渲染所有消息 ----
@@ -7120,13 +7551,13 @@
                 const box = document.getElementById('ds-chat-box');
                 if (!box) return;
                 if (dsHistory.length === 0) {
-                    box.innerHTML = '<div style="text-align:center;color:var(--text-secondary);margin:auto;padding:40px 20px;">' +
-                        '<div style="font-size:2.5rem;margin-bottom:12px;">🤖</div>' +
-                        '<div style="font-size:1rem;font-weight:600;margin-bottom:6px;">DeepSeek 智能助手</div>' +
-                        '<div style="font-size:0.88rem;line-height:1.7;">配置 API Key 后，我可以帮你查询<br>规章制度、检查信息、手册内容等业务数据。</div>' +
-                        '</div>';
+                    // 空对话时隐藏对话区，只显示输入框
+                    box.style.display = 'none';
+                    box.innerHTML = '';
                     return;
                 }
+                // 有内容时显示对话区
+                box.style.display = 'flex';
                 let html = '';
                 dsHistory.forEach((msg, i) => {
                     if (msg.role === 'user') {
@@ -7193,7 +7624,20 @@
 
             function dsSaveHistory() {
                 try {
+                    // 兼容旧版本存储
                     localStorage.setItem(DS_CHAT_STORAGE, JSON.stringify(dsHistory.slice(-50)));
+                    
+                    // 更新当前对话
+                    if (dsCurrentConvId) {
+                        const currentConv = dsConversations.find(c => c.id === dsCurrentConvId);
+                        if (currentConv) {
+                            currentConv.messages = dsHistory.slice(-50);
+                            currentConv.title = dsGetConvTitle(currentConv.messages);
+                            currentConv.timestamp = Date.now();
+                            dsSaveConversations();
+                            dsRenderHistoryList();
+                        }
+                    }
                 } catch(e) {}
             }
 
@@ -7203,6 +7647,808 @@
             } else {
                 setTimeout(dsInit, 100);
             }
+
+            // ========== 自动对规子模块 ==========
+            // 铁路专业术语词典（优先整体匹配，避免拆散）
+            const RAILWAY_TERMS = new Set([
+                '天窗点', '天窗点外', '上道作业', '下道避车', '防护员', '驻站联络员',
+                'LKJ', 'CIR', '列控', '联锁', '闭塞', '接发列车', '调车作业',
+                '施工封锁', '慢行', '限速', '超限货物', '红牌', '蓝牌', '行车凭证',
+                '调度命令', '车机联控', '一度停车', '紧急制动', '弓网故障',
+                '接触网', '电力机车', '内燃机车', '动车组', '轨道车', '轻型车辆',
+                '单线', '双线', '区间', '站间', '咽喉', '道岔', '岔区', '绝缘接头',
+                '施工作业', '维修作业', '检查作业', '天窗', '施工计划', '维修计划',
+                '封锁区间', '开通区间', '区间封锁', '线路封锁', '慢行处所', '慢行地点',
+                '列车调度员', '车站值班员', '机车司机', '添乘人员', '现场防护员',
+                '远端防护员', '中间防护员', '电话防护', '瞭望', '鸣笛', '信号旗',
+                '手信号', '移动信号', '固定信号', '信号机', '臂板信号', '色灯信号',
+                '进站信号', '出站信号', '通过信号', '预告信号', '接近信号',
+                '引导信号', '容许信号', '遮断信号', '减速信号', '加速信号',
+                '途中折返', '退行', '推进', '牵引', '挂车', '摘车', '溜放',
+                '连挂', '解编', '编组', '解体', '取送车', '专用线', '尽头线',
+                '安全线', '避难线', '脱轨器', '防护信号', '停车信号', '好了信号',
+                '股道', '道岔', '交叉渡线', '菱形交叉', '复式交分',
+                '绝缘节', '电气节', '机械节', '关节', '极性', '极性交叉',
+                '轨道电路', '区段', '轨道区段', '发码', '发码电路', '码序',
+                '机车信号', '车上信号', '地面信号', '主体信号', '从属信号',
+                'CTC', 'TDCS', 'ITCS', 'CBTC', 'ATP', 'LKJ2000', 'LKJ2000A',
+                '列控车载设备', '应答器', 'LEU', '轨道电路信息', '运行监控',
+                '监控装置', '调整状态', '降级状态', '故障状态', '常用制动', '紧急制动',
+                '缓解', '解锁', '警惕', '定标', '走停走', '引导进路', '发车进路',
+                '接车进路', '通过进路', '调车进路', '敌对进路', '抵触进路',
+                '进路锁闭', '进路解锁', '区段锁闭', '道岔锁闭', '单独锁闭',
+                '手柄', '制动机', '单独制动机', '自动制动机', '紧急放风阀',
+                '折角塞门', '截断塞门', '缓解阀', '风表', '压力表', '风压',
+                '制动缸', '副风缸', '工作风缸', '容积风缸', '储风缸',
+                '过充', '慢充', '快充', '保压', '漏泄', '自然缓解', '自然制动',
+                '感度试验', '安定试验', '紧急试验', '全部试验', '简略试验',
+                '过球试验', '感度保压', '持续保压', '减压', '追加减压',
+                '再制动', '试风', '拉风', '排风', '摘管', '接管', '接风管',
+                '车列', '车组', '车辆', '车体', '转向架', '轮对', '车轴', '车轮',
+                '闸瓦', '闸片', '盘形制动', '磁轨制动', '再生制动', '电阻制动',
+                '空压机', '空压机组', '干燥器', '油水分离器', '冷却器', '散热器',
+                '通风机', '油泵', '水泵', '燃泵', '励磁', '整流', '逆变',
+                '受电弓', '接触网', '接触线', '承力索', '吊弦', '定位器', '支柱',
+                '硬横梁', '软横跨', '腕臂', '拉杆', '承力索', '张力补偿',
+                '锚段', '锚段关节', '分相', '分相器', '中性区', '无电区', '分闸',
+                '合闸', '倒闸', '作业命令', '停电命令', '送电命令', '销令',
+                '接触网工', '电力工', '电气化', '高空作业', 'V形作业', '停电作业',
+                '间接带电作业', '直接带电作业', '远离作业', '防护栅栏', '安全作业区'
+            ]);
+
+            // HTML转义函数
+            function acEscHtml(s) {
+                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+            }
+
+            // 词库存储键名（用于localStorage）
+            const RAILWAY_TERMS_STORAGE_KEY = 'railway_terms_custom';
+
+            // 从localStorage加载自定义词库
+            (function loadCustomTerms() {
+                try {
+                    const customTerms = JSON.parse(localStorage.getItem(RAILWAY_TERMS_STORAGE_KEY) || '[]');
+                    if (Array.isArray(customTerms)) {
+                        customTerms.forEach(term => {
+                            if (typeof term === 'string' && term.length >= 2) {
+                                RAILWAY_TERMS.add(term);
+                            }
+                        });
+                        console.log('已从localStorage加载 ' + customTerms.length + ' 个自定义术语，当前词库共 ' + RAILWAY_TERMS.size + ' 个');
+                    }
+                } catch (e) {
+                    console.error('加载自定义词库失败:', e);
+                }
+            })();
+
+            // 铁路安监领域扩展停用词表
+            const AUTOCHECK_STOP_WORDS = new Set([
+                // 通用停用词
+                '的', '了', '和', '与', '或', '对', '在', '被', '把', '让', '给', '向', '从', '到',
+                '上', '下', '内', '外', '中', '里', '等', '及', '以及', '并且', '而且', '但是',
+                '如果', '那么', '因为', '所以', '是', '有', '不', '也', '都', '还', '要', '会',
+                '可以', '能', '可能', '应该', '必须', '需要', '这个', '那个', '这些', '那些',
+                // 常见连接词
+                '进行', '开展', '情况', '相关', '工作', '检查', '发现', '存在', '问题',
+                '作业', '人员', '单位', '部门', '领导', '负责', '组织', '实施', '执行',
+                // 铁路安监领域无实际检索价值的词
+                '安全', '第一', '预防', '为主', '综合', '治理', '强化', '落实', '确保', '保障',
+                '提高', '加强', '规范', '完善', '建立', '健全', '推动', '促进', '实现',
+                '车间', '工区', '班组', '职工', '干部', '领导', '督查', '巡视',
+                '施工', '维修', '养护', '管理', '制度', '措施', '方案', '流程', '标准',
+                '按照', '根据', '依照', '参照', '依据', '对于', '关于', '针对', '鉴于',
+                '操作', '使用', '维护', '保养', '报告', '要求', '通知', '规定', '办法',
+                '细则', '标准', '规程', '规则', '条例', '制度', '文件', '函', '电报',
+                '严重', '一般', '较大', '重大', '特别', '重要', '主要', '次要'
+            ]);
+
+            // ---- 关键词提取（仅从词库中筛选输入文本里包含的术语）----
+            function acExtractKeywords(text) {
+                const kwSet = new Set();
+                const lowerText = text.toLowerCase();
+                // 按术语长度降序匹配（最长优先），防止短词覆盖长词
+                const sortedTerms = Array.from(RAILWAY_TERMS).sort((a, b) => b.length - a.length);
+                let termCount = 0;
+                for (const term of sortedTerms) {
+                    if (++termCount > 5000) break;
+                    if (lowerText.includes(term.toLowerCase())) {
+                        kwSet.add(term);
+                    }
+                }
+                // 按长度降序返回，过滤掉被更长词包含的短词
+                const allTokens = Array.from(kwSet).sort((a, b) => b.length - a.length);
+                return allTokens.filter((w, i) => {
+                    if (w.length === 2) return !allTokens.slice(0, i).some(lg => lg.length >= 4 && lg.includes(w));
+                    return true;
+                }).slice(0, 40);
+            }
+
+            // ---- 文本片段高亮关键词命中位置 ----
+            function acGetSnippet(content, keywords, maxLen) {
+                maxLen = maxLen || 200;
+                let bestPos = -1, bestKw = '';
+                for (const kw of keywords) {
+                    const pos = content.toLowerCase().indexOf(kw);
+                    if (pos !== -1 && (bestPos === -1 || kw.length > bestKw.length)) { bestPos = pos; bestKw = kw; }
+                }
+                if (bestPos === -1) return content.length > maxLen ? content.slice(0, maxLen) + '…' : content;
+                const half = Math.floor(maxLen / 2);
+                const start = Math.max(0, bestPos - half);
+                const end = Math.min(content.length, bestPos + half);
+                return (start > 0 ? '…' : '') + content.slice(start, end) + (end < content.length ? '…' : '');
+            }
+
+            // ---- 计算文本与关键词的匹配得分 ----
+            function acScore(text, titleText, keywords) {
+                let score = 0;
+                const lc = text.toLowerCase(), tlc = (titleText || '').toLowerCase();
+                for (const kw of keywords) {
+                    if (lc.includes(kw) || tlc.includes(kw)) {
+                        let s = Math.min(3, 1 + kw.length / 3);
+                        if (tlc.includes(kw)) s += 2; // 标题命中奖励
+                        score += s;
+                    }
+                }
+                return keywords.length ? score / (keywords.length * 4) : 0;
+            }
+
+            // ============================================================
+            // 核心：两阶段本地匹配
+            // 第一阶段：在检查信息中找相似历史案例
+            // 第二阶段：基于案例 + 关键词，在规章制度中找对应条款判定违规
+            // ============================================================
+            
+            // 关键词选择状态
+            let acSelectedKeywords = new Set();
+            let acCandidateKeywords = [];
+            let _acInputTimer = null;  // 防抖定时器
+            
+            // textarea 输入时自动提取候选词
+            window.acOnInputChange = function(value) {
+                clearTimeout(_acInputTimer);
+                const query = value.trim();
+                if (!query) {
+                    // 输入为空，隐藏候选区并重置
+                    const selectArea = document.getElementById('keyword-select-area');
+                    if (selectArea) selectArea.style.display = 'none';
+                    acCandidateKeywords = [];
+                    acSelectedKeywords = new Set();
+                    return;
+                }
+                // 防抖 300ms 后提取
+                _acInputTimer = setTimeout(function() {
+                    const newCandidates = acExtractKeywords(query);
+                    // 仅当候选词集合变化时才重置选中状态
+                    const newSet = new Set(newCandidates);
+                    const changed = newCandidates.length !== acCandidateKeywords.length ||
+                        newCandidates.some(k => !acCandidateKeywords.includes(k));
+                    acCandidateKeywords = newCandidates;
+                    if (changed) {
+                        // 保留仍在候选列表中的已选词，移除已不在候选中的词
+                        const keeping = new Set(Array.from(acSelectedKeywords).filter(k => newSet.has(k)));
+                        acSelectedKeywords = keeping;
+                    }
+                    acShowKeywordSelector(query);
+                }, 300);
+            };
+            
+            window.autoCheckLocal = function() {
+                const input = document.getElementById('autoCheck-input');
+                const query = input.value.trim();
+                if (!query) { alert('请输入检查问题描述'); return; }
+                
+                // 若还没提取过候选词，先提取一次
+                if (acCandidateKeywords.length === 0) {
+                    acCandidateKeywords = acExtractKeywords(query);
+                }
+                
+                // 若有已选关键词则用已选的，否则用全部候选词；若候选词也为空则提示
+                let keywords = Array.from(acSelectedKeywords);
+                if (keywords.length === 0) {
+                    keywords = [...acCandidateKeywords];
+                }
+                if (keywords.length === 0) {
+                    alert('未匹配到词库关键词，请手动添加关键词后再匹配');
+                    return;
+                }
+                
+                // 将关键词加入词库
+                acAddKeywordsToLibrary(keywords);
+                // 执行匹配
+                acDoLocalMatch(keywords);
+            };
+            
+            // 显示关键词选择界面
+            function acShowKeywordSelector(query) {
+                const selectArea = document.getElementById('keyword-select-area');
+                const countEl = document.getElementById('keyword-select-count');
+                
+                if (!selectArea) return;
+                
+                // 渲染候选关键词
+                acRenderCandidateList();
+                
+                // 渲染已选关键词
+                acRenderSelectedList();
+                
+                // 显示选择区域
+                selectArea.style.display = 'block';
+                
+                // 更新计数
+                countEl.textContent = '已选: ' + acSelectedKeywords.size + '/4';
+                
+                // 隐藏结果区域
+                document.getElementById('autoCheck-results').style.display = 'none';
+            }
+            
+            // 渲染候选关键词列表（上栏，点击选中/取消）
+            function acRenderCandidateList() {
+                const list = document.getElementById('keyword-candidate-list');
+                if (!list) return;
+                
+                let html = '';
+                acCandidateKeywords.forEach((kw) => {
+                    const isSelected = acSelectedKeywords.has(kw);
+                    if (isSelected) {
+                        // 已选中状态：蓝色高亮，点击取消
+                        html += '<span class="keyword-candidate-tag" data-keyword="' + acEscHtml(kw) + '" ' +
+                            'style="' +
+                            'display:inline-flex;align-items:center;padding:6px 10px;border-radius:16px;font-size:0.85rem;' +
+                            'cursor:pointer;transition:all 0.15s;user-select:none;' +
+                            'background:var(--primary);color:#fff;border:2px solid var(--primary);' +
+                            '" ' +
+                            'onclick="acToggleCandidateKeyword(\'' + acEscHtml(kw) + '\')" ' +
+                            'title="点击取消选中" ' +
+                            '>' + acEscHtml(kw) + ' <span style="margin-left:4px;font-size:0.75rem;">✓</span></span>';
+                    } else {
+                        // 未选中状态：灰色，点击选中
+                        html += '<span class="keyword-candidate-tag" data-keyword="' + acEscHtml(kw) + '" ' +
+                            'style="' +
+                            'display:inline-flex;align-items:center;padding:6px 10px;border-radius:16px;font-size:0.85rem;' +
+                            'cursor:pointer;transition:all 0.15s;user-select:none;' +
+                            'background:#f1f5f9;color:var(--text);border:2px solid #e2e8f0;' +
+                            '" ' +
+                            'onclick="acToggleCandidateKeyword(\'' + acEscHtml(kw) + '\')" ' +
+                            'title="点击选中" ' +
+                            'onmouseover="if(!this.dataset.selected){this.style.background=\'#e2e8f0\';this.style.borderColor=\'var(--primary)\';}" ' +
+                            'onmouseout="if(!this.dataset.selected){this.style.background=\'#f1f5f9\';this.style.borderColor=\'#e2e8f0\';}" ' +
+                            '>' + acEscHtml(kw) + ' <span style="margin-left:4px;font-size:0.75rem;opacity:0.5;">+</span></span>';
+                    }
+                });
+                
+                if (acCandidateKeywords.length === 0) {
+                    html = '<span style="color:var(--text-secondary);font-size:0.8rem;padding:4px;">输入文本未匹配到词库中的术语，请手动添加或导入词库</span>';
+                }
+                
+                list.innerHTML = html;
+            }
+            
+            // 切换候选词选中状态
+            window.acToggleCandidateKeyword = function(kw) {
+                if (acSelectedKeywords.has(kw)) {
+                    acSelectedKeywords.delete(kw);
+                } else {
+                    if (acSelectedKeywords.size >= 4) {
+                        alert('最多选择4个关键词');
+                        return;
+                    }
+                    acSelectedKeywords.add(kw);
+                    acAddKeywordsToLibrary([kw]);
+                }
+                acRenderCandidateList();
+                acRenderSelectedList();
+                document.getElementById('keyword-select-count').textContent = '已选: ' + acSelectedKeywords.size + '/4';
+            };
+            
+            // 渲染已选关键词列表（下栏，点击取消）
+            function acRenderSelectedList() {
+                const list = document.getElementById('keyword-selected-list');
+                if (!list) return;
+                
+                let html = '';
+                acSelectedKeywords.forEach((kw) => {
+                    html += '<span class="keyword-selected-tag" data-keyword="' + acEscHtml(kw) + '" ' +
+                        'style="' +
+                        'display:inline-flex;align-items:center;padding:6px 10px;border-radius:16px;font-size:0.85rem;' +
+                        'cursor:pointer;transition:all 0.15s;user-select:none;' +
+                        'background:var(--primary);color:#fff;border:2px solid var(--primary);' +
+                        '" ' +
+                        'onclick="acRemoveSelectedKeyword(\'' + acEscHtml(kw) + '\')" ' +
+                        'title="点击移除" ' +
+                        'onmouseover="this.style.opacity=\'0.8\'" ' +
+                        'onmouseout="this.style.opacity=\'1\'" ' +
+                        '>' + acEscHtml(kw) + ' <span style="margin-left:4px;font-size:0.75rem;">✕</span></span>';
+                });
+                
+                list.innerHTML = html || '<span style="color:var(--text-secondary);font-size:0.8rem;padding:4px;">点击上方候选词选中...</span>';
+            }
+            
+            // 添加自定义关键词
+            window.acAddCustomKeyword = function() {
+                const input = document.getElementById('keyword-custom-input');
+                const kw = input.value.trim();
+                if (!kw) return;
+                if (kw.length < 2) {
+                    alert('关键词至少需要2个字符');
+                    return;
+                }
+                if (acSelectedKeywords.size >= 4) {
+                    alert('最多选择4个关键词');
+                    return;
+                }
+                
+                // 添加到已选，如果不在候选里也追加到候选
+                acSelectedKeywords.add(kw);
+                if (!acCandidateKeywords.includes(kw)) {
+                    acCandidateKeywords.push(kw);
+                }
+                
+                // 清空输入
+                input.value = '';
+                
+                // 重新渲染两栏
+                acRenderCandidateList();
+                acRenderSelectedList();
+                document.getElementById('keyword-select-count').textContent = '已选: ' + acSelectedKeywords.size + '/4';
+                
+                // 自动添加到词库
+                acAddKeywordsToLibrary([kw]);
+            };
+            
+            // 移除已选关键词（同步刷新候选词选中状态）
+            window.acRemoveSelectedKeyword = function(keyword) {
+                acSelectedKeywords.delete(keyword);
+                acRenderCandidateList();
+                acRenderSelectedList();
+                document.getElementById('keyword-select-count').textContent = '已选: ' + acSelectedKeywords.size + '/4';
+            };
+            
+            // 清空已选关键词
+            window.acClearSelectedKeywords = function() {
+                acSelectedKeywords.clear();
+                acRenderCandidateList();
+                acRenderSelectedList();
+                document.getElementById('keyword-select-count').textContent = '已选: 0/4';
+            };
+            
+            // 确认关键词并开始匹配
+            window.acConfirmKeywords = function() {
+                if (acSelectedKeywords.size === 0) {
+                    alert('请至少选择1个关键词');
+                    return;
+                }
+                // 将选中的关键词添加到词库
+                acAddKeywordsToLibrary(Array.from(acSelectedKeywords));
+                // 执行匹配
+                acDoLocalMatch(Array.from(acSelectedKeywords));
+            };
+            
+            // 将关键词添加到词库
+            function acAddKeywordsToLibrary(keywords) {
+                let addedCount = 0;
+                keywords.forEach(kw => {
+                    if (!RAILWAY_TERMS.has(kw)) {
+                        RAILWAY_TERMS.add(kw);
+                        addedCount++;
+                    }
+                });
+                
+                if (addedCount > 0) {
+                    // 保存到localStorage
+                    const customTerms = JSON.parse(localStorage.getItem(RAILWAY_TERMS_STORAGE_KEY) || '[]');
+                    keywords.forEach(kw => {
+                        if (!customTerms.includes(kw)) {
+                            customTerms.push(kw);
+                        }
+                    });
+                    localStorage.setItem(RAILWAY_TERMS_STORAGE_KEY, JSON.stringify(customTerms));
+                    
+                    // 显示提示
+                    console.log('已自动添加 ' + addedCount + ' 个关键词到词库:', keywords);
+                }
+            }
+            
+            // 执行本地匹配（使用选中的关键词）
+            function acDoLocalMatch(keywords) {
+                // 显示加载中
+                const container = document.getElementById('autoCheck-results');
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>正在使用关键词 [' + keywords.join(', ') + '] 进行匹配...</span></div>';
+                container.style.display = 'block';
+                
+                // 延迟执行，让UI更新
+                setTimeout(() => {
+                    acPerformMatching(keywords);
+                }, 100);
+            }
+            
+            // 实际执行匹配逻辑（调用各模块关键词搜索逻辑）
+            function acPerformMatching(keywords) {
+                const container = document.getElementById('autoCheck-results');
+
+                // ---------- 检查数据源是否为空 ----------
+                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+                const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                const handbooks = typeof window.getHandbookData === 'function' ? window.getHandbookData() : [];
+                if (issues.length === 0 && rules.length === 0 && handbooks.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">📭</div><p>检查信息、规章制度、检查手册均为空</p><p style="font-size:0.85rem;margin-top:8px;">请先在对应模块导入数据后再使用自动对规功能</p></div>';
+                    container.style.display = 'block'; return;
+                }
+
+                // ---------- 匹配检查信息（同类历史案例）---------- 
+                // 调用与检查信息模块一致的关键词搜索逻辑：AND模式，对 content/category/性质 字段匹配
+                const lowerKws = keywords.map(k => k.toLowerCase());
+                const matchedIssues = issues.map(function(iss) {
+                    let text = ((iss.content || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
+                    const matchCount = lowerKws.filter(k => text.includes(k)).length;
+                    const matchRate = Math.round((matchCount / lowerKws.length) * 100);
+                    return { iss, matchCount, matchRate };
+                }).filter(x => x.matchCount > 0)
+                  .sort((a, b) => b.matchRate - a.matchRate || b.matchCount - a.matchCount)
+                  .slice(0, 8);
+
+                // ---------- 匹配规章制度（调用规章模块段落搜索逻辑）----------
+                // 与规章制度模块 renderResults AND段落模式一致：段落必须包含全部关键词
+                const matchedRules = [];
+                rules.forEach(function(r) {
+                    if (typeof generateRuleSnippet === 'function') {
+                        const snippetHtml = generateRuleSnippet(r, keywords, -1, 'and');
+                        if (snippetHtml) {
+                            const matchScore = typeof calculateMatchScore === 'function' 
+                                ? calculateMatchScore(r, keywords, 'and') : 1;
+                            matchedRules.push({ rule: r, snippetHtml, matchScore });
+                        }
+                    } else {
+                        // 回退：全文AND匹配
+                        const text = (r.content || '').toLowerCase();
+                        if (lowerKws.every(k => text.includes(k))) {
+                            matchedRules.push({ rule: r, snippetHtml: null, matchScore: 1 });
+                        }
+                    }
+                });
+                matchedRules.sort((a, b) => b.matchScore - a.matchScore);
+                const scoredRules = matchedRules.slice(0, 8);
+
+                // ---------- 匹配检查手册（关键词搜索 chapter/section/item/content，AND模式）----------
+                const matchedHb = handbooks.map(function(h) {
+                    const text = ([h.chapter, h.section, h.item, h.subitem, h.content].filter(Boolean).join(' ')).toLowerCase();
+                    const matchCount = lowerKws.filter(k => text.includes(k)).length;
+                    const matchRate = Math.round((matchCount / lowerKws.length) * 100);
+                    return { hb: h, matchCount, matchRate, title: [h.chapter, h.section, h.item, h.subitem].filter(Boolean).join(' > ') };
+                }).filter(x => x.matchCount === lowerKws.length) // AND模式：全部关键词命中
+                  .sort((a, b) => b.matchRate - a.matchRate)
+                  .slice(0, 6);
+
+                // ---------- 渲染结果 ----------
+                const hasAny = matchedIssues.length || scoredRules.length || matchedHb.length;
+                if (!hasAny) {
+                    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">🔍</div><p>未找到匹配内容，建议换用「AI 精准分析」</p></div>';
+                    container.style.display = 'block'; return;
+                }
+
+                let html = '';
+                const kwsUsed = keywords.map(k => '<span style="background:#fde68a;color:#92400e;padding:1px 6px;border-radius:10px;font-size:0.78rem;">' + acEscHtml(k) + '</span>').join(' ');
+                html += '<div style="margin-bottom:12px;font-size:0.8rem;color:var(--text-secondary);">关键词：' + kwsUsed + '</div>';
+
+                // —— 检查信息匹配结果（检查信息卡片风格）——
+                if (matchedIssues.length) {
+                    html += '<div style="margin-bottom:6px;">'
+                        + '<span style="font-size:0.8rem;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:20px;">📂 相似历史案例（' + matchedIssues.length + '条）</span>'
+                        + '</div>';
+                    html += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">';
+                    matchedIssues.forEach(function(x, idx) {
+                        const iss = x.iss;
+                        const xz = String(iss['性质'] || '').trim();
+                        let levelBorderColor = '#718096', xzBg = '#718096';
+                        if (xz === 'A类' || xz.includes('A')) { levelBorderColor = '#e53e3e'; xzBg = '#e53e3e'; }
+                        else if (xz === '红线' || xz.includes('红线')) { levelBorderColor = '#e53e3e'; xzBg = '#c53030'; }
+                        else if (xz === 'B类' || xz.includes('B')) { levelBorderColor = '#d97706'; xzBg = '#d97706'; }
+                        else if (xz === 'C类' || xz.includes('C')) { levelBorderColor = '#059669'; xzBg = '#059669'; }
+                        // 高亮关键词
+                        let contentHtml = acEscHtml(iss.content || '');
+                        lowerKws.forEach(k => {
+                            const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                            contentHtml = contentHtml.replace(reg, '<span class="highlight">$1</span>');
+                        });
+                        html += '<div class="result-card" style="border-left:4px solid ' + levelBorderColor + ';background:#fffbeb;">'
+                            + '<div class="match-badge">' + x.matchCount + '/' + lowerKws.length + ' 匹配 ' + x.matchRate + '%</div>'
+                            + '<div class="result-header">'
+                            + '<span class="tag tag-xingzhi" style="background:' + xzBg + ';color:#fff;">' + acEscHtml(xz || '空白') + '</span>'
+                            + '<span class="tag tag-category">' + acEscHtml(iss.category || '其他') + '</span>'
+                            + (iss.datetime ? '<span class="tag tag-time">📅 ' + acEscHtml(iss.datetime) + '</span>' : '')
+                            + '</div>'
+                            + '<div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="acIssueDetailModal(' + idx + ')">📄 全文</button></div>'
+                            + '<div class="result-text">' + contentHtml + '</div></div>'
+                            + '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                // —— 规章制度匹配结果（与规章模块 rule-card-item 完全一致）——
+                if (scoredRules.length) {
+                    html += '<div style="margin-bottom:6px;">'
+                        + '<span style="font-size:0.8rem;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:3px 10px;border-radius:20px;">⚖️ 违规规章条款（' + scoredRules.length + '条）</span>'
+                        + '</div>';
+                    html += '<div class="result-list" style="margin-bottom:14px;">';
+                    // 搜索条件提示行（仿规章模块）
+                    html += '<div style="margin-bottom:10px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:0.88rem;color:#0369a1;">'
+                        + '<strong>🔍 搜索条件：</strong>'
+                        + '<span style="margin-left:6px;padding:3px 8px;background:#fff;border-radius:4px;border:1px solid #7dd3fc;">全部包含</span>'
+                        + '<span style="margin-left:8px;">' + keywords.map(k => '<span style="padding:2px 7px;background:#e0f2fe;border-radius:4px;margin-right:3px;">' + acEscHtml(k) + '</span>').join('') + '</span>'
+                        + '</div>';
+                    scoredRules.forEach(function(x, idx) {
+                        const r = x.rule;
+                        const rData = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                        const absIdx = rData.findIndex(function(rr) { return rr === r; });
+                        const matchCount = (x.snippetHtml && x.snippetHtml.match(/<p>/g) || []).length;
+                        html += '<div class="rule-card-item">';
+                        // 标题行（可点击查看全文，与规章模块完全一致）
+                        html += '<div class="rule-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;" onclick="' + (absIdx !== -1 ? 'ruleViewFullText(' + absIdx + ')' : 'acRuleDetailModal(' + idx + ')') + '">';
+                        html += '<span style="flex:1;word-break:break-all;white-space:normal;color:var(--info);text-decoration:underline;text-underline-offset:3px;" title="' + acEscHtml(r.title || '') + '">' + acEscHtml(r.title || '') + '</span>';
+                        html += '<button class="btn btn-info btn-small" style="flex-shrink:0;" onclick="event.stopPropagation();' + (absIdx !== -1 ? 'ruleViewFullText(' + absIdx + ')' : 'acRuleDetailModal(' + idx + ')') + '">📄 查看全文</button>';
+                        html += '</div>';
+                        if (r.trade) html += '<span class="rule-trade">' + acEscHtml(r.trade) + '</span>';
+                        html += '<div class="rule-match-info" style="font-size:0.8rem;color:#64748b;margin-bottom:8px;padding:4px 8px;background:#f1f5f9;border-radius:4px;display:inline-block;">✓ 匹配 ' + matchCount + ' 个段落 &nbsp;<span style="color:#b91c1c;font-weight:600;">⚠️ 疑似违规依据</span></div>';
+                        html += '<div class="rule-snippet">' + (x.snippetHtml || acEscHtml((r.content || '').slice(0, 200)) + '…') + '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                // —— 检查手册匹配结果（检查信息卡片风格）——
+                if (matchedHb.length) {
+                    html += '<div style="margin-bottom:6px;">'
+                        + '<span style="font-size:0.8rem;font-weight:700;color:#065f46;background:#d1fae5;padding:3px 10px;border-radius:20px;">📋 检查手册条目（' + matchedHb.length + '条）</span>'
+                        + '</div>';
+                    html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+                    matchedHb.forEach(function(x) {
+                        let contentHtml = acEscHtml(x.hb.content || '');
+                        lowerKws.forEach(k => {
+                            const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                            contentHtml = contentHtml.replace(reg, '<span class="highlight">$1</span>');
+                        });
+                        html += '<div class="result-card" style="border-left:4px solid var(--success);background:#f0fdf4;">'
+                            + '<div class="result-header">'
+                            + '<span class="tag" style="background:var(--success);color:#fff;">📋 手册</span>'
+                            + '<span class="tag" style="color:#065f46;background:#a7f3d0;">' + acEscHtml(x.hb.chapter || '') + '</span>'
+                            + '</div>'
+                            + '<div style="font-size:0.8rem;color:#065f46;margin-bottom:4px;font-weight:600;">' + acEscHtml(x.title) + '</div>'
+                            + '<div class="result-content"><div class="result-text">' + contentHtml + '</div></div>'
+                            + '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                container.innerHTML = html;
+                container.style.display = 'block';
+                window._lastACIssues = matchedIssues;
+                window._lastACRules = scoredRules;
+            };
+
+            window.acIssueDetailModal = function(idx) {
+                const list = window._lastACIssues;
+                if (!list || !list[idx]) return;
+                const iss = list[idx].iss;
+                alert('【检查信息】\n性质：' + (iss['性质'] || '') + '\n类别：' + (iss.category || '') + '\n时间：' + (iss.datetime || '') + '\n\n' + (iss.content || ''));
+            };
+
+            window.acRuleDetailModal = function(idx) {
+                const list = window._lastACRules;
+                if (!list || !list[idx]) return;
+                const r = list[idx].rule;
+                if (typeof window.ruleViewFullText === 'function') {
+                    const rData = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                    const rIdx = rData.findIndex(function(x) { return x === r; });
+                    if (rIdx !== -1) { window.ruleViewFullText(rIdx); return; }
+                }
+                alert('【规章制度】' + (r.trade ? '（' + r.trade + '）' : '') + '\n' + (r.title || '') + '\n\n' + (r.content || '').replace(/<[^>]+>/g, ''));
+            };
+
+            // 向后兼容旧名称
+            window.acViewIssueDetail = window.acIssueDetailModal;
+            window.acViewRuleDetail = window.acRuleDetailModal;
+
+            // ============================================================
+            // AI 精准分析：基于本地匹配结果，只输出检查内容及违反条款
+            // ============================================================
+            window.autoCheckAI = async function() {
+                const input = document.getElementById('autoCheck-input');
+                const query = input.value.trim();
+                if (!query) { alert('请输入检查问题描述'); return; }
+                const apiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
+                if (!apiKey) {
+                    const ok = confirm('未配置 DeepSeek API Key，是否跳转到上方配置区？\n点击确定跳转，点击取消则改用本地匹配。');
+                    if (ok) document.getElementById('ds-apikey-input').focus();
+                    else window.autoCheckLocal();
+                    return;
+                }
+
+                // 检查是否有本地匹配结果
+                const lastIssues = window._lastACIssues || [];
+                const lastRules = window._lastACRules || [];
+                if (lastIssues.length === 0 && lastRules.length === 0) {
+                    // 没有本地结果，先执行本地匹配
+                    alert('请先执行「本地匹配」获取结果，再使用 AI 精准分析。');
+                    return;
+                }
+
+                const container = document.getElementById('autoCheck-results');
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>AI 正在基于本地匹配结果精准分析，请稍候…</span></div>';
+                container.style.display = 'block';
+
+                // 整理本地匹配结果作为上下文
+                const issueContext = lastIssues.slice(0, 5).map(function(x, n) {
+                    const iss = x.iss;
+                    return (n+1) + '. [' + (iss['性质']||'') + '][' + (iss.category||'') + '] ' + (iss.datetime||'') + '\n   ' + (iss.content||'').slice(0, 200);
+                }).join('\n');
+                const ruleContext = lastRules.slice(0, 5).map(function(x, n) {
+                    const r = x.rule;
+                    return (n+1) + '. [' + (r.trade||'通用') + ']《' + (r.title||'') + '》\n   ' + (r.content||'').replace(/<[^>]+>/g,'').slice(0, 250);
+                }).join('\n');
+
+                const sysPrompt = [
+                    '你是铁路安全监察专家。以下是针对检查问题已匹配到的本地数据，请根据这些数据直接给出结论。',
+                    '输出格式（严格按此，不要输出其他内容）：',
+                    '一、检查内容',
+                    '  （简明描述检查问题的核心内容，1-2句）',
+                    '二、违反/不符合的规章条款',
+                    '  逐条列出，每条格式：【条款名称/来源】相关条文原文摘录',
+                    '不要输出分析过程、整改建议、相似案例分析等其他内容。',
+                    '',
+                    '═══ 已匹配历史案例 ═══',
+                    issueContext || '（无）',
+                    '',
+                    '═══ 已匹配规章条款 ═══',
+                    ruleContext || '（无）'
+                ].join('\n');
+
+                try {
+                    const resp = await fetch(DS_API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                        body: JSON.stringify({
+                            model: DS_MODEL,
+                            messages: [
+                                { role: 'system', content: sysPrompt },
+                                { role: 'user', content: '检查问题描述：' + query }
+                            ],
+                            temperature: 0.1,
+                            max_tokens: 800
+                        })
+                    });
+                    if (!resp.ok) {
+                        const hints = { 401:'API Key 无效', 402:'账户余额不足，请前往 platform.deepseek.com 充值', 403:'Key 无访问权限', 429:'请求过于频繁，请稍后重试' };
+                        throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
+                    }
+                    const data = await resp.json();
+                    const aiText = data.choices[0].message.content;
+
+                    // 以检查信息卡片风格渲染AI结果
+                    let aiHtml = '<div class="result-card" style="border-left:4px solid var(--primary);background:#f0f9ff;">'
+                        + '<div class="result-header">'
+                        + '<span class="tag" style="background:var(--primary);color:#fff;">🤖 AI 精准分析</span>'
+                        + '<span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px;">基于 ' + lastIssues.length + ' 条案例 + ' + lastRules.length + ' 条规章</span>'
+                        + '</div>'
+                        + '<div class="result-content">'
+                        + '<div class="result-text" style="white-space:pre-wrap;line-height:1.8;">' + acEscHtml(aiText) + '</div>'
+                        + '</div></div>';
+                    container.innerHTML = aiHtml;
+                } catch(err) {
+                    let errMsg = err.message;
+                    if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('CORS') || errMsg.includes('net::ERR')) {
+                        errMsg = '网络请求失败，可能是 file:// 协议限制。请将 index.html 部署到 HTTP 服务器后使用 AI 功能，或改用本地匹配。';
+                    }
+                    container.innerHTML = '<div style="padding:16px;color:#e53e3e;">❌ AI 分析失败：' + acEscHtml(errMsg) + '<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>';
+                }
+            };
+
+            window.clearAutoCheck = function() {
+                document.getElementById('autoCheck-input').value = '';
+                const c = document.getElementById('autoCheck-results');
+                c.style.display = 'none';
+                c.innerHTML = '';
+                // 隐藏关键词选择区域
+                const selectArea = document.getElementById('keyword-select-area');
+                if (selectArea) selectArea.style.display = 'none';
+                // 重置选择状态
+                acSelectedKeywords = new Set();
+                acCandidateKeywords = [];
+            };
+
+            // 导入铁路专业词库功能
+            window.importRailwayTerms = function() {
+                // 创建文件输入元素
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,.txt,.csv';
+                input.style.display = 'none';
+
+                input.onchange = function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        try {
+                            let newTerms = [];
+                            const content = event.target.result;
+
+                            // 解析不同格式
+                            if (file.name.endsWith('.json')) {
+                                const data = JSON.parse(content);
+                                if (Array.isArray(data)) {
+                                    newTerms = data;
+                                } else if (data.terms) {
+                                    newTerms = data.terms;
+                                }
+                            } else {
+                                // TXT/CSV格式：按行分割，去除空行和空白
+                                newTerms = content.split(/[\r\n,，;；]+/).map(t => t.trim()).filter(t => t.length >= 2);
+                            }
+
+                            // 验证并添加术语
+                            const validTerms = newTerms.filter(t => typeof t === 'string' && t.length >= 2);
+                            if (validTerms.length === 0) {
+                                alert('未找到有效的术语，请检查文件格式');
+                                return;
+                            }
+
+                            // 合并到词库并保存到localStorage
+                            const existing = JSON.parse(localStorage.getItem(RAILWAY_TERMS_STORAGE_KEY) || '[]');
+                            const merged = [...new Set([...existing, ...validTerms])];
+                            localStorage.setItem(RAILWAY_TERMS_STORAGE_KEY, JSON.stringify(merged));
+
+                            // 更新内存中的词库
+                            validTerms.forEach(t => RAILWAY_TERMS.add(t));
+
+                            // 显示成功信息
+                            const container = document.getElementById('autoCheck-results');
+                            container.innerHTML = '<div style="padding:16px;color:var(--success);background:#f0fdf4;border-radius:8px;border-left:4px solid var(--success);">' +
+                                '<strong>✅ 词库导入成功</strong><br>' +
+                                '已成功导入 <strong>' + validTerms.length + '</strong> 个专业术语<br>' +
+                                '<span style="font-size:0.85rem;color:var(--text-secondary);">总词库容量：' + RAILWAY_TERMS.size + ' 个术语</span><br><br>' +
+                                '<button class="btn btn-primary btn-small" onclick="document.getElementById(\'autoCheck-results\').style.display=\'none\';">关闭</button>' +
+                                '</div>';
+                            container.style.display = 'block';
+
+                            console.log('已导入 ' + validTerms.length + ' 个术语，当前词库共 ' + RAILWAY_TERMS.size + ' 个');
+                        } catch (err) {
+                            alert('文件解析失败：' + err.message + '\n请确保文件格式正确（JSON/TXT/CSV）');
+                        }
+                    };
+                    reader.readAsText(file);
+                    // 清理input
+                    input.remove();
+                };
+                document.body.appendChild(input);
+                input.click();
+            };
+
+            // 导出词库功能（可选，方便用户备份）
+            window.exportRailwayTerms = function() {
+                const terms = Array.from(RAILWAY_TERMS).sort();
+                const blob = new Blob([JSON.stringify({terms: terms, count: terms.length, exportDate: new Date().toISOString()}, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '铁路专业词库_' + new Date().toISOString().slice(0,10) + '.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // 绑定按钮事件
+            (function bindAutoCheckEvents() {
+                function bind() {
+                    const localBtn = document.getElementById('autoCheck-localBtn');
+                    const aiBtn    = document.getElementById('autoCheck-aiBtn');
+                    const clearBtn = document.getElementById('autoCheck-clearBtn');
+                    if (localBtn) localBtn.onclick = function() { window.autoCheckLocal(); };
+                    if (aiBtn)    aiBtn.onclick    = function() { window.autoCheckAI(); };
+                    if (clearBtn) clearBtn.onclick  = function() { window.clearAutoCheck(); };
+                }
+                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+                else bind();
+            })();
+            // ========== 自动对规子模块 END ==========
         })();
 
         // ---- DeepSeek 气泡样式 ----

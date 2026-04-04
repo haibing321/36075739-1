@@ -1885,7 +1885,7 @@
         /* 通用：对话区自适应高度 */
         @media (min-width: 901px) {
             #ds-chat-box { min-height: 300px !important; height: auto !important; }
-            #autoCheck-results { max-height: 360px !important; }
+            #autoCheck-results { max-height: 500px !important; }
         }
 
     </style>
@@ -1912,7 +1912,7 @@
                 <button class="nav-btn" onclick="switchTab('rule')" id="tab-rule"><span>📋</span> 规章制度</button>
                 <button class="nav-btn" onclick="switchTab('diary')" id="tab-diary"><span>📝</span> 工作日志</button>
                 <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone"><span>📞</span> 车站电话</button>
-                <button class="nav-btn" onclick="switchTab('doubao')" id="tab-doubao"><span>🔍</span> 智能助手</button>
+                <button class="nav-btn" onclick="switchTab('doubao')" id="tab-doubao"><span>🤖</span> 智能助手</button>
             </nav>
         </div>
     </header>
@@ -2241,12 +2241,12 @@
                         <div class="card-title-icon">🤖</div>
                         DeepSeek 智能助手
                     </div>
-                    <div class="card-subtitle">DeepSeek AI · 业务数据联动 · 规章 &amp; 检查信息智能检索</div>
+                    <div class="card-subtitle"> 数据联动 · 规章及检查信息智能检索</div>
                 </div>
                 <div class="card-body" style="display:flex;flex-direction:column;gap:0;position:relative;min-height:0;">
 
-                    <!-- API Key 配置区（原顶栏，移除折叠按钮） -->
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                    <!-- API Key 配置区（已配置成功后自动隐藏） -->
+                    <div id="ds-apikey-section" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
                         <div id="ds-apikey-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">
                             <input type="password" id="ds-apikey-input" placeholder="DeepSeek API Key（sk-...）" autocomplete="off"
                                 style="flex:1;min-width:140px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
@@ -2254,6 +2254,11 @@
                             <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">清除</button>
                             <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
                         </div>
+                    </div>
+                    <!-- API Key 已配置时显示的提示条 -->
+                    <div id="ds-apikey-done" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:6px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:var(--radius-sm);font-size:0.82rem;color:#166534;">
+                        <span>✅ API Key 已配置</span>
+                        <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small" style="margin-left:auto;padding:3px 10px;font-size:0.78rem;">清除</button>
                     </div>
 
                     <!-- 子模块切换按钮 -->
@@ -2274,12 +2279,12 @@
                         <div style="background: linear-gradient(135deg, #e0f2fe, #e6f7ff); border-radius: 12px; padding: 16px; flex:1; overflow-y:auto;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
                                 <span style="font-size: 1.2rem;">⚖️</span>
-                                <span style="font-weight: 600; color: var(--primary);">自动对规检查</span>
+                                <span style="font-weight: 600; color: var(--primary);">智能对规</span>
                                 <span style="font-size: 0.75rem; background: #fff; padding: 2px 8px; border-radius: 20px; color: var(--info);">Beta</span>
                             </div>
                             <textarea id="autoCheck-input" rows="2" placeholder="输入检查问题，例如：工务作业人员在天窗点外违规上道作业，未设置防护。"
-                                style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; resize: vertical; margin-bottom: 10px; box-sizing: border-box;"
-                                oninput="acOnInputChange(this.value)"></textarea>
+                                style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; resize: none; margin-bottom: 10px; box-sizing: border-box; min-height: 40px; max-height: 200px; line-height: 1.5;"
+                                oninput="autoResize(this);acOnInputChange(this.value)"></textarea>
                             
                             <!-- 关键词选择区域 -->
                             <div id="keyword-select-area" style="display:none;margin-bottom:12px;padding:12px;background:#fff;border-radius:8px;border:1px dashed var(--primary);">
@@ -2318,11 +2323,11 @@
                             
                             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                                 <button class="btn btn-primary" id="autoCheck-localBtn" style="flex: 1;">🔍 本地匹配</button>
-                                <button class="btn btn-info" id="autoCheck-aiBtn" style="flex: 1;">🤖 AI 精准分析</button>
+                                <button class="btn btn-info" id="autoCheck-aiBtn" style="flex: 1;">🤖 AI 对规</button>
                                 <button class="btn btn-secondary" id="autoCheck-clearBtn">清空</button>
                                 <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;" onclick="importRailwayTerms()">📚 导入词库</button>
                             </div>
-                            <div id="autoCheck-results" style="margin-top: 16px; max-height: 300px; overflow-y: auto; display: none;">
+                            <div id="autoCheck-results" style="margin-top: 16px; max-height: 500px; min-height: 200px; overflow-y: auto; display: none;">
                             </div>
                         </div>
                     </div>
@@ -7013,6 +7018,9 @@
                     document.getElementById('ds-apikey-status').style.display = '';
                     document.getElementById('ds-apikey-input').value = '';
                     document.getElementById('ds-apikey-input').placeholder = '已保存（如需修改请重新输入）';
+                    // 已配置：隐藏输入区，显示完成提示
+                    document.getElementById('ds-apikey-section').style.display = 'none';
+                    document.getElementById('ds-apikey-done').style.display = 'flex';
                 }
                 // 加载多对话历史
                 dsLoadConversations();
@@ -7362,6 +7370,9 @@
                 document.getElementById('ds-apikey-status').style.display = '';
                 document.getElementById('ds-apikey-input').value = '';
                 document.getElementById('ds-apikey-input').placeholder = '已保存（如需修改请重新输入）';
+                // 已配置：隐藏输入区，显示完成提示
+                document.getElementById('ds-apikey-section').style.display = 'none';
+                document.getElementById('ds-apikey-done').style.display = 'flex';
                 alert('API Key 已保存！');
             };
 
@@ -7371,6 +7382,9 @@
                 document.getElementById('ds-apikey-status').style.display = 'none';
                 document.getElementById('ds-apikey-input').value = '';
                 document.getElementById('ds-apikey-input').placeholder = '请输入 DeepSeek API Key（sk-...）';
+                // 未配置：显示输入区，隐藏完成提示
+                document.getElementById('ds-apikey-section').style.display = 'flex';
+                document.getElementById('ds-apikey-done').style.display = 'none';
                 alert('API Key 已清除');
             };
 
@@ -8169,7 +8183,7 @@
                 // ---------- 渲染结果 ----------
                 const hasAny = matchedIssues.length || scoredRules.length || matchedHb.length;
                 if (!hasAny) {
-                    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">🔍</div><p>未找到匹配内容，建议换用「AI 精准分析」</p></div>';
+                    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">🔍</div><p>未找到匹配内容，建议换用「AI 对规」</p></div>';
                     container.style.display = 'block'; return;
                 }
 
@@ -8296,7 +8310,7 @@
             window.acViewRuleDetail = window.acRuleDetailModal;
 
             // ============================================================
-            // AI 精准分析：基于本地匹配结果，只输出检查内容及违反条款
+            // AI 对规：基于本地匹配结果，输出检查问题和违反条款
             // ============================================================
             window.autoCheckAI = async function() {
                 const input = document.getElementById('autoCheck-input');
@@ -8305,8 +8319,12 @@
                 const apiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
                 if (!apiKey) {
                     const ok = confirm('未配置 DeepSeek API Key，是否跳转到上方配置区？\n点击确定跳转，点击取消则改用本地匹配。');
-                    if (ok) document.getElementById('ds-apikey-input').focus();
-                    else window.autoCheckLocal();
+                    if (ok) {
+                        // 先显示输入区
+                        document.getElementById('ds-apikey-section').style.display = 'flex';
+                        document.getElementById('ds-apikey-done').style.display = 'none';
+                        document.getElementById('ds-apikey-input').focus();
+                    } else window.autoCheckLocal();
                     return;
                 }
 
@@ -8315,12 +8333,12 @@
                 const lastRules = window._lastACRules || [];
                 if (lastIssues.length === 0 && lastRules.length === 0) {
                     // 没有本地结果，先执行本地匹配
-                    alert('请先执行「本地匹配」获取结果，再使用 AI 精准分析。');
+                    alert('请先执行「本地匹配」获取结果，再使用 AI 对规。');
                     return;
                 }
 
                 const container = document.getElementById('autoCheck-results');
-                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>AI 正在基于本地匹配结果精准分析，请稍候…</span></div>';
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>AI 正在对规分析，请稍候…</span></div>';
                 container.style.display = 'block';
 
                 // 整理本地匹配结果作为上下文
@@ -8334,13 +8352,25 @@
                 }).join('\n');
 
                 const sysPrompt = [
-                    '你是铁路安全监察专家。以下是针对检查问题已匹配到的本地数据，请根据这些数据直接给出结论。',
-                    '输出格式（严格按此，不要输出其他内容）：',
-                    '一、检查内容',
-                    '  （简明描述检查问题的核心内容，1-2句）',
-                    '二、违反/不符合的规章条款',
-                    '  逐条列出，每条格式：【条款名称/来源】相关条文原文摘录',
-                    '不要输出分析过程、整改建议、相似案例分析等其他内容。',
+                    '你是铁路安全监察领域的对规专家。你的任务是根据检查问题描述和已匹配到的规章条款数据，进行精准对规。',
+                    '',
+                    '【重要规则】',
+                    '1. 只能引用下方"已匹配规章条款"中真实存在的规章文件和条款内容，绝对不能编造、虚构任何规章条文。',
+                    '2. 如果已匹配规章条款中没有与问题对应的条款，必须如实回答"未找到对应规章条款"，不能自行编造。',
+                    '3. 引用条款时必须准确写出具体的规章文件名称和条款原文。',
+                    '',
+                    '【输出格式】（严格按此格式，不要输出任何其他内容）',
+                    '',
+                    '第一步：原样输出检查问题',
+                    '  直接照搬用户输入的检查问题描述原文，仅对明显的错别字和语句不通顺处做适当修改。',
+                    '',
+                    '第二步：对规结论',
+                    '  逐条列出违反/不符合的规章条款，每条严格按以下格式：',
+                    '  不符合/违反《具体规章文件名》第X条"具体条款原文内容"的规定。',
+                    '  - 如果有多条违反条款，分别列出。',
+                    '  - 如果未找到对应条款，输出：经对规分析，未在已有规章数据中找到直接对应的违规条款。',
+                    '',
+                    '【严禁输出】分析过程、整改建议、风险提示、相似案例等其他内容。',
                     '',
                     '═══ 已匹配历史案例 ═══',
                     issueContext || '（无）',
@@ -8360,7 +8390,7 @@
                                 { role: 'user', content: '检查问题描述：' + query }
                             ],
                             temperature: 0.1,
-                            max_tokens: 800
+                            max_tokens: 1000
                         })
                     });
                     if (!resp.ok) {
@@ -8373,7 +8403,7 @@
                     // 以检查信息卡片风格渲染AI结果
                     let aiHtml = '<div class="result-card" style="border-left:4px solid var(--primary);background:#f0f9ff;">'
                         + '<div class="result-header">'
-                        + '<span class="tag" style="background:var(--primary);color:#fff;">🤖 AI 精准分析</span>'
+                        + '<span class="tag" style="background:var(--primary);color:#fff;">🤖 AI 对规</span>'
                         + '<span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px;">基于 ' + lastIssues.length + ' 条案例 + ' + lastRules.length + ' 条规章</span>'
                         + '</div>'
                         + '<div class="result-content">'
@@ -8385,7 +8415,7 @@
                     if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('CORS') || errMsg.includes('net::ERR')) {
                         errMsg = '网络请求失败，可能是 file:// 协议限制。请将 index.html 部署到 HTTP 服务器后使用 AI 功能，或改用本地匹配。';
                     }
-                    container.innerHTML = '<div style="padding:16px;color:#e53e3e;">❌ AI 分析失败：' + acEscHtml(errMsg) + '<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>';
+                    container.innerHTML = '<div style="padding:16px;color:#e53e3e;">❌ AI 对规失败：' + acEscHtml(errMsg) + '<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>';
                 }
             };
 

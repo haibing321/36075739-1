@@ -1854,6 +1854,77 @@
         #autoCheck-results::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         #autoCheck-results::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+        /* ===== 置信度标签样式 ===== */
+        .confidence-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+            margin-bottom: 10px; border: 1px solid;
+        }
+        .confidence-badge.high {
+            background: #f0fdf4; color: #15803d; border-color: #86efac;
+        }
+        .confidence-badge.medium {
+            background: #fffbeb; color: #d97706; border-color: #fcd34d;
+        }
+        .confidence-badge.low {
+            background: #fef2f2; color: #dc2626; border-color: #fca5a5;
+        }
+        /* ===== BM25候选条款卡片 ===== */
+        .bm25-candidate-tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 8px; border-radius: 4px; font-size: 0.75rem;
+            background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc;
+            margin: 2px; cursor: default;
+        }
+        /* ===== 两态按钮切换动画 ===== */
+        #autoCheck-smartBtn.state-ai {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
+            border-color: #0284c7 !important;
+            animation: pulse-ai 0.4s ease;
+        }
+        @keyframes pulse-ai {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+            100% { transform: scale(1); }
+        }
+        /* 验证明细区域 */
+        .validation-detail {
+            background: #f8fafc; border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px; margin-top: 10px; font-size: 0.82rem;
+        }
+        .validation-detail .vd-title {
+            font-weight: 700; color: var(--primary); margin-bottom: 8px;
+        }
+        .validation-detail .vd-item {
+            display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+            padding: 6px 10px; border-radius: 6px;
+        }
+        .vd-item.matched { background: #f0fdf4; }
+        .vd-item.partial { background: #fffbeb; }
+        .vd-item.unmatched { background: #fef2f2; }
+        .vd-item.issue { background: #fffbeb; border-left: 3px solid #fcd34d; }
+        .vd-badge { flex-shrink: 0; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 700; }
+        .vd-badge.ok { background: #dcfce7; color: #15803d; }
+        .vd-badge.warn { background: #fef3c7; color: #d97706; }
+
+        /* ===== 写作助手模态框 ===== */
+        #wr-tpl-modal, #wr-report-modal {
+            align-items: center;
+            justify-content: center;
+        }
+        #wr-tpl-modal.show, #wr-report-modal.show {
+            display: flex !important;
+        }
+        #wr-gen-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+        #ds-sub-writer { overflow-y: auto; }
+        #wr-mat-view-modal { align-items: center; justify-content: center; }
+        #wr-mat-view-modal.show { display: flex !important; }
+        @media (max-width: 600px) {
+            #wr-tpl-modal > div, #wr-report-modal > div { padding: 14px; }
+            #wr-report-modal-content { font-size: 0.82rem; }
+        }
+        .vd-badge.fail { background: #fee2e2; color: #dc2626; }
+
         /* 历史记录列表滚动条 */
         #ds-history-list::-webkit-scrollbar { width: 4px; }
         #ds-history-list::-webkit-scrollbar-track { background: transparent; }
@@ -1870,9 +1941,10 @@
             #ds-chat-box { min-height: 180px !important; height: auto !important; }
             #ds-user-input { font-size: 0.88rem !important; }
             #ds-send-btn { padding: 8px 12px !important; font-size: 0.88rem !important; }
-            /* 自动对规按钮行在手机上两列排布 */
-            #autoCheck-localBtn, #autoCheck-aiBtn, #autoCheck-importBtn { flex: 1 1 calc(50% - 5px) !important; min-width: 0 !important; }
-            #autoCheck-clearBtn { flex: 0 0 auto !important; }
+            /* 自动对规按钮行在手机上自适应 */
+            #autoCheck-smartBtn { flex: 1 1 100% !important; min-width: 0 !important; }
+            #autoCheck-importBtn, #autoCheck-exportBtn { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }
+            #autoCheck-clearBtn { flex: 1 1 calc(50% - 4px) !important; }
             /* 手机端侧边栏全宽覆盖 */
             #ds-sidebar { width: 85vw !important; max-width: 280px !important; border-radius: 0 12px 12px 0 !important; }
             #ds-sidebar-toggle-text { display: none; }
@@ -2271,6 +2343,10 @@
                             style="flex:1;padding:10px 16px;border:2px solid var(--border);border-radius:var(--radius);background:#f8fafc;color:var(--text);font-size:0.92rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
                             💬 智能对话
                         </button>
+                        <button id="ds-sub-btn-writer" onclick="dsSwitchSub('writer')"
+                            style="flex:1;padding:10px 16px;border:2px solid var(--border);border-radius:var(--radius);background:#f8fafc;color:var(--text);font-size:0.92rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            ✍️ 写作助手
+                        </button>
                     </div>
 
                     <!-- === 智能对规子模块 === -->
@@ -2321,11 +2397,12 @@
                                 </div>
                             </div>
                             
-                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                                <button class="btn btn-primary" id="autoCheck-localBtn" style="flex: 1;">🔍 本地匹配</button>
-                                <button class="btn btn-info" id="autoCheck-aiBtn" style="flex: 1;">🤖 AI 对规</button>
-                                <button class="btn btn-secondary" id="autoCheck-clearBtn">清空</button>
-                                <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;" onclick="importRailwayTerms()">📚 导入词库</button>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                <!-- 两态合并按钮：第一次=本地匹配，第二次=AI对规 -->
+                                <button class="btn btn-primary" id="autoCheck-smartBtn" style="flex: 2; min-width: 120px; font-weight: 600;">🔍 本地匹配</button>
+                                <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1; min-width: 90px;" onclick="importRailwayTerms()">📚 导入词库</button>
+                                <button class="btn btn-success" id="autoCheck-exportBtn" style="flex: 1; min-width: 90px;" onclick="exportRailwayTerms()">📤 导出词库</button>
+                                <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1; min-width: 70px;">🔄 重置</button>
                             </div>
                             <div id="autoCheck-results" style="margin-top: 16px; max-height: 500px; min-height: 200px; overflow-y: auto; display: none;">
                             </div>
@@ -2371,10 +2448,229 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- === 写作助手子模块 === -->
+                    <div id="ds-sub-writer" style="display:none;flex-direction:column;min-width:0;flex:1;min-height:0;gap:10px;">
+
+                        <!-- 顶部操作栏：子功能切换 -->
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <button id="wr-tab-btn-gen" onclick="wrSwitchTab('gen')"
+                                style="padding:7px 16px;border:2px solid var(--primary);border-radius:var(--radius-sm);background:var(--primary);color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;">
+                                📝 生成报告
+                            </button>
+                            <button id="wr-tab-btn-tpl" onclick="wrSwitchTab('tpl')"
+                                style="padding:7px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;">
+                                📂 模板管理
+                            </button>
+                            <button id="wr-tab-btn-history" onclick="wrSwitchTab('history')"
+                                style="padding:7px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;">
+                                🗂️ 历史报告
+                            </button>
+                            <button id="wr-tab-btn-materials" onclick="wrSwitchTab('materials')"
+                                style="padding:7px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;">
+                                📁 资料库
+                            </button>
+                        </div>
+
+                        <!-- ──────── 生成报告面板 ──────── -->
+                        <div id="wr-panel-gen" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;">
+                            <!-- 写作需求输入 -->
+                            <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:14px;">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                                    <span style="font-size:1.1rem;">✍️</span>
+                                    <span style="font-weight:700;font-size:0.95rem;color:#065f46;">写作需求</span>
+                                    <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:#059669;">自动检索本地资料</span>
+                                </div>
+                                <textarea id="wr-query-input" rows="3" placeholder="例如：帮我写一份2026年3月的月度安全检查报告，要包含问题统计、典型问题和整改要求。"
+                                    style="width:100%;padding:10px 12px;border:1px solid #a7f3d0;border-radius:8px;font-size:0.9rem;resize:none;box-sizing:border-box;line-height:1.6;background:#fff;"
+                                    oninput="autoResize(this);wrOnQueryChange()"></textarea>
+                                <!-- 检索到的资料预览 -->
+                                <div id="wr-material-preview" style="display:none;margin-top:8px;padding:8px 12px;background:#fff;border:1px solid #6ee7b7;border-radius:8px;font-size:0.8rem;color:#065f46;">
+                                    <div style="font-weight:700;margin-bottom:4px;">📦 已检索到的资料：</div>
+                                    <div id="wr-material-tags" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+                                </div>
+                            </div>
+
+                            <!-- 操作按钮行 -->
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button onclick="wrGenerate()" id="wr-gen-btn"
+                                    style="flex:2;min-width:120px;padding:10px 16px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.92rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                    🚀 生成报告
+                                </button>
+                                <button onclick="wrPreviewMaterials()" id="wr-preview-btn"
+                                    style="flex:1;min-width:90px;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.85rem;cursor:pointer;">
+                                    🔍 预览资料
+                                </button>
+                                <button onclick="wrClearResult()"
+                                    style="flex:1;min-width:70px;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.85rem;cursor:pointer;">
+                                    🔄 清空
+                                </button>
+                            </div>
+
+                            <!-- 生成进度/结果区 -->
+                            <div id="wr-gen-result" style="display:none;border-radius:12px;overflow:hidden;flex:1;">
+                                <!-- 内容由JS填充 -->
+                            </div>
+                        </div>
+
+                        <!-- ──────── 模板管理面板 ──────── -->
+                        <div id="wr-panel-tpl" style="display:none;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;">
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                                <button onclick="wrShowAddTemplate()"
+                                    style="padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.85rem;cursor:pointer;font-weight:600;">
+                                    ＋ 新建模板
+                                </button>
+                                <button onclick="wrImportTemplates()"
+                                    style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.85rem;cursor:pointer;">
+                                    📥 导入JSON
+                                </button>
+                                <button onclick="wrExportTemplates()"
+                                    style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.85rem;cursor:pointer;">
+                                    📤 导出备份
+                                </button>
+                                <span id="wr-tpl-count" style="font-size:0.78rem;color:var(--text-secondary);margin-left:auto;"></span>
+                            </div>
+                            <!-- 内置模板快捷添加 -->
+                            <div style="padding:8px 12px;background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe;">
+                                <div style="font-size:0.8rem;font-weight:700;color:#1d4ed8;margin-bottom:6px;">⚡ 内置模板（一键添加）</div>
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                    <button onclick="wrAddBuiltinTemplate('monthly')" style="padding:5px 10px;background:#dbeafe;color:#1e40af;border:none;border-radius:20px;font-size:0.78rem;cursor:pointer;">月度安全报告</button>
+                                    <button onclick="wrAddBuiltinTemplate('check')" style="padding:5px 10px;background:#dbeafe;color:#1e40af;border:none;border-radius:20px;font-size:0.78rem;cursor:pointer;">安全检查报告</button>
+                                    <button onclick="wrAddBuiltinTemplate('accident')" style="padding:5px 10px;background:#dbeafe;color:#1e40af;border:none;border-radius:20px;font-size:0.78rem;cursor:pointer;">事故分析报告</button>
+                                    <button onclick="wrAddBuiltinTemplate('rectify')" style="padding:5px 10px;background:#dbeafe;color:#1e40af;border:none;border-radius:20px;font-size:0.78rem;cursor:pointer;">整改通知书</button>
+                                    <button onclick="wrAddBuiltinTemplate('summary')" style="padding:5px 10px;background:#dbeafe;color:#1e40af;border:none;border-radius:20px;font-size:0.78rem;cursor:pointer;">年度安全总结</button>
+                                </div>
+                            </div>
+                            <!-- 模板列表 -->
+                            <div id="wr-tpl-list" style="display:flex;flex-direction:column;gap:8px;">
+                                <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无模板，点击「新建模板」或添加内置模板</div>
+                            </div>
+                        </div>
+
+                        <!-- ──────── 历史报告面板 ──────── -->
+                        <div id="wr-panel-history" style="display:none;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;">
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                <input id="wr-hist-search" placeholder="搜索历史报告..." type="text" oninput="wrRenderHistory()"
+                                    style="flex:1;min-width:150px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
+                                <button onclick="wrExportAllReports()"
+                                    style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">
+                                    📤 导出全部
+                                </button>
+                                <button onclick="wrClearAllReports()"
+                                    style="padding:8px 14px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.82rem;cursor:pointer;">
+                                    🗑️ 清空历史
+                                </button>
+                                <span id="wr-hist-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;"></span>
+                            </div>
+                            <div id="wr-history-list" style="display:flex;flex-direction:column;gap:8px;">
+                                <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无历史报告</div>
+                            </div>
+                        </div>
+
+                        <!-- ──────── 资料库面板 ──────── -->
+                        <div id="wr-panel-materials" style="display:none;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;">
+                            <!-- 顶部操作栏 -->
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                <button onclick="wrMaterialImport()"
+                                    style="padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.85rem;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:5px;">
+                                    📥 导入文件
+                                </button>
+                                <button onclick="wrMaterialImportExcel()"
+                                    style="padding:8px 14px;border:1px solid #10b981;border-radius:var(--radius-sm);background:#f0fdf4;color:#065f46;font-size:0.85rem;cursor:pointer;font-weight:600;">
+                                    📊 导入Excel
+                                </button>
+                                <button onclick="wrMaterialExportAll()"
+                                    style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">
+                                    📤 导出全部
+                                </button>
+                                <button onclick="wrMaterialClearAll()"
+                                    style="padding:8px 14px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.82rem;cursor:pointer;">
+                                    🗑️ 清空资料库
+                                </button>
+                                <span id="wr-mat-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;"></span>
+                            </div>
+                            <!-- 说明栏 -->
+                            <div style="padding:8px 12px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;font-size:0.8rem;color:#92400e;line-height:1.6;">
+                                <strong>📌 支持的资料类型：</strong>故障报告及统计、现阶段文电（通知/批复/请示等）、通报（安全通报/情况通报）、检查记录、会议纪要等<br>
+                                <strong>📎 导入格式：</strong>DOCX（Word文档）· Excel（.xlsx/.xls）· JSON（数据包）<br>
+                                导入后资料自动分类，生成报告时会自动检索并引用匹配内容。
+                            </div>
+                            <!-- 分类筛选 -->
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                                <span style="font-size:0.82rem;color:var(--text-secondary);">筛选：</span>
+                                <button onclick="wrMaterialFilter('all')" id="wr-mat-filter-all" style="padding:4px 12px;border-radius:20px;border:1px solid var(--primary);background:var(--primary);color:#fff;font-size:0.78rem;cursor:pointer;">全部</button>
+                                <button onclick="wrMaterialFilter('fault')" id="wr-mat-filter-fault" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;">⚡ 故障报告</button>
+                                <button onclick="wrMaterialFilter('stats')" id="wr-mat-filter-stats" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;">📊 故障统计</button>
+                                <button onclick="wrMaterialFilter('dispatch')" id="wr-mat-filter-dispatch" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;">📨 文电</button>
+                                <button onclick="wrMaterialFilter('bulletin')" id="wr-mat-filter-bulletin" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;">📢 通报</button>
+                                <button onclick="wrMaterialFilter('meeting')" id="wr-mat-filter-meeting" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;">📋 会议纪要</button>
+                                <button onclick="wrMaterialFilter('other')" id="wr-mat-filter-other" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;">📄 其他</button>
+                                <input id="wr-mat-search" placeholder="搜索资料..." type="text" oninput="wrRenderMaterials()"
+                                    style="margin-left:auto;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;min-width:120px;">
+                            </div>
+                            <!-- 资料列表 -->
+                            <div id="wr-mat-list" style="display:flex;flex-direction:column;gap:8px;">
+                                <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无资料，点击「导入文件」上传 DOCX 或 Excel</div>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </div>
         </div>
     </main>
+
+    <!-- 写作助手：模板编辑弹窗 -->
+    <div id="wr-tpl-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:14px;padding:20px;width:min(600px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span id="wr-tpl-modal-title" style="font-weight:700;font-size:1rem;color:var(--primary);">📝 新建模板</span>
+                <button onclick="document.getElementById('wr-tpl-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);">✕</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <label style="font-size:0.85rem;font-weight:600;">模板名称</label>
+                <input id="wr-tpl-name" type="text" placeholder="例如：月度安全检查报告" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <label style="font-size:0.85rem;font-weight:600;">报告类型</label>
+                <select id="wr-tpl-category" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
+                    <option value="monthly">月度安全报告</option>
+                    <option value="check">安全检查报告</option>
+                    <option value="accident">事故分析报告</option>
+                    <option value="rectify">整改通知书</option>
+                    <option value="summary">年度总结</option>
+                    <option value="custom">自定义</option>
+                </select>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <label style="font-size:0.85rem;font-weight:600;">模板内容
+                    <span style="font-weight:400;color:var(--text-secondary);">（使用 {{日期}}、{{问题总数}}、{{典型问题列表}}、{{部门}} 等占位符）</span>
+                </label>
+                <textarea id="wr-tpl-content" rows="12" placeholder="在此输入模板正文，支持占位符如：&#10;{{日期}}&#10;{{部门}}&#10;{{问题总数}}&#10;{{典型问题列表}}&#10;{{整改要求}}"
+                    style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.87rem;resize:vertical;line-height:1.7;font-family:inherit;"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button onclick="document.getElementById('wr-tpl-modal').style.display='none'" style="padding:9px 20px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;cursor:pointer;">取消</button>
+                <button onclick="wrSaveTemplate()" style="padding:9px 20px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-weight:600;cursor:pointer;">保存模板</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 写作助手：历史报告查看弹窗 -->
+    <div id="wr-report-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:14px;padding:20px;width:min(680px,96vw);max-height:88vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                <span id="wr-report-modal-title" style="font-weight:700;font-size:0.97rem;color:var(--primary);flex:1;margin-right:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">报告详情</span>
+                <div style="display:flex;gap:6px;flex-shrink:0;">
+                    <button onclick="wrCopyReport()" style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">📋 复制</button>
+                    <button onclick="wrDownloadReport()" style="padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📥 下载TXT</button>
+                    <button onclick="document.getElementById('wr-report-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);padding:0 4px;">✕</button>
+                </div>
+            </div>
+            <div id="wr-report-modal-meta" style="font-size:0.78rem;color:var(--text-secondary);flex-shrink:0;"></div>
+            <div id="wr-report-modal-content" style="flex:1;overflow-y:auto;font-size:0.88rem;line-height:1.85;white-space:pre-wrap;background:#f8fafc;padding:14px;border-radius:8px;border:1px solid var(--border);"></div>
+        </div>
+    </div>
 
     <!-- DeepSeek 侧边栏：遮罩层 + 抽屉（放在 body 根级别，避免 fixed 定位被祖先影响） -->
     <div id="ds-sidebar-overlay" onclick="dsToggleSidebar()"
@@ -7207,35 +7503,39 @@
                 dsRenderHistoryList();
             };
 
-            // 子模块切换：智能对规 / 智能对话
+            // 子模块切换：智能对规 / 智能对话 / 写作助手
             let _dsCurrentSub = 'check'; // 默认显示智能对规
             window.dsSwitchSub = function(tab) {
-                const btnCheck = document.getElementById('ds-sub-btn-check');
-                const btnChat  = document.getElementById('ds-sub-btn-chat');
-                const panelCheck = document.getElementById('ds-sub-check');
-                const panelChat  = document.getElementById('ds-sub-chat');
+                const btnCheck  = document.getElementById('ds-sub-btn-check');
+                const btnChat   = document.getElementById('ds-sub-btn-chat');
+                const btnWriter = document.getElementById('ds-sub-btn-writer');
+                const panelCheck  = document.getElementById('ds-sub-check');
+                const panelChat   = document.getElementById('ds-sub-chat');
+                const panelWriter = document.getElementById('ds-sub-writer');
                 if (!btnCheck || !btnChat || !panelCheck || !panelChat) return;
+
+                // 重置所有按钮样式
+                [btnCheck, btnChat, btnWriter].forEach(b => {
+                    if (!b) return;
+                    b.style.background = '#f8fafc'; b.style.color = 'var(--text)'; b.style.borderColor = 'var(--border)';
+                });
+                [panelCheck, panelChat, panelWriter].forEach(p => { if (p) p.style.display = 'none'; });
+
                 _dsCurrentSub = tab;
                 if (tab === 'check') {
-                    // 激活"智能对规"
-                    btnCheck.style.background = 'var(--primary)';
-                    btnCheck.style.color = '#fff';
-                    btnCheck.style.borderColor = 'var(--primary)';
-                    btnChat.style.background = '#f8fafc';
-                    btnChat.style.color = 'var(--text)';
-                    btnChat.style.borderColor = 'var(--border)';
+                    btnCheck.style.background = 'var(--primary)'; btnCheck.style.color = '#fff'; btnCheck.style.borderColor = 'var(--primary)';
                     panelCheck.style.display = 'flex';
-                    panelChat.style.display = 'none';
+                    return; // 直接返回，避免走旧逻辑
+                } else if (tab === 'writer') {
+                    if (btnWriter) { btnWriter.style.background = 'var(--primary)'; btnWriter.style.color = '#fff'; btnWriter.style.borderColor = 'var(--primary)'; }
+                    if (panelWriter) panelWriter.style.display = 'flex';
+                    wrInit(); // 初始化写作助手
+                    return;
                 } else {
-                    // 激活"智能对话"
-                    btnChat.style.background = 'var(--primary)';
-                    btnChat.style.color = '#fff';
-                    btnChat.style.borderColor = 'var(--primary)';
-                    btnCheck.style.background = '#f8fafc';
-                    btnCheck.style.color = 'var(--text)';
-                    btnCheck.style.borderColor = 'var(--border)';
+                    // chat
+                    btnChat.style.background = 'var(--primary)'; btnChat.style.color = '#fff'; btnChat.style.borderColor = 'var(--primary)';
                     panelChat.style.display = 'flex';
-                    panelCheck.style.display = 'none';
+                    return;
                 }
             };
 
@@ -8310,7 +8610,271 @@
             window.acViewRuleDetail = window.acRuleDetailModal;
 
             // ============================================================
-            // AI 对规：基于本地匹配结果，输出检查问题和违反条款
+            // BM25 倒排索引与评分
+            // ============================================================
+            const BM25_K1 = 1.5, BM25_B = 0.75;
+            let _bm25Index = null; // 延迟构建
+
+            function bm25Tokenize(text) {
+                // 中文按字分词 + 去停用词
+                const chars = text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').toLowerCase().split(/\s+/).filter(Boolean);
+                // 提取2-4字的连续中文词组
+                const tokens = new Set();
+                const cn = text.replace(/[^\u4e00-\u9fa5]/g, '');
+                for (let len = 2; len <= 4; len++) {
+                    for (let i = 0; i <= cn.length - len; i++) tokens.add(cn.slice(i, i + len));
+                }
+                chars.forEach(c => { if (c.length >= 2) tokens.add(c); });
+                return Array.from(tokens).filter(t => !AUTOCHECK_STOP_WORDS.has(t));
+            }
+
+            function buildBM25Index(docs) {
+                const df = {}, idf = {}, docLens = [], avgLen = { v: 0 };
+                const N = docs.length;
+                docs.forEach((doc, i) => {
+                    const tokens = bm25Tokenize(doc._text || '');
+                    docLens[i] = tokens.length;
+                    const seen = new Set(tokens);
+                    seen.forEach(t => { df[t] = (df[t] || 0) + 1; });
+                });
+                avgLen.v = docLens.reduce((s, l) => s + l, 0) / Math.max(N, 1);
+                Object.keys(df).forEach(t => {
+                    idf[t] = Math.log((N - df[t] + 0.5) / (df[t] + 0.5) + 1);
+                });
+                return { docs, df, idf, docLens, avgLen, N };
+            }
+
+            function bm25Score(idx, query, docI) {
+                const qTokens = bm25Tokenize(query);
+                const doc = idx.docs[docI];
+                const docText = doc._text || '';
+                const dl = idx.docLens[docI];
+                const avgDl = idx.avgLen.v;
+                let score = 0;
+                qTokens.forEach(t => {
+                    const idf = idx.idf[t] || 0;
+                    // TF 用出现次数近似
+                    let tf = 0;
+                    let pos = 0;
+                    while ((pos = docText.indexOf(t, pos)) !== -1) { tf++; pos += t.length; }
+                    const tfN = (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / Math.max(avgDl, 1)));
+                    score += idf * tfN;
+                });
+                return score;
+            }
+
+            function localBM25Recall(query, topK) {
+                topK = topK || 20;
+                const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                if (!rules.length) return [];
+                // 构建/更新索引
+                if (!_bm25Index || _bm25Index.N !== rules.length) {
+                    const docs = rules.map(r => ({
+                        ...r,
+                        _text: ((r.title || '') + ' ' + (r.content || '').replace(/<[^>]+>/g, '')).slice(0, 2000)
+                    }));
+                    _bm25Index = buildBM25Index(docs);
+                }
+                const scores = rules.map((_, i) => ({ i, s: bm25Score(_bm25Index, query, i) }))
+                    .filter(x => x.s > 0)
+                    .sort((a, b) => b.s - a.s)
+                    .slice(0, topK);
+                return scores.map(x => {
+                    const r = rules[x.i];
+                    const rawText = (r.content || '').replace(/<[^>]+>/g, '');
+                    return {
+                        title: r.title || '',
+                        trade: r.trade || '',
+                        snippet: rawText.slice(0, 220) + (rawText.length > 220 ? '…' : ''),
+                        fullText: rawText,
+                        score: x.s,
+                        ruleRef: r,
+                        ruleIdx: x.i
+                    };
+                });
+            }
+
+            // ============================================================
+            // 同义词映射表（可通过 importSynonyms 扩展）
+            // ============================================================
+            const SYNONYM_MAP = {
+                '天窗': ['封闭时间', '施工时间', '施工窗口'],
+                '防护': ['防护员', '安全防护', '设防护'],
+                '上道': ['上轨道', '进入线路', '进线作业'],
+                '违规': ['违章', '违反规定', '不符合规定', '不按规定'],
+                '超限': ['超出限界', '限界超限'],
+                '信号机': ['信号灯', '信号设备'],
+                '道岔': ['转辙器', '岔道'],
+                '行车': ['行驶', '运行', '列车运行'],
+                '防溜': ['防止溜逸', '止溜'],
+                '闭塞': ['闭塞区间', '区间闭塞'],
+                '限速': ['限制速度', '降速'],
+                '接触网': ['供电线路', '架空线'],
+                '作业人员': ['工作人员', '施工人员', '作业者'],
+                '检查': ['巡查', '巡检', '查看', '核查'],
+            };
+
+            function expandQueryWithSynonyms(query) {
+                let expanded = query;
+                Object.entries(SYNONYM_MAP).forEach(([key, syns]) => {
+                    if (query.includes(key)) {
+                        syns.forEach(s => { if (!expanded.includes(s)) expanded += ' ' + s; });
+                    }
+                    syns.forEach(s => {
+                        if (query.includes(s) && !expanded.includes(key)) expanded += ' ' + key;
+                    });
+                });
+                return expanded;
+            }
+
+            // ============================================================
+            // 从历史案例中提取已有的对规条款引用（案例派生候选库）
+            // ============================================================
+            function extractCandidatesFromIssues(query, topK) {
+                topK = topK || 15;
+                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+                if (!issues.length) return [];
+
+                // 正则：匹配案例内容中的规章引用格式
+                // 支持：《XXX》第X条、《XXX》(第X条)"内容"、不符合《XXX》、违反《XXX》 等
+                const ruleRefPattern = /(?:违反|不符合|依据|根据)?《([^》]{2,40})》(?:[^，。\n"]{0,30}第[\d一二三四五六七八九十百]+条)?(?:["""（(]([^"""）)]{8,120})["""）)])?/g;
+
+                // 用BM25对案例文本评分，取相似的案例
+                const lowerQ = query.toLowerCase();
+                const qWords = bm25Tokenize(query);
+
+                const scoredIssues = issues.map(iss => {
+                    const text = ((iss.content || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
+                    // 简单词频得分
+                    let score = qWords.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
+                    return { iss, score, text: iss.content || '' };
+                }).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, topK);
+
+                // 从相似案例中提取规章引用
+                const clauseMap = {}; // title -> {title, clauseText, count, issueRefs}
+                scoredIssues.forEach(({ iss, score }) => {
+                    const fullText = iss.content || '';
+                    let m;
+                    ruleRefPattern.lastIndex = 0;
+                    while ((m = ruleRefPattern.exec(fullText)) !== null) {
+                        const title = m[1].trim();
+                        const clause = (m[2] || '').trim();
+                        const key = title + '||' + clause.slice(0, 20);
+                        if (!clauseMap[key]) {
+                            clauseMap[key] = { title, clause, count: 0, issueRefs: [], issueScore: 0 };
+                        }
+                        clauseMap[key].count++;
+                        clauseMap[key].issueScore += score;
+                        clauseMap[key].issueRefs.push({
+                            category: iss.category || '',
+                            nature: iss['性质'] || '',
+                            snippet: fullText.slice(0, 80)
+                        });
+                    }
+                });
+
+                // 整合为候选格式，按出现频次×案例相似度排序
+                return Object.values(clauseMap)
+                    .filter(c => c.title.length >= 3)
+                    .sort((a, b) => (b.count * b.issueScore) - (a.count * a.issueScore))
+                    .slice(0, 10)
+                    .map(c => ({
+                        title: c.title,
+                        snippet: c.clause ? ('"' + c.clause.slice(0, 120) + '"') : '（来自历史案例，暂无条款原文）',
+                        fullText: c.clause,
+                        score: c.count * c.issueScore,
+                        source: 'issue', // 标记来源为历史案例
+                        issueCount: c.count,
+                        issueRefs: c.issueRefs.slice(0, 3),
+                        ruleRef: null
+                    }));
+            }
+
+            // ============================================================
+            // 本地验证 AI 输出条款（支持案例来源）
+            // ============================================================
+            function validateAIOutput(aiText, ruleCandidates, issueCandidates) {
+                issueCandidates = issueCandidates || [];
+                const allCandidates = (ruleCandidates || []).concat(issueCandidates);
+
+                const titlePattern = /《([^》]+)》/g;
+                const clausePattern = /["""]([^"""]{10,})["""]/g;
+
+                const aiTitles = [];
+                let m;
+                while ((m = titlePattern.exec(aiText)) !== null) aiTitles.push(m[1]);
+                const aiClauses = [];
+                while ((m = clausePattern.exec(aiText)) !== null) aiClauses.push(m[1]);
+
+                if (aiTitles.length === 0) {
+                    return { confidence: 'low', details: [], summary: '未提取到规章引用' };
+                }
+
+                const details = [];
+                aiTitles.forEach((title, i) => {
+                    const clause = aiClauses[i] || '';
+                    const cleanTitle = t => t.replace(/[《》\s。，、]/g, '');
+
+                    // 先在规章库候选中找
+                    const ruleMatched = (ruleCandidates || []).find(c => {
+                        const ct = cleanTitle(c.title), at = cleanTitle(title);
+                        return ct.includes(at) || at.includes(ct) || (ct.length > 4 && at.includes(ct.slice(0, 4)));
+                    });
+
+                    // 再在案例候选中找
+                    const issueMatched = !ruleMatched && issueCandidates.find(c => {
+                        const ct = cleanTitle(c.title), at = cleanTitle(title);
+                        return ct.includes(at) || at.includes(ct) || (ct.length > 4 && at.includes(ct.slice(0, 4)));
+                    });
+
+                    if (ruleMatched) {
+                        // 规章库命中
+                        if (clause && clause.length > 6) {
+                            const clauseInDoc = (ruleMatched.fullText || '').includes(clause.slice(0, 10));
+                            details.push({
+                                title, clause: clause.slice(0, 60),
+                                status: clauseInDoc ? 'matched' : 'partial',
+                                source: 'rule',
+                                matchedRule: ruleMatched.title,
+                                label: clauseInDoc ? '✅ 规章库已核实' : '⚠️ 规章标题匹配，条款待核'
+                            });
+                        } else {
+                            details.push({ title, clause: '', status: 'matched', source: 'rule', matchedRule: ruleMatched.title, label: '✅ 规章库标题核实' });
+                        }
+                    } else if (issueMatched) {
+                        // 案例库印证
+                        details.push({
+                            title, clause: clause.slice(0, 60),
+                            status: 'issue',
+                            source: 'issue',
+                            matchedRule: issueMatched.title,
+                            issueCount: issueMatched.issueCount || 1,
+                            issueRefs: issueMatched.issueRefs || [],
+                            label: '📋 案例印证（' + (issueMatched.issueCount || 1) + '次引用）'
+                        });
+                    } else {
+                        details.push({ title, clause: clause.slice(0, 60), status: 'unmatched', source: 'none', matchedRule: '', label: '❌ 未在库中找到，建议人工核查' });
+                    }
+                });
+
+                // 置信度评级：规章库核实 > 案例印证 > 未找到
+                const matchedRule = details.filter(d => d.source === 'rule' && d.status === 'matched').length;
+                const partialRule = details.filter(d => d.source === 'rule' && d.status === 'partial').length;
+                const issueOnly   = details.filter(d => d.source === 'issue').length;
+                const unmatched   = details.filter(d => d.source === 'none').length;
+                const total = details.length;
+
+                let confidence = 'low';
+                if (total > 0 && unmatched === 0 && issueOnly === 0) confidence = 'high';
+                else if (total > 0 && unmatched === 0) confidence = 'medium';  // 全部找到（含案例）
+                else if (total > 0 && (matchedRule + partialRule + issueOnly) / total >= 0.5) confidence = 'medium';
+
+                const summary = `验证${total}条：规章库核实${matchedRule+partialRule}条，案例印证${issueOnly}条，未找到${unmatched}条`;
+                return { confidence, details, summary };
+            }
+
+            // ============================================================
+            // AI 对规：BM25召回 + AI精排 + 本地验证
             // ============================================================
             window.autoCheckAI = async function() {
                 const input = document.getElementById('autoCheck-input');
@@ -8320,7 +8884,6 @@
                 if (!apiKey) {
                     const ok = confirm('未配置 DeepSeek API Key，是否跳转到上方配置区？\n点击确定跳转，点击取消则改用本地匹配。');
                     if (ok) {
-                        // 先显示输入区
                         document.getElementById('ds-apikey-section').style.display = 'flex';
                         document.getElementById('ds-apikey-done').style.display = 'none';
                         document.getElementById('ds-apikey-input').focus();
@@ -8328,55 +8891,78 @@
                     return;
                 }
 
-                // 检查是否有本地匹配结果
-                const lastIssues = window._lastACIssues || [];
-                const lastRules = window._lastACRules || [];
-                if (lastIssues.length === 0 && lastRules.length === 0) {
-                    // 没有本地结果，先执行本地匹配
-                    alert('请先执行「本地匹配」获取结果，再使用 AI 对规。');
+                const container = document.getElementById('autoCheck-results');
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>⚙️ 双路召回中（规章库 + 历史案例）…</span></div>';
+                container.style.display = 'block';
+
+                // ── 路径1：同义词扩展 + BM25召回规章库 Top20 ──
+                const expandedQuery = expandQueryWithSynonyms(query);
+                const ruleCandidates = localBM25Recall(expandedQuery, 20);
+
+                // ── 路径2：从相似历史案例中提取对规条款（兜底候选） ──
+                const issueCandidates = extractCandidatesFromIssues(query, 15);
+
+                // ── 判断召回情况 ──
+                const hasRuleCandidates  = ruleCandidates.length > 0;
+                const hasIssueCandidates = issueCandidates.length > 0;
+
+                if (!hasRuleCandidates && !hasIssueCandidates) {
+                    // 真正空库，降级
+                    container.innerHTML = '<div style="padding:16px;color:#d97706;background:#fffbeb;border-radius:8px;border-left:4px solid #fcd34d;"><strong>⚠️ 规章库与历史案例均为空</strong><br>请先在对应模块导入数据，已切换为本地匹配模式。</div>';
+                    setTimeout(() => window.autoCheckLocal(), 800);
                     return;
                 }
 
-                const container = document.getElementById('autoCheck-results');
-                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>AI 正在对规分析，请稍候…</span></div>';
-                container.style.display = 'block';
+                // ── 构建 Prompt（规章库候选优先，案例候选兜底） ──
+                let candidateText = '';
+                let candidateCount = 0;
 
-                // 整理本地匹配结果作为上下文
-                const issueContext = lastIssues.slice(0, 5).map(function(x, n) {
-                    const iss = x.iss;
-                    return (n+1) + '. [' + (iss['性质']||'') + '][' + (iss.category||'') + '] ' + (iss.datetime||'') + '\n   ' + (iss.content||'').slice(0, 200);
-                }).join('\n');
-                const ruleContext = lastRules.slice(0, 5).map(function(x, n) {
-                    const r = x.rule;
-                    return (n+1) + '. [' + (r.trade||'通用') + ']《' + (r.title||'') + '》\n   ' + (r.content||'').replace(/<[^>]+>/g,'').slice(0, 250);
-                }).join('\n');
+                if (hasRuleCandidates) {
+                    candidateText += '【规章库候选条款（按BM25相关性排序）】\n';
+                    ruleCandidates.forEach((c, idx) => {
+                        candidateText += (++candidateCount) + '. 《' + c.title + '》\n   ' + c.snippet + '\n\n';
+                    });
+                }
+
+                if (hasIssueCandidates) {
+                    candidateText += '\n【历史案例印证条款（从' + issueCandidates.reduce((s,c)=>s+c.issueCount,0) + '次案例记录中提取）】\n';
+                    issueCandidates.forEach((c, idx) => {
+                        const refCount = c.issueCount > 1 ? '（' + c.issueCount + '次案例引用）' : '';
+                        candidateText += (++candidateCount) + '. 《' + c.title + '》' + refCount + '\n   ' + c.snippet + '\n\n';
+                    });
+                }
+
+                // ── 规章库为空时在Prompt中说明只用案例印证 ──
+                const ruleNote = hasRuleCandidates
+                    ? '规章库候选优先使用；历史案例条款作为补充，使用时需标注"（来源：历史案例）"。'
+                    : '本次规章库中未召回到相关条款，请从历史案例印证条款中选取最合适的，输出时标注"（来源：历史案例）"。历史案例对规正确率高，可放心引用。';
 
                 const sysPrompt = [
-                    '你是铁路安全监察领域的对规专家。你的任务是根据检查问题描述和已匹配到的规章条款数据，进行精准对规。',
+                    '你是铁路安全监察领域的对规专家。根据用户检查问题，从下方候选条款列表中选出最匹配的1-3条，并说明匹配理由。',
                     '',
-                    '【重要规则】',
-                    '1. 只能引用下方"已匹配规章条款"中真实存在的规章文件和条款内容，绝对不能编造、虚构任何规章条文。',
-                    '2. 如果已匹配规章条款中没有与问题对应的条款，必须如实回答"未找到对应规章条款"，不能自行编造。',
-                    '3. 引用条款时必须准确写出具体的规章文件名称和条款原文。',
+                    '【规则】',
+                    '1. 只能从候选列表中选择，不得编造列表外的规章。',
+                    '2. ' + ruleNote,
+                    '3. 引用时写明规章标题和条款原文片段（或历史案例摘要）。',
+                    '4. 即使候选列表不完整，也必须从中给出最接近的对规结论，不能回答"无法对规"。',
                     '',
-                    '【输出格式】（严格按此格式，不要输出任何其他内容）',
+                    '【输出格式】',
+                    '检查问题（原文照录，仅修正明显错别字）：',
+                    '  {检查问题原文}',
                     '',
-                    '第一步：原样输出检查问题',
-                    '  直接照搬用户输入的检查问题描述原文，仅对明显的错别字和语句不通顺处做适当修改。',
+                    '对规结论：',
+                    '- 最匹配：违反/不符合《{规章标题}》"{关键条款原文}"的规定。（来源：规章库/历史案例）',
+                    '  匹配理由：{为什么适用}',
+                    '- 次匹配（如有）：...',
                     '',
-                    '第二步：对规结论',
-                    '  逐条列出违反/不符合的规章条款，每条严格按以下格式：',
-                    '  不符合/违反《具体规章文件名》第X条"具体条款原文内容"的规定。',
-                    '  - 如果有多条违反条款，分别列出。',
-                    '  - 如果未找到对应条款，输出：经对规分析，未在已有规章数据中找到直接对应的违规条款。',
+                    '【仅输出上述格式，不得输出整改建议、风险分析等其他内容】',
+                ].join('\n');
+
+                const userPrompt = [
+                    '检查问题：' + query,
                     '',
-                    '【严禁输出】分析过程、整改建议、风险提示、相似案例等其他内容。',
-                    '',
-                    '═══ 已匹配历史案例 ═══',
-                    issueContext || '（无）',
-                    '',
-                    '═══ 已匹配规章条款 ═══',
-                    ruleContext || '（无）'
+                    '候选条款列表（共' + candidateCount + '条）：',
+                    candidateText
                 ].join('\n');
 
                 try {
@@ -8387,10 +8973,10 @@
                             model: DS_MODEL,
                             messages: [
                                 { role: 'system', content: sysPrompt },
-                                { role: 'user', content: '检查问题描述：' + query }
+                                { role: 'user', content: userPrompt }
                             ],
                             temperature: 0.1,
-                            max_tokens: 1000
+                            max_tokens: 1200
                         })
                     });
                     if (!resp.ok) {
@@ -8400,16 +8986,124 @@
                     const data = await resp.json();
                     const aiText = data.choices[0].message.content;
 
-                    // 以检查信息卡片风格渲染AI结果
+                    // ── 本地验证（双路） ──
+                    const validation = validateAIOutput(aiText, ruleCandidates, issueCandidates);
+
+                    // 置信度标签（增加案例印证类型）
+                    const confidenceLabelMap = {
+                        high:   '<span class="confidence-badge high">✅ 高置信度 — 条款已在本地规章库核实</span>',
+                        medium: '<span class="confidence-badge medium">⚠️ 中置信度 — ' + (hasRuleCandidates ? '规章标题匹配或' : '') + '历史案例印证，建议复核</span>',
+                        low:    '<span class="confidence-badge low">❓ 低置信度 — 未在规章库或案例库中找到，请人工核查</span>'
+                    };
+
+                    // ── 验证明细（区分来源） ──
+                    let detailHtml = '';
+                    if (validation.details.length > 0) {
+                        detailHtml = '<div class="validation-detail">'
+                            + '<div class="vd-title">🔍 来源核验明细（' + validation.summary + '）</div>';
+                        validation.details.forEach(d => {
+                            const cls = d.source === 'rule' ? (d.status === 'matched' ? 'matched' : 'partial') : d.source === 'issue' ? 'partial' : 'unmatched';
+                            const badgeCls = d.source === 'rule' && d.status === 'matched' ? 'ok' : d.source === 'issue' ? 'warn' : d.source === 'rule' ? 'warn' : 'fail';
+                            const sourceTag = d.source === 'rule'
+                                ? '<span style="font-size:0.68rem;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px;margin-left:4px;">规章库</span>'
+                                : d.source === 'issue'
+                                    ? '<span style="font-size:0.68rem;background:#fef3c7;color:#b45309;padding:1px 6px;border-radius:8px;margin-left:4px;">案例印证</span>'
+                                    : '<span style="font-size:0.68rem;background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;margin-left:4px;">未找到</span>';
+                            // 案例引用展开
+                            let issueRefHtml = '';
+                            if (d.source === 'issue' && d.issueRefs && d.issueRefs.length > 0) {
+                                issueRefHtml = '<div style="margin-top:4px;padding:4px 8px;background:#fffbeb;border-radius:4px;font-size:0.75rem;color:#92400e;">'
+                                    + '引用案例：' + d.issueRefs.map(r => '[' + (r.nature||'') + '] ' + r.snippet.slice(0,40) + '…').join(' | ')
+                                    + '</div>';
+                            }
+                            detailHtml += '<div class="vd-item ' + cls + '">'
+                                + '<span class="vd-badge ' + badgeCls + '">' + d.label + '</span>'
+                                + '<span style="flex:1;font-size:0.8rem;">《' + d.title + '》' + sourceTag
+                                + (d.matchedRule && d.matchedRule !== d.title ? '<span style="color:#64748b;"> → 匹配：《' + d.matchedRule + '》</span>' : '')
+                                + (d.clause ? '<br><span style="color:#64748b;">引用条款：' + d.clause + '…</span>' : '')
+                                + issueRefHtml
+                                + '</span>'
+                                + '</div>';
+                        });
+                        detailHtml += '</div>';
+                    }
+
+                    // ── 来源说明提示 ──
+                    let sourceTipHtml = '';
+                    if (!hasRuleCandidates && hasIssueCandidates) {
+                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fffbeb;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;">'
+                            + '<span style="font-size:1.1rem;">📋</span>'
+                            + '<span><strong>规章库无候选条款</strong>，本次结论来自 <strong>' + issueCandidates.length + ' 条历史案例</strong>派生的对规条款。历史案例对规正确率高，可参考使用，建议条件具备时用规章库复核。</span>'
+                            + '</div>';
+                    } else if (hasRuleCandidates && hasIssueCandidates) {
+                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.8rem;color:#15803d;">'
+                            + '<span>🔗</span>'
+                            + '<span>双路召回：规章库 <strong>' + ruleCandidates.length + '</strong> 条 + 案例印证 <strong>' + issueCandidates.length + '</strong> 条，综合择优</span>'
+                            + '</div>';
+                    }
+
+                    // ── 主结果卡 ──
                     let aiHtml = '<div class="result-card" style="border-left:4px solid var(--primary);background:#f0f9ff;">'
                         + '<div class="result-header">'
-                        + '<span class="tag" style="background:var(--primary);color:#fff;">🤖 AI 对规</span>'
-                        + '<span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px;">基于 ' + lastIssues.length + ' 条案例 + ' + lastRules.length + ' 条规章</span>'
+                        + '<span class="tag" style="background:var(--primary);color:#fff;">🤖 AI 精排对规</span>'
+                        + '<span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px;">'
+                        + (hasRuleCandidates ? '规章库' + ruleCandidates.length + '条' : '规章库0条')
+                        + (hasIssueCandidates ? ' + 案例派生' + issueCandidates.length + '条' : '')
+                        + '</span>'
                         + '</div>'
+                        + sourceTipHtml
+                        + confidenceLabelMap[validation.confidence]
                         + '<div class="result-content">'
-                        + '<div class="result-text" style="white-space:pre-wrap;line-height:1.8;">' + acEscHtml(aiText) + '</div>'
-                        + '</div></div>';
-                    container.innerHTML = aiHtml;
+                        + '<div class="result-text" style="white-space:pre-wrap;line-height:1.85;">' + acEscHtml(aiText) + '</div>'
+                        + '</div>'
+                        + detailHtml
+                        + '</div>';
+
+                    // ── BM25 Top5 候选参考（仅规章库有时才展示） ──
+                    let refHtml = '';
+                    if (hasRuleCandidates) {
+                        refHtml = '<div style="margin-top:12px;">'
+                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:3px 10px;border-radius:20px;">📚 规章库 Top5 候选（供核对）</span></div>'
+                            + '<div style="display:flex;flex-direction:column;gap:6px;">';
+                        ruleCandidates.slice(0, 5).forEach((c, i) => {
+                            const rData = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                            const absIdx = rData.findIndex(r => r === c.ruleRef);
+                            refHtml += '<div class="rule-card-item" style="padding:12px 16px;">'
+                                + '<div class="rule-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;"'
+                                + (absIdx !== -1 ? ' onclick="ruleViewFullText(' + absIdx + ')"' : '') + '>'
+                                + '<span style="flex:1;word-break:break-all;color:var(--info);text-decoration:underline;text-underline-offset:3px;">[' + (i+1) + '] ' + c.title + '</span>'
+                                + (absIdx !== -1 ? '<button class="btn btn-info btn-small" style="flex-shrink:0;" onclick="event.stopPropagation();ruleViewFullText(' + absIdx + ')">📄 全文</button>' : '')
+                                + '</div>'
+                                + (c.trade ? '<span class="rule-trade">' + c.trade + '</span>' : '')
+                                + '<div style="font-size:0.78rem;color:#64748b;padding:4px 8px;background:#f1f5f9;border-radius:4px;display:inline-block;margin:4px 0;">BM25得分: ' + c.score.toFixed(2) + '</div>'
+                                + '<div class="rule-snippet" style="font-size:0.82rem;">' + c.snippet.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>'
+                                + '</div>';
+                        });
+                        refHtml += '</div></div>';
+                    }
+
+                    // ── 案例印证列表（当案例有数据时展示） ──
+                    let issueRefHtml2 = '';
+                    if (hasIssueCandidates) {
+                        issueRefHtml2 = '<div style="margin-top:12px;">'
+                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:20px;">📂 案例印证条款来源</span></div>'
+                            + '<div style="display:flex;flex-direction:column;gap:4px;">';
+                        issueCandidates.slice(0, 5).forEach((c, i) => {
+                            issueRefHtml2 += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;">'
+                                + '<div style="font-size:0.85rem;font-weight:700;color:#92400e;margin-bottom:4px;">[' + (i+1) + '] 《' + c.title + '》'
+                                + '<span style="font-size:0.72rem;background:#fde68a;color:#78350f;padding:2px 8px;border-radius:10px;margin-left:6px;">' + c.issueCount + '次案例引用</span>'
+                                + '</div>'
+                                + (c.fullText ? '<div style="font-size:0.78rem;color:#78350f;background:#fef9ee;border-radius:4px;padding:4px 8px;">条款摘录：' + c.fullText.slice(0, 100) + (c.fullText.length > 100 ? '…' : '') + '</div>' : '')
+                                + (c.issueRefs && c.issueRefs.length ? '<div style="font-size:0.75rem;color:#a16207;margin-top:4px;">来源案例：' + c.issueRefs.map(r => '[' + (r.nature||r.category||'') + '] ' + r.snippet.slice(0,35) + '…').join(' | ') + '</div>' : '')
+                                + '</div>';
+                        });
+                        issueRefHtml2 += '</div></div>';
+                    }
+
+                    container.innerHTML = aiHtml + refHtml + issueRefHtml2;
+                    window._lastACIssues = [];
+                    window._lastACRules = ruleCandidates.slice(0, 5).map(c => ({ rule: c.ruleRef, snippetHtml: null, matchScore: c.score }));
+
                 } catch(err) {
                     let errMsg = err.message;
                     if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('CORS') || errMsg.includes('net::ERR')) {
@@ -8430,9 +9124,64 @@
                 // 重置选择状态
                 acSelectedKeywords = new Set();
                 acCandidateKeywords = [];
+                // 重置两态按钮状态
+                const smartBtn = document.getElementById('autoCheck-smartBtn');
+                if (smartBtn) {
+                    smartBtn.dataset.state = 'local';
+                    smartBtn.className = 'btn btn-primary';
+                    smartBtn.style.flex = '2';
+                    smartBtn.style.minWidth = '120px';
+                    smartBtn.style.fontWeight = '600';
+                    smartBtn.textContent = '🔍 本地匹配';
+                    smartBtn.classList.remove('state-ai');
+                }
+                // 清除缓存
+                window._lastACIssues = [];
+                window._lastACRules = [];
+                _bm25Index = null;
             };
 
-            // 导入铁路专业词库功能
+            // ===== 两态合并按钮绑定 =====
+            (function bindAutoCheckEvents() {
+                function bind() {
+                    const smartBtn = document.getElementById('autoCheck-smartBtn');
+                    const clearBtn = document.getElementById('autoCheck-clearBtn');
+
+                    if (smartBtn) {
+                        // 初始化状态
+                        smartBtn.dataset.state = 'local';
+
+                        smartBtn.onclick = function() {
+                            const state = smartBtn.dataset.state || 'local';
+                            if (state === 'local') {
+                                // 第一次点击：本地匹配
+                                window.autoCheckLocal();
+                                // 切换到AI对规状态
+                                smartBtn.dataset.state = 'ai';
+                                smartBtn.className = 'btn btn-info state-ai';
+                                smartBtn.style.flex = '2';
+                                smartBtn.style.minWidth = '120px';
+                                smartBtn.style.fontWeight = '600';
+                                smartBtn.textContent = '🤖 AI 对规';
+                            } else {
+                                // 第二次点击：AI 对规
+                                window.autoCheckAI();
+                                // 完成后恢复到本地匹配
+                                smartBtn.dataset.state = 'local';
+                                smartBtn.className = 'btn btn-primary';
+                                smartBtn.style.flex = '2';
+                                smartBtn.style.minWidth = '120px';
+                                smartBtn.style.fontWeight = '600';
+                                smartBtn.textContent = '🔍 本地匹配';
+                                smartBtn.classList.remove('state-ai');
+                            }
+                        };
+                    }
+                    if (clearBtn) clearBtn.onclick = function() { window.clearAutoCheck(); };
+                }
+                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+                else bind();
+            })();
             window.importRailwayTerms = function() {
                 // 创建文件输入元素
                 const input = document.createElement('input');
@@ -8513,20 +9262,1455 @@
                 URL.revokeObjectURL(url);
             };
 
-            // 绑定按钮事件
-            (function bindAutoCheckEvents() {
-                function bind() {
-                    const localBtn = document.getElementById('autoCheck-localBtn');
-                    const aiBtn    = document.getElementById('autoCheck-aiBtn');
-                    const clearBtn = document.getElementById('autoCheck-clearBtn');
-                    if (localBtn) localBtn.onclick = function() { window.autoCheckLocal(); };
-                    if (aiBtn)    aiBtn.onclick    = function() { window.autoCheckAI(); };
-                    if (clearBtn) clearBtn.onclick  = function() { window.clearAutoCheck(); };
-                }
-                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
-                else bind();
-            })();
             // ========== 自动对规子模块 END ==========
+        })();
+
+        // ========================================
+        // ✍️ 写作助手模块 (Writer Assistant)
+        // ========================================
+        (function() {
+            'use strict';
+
+            // ---- 常量 ----
+            const WR_DB_NAME    = 'railway_writer_db';
+            const WR_DB_VER     = 2;   // 升级版本以添加 writing_materials store
+            const WR_TPL_STORE  = 'writing_templates';
+            const WR_RPT_STORE  = 'writing_reports';
+            const WR_MAT_STORE  = 'writing_materials';  // 新增：资料库
+            const WR_DS_API_URL = 'https://api.deepseek.com/chat/completions';
+            const WR_DS_MODEL   = 'deepseek-chat';
+            const WR_API_KEY_K  = 'ds_api_key_v1'; // 复用同一API Key
+
+            // 资料类型映射
+            const WR_MAT_TYPES = {
+                fault:    { label: '故障报告', color: '#fef2f2', text: '#991b1b', badge: '#fecaca' },
+                stats:    { label: '故障统计', color: '#fff7ed', text: '#9a3412', badge: '#fed7aa' },
+                dispatch: { label: '文电',     color: '#eff6ff', text: '#1e40af', badge: '#bfdbfe' },
+                bulletin: { label: '通报',     color: '#fdf4ff', text: '#6b21a8', badge: '#e9d5ff' },
+                meeting:  { label: '会议纪要', color: '#f0fdf4', text: '#166534', badge: '#bbf7d0' },
+                other:    { label: '其他资料', color: '#f8fafc', text: '#475569', badge: '#e2e8f0' }
+            };
+
+            // ---- IndexedDB 操作 ----
+            let _wrDB = null;
+
+            function wrOpenDB() {
+                return new Promise((resolve, reject) => {
+                    if (_wrDB) return resolve(_wrDB);
+                    const req = indexedDB.open(WR_DB_NAME, WR_DB_VER);
+                    req.onupgradeneeded = e => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(WR_TPL_STORE)) {
+                            const ts = db.createObjectStore(WR_TPL_STORE, { keyPath: 'id', autoIncrement: true });
+                            ts.createIndex('category', 'category', { unique: false });
+                        }
+                        if (!db.objectStoreNames.contains(WR_RPT_STORE)) {
+                            const rs = db.createObjectStore(WR_RPT_STORE, { keyPath: 'id', autoIncrement: true });
+                            rs.createIndex('date', 'date', { unique: false });
+                            rs.createIndex('category', 'category', { unique: false });
+                        }
+                        // 版本2：新增资料库 Store
+                        if (!db.objectStoreNames.contains(WR_MAT_STORE)) {
+                            const ms = db.createObjectStore(WR_MAT_STORE, { keyPath: 'id', autoIncrement: true });
+                            ms.createIndex('matType',  'matType',  { unique: false });
+                            ms.createIndex('fileName', 'fileName', { unique: false });
+                            ms.createIndex('importAt', 'importAt', { unique: false });
+                        }
+                    };
+                    req.onsuccess = e => { _wrDB = e.target.result; resolve(_wrDB); };
+                    req.onerror  = e => reject(e.target.error);
+                });
+            }
+
+            function wrDbPut(store, item) {
+                return wrOpenDB().then(db => new Promise((res, rej) => {
+                    const tx = db.transaction(store, 'readwrite');
+                    const req = tx.objectStore(store).put(item);
+                    req.onsuccess = e => res(e.target.result);
+                    req.onerror   = e => rej(e.target.error);
+                }));
+            }
+
+            function wrDbGetAll(store) {
+                return wrOpenDB().then(db => new Promise((res, rej) => {
+                    const tx = db.transaction(store, 'readonly');
+                    const req = tx.objectStore(store).getAll();
+                    req.onsuccess = e => res(e.target.result);
+                    req.onerror   = e => rej(e.target.error);
+                }));
+            }
+
+            function wrDbDelete(store, id) {
+                return wrOpenDB().then(db => new Promise((res, rej) => {
+                    const tx = db.transaction(store, 'readwrite');
+                    const req = tx.objectStore(store).delete(id);
+                    req.onsuccess = () => res();
+                    req.onerror   = e => rej(e.target.error);
+                }));
+            }
+
+            function wrDbClear(store) {
+                return wrOpenDB().then(db => new Promise((res, rej) => {
+                    const tx = db.transaction(store, 'readwrite');
+                    const req = tx.objectStore(store).clear();
+                    req.onsuccess = () => res();
+                    req.onerror   = e => rej(e.target.error);
+                }));
+            }
+
+            // ---- 内置模板库 ----
+            const WR_BUILTIN_TEMPLATES = {
+                monthly: {
+                    title: '月度安全监察报告',
+                    category: 'monthly',
+                    content: `{{部门}}安全监察月报（{{年月}}）
+
+一、本月安全监察工作概况
+
+本月，{{部门}}共开展安全监察{{次数}}次，检查人员{{检查人数}}人次，覆盖{{覆盖范围}}等区域。共发现各类问题{{问题总数}}条，其中A类（重大）{{A类数量}}条，B类（较大）{{B类数量}}条，C类（一般）{{C类数量}}条。与上月相比，问题总量{{环比变化}}。
+
+二、主要问题情况
+
+{{典型问题列表}}
+
+三、问题整改情况
+
+截至本月底，上月遗留问题{{上月遗留数量}}条，本月已整改完成{{本月整改数量}}条，整改率{{整改率}}%。
+
+四、下月重点工作安排
+
+1. 继续跟踪督促未完成整改项目；
+2. 重点开展{{下月重点领域}}专项检查；
+3. {{其他重点工作}}。
+
+                    `
+                },
+                check: {
+                    title: '安全监察检查报告',
+                    category: 'check',
+                    content: `安全监察检查报告
+
+检查时间：{{检查日期}}
+检查单位：{{被检查单位}}
+检查人员：{{检查人员}}
+检查类型：{{检查类型}}
+
+一、检查基本情况
+
+按照{{检查依据}}，对{{被检查单位}}开展了安全监察检查。本次检查历时{{检查历时}}，重点对{{检查重点内容}}进行了检查。
+
+二、检查发现的主要问题
+
+{{问题详细列表}}
+
+三、处理意见
+
+针对上述问题，依据相关规章制度，提出如下处理意见：
+
+1. {{问题1}}：限于{{整改期限1}}前完成整改，责任人：{{责任人1}}；
+2. {{其余整改意见}}
+
+四、要求
+
+请{{被检查单位}}认真落实上述整改要求，于{{汇报期限}}前将整改情况书面报告至{{报告单位}}。
+
+                    `
+                },
+                accident: {
+                    title: '事故（事件）分析报告',
+                    category: 'accident',
+                    content: `{{事故名称}}分析报告
+
+一、事故基本情况
+
+事故时间：{{事故时间}}
+事故地点：{{事故地点}}
+涉及单位：{{涉及单位}}
+事故类型：{{事故类型}}
+
+简要经过：{{事故经过}}
+
+造成后果：{{事故后果}}
+
+二、事故原因分析
+
+（一）直接原因
+
+{{直接原因}}
+
+（二）间接原因
+
+{{间接原因}}
+
+（三）管理原因
+
+{{管理原因}}
+
+三、违反规章情况
+
+本次事故违反了以下规章制度：
+{{违反规章列表}}
+
+四、整改与防范措施
+
+针对本次事故暴露的问题，提出如下整改和防范措施：
+
+{{整改防范措施}}
+
+五、责任认定与处理建议
+
+{{责任认定内容}}
+
+                    `
+                },
+                rectify: {
+                    title: '安全问题整改通知书',
+                    category: 'rectify',
+                    content: `整改通知书
+
+{{被通知单位}}：
+
+根据{{检查依据}}，经检查，发现贵单位存在以下安全问题：
+
+{{问题列表}}
+
+以上问题违反了{{违反规章条款}}的相关规定，存在安全风险隐患，必须认真整改。现要求：
+
+一、限于{{整改期限}}前完成上述问题整改；
+二、整改完成后，将整改情况以书面形式报告至{{报告单位}}；
+三、如逾期未完成整改，将按相关规定追究责任。
+
+望认真落实，确保安全生产。
+
+{{发文单位}}
+{{日期}}
+
+                    `
+                },
+                summary: {
+                    title: '年度安全监察工作总结',
+                    category: 'summary',
+                    content: `{{年度}}年度安全监察工作总结
+
+一、年度工作基本情况
+
+{{年度}}年，{{部门}}紧紧围绕安全生产目标，共开展安全监察{{年度总次数}}次，发现各类问题{{年度问题总数}}条，完成整改{{年度整改数量}}条，整改率达{{年度整改率}}%。
+
+二、主要工作成效
+
+（一）专项整治开展情况
+
+{{专项整治情况}}
+
+（二）安全隐患排查情况
+
+{{安全隐患排查情况}}
+
+（三）典型问题及处置情况
+
+{{典型问题处置}}
+
+三、存在的主要问题与不足
+
+{{存在问题不足}}
+
+四、下年度工作计划
+
+（一）重点工作部署
+{{下年度重点工作}}
+
+（二）专项检查计划
+{{专项检查计划}}
+
+                    `
+                }
+            };
+
+            // ---- 工具函数 ----
+            function wrEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+            // 格式化日期
+            function wrFmtDate(ts) {
+                const d = new Date(ts || Date.now());
+                return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+                     + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+            }
+
+            // 获取类型中文名
+            function wrCatName(c) {
+                const m = { monthly:'月度安全报告', check:'安全检查报告', accident:'事故分析报告', rectify:'整改通知书', summary:'年度总结', custom:'自定义' };
+                return m[c] || c || '未分类';
+            }
+
+            // ---- 初始化 ----
+            let _wrInited = false;
+            window.wrInit = function() {
+                if (_wrInited) return;
+                _wrInited = true;
+                wrOpenDB().then(() => {
+                    wrSwitchTab('gen');
+                    wrRenderTplList();
+                    wrRenderHistory();
+                }).catch(e => console.error('写作助手DB初始化失败', e));
+            };
+
+            // ---- 子面板切换 ----
+            window.wrSwitchTab = function(tab) {
+                const tabs = ['gen', 'tpl', 'history', 'materials'];
+                tabs.forEach(t => {
+                    const btn = document.getElementById('wr-tab-btn-' + t);
+                    const panel = document.getElementById('wr-panel-' + t);
+                    if (!btn || !panel) return;
+                    if (t === tab) {
+                        btn.style.background = 'var(--primary)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--primary)';
+                        panel.style.display = 'flex';
+                    } else {
+                        btn.style.background = '#f8fafc'; btn.style.color = 'var(--text)'; btn.style.borderColor = 'var(--border)';
+                        panel.style.display = 'none';
+                    }
+                });
+                if (tab === 'tpl')       wrRenderTplList();
+                if (tab === 'history')   wrRenderHistory();
+                if (tab === 'materials') wrRenderMaterials();
+            };
+
+            // ================================================================
+            // ── 资料检索核心逻辑 ──
+            // ================================================================
+
+            /**
+             * 解析用户查询：提取报告类型、日期范围、关键词
+             */
+            function wrParseQuery(query) {
+                const result = { reportType: 'custom', dateRange: null, dateLabel: '', keywords: [], rawQuery: query };
+
+                // 识别报告类型
+                if (/月度|月报|月份|每月/.test(query)) result.reportType = 'monthly';
+                else if (/事故|事件|原因|分析/.test(query)) result.reportType = 'accident';
+                else if (/整改|通知|整改书/.test(query)) result.reportType = 'rectify';
+                else if (/年度|全年|年报|年终/.test(query)) result.reportType = 'summary';
+                else if (/检查|巡查|督查|抽查/.test(query)) result.reportType = 'check';
+
+                // 提取年月
+                const yearMonthM = query.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+                const yearM      = query.match(/(\d{4})\s*年/);
+                const monthM     = query.match(/(\d{1,2})\s*月/);
+                if (yearMonthM) {
+                    const y = parseInt(yearMonthM[1]), mo = parseInt(yearMonthM[2]);
+                    result.dateRange = {
+                        start: new Date(y, mo-1, 1).getTime(),
+                        end:   new Date(y, mo, 0, 23, 59, 59).getTime()
+                    };
+                    result.dateLabel = y + '年' + mo + '月';
+                } else if (yearM) {
+                    const y = parseInt(yearM[1]);
+                    result.dateRange = { start: new Date(y, 0, 1).getTime(), end: new Date(y, 11, 31, 23, 59, 59).getTime() };
+                    result.dateLabel = y + '年';
+                } else if (monthM) {
+                    const now = new Date(), y = now.getFullYear(), mo = parseInt(monthM[1]);
+                    result.dateRange = {
+                        start: new Date(y, mo-1, 1).getTime(),
+                        end:   new Date(y, mo, 0, 23, 59, 59).getTime()
+                    };
+                    result.dateLabel = mo + '月';
+                }
+
+                // 提取关键词（去停用词）
+                const stops = new Set(['的','了','和','与','帮','我','写','一份','一个','关于','针对','请','生成','制作']);
+                result.keywords = query.replace(/[，。、！？（）""''《》\s]+/g,' ').split(' ')
+                    .map(w => w.trim()).filter(w => w.length >= 2 && !stops.has(w)).slice(0, 10);
+
+                return result;
+            }
+
+            /**
+             * 从检查信息（issue）中按日期和关键词检索
+             */
+            function wrGetIssueData(parsedQuery) {
+                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+                if (!issues.length) return [];
+                let filtered = issues;
+
+                // 日期过滤（检查issue有date字段或可从content中推断）
+                if (parsedQuery.dateRange) {
+                    const { start, end } = parsedQuery.dateRange;
+                    filtered = filtered.filter(iss => {
+                        if (iss.date) {
+                            const ts = new Date(iss.date).getTime();
+                            if (!isNaN(ts)) return ts >= start && ts <= end;
+                        }
+                        // 从content中提取日期
+                        const m = (iss.content||'').match(/(\d{4})[年/\-](\d{1,2})[月/\-](\d{1,2})/);
+                        if (m) {
+                            const ts2 = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3])).getTime();
+                            return ts2 >= start && ts2 <= end;
+                        }
+                        return false;
+                    });
+                }
+
+                // 关键词过滤（如果日期过滤后还有内容，就用关键词再过滤；否则直接用关键词）
+                if (filtered.length === 0 && parsedQuery.dateRange) filtered = issues;
+                if (parsedQuery.keywords.length > 0) {
+                    const scored = filtered.map(iss => {
+                        const text = ((iss.content||'')+(iss.category||'')+(iss['性质']||'')).toLowerCase();
+                        const score = parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
+                        return { iss, score };
+                    }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
+                    filtered = scored.map(x => x.iss);
+                }
+
+                return filtered.slice(0, 50); // 最多50条
+            }
+
+            /**
+             * 检索最相关的模板
+             */
+            async function wrGetTemplate(parsedQuery) {
+                const templates = await wrDbGetAll(WR_TPL_STORE);
+                if (!templates.length) return null;
+                // 优先按类型匹配
+                const byType = templates.filter(t => t.category === parsedQuery.reportType);
+                if (byType.length) return byType[byType.length - 1]; // 最新的
+                // 关键词匹配
+                if (parsedQuery.keywords.length > 0) {
+                    const scored = templates.map(t => {
+                        const text = ((t.title||'')+(t.content||'')).toLowerCase();
+                        const score = parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
+                        return { t, score };
+                    }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
+                    if (scored.length) return scored[0].t;
+                }
+                return templates[templates.length - 1]; // 兜底：最新一条
+            }
+
+            /**
+             * 检索相似历史报告（作为Few-shot参考）
+             */
+            async function wrGetSimilarReports(parsedQuery, limit) {
+                limit = limit || 2;
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                if (!reports.length) return [];
+                // 按类型+关键词打分
+                const scored = reports.map(r => {
+                    let score = (r.category === parsedQuery.reportType) ? 3 : 0;
+                    const text = ((r.title||'')+(r.content||'').slice(0,500)).toLowerCase();
+                    score += parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
+                    return { r, score };
+                }).sort((a,b) => b.score - a.score || b.r.date - a.r.date);
+                return scored.slice(0, limit).map(x => x.r);
+            }
+
+            /**
+             * 从规章库中检索相关条款
+             */
+            function wrGetRuleCandidates(parsedQuery) {
+                const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                if (!rules.length) return [];
+                const kws = parsedQuery.keywords;
+                if (!kws.length) return rules.slice(0, 5);
+                const scored = rules.map(r => {
+                    const text = ((r.title||'')+(r.content||'').slice(0,300)).toLowerCase();
+                    const score = kws.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
+                    return { r, score };
+                }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
+                return scored.slice(0, 8).map(x => x.r);
+            }
+
+            /**
+             * 汇总台账统计数据（用于填充占位符）
+             */
+            function wrSummarizeIssues(issues) {
+                if (!issues.length) return null;
+                const total = issues.length;
+                const natCount = {};
+                issues.forEach(iss => {
+                    const n = iss['性质'] || iss.nature || '其他';
+                    natCount[n] = (natCount[n] || 0) + 1;
+                });
+                const natSummary = Object.entries(natCount).map(([k,v]) => k + v + '条').join('、');
+                // 提取典型问题（取前5条）
+                const typicals = issues.slice(0, 5).map((iss, i) =>
+                    (i+1) + '. [' + (iss['性质']||'') + '][' + (iss.category||'') + '] ' + (iss.content||'').slice(0, 100)
+                ).join('\n');
+                return { total, natSummary, typicals };
+            }
+
+            /**
+             * 综合检索入口
+             */
+            async function wrRetrieveMaterials(query) {
+                const parsed = wrParseQuery(query);
+                const [template, similarReports, localMaterials] = await Promise.all([
+                    wrGetTemplate(parsed),
+                    wrGetSimilarReports(parsed, 2),
+                    wrGetLocalMaterials(parsed)
+                ]);
+                const issues = wrGetIssueData(parsed);
+                const ruleCandidates = wrGetRuleCandidates(parsed);
+                const stats = wrSummarizeIssues(issues);
+                return { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials };
+            }
+
+            /**
+             * 从资料库中检索相关资料（故障报告、文电、通报等）
+             */
+            async function wrGetLocalMaterials(parsedQuery) {
+                const all = await wrDbGetAll(WR_MAT_STORE);
+                if (!all.length) return [];
+                const kws = parsedQuery.keywords;
+
+                // 打分：关键词命中 + 日期范围匹配 + 类型优先级
+                const scored = all.map(m => {
+                    const text = ((m.title||'') + ' ' + (m.content||'').slice(0, 800)).toLowerCase();
+                    let score = 0;
+                    // 关键词命中
+                    if (kws.length > 0) {
+                        score += kws.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 2 : 0), 0);
+                    }
+                    // 日期匹配
+                    if (parsedQuery.dateRange) {
+                        const { start, end } = parsedQuery.dateRange;
+                        if (m.importAt >= start && m.importAt <= end) score += 3;
+                        // 尝试从内容中提取日期
+                        const dateM = (m.content||'').match(/(\d{4})[年\/\-](\d{1,2})[月\/\-](\d{1,2})/);
+                        if (dateM) {
+                            const ts = new Date(parseInt(dateM[1]), parseInt(dateM[2])-1, parseInt(dateM[3])).getTime();
+                            if (ts >= start && ts <= end) score += 3;
+                        }
+                    }
+                    // 故障报告/统计优先
+                    if (m.matType === 'fault' || m.matType === 'stats') score += 1;
+                    return { m, score };
+                }).filter(x => x.score > 0 || kws.length === 0)
+                  .sort((a, b) => b.score - a.score);
+
+                // 返回Top-5，但每种类型至多2条（避免单一类型淹没）
+                const result = [];
+                const typeCounts = {};
+                for (const { m } of scored) {
+                    if (result.length >= 5) break;
+                    const tc = typeCounts[m.matType] || 0;
+                    if (tc >= 2) continue;
+                    typeCounts[m.matType] = tc + 1;
+                    result.push(m);
+                }
+                return result;
+            }
+
+            // ================================================================
+            // ── Prompt 构造器 ──
+            // ================================================================
+            function wrBuildPrompt(query, materials) {
+                const { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials } = materials;
+                const today = new Date();
+                const todayStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
+
+                const sysLines = [
+                    '你是铁路安全监察领域的专业写作助手。请根据用户提供的模板、台账数据、历史报告，生成符合规范的铁路安监文档。',
+                    '',
+                    '【写作规范】',
+                    '1. 严格遵守模板中的章节结构，将占位符（如{{问题总数}}）替换为台账统计数据中的实际数值。',
+                    '2. 台账数据必须真实引用，不得虚构数字或案例；如台账数据不足以支撑某章节，用[待补充]标记。',
+                    '3. 涉及规章时，只能引用"参考规章条款"中的规章，不得编造。',
+                    '4. 本地资料（故障报告、文电、通报等）中的事实和数据可作为写作依据，如实引用。',
+                    '5. 语言风格：严谨、规范、简洁，使用铁路安监专业术语。',
+                    '6. 今天日期：' + todayStr + '。',
+                    '',
+                    '【输出要求】',
+                    '- 直接输出最终文档内容，无需解释说明。',
+                    '- 按模板章节结构输出，不随意增减章节。',
+                    '- 统计数字、日期等关键信息必须与台账数据一致。',
+                ];
+
+                const userLines = ['【用户需求】', query, ''];
+
+                // 模板
+                if (template) {
+                    userLines.push('【写作模板（' + wrCatName(template.category) + '）】');
+                    userLines.push(template.content.slice(0, 2000));
+                    userLines.push('');
+                } else {
+                    userLines.push('【写作模板】');
+                    userLines.push('（无指定模板，请按照铁路安监文档规范自行拟定章节结构）');
+                    userLines.push('');
+                }
+
+                // 台账统计
+                if (stats && issues.length > 0) {
+                    userLines.push('【台账统计数据（' + parsed.dateLabel + '，共' + stats.total + '条）】');
+                    userLines.push('- 问题总数：' + stats.total + '条');
+                    userLines.push('- 问题性质分布：' + stats.natSummary);
+                    userLines.push('- 典型问题（前5条）：');
+                    userLines.push(stats.typicals);
+                    userLines.push('');
+                } else {
+                    userLines.push('【台账数据】');
+                    userLines.push('（' + (parsed.dateLabel ? parsed.dateLabel + '期间' : '') + '暂无匹配台账数据，请在正文中使用[待补充]标记）');
+                    userLines.push('');
+                }
+
+                // 本地资料库（故障报告、文电、通报等）
+                if (localMaterials && localMaterials.length > 0) {
+                    userLines.push('【本地资料（共' + localMaterials.length + '份，可作为写作依据）】');
+                    localMaterials.forEach((m, i) => {
+                        const typeInfo = (typeof WR_MAT_TYPES !== 'undefined' ? WR_MAT_TYPES : {})[m.matType] || { label: m.matType };
+                        userLines.push('── 资料' + (i+1) + '【' + typeInfo.label + '】《' + (m.title||m.fileName) + '》');
+                        userLines.push((m.content || '').slice(0, 600) + (m.content && m.content.length > 600 ? '…' : ''));
+                        userLines.push('');
+                    });
+                }
+
+                // 历史报告参考
+                if (similarReports && similarReports.length > 0) {
+                    userLines.push('【历史报告参考（仅供文风参考，勿直接抄用数据）】');
+                    similarReports.forEach((r, i) => {
+                        userLines.push('参考' + (i+1) + '（' + wrFmtDate(r.date).slice(0,7) + '）：');
+                        userLines.push(r.content.slice(0, 500) + (r.content.length > 500 ? '…' : ''));
+                        userLines.push('');
+                    });
+                }
+
+                // 规章条款参考
+                if (ruleCandidates && ruleCandidates.length > 0) {
+                    userLines.push('【参考规章条款（' + ruleCandidates.length + '条，如需引用只用这些）】');
+                    ruleCandidates.slice(0, 5).forEach((r, i) => {
+                        userLines.push((i+1) + '. 《' + r.title + '》：' + (r.content||'').slice(0, 100));
+                    });
+                    userLines.push('');
+                }
+
+                userLines.push('请开始生成：');
+
+                return { sysPrompt: sysLines.join('\n'), userPrompt: userLines.join('\n') };
+            }
+
+            // ================================================================
+            // ── 生成报告主流程 ──
+            // ================================================================
+
+            // 输入变化时自动更新资料预览标签
+            window.wrOnQueryChange = function() {
+                const q = (document.getElementById('wr-query-input') || {}).value || '';
+                if (q.trim().length < 5) {
+                    const p = document.getElementById('wr-material-preview');
+                    if (p) p.style.display = 'none';
+                    return;
+                }
+                // 异步更新预览（防抖）
+                clearTimeout(window._wrPreviewTimer);
+                window._wrPreviewTimer = setTimeout(() => wrUpdateMaterialPreview(q), 400);
+            };
+
+            async function wrUpdateMaterialPreview(query) {
+                const materials = await wrRetrieveMaterials(query);
+                const tags = [];
+                if (materials.template) tags.push('<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📄 ' + wrEsc(materials.template.title) + '</span>');
+                if (materials.issues.length) tags.push('<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📊 台账' + materials.issues.length + '条</span>');
+                if (materials.localMaterials && materials.localMaterials.length) tags.push('<span style="background:#fff7ed;color:#9a3412;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📁 资料' + materials.localMaterials.length + '份</span>');
+                if (materials.similarReports.length) tags.push('<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📂 历史' + materials.similarReports.length + '篇</span>');
+                if (materials.ruleCandidates.length) tags.push('<span style="background:#fce7f3;color:#9d174d;padding:3px 10px;border-radius:20px;font-size:0.78rem;">⚖️ 规章' + materials.ruleCandidates.length + '条</span>');
+                if (!tags.length) tags.push('<span style="color:var(--text-secondary);font-size:0.78rem;">暂未检索到相关资料，将使用AI通用知识生成</span>');
+
+                const preview = document.getElementById('wr-material-preview');
+                const tagsEl  = document.getElementById('wr-material-tags');
+                if (preview && tagsEl) {
+                    tagsEl.innerHTML = tags.join('');
+                    preview.style.display = 'block';
+                }
+            }
+
+            window.wrPreviewMaterials = async function() {
+                const q = (document.getElementById('wr-query-input') || {}).value || '';
+                if (!q.trim()) { alert('请先输入写作需求'); return; }
+                const materials = await wrRetrieveMaterials(q);
+                const { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials } = materials;
+
+                let html = '<div style="padding:14px;background:#f8fafc;border-radius:10px;border:1px solid var(--border);font-size:0.85rem;line-height:1.7;">';
+                html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px;">🔍 资料检索预览</div>';
+
+                html += '<div style="margin-bottom:8px;"><strong>📋 解析结果：</strong><br>'
+                    + '类型：' + wrCatName(parsed.reportType) + '　'
+                    + (parsed.dateLabel ? '时段：' + parsed.dateLabel + '　' : '')
+                    + '关键词：' + (parsed.keywords.join('、')||'无') + '</div>';
+
+                html += '<div style="margin-bottom:8px;"><strong>📄 匹配模板：</strong>'
+                    + (template ? '<span style="color:#059669;">《' + wrEsc(template.title) + '》</span>' : '<span style="color:#d97706;">无，将使用默认结构</span>') + '</div>';
+
+                html += '<div style="margin-bottom:8px;"><strong>📊 台账数据：</strong>'
+                    + (issues.length ? '<span style="color:#059669;">' + issues.length + '条' + (stats ? '（' + stats.natSummary + '）' : '') + '</span>'
+                    : '<span style="color:#d97706;">无匹配数据</span>') + '</div>';
+
+                // 本地资料库
+                if (localMaterials && localMaterials.length > 0) {
+                    html += '<div style="margin-bottom:8px;"><strong>📁 本地资料：</strong><span style="color:#059669;">'
+                        + localMaterials.map(m => {
+                            const t = (typeof WR_MAT_TYPES !== 'undefined' ? WR_MAT_TYPES : {})[m.matType] || {};
+                            return '【' + (t.label||m.matType) + '】《' + wrEsc(m.title||m.fileName) + '》';
+                        }).join('、')
+                        + '</span></div>';
+                } else {
+                    html += '<div style="margin-bottom:8px;"><strong>📁 本地资料：</strong><span style="color:#d97706;">无匹配资料（可到「资料库」导入文件）</span></div>';
+                }
+
+                html += '<div style="margin-bottom:8px;"><strong>📂 历史参考：</strong>'
+                    + (similarReports.length ? '<span style="color:#059669;">' + similarReports.map(r => '《' + wrEsc(r.title||'未命名') + '》').join('、') + '</span>'
+                    : '<span style="color:#d97706;">无</span>') + '</div>';
+
+                html += '<div><strong>⚖️ 规章条款：</strong>'
+                    + (ruleCandidates.length ? '<span style="color:#059669;">' + ruleCandidates.slice(0,3).map(r => '《' + wrEsc(r.title) + '》').join('、') + (ruleCandidates.length > 3 ? '等' : '') + '</span>'
+                    : '<span style="color:#d97706;">无</span>') + '</div>';
+
+                html += '</div>';
+
+                const resultEl = document.getElementById('wr-gen-result');
+                if (resultEl) { resultEl.innerHTML = html; resultEl.style.display = 'block'; }
+            };
+
+            window.wrGenerate = async function() {
+                const q = (document.getElementById('wr-query-input') || {}).value || '';
+                if (!q.trim()) { alert('请输入写作需求'); return; }
+                const apiKey = localStorage.getItem(WR_API_KEY_K) || '';
+                if (!apiKey) {
+                    alert('请先在智能对规或智能对话中配置 DeepSeek API Key。');
+                    return;
+                }
+
+                const resultEl = document.getElementById('wr-gen-result');
+                const genBtn   = document.getElementById('wr-gen-btn');
+
+                // 显示加载状态
+                resultEl.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);">'
+                    + '<div style="width:20px;height:20px;border:2px solid var(--border);border-top-color:#059669;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>'
+                    + '<span>⚙️ 正在检索资料并调用 AI 生成中，请稍候…</span></div>';
+                resultEl.style.display = 'block';
+                if (genBtn) { genBtn.disabled = true; genBtn.textContent = '⏳ 生成中…'; }
+
+                try {
+                    // 检索资料
+                    const materials = await wrRetrieveMaterials(q);
+                    const { sysPrompt, userPrompt } = wrBuildPrompt(q, materials);
+
+                    // 调用API（流式）
+                    const resp = await fetch(WR_DS_API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                        body: JSON.stringify({
+                            model: WR_DS_MODEL,
+                            messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: userPrompt }],
+                            stream: true,
+                            temperature: 0.3,
+                            max_tokens: 3000
+                        })
+                    });
+
+                    if (!resp.ok) {
+                        const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
+                        throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
+                    }
+
+                    // 创建结果容器（用于流式更新）
+                    let materialsSummaryHtml = '';
+                    const { parsed, template, issues, stats, ruleCandidates, similarReports, localMaterials } = materials;
+                    const matTags = [];
+                    if (template) matTags.push('<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:0.75rem;">模板：' + wrEsc(template.title) + '</span>');
+                    if (issues.length) matTags.push('<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:12px;font-size:0.75rem;">台账' + issues.length + '条</span>');
+                    if (localMaterials && localMaterials.length) matTags.push('<span style="background:#fff7ed;color:#9a3412;padding:2px 8px;border-radius:12px;font-size:0.75rem;">资料' + localMaterials.length + '份</span>');
+                    if (similarReports.length) matTags.push('<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:0.75rem;">历史' + similarReports.length + '篇</span>');
+                    if (ruleCandidates.length) matTags.push('<span style="background:#fce7f3;color:#9d174d;padding:2px 8px;border-radius:12px;font-size:0.75rem;">规章' + ruleCandidates.length + '条</span>');
+                    if (matTags.length) materialsSummaryHtml = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 10px;">' + matTags.join('') + '</div>';
+
+                    resultEl.innerHTML = '<div style="background:#fff;border-radius:12px;border:1px solid #a7f3d0;overflow:hidden;">'
+                        + '<div style="background:#f0fdf4;padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #a7f3d0;">'
+                        + '<span style="font-size:1.1rem;">✍️</span>'
+                        + '<span style="font-weight:700;font-size:0.92rem;color:#065f46;">AI 生成结果</span>'
+                        + materialsSummaryHtml
+                        + '</div>'
+                        + '<div id="wr-stream-content" style="padding:16px;font-size:0.88rem;line-height:1.85;white-space:pre-wrap;min-height:80px;"></div>'
+                        + '<div style="padding:10px 14px;background:#f0fdf4;border-top:1px solid #a7f3d0;display:flex;gap:8px;flex-wrap:wrap;" id="wr-result-actions">'
+                        + '</div></div>';
+
+                    const streamEl = document.getElementById('wr-stream-content');
+                    let fullText = '';
+
+                    // 流式读取
+                    const reader = resp.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        for (const line of lines) {
+                            if (!line.startsWith('data: ')) continue;
+                            const data = line.slice(6).trim();
+                            if (data === '[DONE]') break;
+                            try {
+                                const obj = JSON.parse(data);
+                                const delta = obj.choices?.[0]?.delta?.content || '';
+                                if (delta) {
+                                    fullText += delta;
+                                    streamEl.textContent = fullText;
+                                    streamEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                                }
+                            } catch(e) {}
+                        }
+                    }
+
+                    // 保存到历史
+                    const reportTitle = (q.slice(0, 30) + (q.length > 30 ? '…' : ''));
+                    const savedId = await wrSaveReport({
+                        title: reportTitle,
+                        category: parsed.reportType,
+                        query: q,
+                        content: fullText,
+                        materialCount: { issues: issues.length, rules: ruleCandidates.length, reports: similarReports.length },
+                        date: Date.now()
+                    });
+
+                    // 渲染操作按钮
+                    const actionsEl = document.getElementById('wr-result-actions');
+                    if (actionsEl) {
+                        actionsEl.innerHTML =
+                            '<button onclick="wrCopyText(\'' + savedId + '\')" style="padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.82rem;cursor:pointer;">📋 复制全文</button>'
+                            + '<button onclick="wrDownloadText(\'' + savedId + '\')" style="padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;font-weight:600;">📥 下载TXT</button>'
+                            + '<button onclick="wrSwitchTab(\'history\')" style="padding:7px 14px;border:1px solid #a7f3d0;border-radius:var(--radius-sm);background:#f0fdf4;color:#065f46;font-size:0.82rem;cursor:pointer;">🗂️ 查看历史</button>'
+                            + '<span style="font-size:0.75rem;color:var(--text-secondary);align-self:center;margin-left:auto;">已自动保存至历史报告</span>';
+                    }
+
+                } catch(err) {
+                    let msg = err.message || '未知错误';
+                    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('net::ERR')) {
+                        msg = '网络请求失败（可能是 file:// 限制），请部署到 HTTP 服务器后使用。';
+                    }
+                    resultEl.innerHTML = '<div style="padding:14px;color:#e53e3e;background:#fff5f5;border-radius:10px;border:1px solid #fca5a5;">❌ 生成失败：' + wrEsc(msg) + '</div>';
+                } finally {
+                    if (genBtn) { genBtn.disabled = false; genBtn.textContent = '🚀 生成报告'; }
+                }
+            };
+
+            window.wrClearResult = function() {
+                const q = document.getElementById('wr-query-input');
+                const r = document.getElementById('wr-gen-result');
+                const p = document.getElementById('wr-material-preview');
+                if (q) q.value = '';
+                if (r) { r.innerHTML = ''; r.style.display = 'none'; }
+                if (p) p.style.display = 'none';
+            };
+
+            // 复制报告全文
+            window.wrCopyText = async function(id) {
+                try {
+                    const reports = await wrDbGetAll(WR_RPT_STORE);
+                    const r = id ? reports.find(x => x.id == id) : null;
+                    const text = r ? r.content : (document.getElementById('wr-stream-content') || {}).textContent || '';
+                    await navigator.clipboard.writeText(text);
+                    alert('已复制到剪贴板！');
+                } catch(e) { alert('复制失败，请手动选中内容复制。'); }
+            };
+
+            // 下载报告TXT
+            window.wrDownloadText = async function(id) {
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                const r = id ? reports.find(x => x.id == id) : null;
+                const text = r ? r.content : '';
+                if (!text) return alert('内容为空');
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = ((r && r.title) || '报告') + '.txt'; a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // ================================================================
+            // ── 模板管理 ──
+            // ================================================================
+            window.wrRenderTplList = async function() {
+                const templates = await wrDbGetAll(WR_TPL_STORE);
+                const listEl = document.getElementById('wr-tpl-list');
+                const countEl = document.getElementById('wr-tpl-count');
+                if (!listEl) return;
+                if (countEl) countEl.textContent = '共 ' + templates.length + ' 个模板';
+
+                if (!templates.length) {
+                    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无模板，点击「新建模板」或添加内置模板</div>';
+                    return;
+                }
+
+                listEl.innerHTML = templates.map(t => `
+                    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(t.title)}</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;">
+                                <span style="background:#eff6ff;color:#1d4ed8;padding:1px 8px;border-radius:10px;margin-right:6px;">${wrEsc(wrCatName(t.category))}</span>
+                                ${wrFmtDate(t.updatedAt || t.createdAt)}
+                                <span style="margin-left:6px;">约${Math.round((t.content||'').length/2)}字</span>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:4px;flex-shrink:0;">
+                            <button onclick="wrEditTemplate(${t.id})" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.78rem;cursor:pointer;">编辑</button>
+                            <button onclick="wrDeleteTemplate(${t.id})" style="padding:5px 10px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.78rem;cursor:pointer;">删除</button>
+                        </div>
+                    </div>`).join('');
+            };
+
+            window.wrShowAddTemplate = function() {
+                document.getElementById('wr-tpl-modal-title').textContent = '📝 新建模板';
+                document.getElementById('wr-tpl-name').value = '';
+                document.getElementById('wr-tpl-category').value = 'custom';
+                document.getElementById('wr-tpl-content').value = '';
+                delete document.getElementById('wr-tpl-modal')._editId;
+                document.getElementById('wr-tpl-modal').style.display = 'flex';
+                setTimeout(() => document.getElementById('wr-tpl-name').focus(), 50);
+            };
+
+            window.wrEditTemplate = async function(id) {
+                const templates = await wrDbGetAll(WR_TPL_STORE);
+                const t = templates.find(x => x.id === id);
+                if (!t) return;
+                document.getElementById('wr-tpl-modal-title').textContent = '✏️ 编辑模板';
+                document.getElementById('wr-tpl-name').value = t.title || '';
+                document.getElementById('wr-tpl-category').value = t.category || 'custom';
+                document.getElementById('wr-tpl-content').value = t.content || '';
+                document.getElementById('wr-tpl-modal')._editId = id;
+                document.getElementById('wr-tpl-modal').style.display = 'flex';
+            };
+
+            window.wrSaveTemplate = async function() {
+                const modal = document.getElementById('wr-tpl-modal');
+                const title = (document.getElementById('wr-tpl-name').value || '').trim();
+                const category = document.getElementById('wr-tpl-category').value || 'custom';
+                const content = (document.getElementById('wr-tpl-content').value || '').trim();
+                if (!title) { alert('请输入模板名称'); return; }
+                if (!content) { alert('请输入模板内容'); return; }
+                const now = Date.now();
+                const item = { title, category, content, updatedAt: now };
+                if (modal._editId) {
+                    item.id = modal._editId;
+                    item.createdAt = now; // 保留（如有旧值以后可恢复，此处简化）
+                } else {
+                    item.createdAt = now;
+                }
+                await wrDbPut(WR_TPL_STORE, item);
+                modal.style.display = 'none';
+                wrRenderTplList();
+                alert('模板保存成功！');
+            };
+
+            window.wrDeleteTemplate = async function(id) {
+                if (!confirm('确定要删除该模板吗？')) return;
+                await wrDbDelete(WR_TPL_STORE, id);
+                wrRenderTplList();
+            };
+
+            window.wrAddBuiltinTemplate = async function(type) {
+                const tpl = WR_BUILTIN_TEMPLATES[type];
+                if (!tpl) return;
+                const existing = await wrDbGetAll(WR_TPL_STORE);
+                const dup = existing.find(t => t.title === tpl.title);
+                if (dup) { alert('已存在同名模板《' + tpl.title + '》，请先删除或编辑旧模板。'); return; }
+                const now = Date.now();
+                await wrDbPut(WR_TPL_STORE, { title: tpl.title, category: tpl.category, content: tpl.content.trim(), createdAt: now, updatedAt: now });
+                wrRenderTplList();
+                alert('内置模板《' + tpl.title + '》已添加！');
+            };
+
+            window.wrImportTemplates = function() {
+                const inp = document.createElement('input');
+                inp.type = 'file'; inp.accept = '.json'; inp.style.display = 'none';
+                inp.onchange = async function(e) {
+                    const file = e.target.files[0]; if (!file) return;
+                    const text = await file.text();
+                    try {
+                        const data = JSON.parse(text);
+                        const arr = Array.isArray(data) ? data : (data.templates || []);
+                        let count = 0;
+                        const now = Date.now();
+                        for (const t of arr) {
+                            if (t.title && t.content) {
+                                await wrDbPut(WR_TPL_STORE, { title: t.title, category: t.category||'custom', content: t.content, createdAt: now, updatedAt: now });
+                                count++;
+                            }
+                        }
+                        wrRenderTplList();
+                        alert('成功导入 ' + count + ' 个模板！');
+                    } catch(err) { alert('解析失败：' + err.message); }
+                    inp.remove();
+                };
+                document.body.appendChild(inp); inp.click();
+            };
+
+            window.wrExportTemplates = async function() {
+                const templates = await wrDbGetAll(WR_TPL_STORE);
+                if (!templates.length) { alert('暂无模板可导出'); return; }
+                const blob = new Blob([JSON.stringify({ templates, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '写作模板备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // ================================================================
+            // ── 历史报告管理 ──
+            // ================================================================
+            async function wrSaveReport(report) {
+                const saved = await wrDbPut(WR_RPT_STORE, report);
+                return saved;
+            }
+
+            window.wrRenderHistory = async function() {
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                const listEl  = document.getElementById('wr-history-list');
+                const countEl = document.getElementById('wr-hist-count');
+                if (!listEl) return;
+
+                const q = ((document.getElementById('wr-hist-search') || {}).value || '').toLowerCase();
+                const filtered = reports.filter(r =>
+                    !q || (r.title||'').toLowerCase().includes(q) || (r.content||'').slice(0,200).toLowerCase().includes(q)
+                ).sort((a,b) => b.date - a.date);
+
+                if (countEl) countEl.textContent = filtered.length + '/' + reports.length + ' 篇';
+
+                if (!filtered.length) {
+                    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">' + (q ? '无匹配结果' : '暂无历史报告') + '</div>';
+                    return;
+                }
+
+                listEl.innerHTML = filtered.map(r => `
+                    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:10px;">
+                        <div style="flex:1;min-width:0;cursor:pointer;" onclick="wrViewReport(${r.id})">
+                            <div style="font-weight:700;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">${wrEsc(r.title||'未命名报告')}</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);margin:3px 0;">
+                                <span style="background:#f0fdf4;color:#15803d;padding:1px 8px;border-radius:10px;margin-right:6px;">${wrEsc(wrCatName(r.category))}</span>
+                                ${wrFmtDate(r.date)}
+                                <span style="margin-left:6px;">约${Math.round((r.content||'').length/2)}字</span>
+                            </div>
+                            <div style="font-size:0.78rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc((r.content||'').replace(/\n/g,' ').slice(0,80))}…</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                            <button onclick="wrViewReport(${r.id})" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.75rem;cursor:pointer;">查看</button>
+                            <button onclick="wrDeleteReport(${r.id})" style="padding:4px 10px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.75rem;cursor:pointer;">删除</button>
+                        </div>
+                    </div>`).join('');
+            };
+
+            window.wrViewReport = async function(id) {
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                const r = reports.find(x => x.id === id);
+                if (!r) return;
+                const modal = document.getElementById('wr-report-modal');
+                document.getElementById('wr-report-modal-title').textContent = r.title || '未命名报告';
+                document.getElementById('wr-report-modal-meta').textContent =
+                    '类型：' + wrCatName(r.category) + '　生成时间：' + wrFmtDate(r.date)
+                    + (r.materialCount ? '　引用台账：' + r.materialCount.issues + '条，规章：' + r.materialCount.rules + '条' : '');
+                document.getElementById('wr-report-modal-content').textContent = r.content || '';
+                modal._currentReport = r;
+                modal.style.display = 'flex';
+            };
+
+            window.wrCopyReport = async function() {
+                const modal = document.getElementById('wr-report-modal');
+                const r = modal._currentReport;
+                if (!r) return;
+                try { await navigator.clipboard.writeText(r.content); alert('已复制到剪贴板！'); }
+                catch(e) { alert('复制失败，请手动选中内容复制。'); }
+            };
+
+            window.wrDownloadReport = function() {
+                const modal = document.getElementById('wr-report-modal');
+                const r = modal._currentReport;
+                if (!r) return;
+                const blob = new Blob([r.content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = (r.title||'报告') + '.txt'; a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            window.wrDeleteReport = async function(id) {
+                if (!confirm('确定删除该历史报告吗？')) return;
+                await wrDbDelete(WR_RPT_STORE, id);
+                const modal = document.getElementById('wr-report-modal');
+                if (modal._currentReport && modal._currentReport.id === id) modal.style.display = 'none';
+                wrRenderHistory();
+            };
+
+            window.wrClearAllReports = async function() {
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                if (!reports.length) { alert('暂无历史报告'); return; }
+                if (!confirm('确定清空全部 ' + reports.length + ' 篇历史报告？此操作不可恢复！')) return;
+                await wrDbClear(WR_RPT_STORE);
+                wrRenderHistory();
+                alert('已清空全部历史报告。');
+            };
+
+            window.wrExportAllReports = async function() {
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                if (!reports.length) { alert('暂无报告可导出'); return; }
+                const blob = new Blob([JSON.stringify({ reports, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '历史报告备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // ================================================================
+            // ── 资料库管理模块 ──
+            // ================================================================
+
+            // 当前筛选类型
+            let _wrMatFilter = 'all';
+
+            /**
+             * 根据文件名和内容自动推断资料类型
+             */
+            function wrGuessMatType(fileName, content) {
+                const text = (fileName + ' ' + (content || '')).toLowerCase();
+                if (/故障|缺陷|障碍|设备故障|故障报告|故障统计/.test(text)) {
+                    // 区分故障报告和统计
+                    if (/统计|汇总|分析|台账|数量|次数/.test(text)) return 'stats';
+                    return 'fault';
+                }
+                if (/通报|安全通报|情况通报|事故通报|违规通报/.test(text)) return 'bulletin';
+                if (/通知|批复|请示|函|电报|文电|电文|转发|印发/.test(text)) return 'dispatch';
+                if (/纪要|会议|研讨|座谈|讨论/.test(text)) return 'meeting';
+                return 'other';
+            }
+
+            /**
+             * 解析DOCX文件 → { title, content, sheets:null }
+             */
+            async function wrParseDocx(file) {
+                if (typeof mammoth === 'undefined') throw new Error('mammoth 库未加载，请检查网络');
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer });
+                const content = (result.value || '').trim();
+                // 尝试从正文首行提取标题
+                const firstLine = content.split('\n').find(l => l.trim().length > 2) || file.name.replace(/\.docx?$/i, '');
+                return {
+                    title:   firstLine.slice(0, 80).trim(),
+                    content: content,
+                    sheets:  null
+                };
+            }
+
+            /**
+             * 解析Excel文件 → { title, content(JSON文本), sheets(JSON), summary }
+             * Excel支持多sheet，每个sheet转为JSON数组；同时生成可读摘要文本
+             */
+            function wrParseExcel(file) {
+                return new Promise((resolve, reject) => {
+                    if (typeof XLSX === 'undefined') { reject(new Error('XLSX 库未加载')); return; }
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const workbook = XLSX.read(e.target.result, { type: 'array' });
+                            const sheets = {};
+                            const summaryLines = [];
+                            workbook.SheetNames.forEach(name => {
+                                const ws = workbook.Sheets[name];
+                                const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                                sheets[name] = json;
+                                // 生成可读摘要：取前20行
+                                if (json.length > 0) {
+                                    summaryLines.push('【' + name + '】共' + json.length + '条记录');
+                                    const keys = Object.keys(json[0]);
+                                    summaryLines.push('字段：' + keys.join('、'));
+                                    json.slice(0, 15).forEach((row, i) => {
+                                        const vals = keys.map(k => k + ':' + (row[k] !== undefined ? String(row[k]).slice(0, 30) : '')).join(' | ');
+                                        summaryLines.push('  ' + (i+1) + '. ' + vals);
+                                    });
+                                    if (json.length > 15) summaryLines.push('  …（共' + json.length + '条）');
+                                }
+                            });
+                            const content = summaryLines.join('\n');
+                            resolve({
+                                title:   file.name.replace(/\.(xlsx?|xls)$/i, ''),
+                                content: content,
+                                sheets:  sheets,
+                                rowCount: Object.values(sheets).reduce((s, a) => s + a.length, 0)
+                            });
+                        } catch(err) { reject(err); }
+                    };
+                    reader.onerror = () => reject(new Error('文件读取失败'));
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+
+            /**
+             * 导入多文件（DOCX/Excel/JSON），统一存入资料库
+             */
+            window.wrMaterialImport = function() {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.accept = '.docx,.doc,.xlsx,.xls,.json';
+                inp.multiple = true;
+                inp.style.display = 'none';
+                inp.onchange = async function(e) {
+                    const files = Array.from(e.target.files);
+                    if (!files.length) return;
+                    let ok = 0, fail = 0;
+                    const statusEl = document.getElementById('wr-mat-list');
+                    if (statusEl) statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-secondary);">⏳ 正在解析并导入 ' + files.length + ' 个文件…</div>';
+
+                    for (const file of files) {
+                        try {
+                            const ext = file.name.split('.').pop().toLowerCase();
+                            let parsed;
+                            if (ext === 'docx' || ext === 'doc') {
+                                parsed = await wrParseDocx(file);
+                            } else if (ext === 'xlsx' || ext === 'xls') {
+                                parsed = await wrParseExcel(file);
+                            } else if (ext === 'json') {
+                                const text = await file.text();
+                                const data = JSON.parse(text);
+                                // JSON格式：数组或含items/data字段的对象
+                                const items = Array.isArray(data) ? data : (data.items || data.data || [data]);
+                                parsed = {
+                                    title:   file.name.replace(/\.json$/i, ''),
+                                    content: JSON.stringify(items, null, 2).slice(0, 5000),
+                                    sheets:  null
+                                };
+                            } else {
+                                fail++; continue;
+                            }
+
+                            const matType = wrGuessMatType(file.name, parsed.content);
+                            await wrDbPut(WR_MAT_STORE, {
+                                fileName:  file.name,
+                                title:     parsed.title || file.name,
+                                matType:   matType,
+                                content:   (parsed.content || '').slice(0, 20000), // 存储不超过2万字
+                                sheets:    parsed.sheets ? JSON.stringify(parsed.sheets) : null,
+                                rowCount:  parsed.rowCount || null,
+                                fileSize:  file.size,
+                                importAt:  Date.now()
+                            });
+                            ok++;
+                        } catch(err) {
+                            console.error('导入失败：' + file.name, err);
+                            fail++;
+                        }
+                    }
+                    wrRenderMaterials();
+                    alert('导入完成：成功 ' + ok + ' 个' + (fail ? '，失败 ' + fail + ' 个（请检查文件格式）' : '') + '。');
+                    inp.remove();
+                };
+                document.body.appendChild(inp); inp.click();
+            };
+
+            /**
+             * 专门导入Excel（支持批量多Sheet，含列名映射引导）
+             */
+            window.wrMaterialImportExcel = function() {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.accept = '.xlsx,.xls';
+                inp.multiple = true;
+                inp.style.display = 'none';
+                inp.onchange = async function(e) {
+                    const files = Array.from(e.target.files);
+                    if (!files.length) return;
+                    let ok = 0;
+                    for (const file of files) {
+                        try {
+                            const parsed = await wrParseExcel(file);
+                            // Excel优先判断为故障统计或故障报告
+                            let matType = wrGuessMatType(file.name, parsed.content);
+                            if (matType === 'other') matType = 'stats'; // Excel默认归为故障统计
+                            await wrDbPut(WR_MAT_STORE, {
+                                fileName:  file.name,
+                                title:     parsed.title,
+                                matType:   matType,
+                                content:   parsed.content.slice(0, 20000),
+                                sheets:    parsed.sheets ? JSON.stringify(parsed.sheets) : null,
+                                rowCount:  parsed.rowCount || null,
+                                fileSize:  file.size,
+                                importAt:  Date.now()
+                            });
+                            ok++;
+                        } catch(err) { console.error('Excel导入失败：' + file.name, err); }
+                    }
+                    wrRenderMaterials();
+                    alert('Excel导入完成：' + ok + ' 个文件。');
+                    inp.remove();
+                };
+                document.body.appendChild(inp); inp.click();
+            };
+
+            /**
+             * 筛选资料类型
+             */
+            window.wrMaterialFilter = function(type) {
+                _wrMatFilter = type;
+                // 更新按钮样式
+                ['all','fault','stats','dispatch','bulletin','meeting','other'].forEach(t => {
+                    const btn = document.getElementById('wr-mat-filter-' + t);
+                    if (!btn) return;
+                    if (t === type) {
+                        btn.style.background = 'var(--primary)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--primary)';
+                    } else {
+                        btn.style.background = '#f8fafc'; btn.style.color = 'var(--text)'; btn.style.borderColor = 'var(--border)';
+                    }
+                });
+                wrRenderMaterials();
+            };
+
+            /**
+             * 渲染资料库列表
+             */
+            window.wrRenderMaterials = async function() {
+                const all = await wrDbGetAll(WR_MAT_STORE);
+                const listEl  = document.getElementById('wr-mat-list');
+                const countEl = document.getElementById('wr-mat-count');
+                if (!listEl) return;
+
+                const q = ((document.getElementById('wr-mat-search') || {}).value || '').toLowerCase();
+                let filtered = all;
+                if (_wrMatFilter !== 'all') filtered = filtered.filter(m => m.matType === _wrMatFilter);
+                if (q) filtered = filtered.filter(m =>
+                    (m.title||'').toLowerCase().includes(q) ||
+                    (m.fileName||'').toLowerCase().includes(q) ||
+                    (m.content||'').slice(0,500).toLowerCase().includes(q)
+                );
+                filtered.sort((a,b) => b.importAt - a.importAt);
+
+                if (countEl) countEl.textContent = filtered.length + '/' + all.length + ' 条资料';
+
+                if (!filtered.length) {
+                    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">'
+                        + (q || _wrMatFilter !== 'all' ? '无匹配资料' : '暂无资料，点击「导入文件」上传 DOCX 或 Excel') + '</div>';
+                    return;
+                }
+
+                listEl.innerHTML = filtered.map(m => {
+                    const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
+                    const ext = (m.fileName || '').split('.').pop().toLowerCase();
+                    const extIcon = ext === 'docx' || ext === 'doc' ? '📝' : (ext === 'xlsx' || ext === 'xls' ? '📊' : '📄');
+                    const sizeStr = m.fileSize ? (m.fileSize > 1024*1024 ? (m.fileSize/1024/1024).toFixed(1)+'MB' : Math.round(m.fileSize/1024)+'KB') : '';
+                    const rowStr  = m.rowCount ? '·' + m.rowCount + '条' : '';
+                    const preview = (m.content || '').replace(/\n/g, ' ').slice(0, 80);
+                    return `
+                    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;align-items:flex-start;gap:10px;">
+                        <div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">${extIcon}</div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(m.title||m.fileName)}</div>
+                            <div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                                <span style="background:${typeInfo.badge};color:${typeInfo.text};padding:1px 8px;border-radius:10px;">${typeInfo.label}</span>
+                                <span>${wrFmtDate(m.importAt).slice(0,10)}</span>
+                                ${sizeStr ? '<span>'+sizeStr+'</span>' : ''}
+                                ${rowStr ? '<span>'+rowStr+'</span>' : ''}
+                            </div>
+                            <div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(preview)}…</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                            <button onclick="wrViewMaterial(${m.id})" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.73rem;cursor:pointer;">查看</button>
+                            <select onchange="wrChangeMaterialType(${m.id},this.value)" style="padding:3px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.7rem;cursor:pointer;background:#f8fafc;" title="修改类型">
+                                ${Object.entries(WR_MAT_TYPES).map(([k,v])=>'<option value="'+k+'"'+(k===m.matType?' selected':'')+'>'+v.label+'</option>').join('')}
+                            </select>
+                            <button onclick="wrDeleteMaterial(${m.id})" style="padding:4px 10px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.73rem;cursor:pointer;">删除</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            };
+
+            /**
+             * 查看资料详情（弹窗）
+             */
+            window.wrViewMaterial = async function(id) {
+                const all = await wrDbGetAll(WR_MAT_STORE);
+                const m = all.find(x => x.id === id);
+                if (!m) return;
+                const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
+
+                // 复用报告弹窗，或创建独立弹窗
+                let modal = document.getElementById('wr-mat-view-modal');
+                if (!modal) {
+                    modal = document.createElement('div');
+                    modal.id = 'wr-mat-view-modal';
+                    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;';
+                    modal.innerHTML = `
+                        <div style="background:#fff;border-radius:14px;padding:18px;width:min(700px,96vw);max-height:88vh;display:flex;flex-direction:column;gap:10px;overflow:hidden;">
+                            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                                <div>
+                                    <div id="wr-mat-view-title" style="font-weight:700;font-size:1rem;color:var(--primary);"></div>
+                                    <div id="wr-mat-view-meta" style="font-size:0.75rem;color:var(--text-secondary);margin-top:3px;"></div>
+                                </div>
+                                <button onclick="document.getElementById('wr-mat-view-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);flex-shrink:0;">✕</button>
+                            </div>
+                            <div id="wr-mat-view-content" style="flex:1;overflow-y:auto;font-size:0.83rem;line-height:1.75;white-space:pre-wrap;background:#f8fafc;border-radius:8px;padding:12px;border:1px solid var(--border);min-height:200px;max-height:65vh;word-break:break-word;"></div>
+                            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                                <button onclick="wrCopyMaterialContent()" style="padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.82rem;cursor:pointer;">📋 复制内容</button>
+                                <button onclick="document.getElementById('wr-mat-view-modal').style.display='none'" style="padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">关闭</button>
+                            </div>
+                        </div>`;
+                    document.body.appendChild(modal);
+                }
+                document.getElementById('wr-mat-view-title').textContent = m.title || m.fileName;
+                document.getElementById('wr-mat-view-meta').textContent =
+                    '类型：' + typeInfo.label + '　文件：' + (m.fileName||'') + '　导入：' + wrFmtDate(m.importAt)
+                    + (m.rowCount ? '　' + m.rowCount + '条记录' : '') + (m.fileSize ? '　' + Math.round(m.fileSize/1024) + 'KB' : '');
+                document.getElementById('wr-mat-view-content').textContent = m.content || '（内容为空）';
+                modal._content = m.content || '';
+                modal.style.display = 'flex';
+            };
+
+            window.wrCopyMaterialContent = async function() {
+                const modal = document.getElementById('wr-mat-view-modal');
+                if (!modal || !modal._content) return;
+                try { await navigator.clipboard.writeText(modal._content); alert('已复制到剪贴板！'); }
+                catch(e) { alert('复制失败，请手动选中内容复制。'); }
+            };
+
+            /**
+             * 修改资料类型
+             */
+            window.wrChangeMaterialType = async function(id, newType) {
+                const all = await wrDbGetAll(WR_MAT_STORE);
+                const m = all.find(x => x.id === id);
+                if (!m) return;
+                m.matType = newType;
+                await wrDbPut(WR_MAT_STORE, m);
+                wrRenderMaterials();
+            };
+
+            /**
+             * 删除单条资料
+             */
+            window.wrDeleteMaterial = async function(id) {
+                if (!confirm('确定删除该资料吗？')) return;
+                await wrDbDelete(WR_MAT_STORE, id);
+                wrRenderMaterials();
+            };
+
+            /**
+             * 清空资料库
+             */
+            window.wrMaterialClearAll = async function() {
+                const all = await wrDbGetAll(WR_MAT_STORE);
+                if (!all.length) { alert('资料库已为空'); return; }
+                if (!confirm('确定清空全部 ' + all.length + ' 条资料？此操作不可恢复！')) return;
+                await wrDbClear(WR_MAT_STORE);
+                wrRenderMaterials();
+                alert('资料库已清空。');
+            };
+
+            /**
+             * 导出资料库为JSON
+             */
+            window.wrMaterialExportAll = async function() {
+                const all = await wrDbGetAll(WR_MAT_STORE);
+                if (!all.length) { alert('资料库为空，无法导出'); return; }
+                // 导出时去掉sheets（可能很大），只保留content
+                const exportData = all.map(m => ({ ...m, sheets: undefined }));
+                const blob = new Blob([JSON.stringify({ materials: exportData, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '资料库备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+                URL.revokeObjectURL(url);
+            };
+
         })();
 
         // ---- DeepSeek 气泡样式 ----

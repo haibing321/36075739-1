@@ -2214,6 +2214,7 @@
                             <button class="btn btn-secondary" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
                             <button class="btn btn-info" id="diary-history-btn" onclick="showQuery()">🔍 查询</button>
                             <button class="btn btn-success" onclick="openMemoModal()">🔔 备忘</button>
+                            <button class="btn btn-primary" onclick="importDiary()">📥 导入</button>
                             <button class="btn btn-warning" onclick="exportDiary()">📤 导出</button>
                         </div>
                     </div>
@@ -2317,20 +2318,61 @@
                 </div>
                 <div class="card-body" style="display:flex;flex-direction:column;gap:0;position:relative;min-height:0;">
 
-                    <!-- API Key 配置区（已配置成功后自动隐藏） -->
-                    <div id="ds-apikey-section" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-                        <div id="ds-apikey-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">
-                            <input type="password" id="ds-apikey-input" placeholder="DeepSeek API Key（sk-...）" autocomplete="off"
-                                style="flex:1;min-width:140px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
-                            <button onclick="dsSetApiKey()" class="btn btn-primary btn-small">保存</button>
-                            <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">清除</button>
-                            <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
+                    <!-- API 配置区（已配置成功后自动隐藏） -->
+                    <div id="ds-apikey-section" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:var(--primary);margin-bottom:4px;">🔧 大模型 API 配置（支持任意 OpenAI 格式 API）</div>
+                        <div id="ds-apikey-bar" style="display:flex;flex-direction:column;gap:8px;">
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <input type="text" id="ds-apiurl-input" placeholder="API 地址（如：https://api.deepseek.com/chat/completions）" autocomplete="off"
+                                    style="flex:2;min-width:200px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
+                                <input type="text" id="ds-model-input" placeholder="模型名称（如：deepseek-chat）" autocomplete="off"
+                                    style="flex:1;min-width:120px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                <input type="password" id="ds-apikey-input" placeholder="API Key（sk-...）" autocomplete="off"
+                                    style="flex:1;min-width:140px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
+                                <button onclick="dsSetApiKey()" class="btn btn-primary btn-small">💾 保存配置</button>
+                                <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">🗑️ 清除</button>
+                                <button onclick="dsResetDefaultApi()" class="btn btn-info btn-small" style="font-size:0.78rem;">↩️ 恢复默认</button>
+                                <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
+                            </div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);padding:6px 10px;background:#f8fafc;border-radius:6px;">
+                            💡 支持任意兼容 OpenAI API 格式的大模型，如：DeepSeek、OpenAI、Claude、通义千问、文心一言等。默认使用 DeepSeek。
                         </div>
                     </div>
-                    <!-- API Key 已配置时显示的提示条 -->
-                    <div id="ds-apikey-done" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:6px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:var(--radius-sm);font-size:0.82rem;color:#166534;">
-                        <span>✅ API Key 已配置</span>
-                        <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small" style="margin-left:auto;padding:3px 10px;font-size:0.78rem;">清除</button>
+                    <!-- API 已配置时显示的提示条 -->
+                    <div id="ds-apikey-done" style="display:none;flex-direction:column;gap:6px;margin-bottom:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:var(--radius-sm);font-size:0.82rem;color:#166534;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span>✅ API 已配置</span>
+                            <span id="ds-api-config-summary" style="font-size:0.75rem;color:#15803d;margin-left:auto;"></span>
+                        </div>
+                        <div style="font-size:0.75rem;color:#15803d;word-break:break-all;" id="ds-api-config-detail"></div>
+                        <div style="display:flex;gap:8px;margin-top:4px;">
+                            <button onclick="dsToggleApiConfig()" class="btn btn-secondary btn-small" style="padding:3px 10px;font-size:0.78rem;">⚙️ 修改配置</button>
+                            <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small" style="padding:3px 10px;font-size:0.78rem;">🗑️ 清除</button>
+                        </div>
+                    </div>
+
+                    <!-- 联动数据选择框（全局共享，放在子模块切换按钮上方） -->
+                    <div id="ds-linked-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border-radius:10px;border:1px solid #bfdbfe;flex-wrap:wrap;">
+                        <span style="font-size:0.82rem;font-weight:600;color:var(--primary);white-space:nowrap;display:flex;align-items:center;gap:4px;">🔗 联动数据：</span>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
+                            <input type="checkbox" id="ds-ctx-rules" checked onchange="dsUpdateCtxInfo()"> 规章
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
+                            <input type="checkbox" id="ds-ctx-issue" checked onchange="dsUpdateCtxInfo()"> 检查台账
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
+                            <input type="checkbox" id="ds-ctx-handbook" onchange="dsUpdateCtxInfo()"> 手册
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
+                            <input type="checkbox" id="ds-ctx-wr-materials" onchange="dsUpdateCtxInfo()"> 写作资料
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
+                            <input type="checkbox" id="ds-ctx-wr-reports" onchange="dsUpdateCtxInfo()"> 历史报告
+                        </label>
+                        <span id="ds-ctx-info" style="font-size:0.75rem;color:var(--text-secondary);margin-left:auto;white-space:nowrap;"></span>
                     </div>
 
                     <!-- 子模块切换按钮 -->
@@ -2411,20 +2453,6 @@
 
                     <!-- === 智能对话子模块 === -->
                     <div id="ds-sub-chat" style="display:none;flex-direction:column;min-width:0;flex:1;min-height:0;">
-                        <!-- 联动数据选择 -->
-                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
-                            <span style="font-size:0.85rem;color:var(--text-secondary);">联动数据：</span>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.85rem;">
-                                <input type="checkbox" id="ds-ctx-rules" checked> 规章
-                            </label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.85rem;">
-                                <input type="checkbox" id="ds-ctx-issue" checked> 检查
-                            </label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.85rem;">
-                                <input type="checkbox" id="ds-ctx-handbook"> 手册
-                            </label>
-                            <span id="ds-ctx-info" style="font-size:0.78rem;color:var(--text-secondary);margin-left:auto;"></span>
-                        </div>
                         <!-- 对话区折叠按钮栏（参考DeepSeek布局） -->
                         <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);margin-top:4px;">
                             <button id="ds-sidebar-toggle-btn" onclick="dsToggleSidebar()"
@@ -2462,20 +2490,30 @@
                                 style="padding:7px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;">
                                 📁 资料管理
                             </button>
+                            <button id="wr-tab-btn-history" onclick="wrSwitchTab('history')"
+                                style="padding:7px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;">
+                                📜 历史报告
+                            </button>
                         </div>
 
                         <!-- ──────── 生成报告面板 ──────── -->
                         <div id="wr-panel-gen" style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;">
-                            <!-- 写作需求输入 -->
+
+                            <!-- 写作对话历史区（智能对话式） -->
+                            <div id="wr-chat-history" style="display:none;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;"></div>
+
+                            <!-- 写作需求输入区（智能对话式） -->
                             <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:14px;">
                                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
                                     <span style="font-size:1.1rem;">✍️</span>
-                                    <span style="font-weight:700;font-size:0.95rem;color:#065f46;">写作需求</span>
-                                    <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:#059669;">自动检索本地资料</span>
+                                    <span id="wr-input-label" style="font-weight:700;font-size:0.95rem;color:#065f46;">写作需求</span>
+                                    <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:#059669;">自动检索本地资料 · 可连续修改</span>
+                                    <button id="wr-clear-conv-btn" onclick="wrClearConversation()" style="display:none;margin-left:auto;padding:3px 10px;border:1px solid #fca5a5;border-radius:20px;background:#fff1f2;color:#b91c1c;font-size:0.75rem;cursor:pointer;">🔄 新建对话</button>
                                 </div>
                                 <textarea id="wr-query-input" rows="3" placeholder="例如：帮我写一份2026年3月的月度安全检查报告，要包含问题统计、典型问题和整改要求。"
                                     style="width:100%;padding:10px 12px;border:1px solid #a7f3d0;border-radius:8px;font-size:0.9rem;resize:none;box-sizing:border-box;line-height:1.6;background:#fff;"
-                                    oninput="autoResize(this);wrOnQueryChange()"></textarea>
+                                    oninput="autoResize(this);wrOnQueryChange()"
+                                    onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();wrWrite();}"></textarea>
                                 <!-- 检索到的资料预览 -->
                                 <div id="wr-material-preview" style="display:none;margin-top:8px;padding:8px 12px;background:#fff;border:1px solid #6ee7b7;border-radius:8px;font-size:0.8rem;color:#065f46;">
                                     <div style="font-weight:700;margin-bottom:4px;">📦 已检索到的资料：</div>
@@ -2506,6 +2544,31 @@
                             <!-- 生成进度/结果区 -->
                             <div id="wr-gen-result" style="display:none;border-radius:12px;overflow:hidden;flex:1;">
                                 <!-- 内容由JS填充 -->
+                            </div>
+                        </div>
+
+                        <!-- ──────── 历史报告面板 ──────── -->
+                        <div id="wr-panel-history" style="display:none;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;">
+                            <!-- 顶部操作栏 -->
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                <button onclick="wrExportAllReports()"
+                                    style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">
+                                    📤 导出全部
+                                </button>
+                                <button onclick="wrClearAllReports()"
+                                    style="padding:8px 14px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.82rem;cursor:pointer;">
+                                    🗑️ 清空全部
+                                </button>
+                                <span id="wr-hist-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;">0 篇</span>
+                            </div>
+                            <!-- 搜索栏 -->
+                            <div style="display:flex;gap:8px;">
+                                <input id="wr-hist-search" placeholder="搜索历史报告..." type="text" oninput="wrRenderHistory()"
+                                    style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
+                            </div>
+                            <!-- 历史报告列表 -->
+                            <div id="wr-history-list" style="display:flex;flex-direction:column;gap:8px;flex:1;overflow-y:auto;">
+                                <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无历史报告</div>
                             </div>
                         </div>
 
@@ -5910,6 +5973,51 @@
                 URL.revokeObjectURL(url);
             };
 
+            // 导入日记数据
+            window.importDiary = function() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        try {
+                            const imported = JSON.parse(evt.target.result);
+                            if (!Array.isArray(imported)) {
+                                alert('导入数据格式错误：需要数组格式');
+                                return;
+                            }
+                            // 验证数据格式
+                            const valid = imported.every(item => 
+                                item && (item.date || item.work || item.issues)
+                            );
+                            if (!valid) {
+                                alert('导入数据格式错误：部分数据缺少必要字段');
+                                return;
+                            }
+                            // 合并数据（避免重复日期的记录）
+                            const existingDates = new Set(diaries.map(d => d.date));
+                            let addedCount = 0;
+                            imported.forEach(item => {
+                                if (!existingDates.has(item.date)) {
+                                    diaries.push(item);
+                                    addedCount++;
+                                }
+                            });
+                            saveDiaries();
+                            updateDiaryCount();
+                            alert('成功导入 ' + addedCount + ' 条记录！' + (imported.length - addedCount > 0 ? '\n（已跳过 ' + (imported.length - addedCount) + ' 条重复记录）' : ''));
+                        } catch (err) {
+                            alert('解析文件失败：' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            };
+
             document.addEventListener('DOMContentLoaded', () => {
                 loadDiaries();
                 document.getElementById('diary-date').valueAsDate = new Date();
@@ -7261,16 +7369,20 @@
 
             // ---- 常量 ----
             const DS_API_KEY_STORAGE = 'ds_api_key_v1';
+            const DS_API_URL_STORAGE = 'ds_api_url_v1';
+            const DS_MODEL_STORAGE   = 'ds_model_v1';
             const DS_CHAT_STORAGE    = 'ds_chat_history_v1';
             const DS_CONVERSATIONS_STORAGE = 'ds_conversations_v1'; // 多对话历史存储
             const DS_CURRENT_CONV_ID = 'ds_current_conv_id_v1';     // 当前对话ID
-            const DS_API_URL         = 'https://api.deepseek.com/chat/completions';
-            const DS_MODEL           = 'deepseek-chat';
+            const DS_DEFAULT_API_URL = 'https://api.deepseek.com/chat/completions';
+            const DS_DEFAULT_MODEL   = 'deepseek-chat';
             const DS_MAX_CTX_CHARS   = 6000;  // 单类别最多携带的字符数
             const DS_PLACEHOLDER_KEY = 'YOUR_API_KEY_HERE';
 
             let dsHistory = [];   // [{role:'user'|'assistant', content:'...'}]
             let dsApiKey  = '';
+            let dsApiUrl  = DS_DEFAULT_API_URL;
+            let dsModel   = DS_DEFAULT_MODEL;
             let dsStreaming = false;
             let dsConversations = []; // 所有对话列表 [{id, title, messages, timestamp, pinned}]
             let dsCurrentConvId = null; // 当前对话ID
@@ -7278,6 +7390,13 @@
             // ---- 初始化 ----
             function dsInit() {
                 dsApiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
+                dsApiUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
+                dsModel  = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
+                
+                // 设置输入框默认值
+                document.getElementById('ds-apiurl-input').value = dsApiUrl;
+                document.getElementById('ds-model-input').value = dsModel;
+                
                 if (dsApiKey) {
                     document.getElementById('ds-apikey-status').style.display = '';
                     document.getElementById('ds-apikey-input').value = '';
@@ -7285,6 +7404,8 @@
                     // 已配置：隐藏输入区，显示完成提示
                     document.getElementById('ds-apikey-section').style.display = 'none';
                     document.getElementById('ds-apikey-done').style.display = 'flex';
+                    // 更新配置摘要
+                    dsUpdateApiConfigSummary();
                 }
                 // 加载多对话历史
                 dsLoadConversations();
@@ -7304,8 +7425,9 @@
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dsSendMsg(); }
                 });
                 // 联动选框变化时更新提示
-                ['ds-ctx-rules','ds-ctx-issue','ds-ctx-handbook'].forEach(id => {
-                    document.getElementById(id).addEventListener('change', dsUpdateCtxInfo);
+                ['ds-ctx-rules','ds-ctx-issue','ds-ctx-handbook','ds-ctx-wr-materials','ds-ctx-wr-reports'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.addEventListener('change', dsUpdateCtxInfo);
                 });
             }
 
@@ -7628,51 +7750,112 @@
                 dsNewChat(false);
             }
 
-            // ---- API Key 管理 ----
+            // ---- API 配置管理 ----
             window.dsSetApiKey = function() {
-                const val = document.getElementById('ds-apikey-input').value.trim();
-                if (!val) { alert('请输入 API Key'); return; }
-                if (val === DS_PLACEHOLDER_KEY) { alert('请替换为真实的 API Key'); return; }
-                dsApiKey = val;
-                localStorage.setItem(DS_API_KEY_STORAGE, val);
+                const keyVal = document.getElementById('ds-apikey-input').value.trim();
+                const urlVal = document.getElementById('ds-apiurl-input').value.trim();
+                const modelVal = document.getElementById('ds-model-input').value.trim();
+                
+                if (!keyVal) { alert('请输入 API Key'); return; }
+                if (keyVal === DS_PLACEHOLDER_KEY) { alert('请替换为真实的 API Key'); return; }
+                if (!urlVal) { alert('请输入 API 地址'); return; }
+                if (!modelVal) { alert('请输入模型名称'); return; }
+                
+                dsApiKey = keyVal;
+                dsApiUrl = urlVal;
+                dsModel = modelVal;
+                
+                localStorage.setItem(DS_API_KEY_STORAGE, keyVal);
+                localStorage.setItem(DS_API_URL_STORAGE, urlVal);
+                localStorage.setItem(DS_MODEL_STORAGE, modelVal);
+                
                 document.getElementById('ds-apikey-status').style.display = '';
                 document.getElementById('ds-apikey-input').value = '';
                 document.getElementById('ds-apikey-input').placeholder = '已保存（如需修改请重新输入）';
                 // 已配置：隐藏输入区，显示完成提示
                 document.getElementById('ds-apikey-section').style.display = 'none';
                 document.getElementById('ds-apikey-done').style.display = 'flex';
-                alert('API Key 已保存！');
+                // 更新配置摘要
+                dsUpdateApiConfigSummary();
+                alert('API 配置已保存！\n\n地址：' + urlVal + '\n模型：' + modelVal);
             };
 
             window.dsClearApiKey = function() {
                 dsApiKey = '';
+                dsApiUrl = DS_DEFAULT_API_URL;
+                dsModel = DS_DEFAULT_MODEL;
                 localStorage.removeItem(DS_API_KEY_STORAGE);
+                localStorage.removeItem(DS_API_URL_STORAGE);
+                localStorage.removeItem(DS_MODEL_STORAGE);
                 document.getElementById('ds-apikey-status').style.display = 'none';
                 document.getElementById('ds-apikey-input').value = '';
-                document.getElementById('ds-apikey-input').placeholder = '请输入 DeepSeek API Key（sk-...）';
+                document.getElementById('ds-apikey-input').placeholder = '请输入 API Key（sk-...）';
+                document.getElementById('ds-apiurl-input').value = DS_DEFAULT_API_URL;
+                document.getElementById('ds-model-input').value = DS_DEFAULT_MODEL;
                 // 未配置：显示输入区，隐藏完成提示
                 document.getElementById('ds-apikey-section').style.display = 'flex';
                 document.getElementById('ds-apikey-done').style.display = 'none';
-                alert('API Key 已清除');
+                alert('API 配置已清除');
+            };
+            
+            // 更新配置摘要显示
+            function dsUpdateApiConfigSummary() {
+                const summaryEl = document.getElementById('ds-api-config-summary');
+                const detailEl = document.getElementById('ds-api-config-detail');
+                if (summaryEl) {
+                    summaryEl.textContent = '模型：' + dsModel;
+                }
+                if (detailEl) {
+                    detailEl.textContent = '地址：' + dsApiUrl;
+                }
+            }
+            
+            // 切换显示/隐藏API配置区
+            window.dsToggleApiConfig = function() {
+                const section = document.getElementById('ds-apikey-section');
+                const done = document.getElementById('ds-apikey-done');
+                if (section.style.display === 'none') {
+                    section.style.display = 'flex';
+                    done.style.display = 'none';
+                    // 加载当前配置到输入框
+                    document.getElementById('ds-apiurl-input').value = dsApiUrl;
+                    document.getElementById('ds-model-input').value = dsModel;
+                    document.getElementById('ds-apikey-input').value = '';
+                    document.getElementById('ds-apikey-input').placeholder = '请输入新的 API Key（留空则保持原配置）';
+                }
+            };
+            
+            // 恢复默认API配置
+            window.dsResetDefaultApi = function() {
+                document.getElementById('ds-apiurl-input').value = DS_DEFAULT_API_URL;
+                document.getElementById('ds-model-input').value = DS_DEFAULT_MODEL;
+                alert('已恢复默认配置（DeepSeek），请点击「保存配置」按钮保存');
             };
 
             // ---- 联动数据统计 ----
             function dsUpdateCtxInfo() {
-                const useRules    = document.getElementById('ds-ctx-rules').checked;
-                const useIssue    = document.getElementById('ds-ctx-issue').checked;
-                const useHandbook = document.getElementById('ds-ctx-handbook').checked;
+                const useRules    = document.getElementById('ds-ctx-rules') ? document.getElementById('ds-ctx-rules').checked : false;
+                const useIssue    = document.getElementById('ds-ctx-issue') ? document.getElementById('ds-ctx-issue').checked : false;
+                const useHandbook = document.getElementById('ds-ctx-handbook') ? document.getElementById('ds-ctx-handbook').checked : false;
+                const useWrMat    = document.getElementById('ds-ctx-wr-materials') ? document.getElementById('ds-ctx-wr-materials').checked : false;
+                const useWrRpt    = document.getElementById('ds-ctx-wr-reports') ? document.getElementById('ds-ctx-wr-reports').checked : false;
                 let counts = [];
                 if (useRules)    { const d = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];    counts.push('规章' + d.length + '条'); }
                 if (useIssue)    { const d = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];    counts.push('检查' + d.length + '条'); }
                 if (useHandbook) { const d = (typeof window.getHandbookData === 'function') ? window.getHandbookData() : []; counts.push('手册' + d.length + '条'); }
-                document.getElementById('ds-ctx-info').textContent = counts.length ? '（' + counts.join('，') + '）' : '';
+                if (useWrMat)    counts.push('写作资料');
+                if (useWrRpt)    counts.push('历史报告');
+                const infoEl = document.getElementById('ds-ctx-info');
+                if (infoEl) infoEl.textContent = counts.length ? '（' + counts.join('，') + '）' : '';
             }
 
             // ---- 构建系统提示词（含业务数据） ----
             function dsBuildSystemPrompt(userQuery) {
-                const useRules    = document.getElementById('ds-ctx-rules').checked;
-                const useIssue    = document.getElementById('ds-ctx-issue').checked;
-                const useHandbook = document.getElementById('ds-ctx-handbook').checked;
+                const useRules    = document.getElementById('ds-ctx-rules') ? document.getElementById('ds-ctx-rules').checked : false;
+                const useIssue    = document.getElementById('ds-ctx-issue') ? document.getElementById('ds-ctx-issue').checked : false;
+                const useHandbook = document.getElementById('ds-ctx-handbook') ? document.getElementById('ds-ctx-handbook').checked : false;
+                const useWrMat    = document.getElementById('ds-ctx-wr-materials') ? document.getElementById('ds-ctx-wr-materials').checked : false;
+                const useWrRpt    = document.getElementById('ds-ctx-wr-reports') ? document.getElementById('ds-ctx-wr-reports').checked : false;
 
                 let sysParts = [
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
@@ -7730,6 +7913,24 @@
                     }
                 }
 
+                // 写作资料（联动写作助手资料库）
+                if (useWrMat && typeof window._wrGetAllMaterials === 'function') {
+                    try {
+                        window._wrGetAllMaterials().then(mats => {
+                            if (mats && mats.length > 0) {
+                                // 此处为异步，仅用于非关键提示，忽略
+                            }
+                        });
+                    } catch(e) {}
+                    // 同步提示：告知AI有写作资料可供参考
+                    sysParts.push('【说明】用户已开启写作资料联动，如对话涉及报告撰写，AI应结合写作助手中已导入的资料进行分析（资料将在写作助手中自动引用）。');
+                }
+
+                // 历史报告（联动写作助手历史报告）
+                if (useWrRpt && typeof window._wrGetAllReports === 'function') {
+                    sysParts.push('【说明】用户已开启历史报告联动，如对话涉及报告撰写，AI可参考写作助手中已生成的历史报告风格和内容（历史报告将在写作助手中自动引用）。');
+                }
+
                 return sysParts.join('\n\n');
             }
 
@@ -7778,14 +7979,14 @@
                 document.getElementById('ds-send-btn').textContent = '发送中...';
 
                 try {
-                    const resp = await fetch(DS_API_URL, {
+                    const resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + key
                         },
                         body: JSON.stringify({
-                            model: DS_MODEL,
+                            model: dsModel,
                             messages: messages,
                             stream: true,
                             temperature: 0.7,
@@ -9110,6 +9311,8 @@
                 const query = input.value.trim();
                 if (!query) { alert('请输入检查问题描述'); return; }
                 const apiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
+                const apiUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
+                const model  = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
 
                 const container = document.getElementById('autoCheck-results');
                 container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>⚙️ 双路召回中（规章库 + 历史案例）…</span></div>';
@@ -9249,11 +9452,11 @@
                 console.log('=======================');
 
                 try {
-                    const resp = await fetch(DS_API_URL, {
+                    const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
                         body: JSON.stringify({
-                            model: DS_MODEL,
+                            model: model,
                             messages: [
                                 { role: 'system', content: sysPrompt },
                                 { role: 'user', content: userPrompt }
@@ -9563,9 +9766,10 @@
             const WR_TPL_STORE  = 'writing_templates';
             const WR_RPT_STORE  = 'writing_reports';
             const WR_MAT_STORE  = 'writing_materials';  // 新增：资料库
-            const WR_DS_API_URL = 'https://api.deepseek.com/chat/completions';
-            const WR_DS_MODEL   = 'deepseek-chat';
-            const WR_API_KEY_K  = 'ds_api_key_v1'; // 复用同一API Key
+            // 写作助手复用智能助手的 API 配置
+            const WR_API_KEY_K  = 'ds_api_key_v1';   // 复用同一API Key
+            const WR_API_URL_K  = 'ds_api_url_v1';   // 复用 API URL 配置
+            const WR_MODEL_K    = 'ds_model_v1';     // 复用模型配置
 
             // 资料类型映射（扩展为9种）
             const WR_MAT_TYPES = {
@@ -9839,6 +10043,64 @@
                 return m[c] || c || '未分类';
             }
 
+            // 对外暴露资料库访问接口（供联动数据使用）
+            window._wrGetAllMaterials = function() { return wrDbGetAll(WR_MAT_STORE); };
+            window._wrGetAllReports   = function() { return wrDbGetAll(WR_RPT_STORE); };
+
+            // ---- 写作对话历史（连续对话模式） ----
+            let _wrConvHistory = []; // [{role:'user'|'assistant', content, timestamp}]
+
+            // 追加写作对话气泡
+            function wrAppendChatBubble(role, content, isStreaming) {
+                const histEl = document.getElementById('wr-chat-history');
+                if (!histEl) return;
+                histEl.style.display = 'flex';
+                const bubble = document.createElement('div');
+                const isUser = role === 'user';
+                bubble.id = isStreaming ? 'wr-stream-bubble' : '';
+                // 使用与智能对话一致的样式类
+                bubble.className = isUser ? 'ds-row-user' : 'ds-row-assistant';
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = isUser ? 'ds-bubble-user' : 'ds-bubble-assistant';
+                const time = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+                if (isUser) {
+                    bubbleDiv.innerHTML = wrEsc(content);
+                } else {
+                    bubbleDiv.id = isStreaming ? 'wr-stream-bubble-content' : '';
+                    bubbleDiv.innerHTML = isStreaming ? '' : wrEsc(content);
+                }
+                bubble.appendChild(bubbleDiv);
+                histEl.appendChild(bubble);
+                histEl.scrollTop = histEl.scrollHeight;
+                return bubble;
+            }
+
+            // 显示/更新写作对话框中的「新建对话」按钮
+            function wrUpdateConvBtn() {
+                const btn = document.getElementById('wr-clear-conv-btn');
+                if (btn) btn.style.display = _wrConvHistory.length > 0 ? 'block' : 'none';
+                const labelEl = document.getElementById('wr-input-label');
+                if (labelEl) labelEl.textContent = _wrConvHistory.length > 0 ? '继续修改' : '写作需求';
+            }
+
+            // 清空写作对话
+            window.wrClearConversation = function() {
+                _wrConvHistory = [];
+                window._wrCurrentReportContent = null;
+                window._wrCurrentReportQuery = null;
+                window._wrCurrentReportParsed = null;
+                window._wrCurrentReportId = null;
+                window._wrSelectedMaterialIds = [];
+                window._wrSelectedTemplate = null;
+                const histEl = document.getElementById('wr-chat-history');
+                if (histEl) { histEl.innerHTML = ''; histEl.style.display = 'none'; }
+                const resultEl = document.getElementById('wr-gen-result');
+                if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
+                const qEl = document.getElementById('wr-query-input');
+                if (qEl) { qEl.value = ''; qEl.style.height = ''; }
+                wrUpdateConvBtn();
+            };
+
             // ---- 初始化 ----
             let _wrInited = false;
             window.wrInit = function() {
@@ -9850,9 +10112,9 @@
                 }).catch(e => console.error('写作助手DB初始化失败', e));
             };
 
-            // ---- 子面板切换（简化为gen/materials两个tab）----
+            // ---- 子面板切换（gen/materials/history三个tab）----
             window.wrSwitchTab = function(tab) {
-                const tabs = ['gen', 'materials'];
+                const tabs = ['gen', 'materials', 'history'];
                 tabs.forEach(t => {
                     const btn = document.getElementById('wr-tab-btn-' + t);
                     const panel = document.getElementById('wr-panel-' + t);
@@ -9866,6 +10128,7 @@
                     }
                 });
                 if (tab === 'materials') wrRenderMaterials();
+                if (tab === 'history') wrRenderHistory();
             };
 
             // ---- 撰写报告（三步流程：选择模板→选择资料→确认形成报告）----
@@ -10258,10 +10521,65 @@
             }
 
             /**
+             * 直接从 IndexedDB 读取检查信息
+             */
+            async function wrLoadIssuesFromDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open('RailwayIssueDB_v2', 1);
+                    request.onerror = () => resolve([]);
+                    request.onsuccess = (e) => {
+                        const db = e.target.result;
+                        try {
+                            const tx = db.transaction(['issues'], 'readonly');
+                            const store = tx.objectStore('issues');
+                            const getAll = store.getAll();
+                            getAll.onsuccess = () => resolve(getAll.result || []);
+                            getAll.onerror = () => resolve([]);
+                        } catch (err) {
+                            resolve([]);
+                        }
+                    };
+                    request.onupgradeneeded = (e) => {
+                        e.target.result.createObjectStore('issues', { keyPath: 'id', autoIncrement: true });
+                    };
+                });
+            }
+
+            /**
+             * 直接从 IndexedDB 读取规章制度
+             */
+            async function wrLoadRulesFromDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open('RailwayRuleDB', 2);
+                    request.onerror = () => resolve([]);
+                    request.onsuccess = (e) => {
+                        const db = e.target.result;
+                        try {
+                            const tx = db.transaction(['ruleCollection'], 'readonly');
+                            const store = tx.objectStore('ruleCollection');
+                            const getAll = store.getAll();
+                            getAll.onsuccess = () => resolve(getAll.result || []);
+                            getAll.onerror = () => resolve([]);
+                        } catch (err) {
+                            resolve([]);
+                        }
+                    };
+                    request.onupgradeneeded = (e) => {
+                        e.target.result.createObjectStore('ruleCollection', { keyPath: 'id', autoIncrement: true });
+                    };
+                });
+            }
+
+            /**
              * 从检查信息（issue）中按日期和关键词检索
              */
-            function wrGetIssueData(parsedQuery) {
-                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+            async function wrGetIssueData(parsedQuery) {
+                // 优先尝试从 window.getIssueData 获取（如果已加载）
+                let issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+                // 如果为空，直接从 IndexedDB 读取
+                if (!issues.length) {
+                    issues = await wrLoadIssuesFromDB();
+                }
                 if (!issues.length) return [];
                 let filtered = issues;
 
@@ -10337,8 +10655,13 @@
             /**
              * 从规章库中检索相关条款
              */
-            function wrGetRuleCandidates(parsedQuery) {
-                const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+            async function wrGetRuleCandidates(parsedQuery) {
+                // 优先尝试从 window.getRulesData 获取（如果已加载）
+                let rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                // 如果为空，直接从 IndexedDB 读取
+                if (!rules.length) {
+                    rules = await wrLoadRulesFromDB();
+                }
                 if (!rules.length) return [];
                 const kws = parsedQuery.keywords;
                 if (!kws.length) return rules.slice(0, 5);
@@ -10374,13 +10697,13 @@
              */
             async function wrRetrieveMaterials(query) {
                 const parsed = wrParseQuery(query);
-                const [template, similarReports, localMaterials] = await Promise.all([
+                const [template, similarReports, localMaterials, issues, ruleCandidates] = await Promise.all([
                     wrGetTemplate(parsed),
                     wrGetSimilarReports(parsed, 2),
-                    wrGetLocalMaterials(parsed)
+                    wrGetLocalMaterials(parsed),
+                    wrGetIssueData(parsed),
+                    wrGetRuleCandidates(parsed)
                 ]);
-                const issues = wrGetIssueData(parsed);
-                const ruleCandidates = wrGetRuleCandidates(parsed);
                 const stats = wrSummarizeIssues(issues);
                 return { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials };
             }
@@ -10397,9 +10720,9 @@
                 const scored = all.map(m => {
                     const text = ((m.title||'') + ' ' + String(m.content||'').slice(0, 800)).toLowerCase();
                     let score = 0;
-                    // 关键词命中（每个命中词+2分）
+                    // 关键词命中（每个命中词+3分，提高权重）
                     if (kws.length > 0) {
-                        score += kws.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 2 : 0), 0);
+                        score += kws.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 3 : 0), 0);
                     }
                     // 日期匹配
                     if (parsedQuery.dateRange) {
@@ -10412,8 +10735,8 @@
                             if (ts >= start && ts <= end) score += 3;
                         }
                     }
-                    // 故障报告/统计优先
-                    if (m.matType === 'fault' || m.matType === 'stats') score += 1;
+                    // 故障报告/统计/检查信息优先（这些类型包含结构化数据，对报告生成更有价值）
+                    if (m.matType === 'fault' || m.matType === 'stats') score += 2;
                     return { m, score };
                 });
 
@@ -10422,19 +10745,19 @@
 
                 // 返回策略：
                 // 1. 如果有关键词匹配(score>0)的资料，优先返回这些
-                // 2. 如果没有匹配关键词的资料，返回最新的5条资料（确保导入的资料可见）
+                // 2. 如果没有匹配关键词的资料，返回最新的8条资料（确保导入的资料可见）
                 const hasMatches = scored.some(x => x.score > 0);
                 const filtered = hasMatches 
                     ? scored.filter(x => x.score > 0)  // 只返回有匹配的资料
                     : scored;  // 无匹配时返回所有资料（按时间排序）
 
-                // 返回Top-5，但每种类型至多2条（避免单一类型淹没）
+                // 返回Top-8，但每种类型至多3条（避免单一类型淹没，同时保证足够的数据量）
                 const result = [];
                 const typeCounts = {};
                 for (const { m } of filtered) {
-                    if (result.length >= 5) break;
+                    if (result.length >= 8) break;
                     const tc = typeCounts[m.matType] || 0;
-                    if (tc >= 2) continue;
+                    if (tc >= 3) continue;
                     typeCounts[m.matType] = tc + 1;
                     result.push(m);
                 }
@@ -10456,7 +10779,7 @@
                     '1. 严格遵守模板中的章节结构，将占位符（如{{问题总数}}）替换为台账统计数据中的实际数值。',
                     '2. 台账数据必须真实引用，不得虚构数字或案例；如台账数据不足以支撑某章节，用[待补充]标记。',
                     '3. 涉及规章时，只能引用"参考规章条款"中的规章，不得编造。',
-                    '4. 本地资料（故障报告、文电、通报等）中的事实和数据可作为写作依据，如实引用。',
+                    '4. 【重要】本地资料（故障报告、文电、通报、检查信息等）中的事实和数据必须充分引用，不得忽略。具体案例、问题描述、整改要求等细节应从资料中提取并融入报告正文。',
                     '5. 语言风格：严谨、规范、简洁，使用铁路安监专业术语。',
                     '6. 今天日期：' + todayStr + '。',
                     '',
@@ -10464,6 +10787,7 @@
                     '- 直接输出最终文档内容，无需解释说明。',
                     '- 按模板章节结构输出，不随意增减章节。',
                     '- 统计数字、日期等关键信息必须与台账数据一致。',
+                    '- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。',
                 ];
 
                 const userLines = ['【用户需求】', query, ''];
@@ -10496,11 +10820,13 @@
 
                 // 本地资料库（故障报告、文电、通报等）
                 if (localMaterials && localMaterials.length > 0) {
-                    userLines.push('【本地资料（共' + localMaterials.length + '份，可作为写作依据）】');
+                    userLines.push('【本地资料（共' + localMaterials.length + '份，必须充分引用其中的具体案例和数据）】');
                     localMaterials.forEach((m, i) => {
                         const typeInfo = (typeof WR_MAT_TYPES !== 'undefined' ? WR_MAT_TYPES : {})[m.matType] || { label: m.matType };
                         userLines.push('── 资料' + (i+1) + '【' + typeInfo.label + '】《' + (m.title||m.fileName) + '》');
-                        userLines.push(String(m.content || '').slice(0, 600) + (m.content && String(m.content).length > 600 ? '…' : ''));
+                        // 内容长度扩展到5000字，让AI能看到更多细节
+                        const content = String(m.content || '');
+                        userLines.push(content.slice(0, 5000) + (content.length > 5000 ? '…（共' + content.length + '字，已截断）' : ''));
                         userLines.push('');
                     });
                 }
@@ -10615,32 +10941,45 @@
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!q.trim()) { alert('请输入写作需求'); return; }
                 const apiKey = localStorage.getItem(WR_API_KEY_K) || '';
+                const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
+                const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-chat';
                 if (!apiKey) {
-                    alert('请先在智能对规或智能对话中配置 DeepSeek API Key。');
+                    alert('请先在智能助手模块中配置 API Key。');
                     return;
                 }
 
-                const resultEl = document.getElementById('wr-gen-result');
                 const modifyBtn = document.getElementById('wr-modify-btn');
-                const writeBtn = document.getElementById('wr-write-btn');
+                const writeBtn  = document.getElementById('wr-write-btn');
 
-                // 显示加载状态
-                resultEl.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);">'
-                    + '<div style="width:20px;height:20px;border:2px solid var(--border);border-top-color:#059669;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>'
-                    + '<span>⚙️ 正在检索资料并调用 AI 生成中，请稍候…</span></div>';
-                resultEl.style.display = 'block';
+                // 追加用户消息气泡
+                wrAppendChatBubble('user', q);
+                // 记录到对话历史
+                _wrConvHistory.push({ role: 'user', content: q, timestamp: Date.now() });
+
+                // 清空输入框（保留内容给下次参考，但清空输入区）
+                const qInput = document.getElementById('wr-query-input');
+                if (qInput) { qInput.value = ''; qInput.style.height = ''; }
+                wrUpdateConvBtn();
+
+                // 显示 AI 流式气泡（loading）
+                const aiBubble = wrAppendChatBubble('assistant', '', true);
+                const streamBubbleContent = document.getElementById('wr-stream-bubble-content');
+
                 if (modifyBtn) { modifyBtn.disabled = true; modifyBtn.textContent = '⏳ 生成中…'; }
-                if (writeBtn) { writeBtn.disabled = true; }
+                if (writeBtn)  { writeBtn.disabled = true; }
+
+                // 隐藏旧结果区
+                const resultEl = document.getElementById('wr-gen-result');
+                if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
 
                 try {
                     // 检索资料
                     const materials = await wrRetrieveMaterials(q);
                     
-                    // 如果有用户手动选择的资料，合并到localMaterials中
+                    // 合并用户手动选择的资料
                     if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
                         const allMats = await wrDbGetAll(WR_MAT_STORE);
                         const selectedMats = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id));
-                        // 去重合并
                         const existingIds = new Set((materials.localMaterials || []).map(m => m.id));
                         selectedMats.forEach(m => {
                             if (!existingIds.has(m.id)) {
@@ -10657,13 +10996,27 @@
                     
                     const { sysPrompt, userPrompt } = wrBuildPrompt(q, materials);
 
+                    // 构建消息序列（支持连续对话上下文）
+                    const messages = [{ role: 'system', content: sysPrompt }];
+                    // 加入历史对话（最近4轮，避免超token）
+                    const histSlice = _wrConvHistory.slice(-8);
+                    histSlice.forEach(h => {
+                        if (h.role === 'user' && h.content !== q) {
+                            messages.push({ role: 'user', content: h.content });
+                        } else if (h.role === 'assistant') {
+                            messages.push({ role: 'assistant', content: h.content.slice(0, 1500) }); // 截断过长的历史回复
+                        }
+                    });
+                    // 加入当前 userPrompt（含资料检索上下文）
+                    messages.push({ role: 'user', content: userPrompt });
+
                     // 调用API（流式）
-                    const resp = await fetch(WR_DS_API_URL, {
+                    const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
                         body: JSON.stringify({
-                            model: WR_DS_MODEL,
-                            messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: userPrompt }],
+                            model: model,
+                            messages: messages,
                             stream: true,
                             temperature: 0.3,
                             max_tokens: 3000
@@ -10675,31 +11028,9 @@
                         throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
                     }
 
-                    // 创建结果容器（用于流式更新）
-                    let materialsSummaryHtml = '';
-                    const { parsed, template, issues, stats, ruleCandidates, similarReports, localMaterials } = materials;
-                    const matTags = [];
-                    if (template) matTags.push('<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:0.75rem;">模板：' + wrEsc(template.title) + '</span>');
-                    if (issues.length) matTags.push('<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:12px;font-size:0.75rem;">台账' + issues.length + '条</span>');
-                    if (localMaterials && localMaterials.length) matTags.push('<span style="background:#fff7ed;color:#9a3412;padding:2px 8px;border-radius:12px;font-size:0.75rem;">资料' + localMaterials.length + '份</span>');
-                    if (similarReports.length) matTags.push('<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:0.75rem;">历史' + similarReports.length + '篇</span>');
-                    if (ruleCandidates.length) matTags.push('<span style="background:#fce7f3;color:#9d174d;padding:2px 8px;border-radius:12px;font-size:0.75rem;">规章' + ruleCandidates.length + '条</span>');
-                    if (matTags.length) materialsSummaryHtml = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 10px;">' + matTags.join('') + '</div>';
-
-                    resultEl.innerHTML = '<div style="background:#fff;border-radius:12px;border:1px solid #a7f3d0;overflow:hidden;">'
-                        + '<div style="background:#f0fdf4;padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #a7f3d0;">'
-                        + '<span style="font-size:1.1rem;">✍️</span>'
-                        + '<span style="font-weight:700;font-size:0.92rem;color:#065f46;">AI 生成结果</span>'
-                        + materialsSummaryHtml
-                        + '</div>'
-                        + '<div id="wr-stream-content" style="padding:16px;font-size:0.88rem;line-height:1.85;white-space:pre-wrap;min-height:80px;"></div>'
-                        + '<div style="padding:10px 14px;background:#f0fdf4;border-top:1px solid #a7f3d0;display:flex;gap:8px;flex-wrap:wrap;" id="wr-result-actions">'
-                        + '</div></div>';
-
-                    const streamEl = document.getElementById('wr-stream-content');
                     let fullText = '';
 
-                    // 流式读取
+                    // 流式读取，更新气泡内容
                     const reader = resp.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
@@ -10718,49 +11049,78 @@
                                 const delta = obj.choices?.[0]?.delta?.content || '';
                                 if (delta) {
                                     fullText += delta;
-                                    streamEl.textContent = fullText;
-                                    streamEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                                    if (streamBubbleContent) {
+                                        streamBubbleContent.textContent = fullText;
+                                        streamBubbleContent.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                                    }
                                 }
                             } catch(e) {}
                         }
                     }
 
+                    // 去掉流式气泡的 id（流式结束）
+                    if (aiBubble) aiBubble.id = '';
+                    if (streamBubbleContent) streamBubbleContent.id = '';
+
+                    // 记录 AI 回复到对话历史
+                    _wrConvHistory.push({ role: 'assistant', content: fullText, timestamp: Date.now() });
+
                     // 保存当前报告内容用于修改功能
                     window._wrCurrentReportContent = fullText;
-                    window._wrCurrentReportQuery = q;
-                    window._wrCurrentReportParsed = parsed;
+                    window._wrCurrentReportQuery   = q;
+                    const { parsed } = materials;
+                    window._wrCurrentReportParsed  = parsed;
 
                     // 保存到历史
-                    const reportTitle = (q.slice(0, 30) + (q.length > 30 ? '…' : ''));
-                    const savedId = await wrSaveReport({
-                        title: reportTitle,
-                        category: parsed.reportType,
-                        query: q,
-                        content: fullText,
-                        materialCount: { issues: issues.length, rules: ruleCandidates.length, reports: similarReports.length },
-                        date: Date.now()
-                    });
-                    window._wrCurrentReportId = savedId;
-
-                    // 渲染操作按钮
-                    const actionsEl = document.getElementById('wr-result-actions');
-                    if (actionsEl) {
-                        actionsEl.innerHTML =
-                            '<button onclick="wrCopyText(\'' + savedId + '\')" style="padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.82rem;cursor:pointer;">📋 复制全文</button>'
-                            + '<button onclick="wrDownloadText(\'' + savedId + '\')" style="padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;font-weight:600;">📥 下载TXT</button>'
-                            + '<button onclick="wrModifyReport()" style="padding:7px 14px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;font-weight:600;">📝 修改报告</button>'
-                            + '<span style="font-size:0.75rem;color:var(--text-secondary);align-self:center;margin-left:auto;">已自动保存至历史报告</span>';
+                    let savedId = null;
+                    try {
+                        const reportTitle = q.slice(0, 30) + (q.length > 30 ? '…' : '');
+                        savedId = await wrSaveReport({
+                            title: reportTitle,
+                            category: parsed.reportType,
+                            query: q,
+                            content: fullText,
+                            materialCount: { issues: materials.issues.length, rules: materials.ruleCandidates.length, reports: materials.similarReports.length },
+                            date: Date.now()
+                        });
+                        window._wrCurrentReportId = savedId;
+                        console.log('[写作助手] 报告已保存，ID:', savedId);
+                    } catch (saveErr) {
+                        console.error('[写作助手] 保存报告失败:', saveErr);
                     }
+
+                    // 在气泡下方追加操作按钮行
+                    if (aiBubble) {
+                        const actionsDiv = document.createElement('div');
+                        actionsDiv.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
+                        actionsDiv.innerHTML = (savedId
+                            ? '<button onclick="wrCopyText(\'' + savedId + '\')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>'
+                            + '<button onclick="wrDownloadText(\'' + savedId + '\')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>'
+                            + '<span style="font-size:0.72rem;color:#059669;align-self:center;">✅ 已保存</span>'
+                            : '<button onclick="wrCopyText()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>');
+                        aiBubble.appendChild(actionsDiv);
+                    }
+
+                    // 更新写作需求框提示词（引导继续修改）
+                    const qEl = document.getElementById('wr-query-input');
+                    if (qEl) qEl.placeholder = '继续提出修改需求，例如：请将第二节的典型问题改为更详细的描述…';
+                    wrUpdateConvBtn();
 
                 } catch(err) {
                     let msg = err.message || '未知错误';
                     if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('net::ERR')) {
                         msg = '网络请求失败（可能是 file:// 限制），请部署到 HTTP 服务器后使用。';
                     }
-                    resultEl.innerHTML = '<div style="padding:14px;color:#e53e3e;background:#fff5f5;border-radius:10px;border:1px solid #fca5a5;">❌ 生成失败：' + wrEsc(msg) + '</div>';
+                    // 更新气泡为错误信息
+                    if (streamBubbleContent) {
+                        streamBubbleContent.style.background = '#fff5f5';
+                        streamBubbleContent.style.color = '#e53e3e';
+                        streamBubbleContent.style.border = '1px solid #fca5a5';
+                        streamBubbleContent.textContent = '❌ 生成失败：' + msg;
+                    }
                 } finally {
                     if (modifyBtn) { modifyBtn.disabled = false; modifyBtn.textContent = '📝 修改报告'; }
-                    if (writeBtn) { writeBtn.disabled = false; writeBtn.textContent = '✍️ 撰写报告'; }
+                    if (writeBtn)  { writeBtn.disabled = false;  writeBtn.textContent = '✍️ 撰写报告'; }
                 }
             };
 
@@ -10847,8 +11207,10 @@
                     }
                     
                     const apiKey = localStorage.getItem(WR_API_KEY_K) || '';
+                    const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
+                    const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-chat';
                     if (!apiKey) {
-                        alert('请先在智能对规或智能对话中配置 DeepSeek API Key。');
+                        alert('请先在智能助手模块中配置 API Key。');
                         return;
                     }
 
@@ -10888,11 +11250,11 @@
                         const { sysPrompt, userPrompt } = wrBuildPrompt(q + modifyHint, materials);
 
                         // 调用API
-                        const resp = await fetch(WR_DS_API_URL, {
+                        const resp = await fetch(apiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
                             body: JSON.stringify({
-                                model: WR_DS_MODEL,
+                                model: model,
                                 messages: [
                                     { role: 'system', content: sysPrompt + '\n\n【当前报告内容】\n' + window._wrCurrentReportContent },
                                     { role: 'user', content: userPrompt }
@@ -10968,12 +11330,7 @@
             };
 
             window.wrClearResult = function() {
-                const q = document.getElementById('wr-query-input');
-                const r = document.getElementById('wr-gen-result');
-                const p = document.getElementById('wr-material-preview');
-                if (q) q.value = '';
-                if (r) { r.innerHTML = ''; r.style.display = 'none'; }
-                if (p) p.style.display = 'none';
+                wrClearConversation();
             };
 
             // 复制报告全文
@@ -11248,6 +11605,8 @@
                     if (/统计|汇总|分析|台账|数量|次数/.test(text)) return 'stats';
                     return 'fault';
                 }
+                // 检查信息/检查问题 - 作为stats类型处理，便于报告生成时引用
+                if (/检查.*信息|检查.*问题|监察.*问题|安全.*检查|问题.*清单|整改.*通知/.test(text)) return 'stats';
                 if (/通报|安全通报|情况通报|事故通报|违规通报/.test(text)) return 'bulletin';
                 if (/通知|批复|请示|函|电报|文电|电文|转发|印发/.test(text)) return 'dispatch';
                 if (/纪要|会议|研讨|座谈|讨论/.test(text)) return 'meeting';

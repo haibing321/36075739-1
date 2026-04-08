@@ -8635,6 +8635,32 @@
                 }
             })();
 
+            // 铁路安监领域违规行为关键词（用于增强关键词提取，捕捉违规描述）
+            const VIOLATION_ACTION_WORDS = new Set([
+                '违规', '违章', '违反', '不符合', '未按规定', '未按', '擅自',
+                '未设置', '未设', '未配备', '未安装', '缺少', '缺失',
+                '未确认', '未核实', '未检查', '未核对', '未通知',
+                '未经允许', '未经批准', '未经许可', '私自', '无证',
+                '超速', '超限', '越区', '越站', '错办',
+                '漏办', '误办', '迟办', '未办', '错发', '漏发',
+                '未及时', '未按规定时间', '延误', '滞后',
+                '未佩戴', '未穿戴', '未使用', '未携带',
+                '未下达', '未传达', '未执行', '未落实',
+                '未锁闭', '未确认', '未试验', '未检测',
+                '未设置防护', '未设防护', '未派人防护', '无人防护',
+                '天窗点外', '点外作业', '点外上道',
+                '无命令', '无计划', '无防护', '无调度命令',
+                '违规上道', '擅自进入', '擅自作业',
+                '未消记', '未销令', '未开通',
+                '关闭', '短路', '断开', '拆除',
+                '未接地', '未断电', '未验电',
+                '超载', '超重', '偏载', '集重',
+                '分离', '脱轨', '挤岔', '冲突', '追尾',
+                '冒进', '冒出', '溜逸', '放飏',
+                '未换端', '未换位', '未换室',
+                '中断', '错误', '丢失', '遗忘',
+            ]);
+
             // 铁路安监领域扩展停用词表
             const AUTOCHECK_STOP_WORDS = new Set([
                 // 通用停用词
@@ -8643,24 +8669,24 @@
                 '如果', '那么', '因为', '所以', '是', '有', '不', '也', '都', '还', '要', '会',
                 '可以', '能', '可能', '应该', '必须', '需要', '这个', '那个', '这些', '那些',
                 // 常见连接词
-                '进行', '开展', '情况', '相关', '工作', '检查', '发现', '存在', '问题',
-                '作业', '人员', '单位', '部门', '领导', '负责', '组织', '实施', '执行',
+                '进行', '开展', '情况', '相关', '工作', '发现', '存在', '问题',
+                '单位', '部门', '领导', '负责', '组织', '实施', '执行',
                 // 铁路安监领域无实际检索价值的词
-                '安全', '第一', '预防', '为主', '综合', '治理', '强化', '落实', '确保', '保障',
-                '提高', '加强', '规范', '完善', '建立', '健全', '推动', '促进', '实现',
-                '车间', '工区', '班组', '职工', '干部', '领导', '督查', '巡视',
-                '施工', '维修', '养护', '管理', '制度', '措施', '方案', '流程', '标准',
+                '第一', '预防', '为主', '综合', '治理', '强化', '落实', '确保', '保障',
+                '提高', '加强', '完善', '建立', '健全', '推动', '促进', '实现',
+                '车间', '工区', '班组', '职工', '干部', '督查', '巡视',
+                '养护', '制度', '措施', '方案', '流程',
                 '按照', '根据', '依照', '参照', '依据', '对于', '关于', '针对', '鉴于',
-                '操作', '使用', '维护', '保养', '报告', '要求', '通知', '规定', '办法',
-                '细则', '标准', '规程', '规则', '条例', '制度', '文件', '函', '电报',
-                '严重', '一般', '较大', '重大', '特别', '重要', '主要', '次要'
+                '操作', '使用', '维护', '保养', '报告', '通知', '办法',
+                '细则', '规程', '规则', '条例', '文件', '函', '电报',
+                '严重', '一般', '较大', '重大', '特别', '主要', '次要'
             ]);
 
-            // ---- 关键词提取（仅从词库中筛选输入文本里包含的术语）----
+            // ---- 关键词提取（从词库+违规行为词中筛选输入文本里包含的术语）----
             function acExtractKeywords(text) {
                 const kwSet = new Set();
                 const lowerText = text.toLowerCase();
-                // 按术语长度降序匹配（最长优先），防止短词覆盖长词
+                // 第一类：术语词（按长度降序匹配，最长优先）
                 const sortedTerms = Array.from(RAILWAY_TERMS).sort((a, b) => b.length - a.length);
                 let termCount = 0;
                 for (const term of sortedTerms) {
@@ -8669,12 +8695,31 @@
                         kwSet.add(term);
                     }
                 }
-                // 按长度降序返回，过滤掉被更长词包含的短词
+                // 第二类：违规行为词（单独提取，不受术语长度过滤限制）
+                VIOLATION_ACTION_WORDS.forEach(function(word) {
+                    if (lowerText.includes(word.toLowerCase())) {
+                        kwSet.add(word);
+                    }
+                });
+                // 第三类：同义词扩展（如果输入包含某词，其同义词也加入候选）
+                Object.entries(SYNONYM_MAP).forEach(function([key, syns]) {
+                    const keyIncluded = lowerText.includes(key.toLowerCase());
+                    if (keyIncluded) {
+                        syns.forEach(function(s) { if (lowerText.includes(s.toLowerCase())) kwSet.add(s); });
+                    } else {
+                        syns.forEach(function(s) {
+                            if (lowerText.includes(s.toLowerCase())) { kwSet.add(key); kwSet.add(s); }
+                        });
+                    }
+                });
+                // 按长度降序返回，过滤掉被更长词包含的短词（仅对<=3字的短词过滤）
                 const allTokens = Array.from(kwSet).sort((a, b) => b.length - a.length);
-                return allTokens.filter((w, i) => {
-                    if (w.length === 2) return !allTokens.slice(0, i).some(lg => lg.length >= 4 && lg.includes(w));
+                return allTokens.filter(function(w, i) {
+                    if (w.length <= 3) {
+                        return !allTokens.slice(0, i).some(function(lg) { return lg.length >= 4 && lg.includes(w); });
+                    }
                     return true;
-                }).slice(0, 40);
+                }).slice(0, 50);
             }
 
             // ---- 文本片段高亮关键词命中位置 ----
@@ -8988,59 +9033,132 @@
                     container.style.display = 'block'; return;
                 }
 
-                // ---------- 匹配检查信息（同类历史案例）---------- 
-                // 调用与检查信息模块一致的关键词搜索逻辑：AND模式，对 content/category/性质 字段匹配
-                const lowerKws = keywords.map(k => k.toLowerCase());
-                const matchedIssues = issues.map(function(iss) {
-                    let text = ((iss.content || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
-                    const matchCount = lowerKws.filter(k => text.includes(k)).length;
-                    const matchRate = Math.round((matchCount / lowerKws.length) * 100);
-                    return { iss, matchCount, matchRate };
-                }).filter(x => x.matchCount > 0)
-                  .sort((a, b) => b.matchRate - a.matchRate || b.matchCount - a.matchCount)
-                  .slice(0, 8);
+                const lowerKws = keywords.map(function(k) { return k.toLowerCase(); });
+                const kwTotal = lowerKws.length;
 
-                // ---------- 匹配规章制度（调用规章模块段落搜索逻辑）----------
-                // 与规章制度模块 renderResults AND段落模式一致：段落必须包含全部关键词
+                // ---------- 匹配检查信息（OR模式 + 权重评分）----------
+                // 改进：OR模式（至少命中1个词即可），按命中数量和权重综合排序
+                const matchedIssues = issues.map(function(iss) {
+                    var text = ((iss.content || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
+                    var matchedKws = lowerKws.filter(function(k) { return text.includes(k); });
+                    var matchCount = matchedKws.length;
+                    if (matchCount === 0) return null;
+                    // 权重评分：术语词命中权重高于行为词
+                    var score = 0;
+                    matchedKws.forEach(function(k) {
+                        var origKw = keywords[lowerKws.indexOf(k)] || k;
+                        if (VIOLATION_ACTION_WORDS.has(origKw)) {
+                            score += 1.5; // 行为词权重
+                        } else if (RAILWAY_TERMS.has(origKw)) {
+                            score += 2;   // 术语词权重更高
+                        } else {
+                            score += 1;   // 其他词
+                        }
+                    });
+                    // 标题/类别命中额外加分
+                    var titleText = (iss.category || '').toLowerCase();
+                    matchedKws.forEach(function(k) {
+                        if (titleText.includes(k)) score += 1;
+                    });
+                    return { iss: iss, matchCount: matchCount, matchRate: Math.round((matchCount / kwTotal) * 100), score: score };
+                }).filter(function(x) { return x !== null; })
+                  .sort(function(a, b) { return b.score - a.score || b.matchCount - a.matchCount || b.matchRate - a.matchRate; })
+                  .slice(0, 10);
+
+                // ---------- 匹配规章制度（OR模式 + BM25加权）----------
+                // 改进：OR模式（段落命中任意关键词即可参与评分），使用BM25加权
                 const matchedRules = [];
                 rules.forEach(function(r) {
                     if (typeof generateRuleSnippet === 'function') {
-                        const snippetHtml = generateRuleSnippet(r, keywords, -1, 'and');
+                        // 先尝试 AND 模式精确匹配
+                        var snippetHtml = generateRuleSnippet(r, keywords, -1, 'and');
                         if (snippetHtml) {
-                            const matchScore = typeof calculateMatchScore === 'function' 
+                            var matchScore = typeof calculateMatchScore === 'function' 
                                 ? calculateMatchScore(r, keywords, 'and') : 1;
-                            matchedRules.push({ rule: r, snippetHtml, matchScore });
+                            matchedRules.push({ rule: r, snippetHtml: snippetHtml, matchScore: matchScore * 3, mode: 'and' });
+                        } else {
+                            // AND 匹配失败后，尝试 OR 模式宽松匹配
+                            snippetHtml = generateRuleSnippet(r, keywords, -1, 'or');
+                            if (snippetHtml) {
+                                var orScore = typeof calculateMatchScore === 'function' 
+                                    ? calculateMatchScore(r, keywords, 'or') : 0.5;
+                                // OR 模式按命中关键词比例计算得分
+                                var ruleText = (r.content || '').toLowerCase();
+                                var hitKws = lowerKws.filter(function(k) { return ruleText.includes(k); });
+                                var orWeight = hitKws.length / kwTotal;
+                                matchedRules.push({ rule: r, snippetHtml: snippetHtml, matchScore: orScore * orWeight, mode: 'or' });
+                            }
                         }
                     } else {
-                        // 回退：全文AND匹配
-                        const text = (r.content || '').toLowerCase();
-                        if (lowerKws.every(k => text.includes(k))) {
-                            matchedRules.push({ rule: r, snippetHtml: null, matchScore: 1 });
+                        // 回退：OR匹配 + 关键词覆盖率评分
+                        var text = (r.content || '').toLowerCase();
+                        var titleLc = (r.title || '').toLowerCase();
+                        var hitCount = 0;
+                        lowerKws.forEach(function(k) {
+                            if (text.includes(k) || titleLc.includes(k)) hitCount++;
+                        });
+                        if (hitCount > 0) {
+                            matchedRules.push({ rule: r, snippetHtml: null, matchScore: hitCount / kwTotal, mode: 'or' });
                         }
                     }
                 });
-                matchedRules.sort((a, b) => b.matchScore - a.matchScore);
-                const scoredRules = matchedRules.slice(0, 8);
+                // 排序：AND模式优先，同模式按得分排序
+                matchedRules.sort(function(a, b) {
+                    if (a.mode !== b.mode) return a.mode === 'and' ? 1 : -1; // and 优先
+                    return b.matchScore - a.matchScore;
+                });
+                var scoredRules = matchedRules.slice(0, 10);
 
-                // ---------- 匹配检查手册（关键词搜索 chapter/section/item/content，AND模式）----------
-                const matchedHb = handbooks.map(function(h) {
-                    const text = ([h.chapter, h.section, h.item, h.subitem, h.content].filter(Boolean).join(' ')).toLowerCase();
-                    const matchCount = lowerKws.filter(k => text.includes(k)).length;
-                    const matchRate = Math.round((matchCount / lowerKws.length) * 100);
-                    return { hb: h, matchCount, matchRate, title: [h.chapter, h.section, h.item, h.subitem].filter(Boolean).join(' > ') };
-                }).filter(x => x.matchCount === lowerKws.length) // AND模式：全部关键词命中
-                  .sort((a, b) => b.matchRate - a.matchRate)
-                  .slice(0, 6);
+                // ---------- 匹配检查手册（分级匹配：核心词AND + 行为词OR）----------
+                // 改进：区分术语词（要求AND）和行为词（OR加分）
+                var termKws = lowerKws.filter(function(k) {
+                    var orig = keywords[lowerKws.indexOf(k)] || k;
+                    return RAILWAY_TERMS.has(orig) || orig.length >= 4;
+                });
+                var actionKws = lowerKws.filter(function(k) {
+                    var orig = keywords[lowerKws.indexOf(k)] || k;
+                    return VIOLATION_ACTION_WORDS.has(orig);
+                });
+
+                var matchedHb = handbooks.map(function(h) {
+                    var text = ([h.chapter, h.section, h.item, h.subitem, h.content].filter(Boolean).join(' ')).toLowerCase();
+                    // 术语词：AND模式（全部命中为佳）
+                    var termHits = termKws.length > 0 ? termKws.filter(function(k) { return text.includes(k); }).length : 0;
+                    // 行为词：OR模式（命中任一即加分）
+                    var actionHits = actionKws.length > 0 ? actionKws.filter(function(k) { return text.includes(k); }).length : 0;
+                    // 总命中
+                    var totalHits = lowerKws.filter(function(k) { return text.includes(k); }).length;
+                    if (totalHits === 0) return null;
+
+                    // 综合评分：术语覆盖率 * 60% + 行为词命中 * 30% + 总覆盖率 * 10%
+                    var termCoverage = termKws.length > 0 ? termHits / termKws.length : 0;
+                    var actionBonus = actionKws.length > 0 ? Math.min(1, actionHits / Math.max(1, actionKws.length)) : 0;
+                    var overallCoverage = totalHits / kwTotal;
+                    var compositeScore = termCoverage * 0.6 + actionBonus * 0.3 + overallCoverage * 0.1;
+
+                    return {
+                        hb: h, matchCount: totalHits, matchRate: Math.round(overallCoverage * 100),
+                        score: compositeScore,
+                        title: [h.chapter, h.section, h.item, h.subitem].filter(Boolean).join(' > ')
+                    };
+                }).filter(function(x) { return x !== null; })
+                  .sort(function(a, b) { return b.score - a.score || b.matchCount - a.matchCount; })
+                  .slice(0, 8);
 
                 // ---------- 渲染结果 ----------
                 const hasAny = matchedIssues.length || scoredRules.length || matchedHb.length;
                 if (!hasAny) {
-                    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">🔍</div><p>未找到匹配内容，建议换用「AI 对规」</p></div>';
+                    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">🔍</div><p>未找到匹配内容，建议调整关键词或换用「AI 对规」</p></div>';
                     container.style.display = 'block'; return;
                 }
 
                 let html = '';
-                const kwsUsed = keywords.map(k => '<span style="background:#fde68a;color:#92400e;padding:1px 6px;border-radius:10px;font-size:0.78rem;">' + acEscHtml(k) + '</span>').join(' ');
+                const kwsUsed = keywords.map(function(k) {
+                    var isAction = VIOLATION_ACTION_WORDS.has(k);
+                    var bg = isAction ? '#fecaca;color:#991b1b' : '#fde68a;color:#92400e';
+                    var tag = isAction ? '行为' : '术语';
+                    return '<span style="background:' + bg + ';padding:1px 6px;border-radius:10px;font-size:0.78rem;" title="' + tag + '">' + acEscHtml(k) + '</span>';
+                }).join(' ');
                 html += '<div style="margin-bottom:12px;font-size:0.8rem;color:var(--text-secondary);">关键词：' + kwsUsed + '</div>';
 
                 // —— 检查信息匹配结果（检查信息卡片风格）——
@@ -9059,12 +9177,14 @@
                         else if (xz === 'C类' || xz.includes('C')) { levelBorderColor = '#059669'; xzBg = '#059669'; }
                         // 高亮关键词
                         let contentHtml = acEscHtml(iss.content || '');
-                        lowerKws.forEach(k => {
+                        lowerKws.forEach(function(k) {
                             const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
                             contentHtml = contentHtml.replace(reg, '<span class="highlight">$1</span>');
                         });
+                        // OR 模式描述
+                        var modeDesc = x.matchCount + '/' + kwTotal + '词命中';
                         html += '<div class="result-card" style="border-left:4px solid ' + levelBorderColor + ';background:#fffbeb;">'
-                            + '<div class="match-badge">' + x.matchCount + '/' + lowerKws.length + ' 匹配 ' + x.matchRate + '%</div>'
+                            + '<div class="match-badge">' + modeDesc + ' 综合分' + Math.round(x.score * 10) / 10 + '</div>'
                             + '<div class="result-header">'
                             + '<span class="tag tag-xingzhi" style="background:' + xzBg + ';color:#fff;">' + acEscHtml(xz || '空白') + '</span>'
                             + '<span class="tag tag-category">' + acEscHtml(iss.category || '其他') + '</span>'
@@ -9077,38 +9197,41 @@
                     html += '</div>';
                 }
 
-                // —— 规章制度匹配结果（与规章模块 rule-card-item 完全一致）——
+                // —— 规章制度匹配结果 ——
                 if (scoredRules.length) {
                     html += '<div style="margin-bottom:6px;">'
-                        + '<span style="font-size:0.8rem;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:3px 10px;border-radius:20px;">⚖️ 违规规章条款（' + scoredRules.length + '条）</span>'
+                        + '<span style="font-size:0.8rem;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:3px 10px;border-radius:20px;">⚖️ 相关规章条款（' + scoredRules.length + '条）</span>'
                         + '</div>';
                     html += '<div class="result-list" style="margin-bottom:14px;">';
-                    // 搜索条件提示行（仿规章模块）
+                    // 搜索条件提示
+                    var modeLabel = scoredRules.some(function(x) { return x.mode === 'and'; }) ? '优先精确匹配' : '宽松匹配';
                     html += '<div style="margin-bottom:10px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:0.88rem;color:#0369a1;">'
-                        + '<strong>🔍 搜索条件：</strong>'
-                        + '<span style="margin-left:6px;padding:3px 8px;background:#fff;border-radius:4px;border:1px solid #7dd3fc;">全部包含</span>'
-                        + '<span style="margin-left:8px;">' + keywords.map(k => '<span style="padding:2px 7px;background:#e0f2fe;border-radius:4px;margin-right:3px;">' + acEscHtml(k) + '</span>').join('') + '</span>'
+                        + '<strong>🔍 匹配模式：</strong>'
+                        + '<span style="margin-left:6px;padding:3px 8px;background:#fff;border-radius:4px;border:1px solid #7dd3fc;">' + modeLabel + '</span>'
+                        + '<span style="margin-left:8px;">' + keywords.map(function(k) { return '<span style="padding:2px 7px;background:#e0f2fe;border-radius:4px;margin-right:3px;">' + acEscHtml(k) + '</span>'; }).join('') + '</span>'
                         + '</div>';
                     scoredRules.forEach(function(x, idx) {
                         const r = x.rule;
                         const rData = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
                         const absIdx = rData.findIndex(function(rr) { return rr === r; });
                         const matchCount = (x.snippetHtml && x.snippetHtml.match(/<p>/g) || []).length;
+                        var modeTag = x.mode === 'and' 
+                            ? '<span style="color:#059669;font-weight:600;">✓ 精确匹配</span>'
+                            : '<span style="color:#d97706;font-weight:600;">◈ 部分匹配</span>';
                         html += '<div class="rule-card-item">';
-                        // 标题行（可点击查看全文，与规章模块完全一致）
                         html += '<div class="rule-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;" onclick="' + (absIdx !== -1 ? 'ruleViewFullText(' + absIdx + ')' : 'acRuleDetailModal(' + idx + ')') + '">';
                         html += '<span style="flex:1;word-break:break-all;white-space:normal;color:var(--info);text-decoration:underline;text-underline-offset:3px;" title="' + acEscHtml(r.title || '') + '">' + acEscHtml(r.title || '') + '</span>';
                         html += '<button class="btn btn-info btn-small" style="flex-shrink:0;" onclick="event.stopPropagation();' + (absIdx !== -1 ? 'ruleViewFullText(' + absIdx + ')' : 'acRuleDetailModal(' + idx + ')') + '">📄 查看全文</button>';
                         html += '</div>';
                         if (r.trade) html += '<span class="rule-trade">' + acEscHtml(r.trade) + '</span>';
-                        html += '<div class="rule-match-info" style="font-size:0.8rem;color:#64748b;margin-bottom:8px;padding:4px 8px;background:#f1f5f9;border-radius:4px;display:inline-block;">✓ 匹配 ' + matchCount + ' 个段落 &nbsp;<span style="color:#b91c1c;font-weight:600;">⚠️ 疑似违规依据</span></div>';
+                        html += '<div class="rule-match-info" style="font-size:0.8rem;color:#64748b;margin-bottom:8px;padding:4px 8px;background:#f1f5f9;border-radius:4px;display:inline-block;">✓ 匹配 ' + matchCount + ' 个段落 &nbsp;' + modeTag + '</div>';
                         html += '<div class="rule-snippet">' + (x.snippetHtml || acEscHtml((r.content || '').slice(0, 200)) + '…') + '</div>';
                         html += '</div>';
                     });
                     html += '</div>';
                 }
 
-                // —— 检查手册匹配结果（检查信息卡片风格）——
+                // —— 检查手册匹配结果 ——
                 if (matchedHb.length) {
                     html += '<div style="margin-bottom:6px;">'
                         + '<span style="font-size:0.8rem;font-weight:700;color:#065f46;background:#d1fae5;padding:3px 10px;border-radius:20px;">📋 检查手册条目（' + matchedHb.length + '条）</span>'
@@ -9116,14 +9239,16 @@
                     html += '<div style="display:flex;flex-direction:column;gap:6px;">';
                     matchedHb.forEach(function(x) {
                         let contentHtml = acEscHtml(x.hb.content || '');
-                        lowerKws.forEach(k => {
+                        lowerKws.forEach(function(k) {
                             const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
                             contentHtml = contentHtml.replace(reg, '<span class="highlight">$1</span>');
                         });
+                        var scoreDesc = Math.round(x.score * 100) + '%相关';
                         html += '<div class="result-card" style="border-left:4px solid var(--success);background:#f0fdf4;">'
                             + '<div class="result-header">'
                             + '<span class="tag" style="background:var(--success);color:#fff;">📋 手册</span>'
                             + '<span class="tag" style="color:#065f46;background:#a7f3d0;">' + acEscHtml(x.hb.chapter || '') + '</span>'
+                            + '<span style="font-size:0.72rem;color:#065f46;background:#dcfce7;padding:1px 6px;border-radius:10px;">' + scoreDesc + '</span>'
                             + '</div>'
                             + '<div style="font-size:0.8rem;color:#065f46;margin-bottom:4px;font-weight:600;">' + acEscHtml(x.title) + '</div>'
                             + '<div class="result-content"><div class="result-text">' + contentHtml + '</div></div>'
@@ -9131,6 +9256,11 @@
                     });
                     html += '</div>';
                 }
+
+                // ── 结果置信度说明 ──
+                html += '<div style="margin-top:12px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:0.78rem;color:var(--text-secondary);border:1px solid #e2e8f0;">';
+                html += '💡 <strong>结果说明：</strong>本地匹配基于关键词检索，仅展示与输入描述相关的内容供参考，不代表最终对规结论。如需精准对规，请使用「AI 对规」功能。';
+                html += '</div>';
 
                 container.innerHTML = html;
                 container.style.display = 'block';
@@ -9168,16 +9298,70 @@
             let _bm25Index = null; // 延迟构建
 
             function bm25Tokenize(text) {
-                // 中文按字分词 + 去停用词
-                const chars = text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').toLowerCase().split(/\s+/).filter(Boolean);
-                // 提取2-4字的连续中文词组
                 const tokens = new Set();
-                const cn = text.replace(/[^\u4e00-\u9fa5]/g, '');
-                for (let len = 2; len <= 4; len++) {
-                    for (let i = 0; i <= cn.length - len; i++) tokens.add(cn.slice(i, i + len));
+                // 第一步：术语感知分词（优先匹配完整术语，避免拆散）
+                const lowerText = text.toLowerCase();
+                const sortedTerms = Array.from(RAILWAY_TERMS).sort(function(a, b) { return b.length - a.length; });
+                var usedRanges = []; // 记录已匹配的字符范围
+                sortedTerms.forEach(function(term) {
+                    var pos = 0;
+                    while (true) {
+                        var idx = lowerText.indexOf(term.toLowerCase(), pos);
+                        if (idx === -1) break;
+                        var end = idx + term.length;
+                        // 检查是否与已匹配范围重叠
+                        var overlap = usedRanges.some(function(r) { return idx < r[1] && end > r[0]; });
+                        if (!overlap) {
+                            tokens.add(term.toLowerCase());
+                            usedRanges.push([idx, end]);
+                        }
+                        pos = idx + 1;
+                        if (usedRanges.length > 200) break; // 安全限制
+                    }
+                });
+                // 第二步：对未覆盖的文本部分做 N-gram 分词
+                // 标记所有已覆盖的位置
+                var covered = new Array(text.length).fill(false);
+                usedRanges.forEach(function(r) { for (var i = r[0]; i < r[1]; i++) covered[i] = true; });
+                // 提取未覆盖的连续中文段落
+                var uncovered = '';
+                for (var i = 0; i < text.length; i++) {
+                    if (!covered[i]) {
+                        var ch = text[i];
+                        if (/[\u4e00-\u9fa5]/.test(ch)) uncovered += ch;
+                        else {
+                            // 非中文字符：如果前面有积累的中文，做分词
+                            if (uncovered.length >= 2) {
+                                for (var len = 2; len <= Math.min(4, uncovered.length); len++) {
+                                    for (var j = 0; j <= uncovered.length - len; j++) {
+                                        tokens.add(uncovered.slice(j, j + len));
+                                    }
+                                }
+                            }
+                            uncovered = '';
+                            // 英文/数字 token
+                            if (/[a-zA-Z0-9]/.test(ch)) tokens.add(ch.toLowerCase());
+                        }
+                    } else {
+                        if (uncovered.length >= 2) {
+                            for (var len = 2; len <= Math.min(4, uncovered.length); len++) {
+                                for (var j = 0; j <= uncovered.length - len; j++) {
+                                    tokens.add(uncovered.slice(j, j + len));
+                                }
+                            }
+                        }
+                        uncovered = '';
+                    }
                 }
-                chars.forEach(c => { if (c.length >= 2) tokens.add(c); });
-                return Array.from(tokens).filter(t => !AUTOCHECK_STOP_WORDS.has(t));
+                if (uncovered.length >= 2) {
+                    for (var len = 2; len <= Math.min(4, uncovered.length); len++) {
+                        for (var j = 0; j <= uncovered.length - len; j++) {
+                            tokens.add(uncovered.slice(j, j + len));
+                        }
+                    }
+                }
+                // 去停用词
+                return Array.from(tokens).filter(function(t) { return !AUTOCHECK_STOP_WORDS.has(t); });
             }
 
             function buildBM25Index(docs) {
@@ -9251,19 +9435,33 @@
             // ============================================================
             const SYNONYM_MAP = {
                 '天窗': ['封闭时间', '施工时间', '施工窗口'],
-                '防护': ['防护员', '安全防护', '设防护'],
-                '上道': ['上轨道', '进入线路', '进线作业'],
-                '违规': ['违章', '违反规定', '不符合规定', '不按规定'],
+                '防护': ['防护员', '安全防护', '设防护', '防护措施'],
+                '上道': ['上轨道', '进入线路', '进线作业', '上线路'],
+                '违规': ['违章', '违反规定', '不符合规定', '不按规定', '违章作业', '违章行为'],
                 '超限': ['超出限界', '限界超限'],
                 '信号机': ['信号灯', '信号设备'],
                 '道岔': ['转辙器', '岔道'],
                 '行车': ['行驶', '运行', '列车运行'],
-                '防溜': ['防止溜逸', '止溜'],
+                '防溜': ['防止溜逸', '止溜', '防溜措施'],
                 '闭塞': ['闭塞区间', '区间闭塞'],
                 '限速': ['限制速度', '降速'],
                 '接触网': ['供电线路', '架空线'],
-                '作业人员': ['工作人员', '施工人员', '作业者'],
+                '作业人员': ['工作人员', '施工人员', '作业者', '现场人员'],
                 '检查': ['巡查', '巡检', '查看', '核查'],
+                '列车': ['火车', '机车', '车列'],
+                '铁路': ['铁道', '轨道线路'],
+                '违章': ['违规', '违反规定', '违章作业'],
+                '未设置': ['未设', '未配备', '未安装', '缺少'],
+                '擅自': ['未经允许', '未经批准', '私自', '未经许可'],
+                '未确认': ['未核实', '未检查', '未核对'],
+                '制动': ['刹车', '制动系统'],
+                '瞭望': ['观察', '了望', '眺望'],
+                '调车': ['编组调车', '调车作业'],
+                '施工': ['施工作业', '维修作业', '作业施工'],
+                '封锁': ['线路封锁', '区间封锁', '施工封锁'],
+                '命令': ['调度命令', '行车命令', '作业命令'],
+                '进路': ['行车进路', '列车进路'],
+                '联控': ['车机联控', '呼唤应答'],
             };
 
             function expandQueryWithSynonyms(query) {
@@ -9724,15 +9922,13 @@
                 let candidateCount = 0;
 
                 // 【关键修复】历史案例存在时，完全不发送规章库候选给AI
-                // 这样AI只能从历史案例中选择，没有"自作聪明"的空间
+                // 这样AI只能从历史案例中选择，减少臆造空间
                 if (hasIssueCandidates) {
                     candidateText += '═══════════════════════════════════════════════════════\n';
                     candidateText += '【对规条款候选列表（按匹配度从高到低排序）】\n';
                     candidateText += '═══════════════════════════════════════════════════════\n';
-                    candidateText += '【📋 来源说明】以下条款来自历史案例的实际对规结论，是真实发生过的判定结果\n';
-                    candidateText += '【🎯 选择原则】按匹配度从高到低排序，优先引用匹配度最高的条款（100%为完全匹配）\n';
-                    candidateText += '【📝 引用要求】请直接原样引用以下条款内容，包括规章全名、文件编号、条款编号、条款原文，一字不差\n\n';
-                    issueCandidates.forEach((c, idx) => {
+                    candidateText += '以下条款来自历史案例的实际对规结论，请优先引用匹配度高的条款。\n\n';
+                    issueCandidates.forEach(function(c, idx) {
                         const refCount = c.issueCount > 1 ? '（' + c.issueCount + '次案例引用）' : '';
                         const fileNum = c.fileNumber ? '（' + c.fileNumber + '）' : '';
                         const article = c.article ? c.article : '';
@@ -9771,45 +9967,39 @@
                     '',
                     '【执行流程】',
                     '第一步：对输入问题进行校核，仅修正明显错别字和语句不通顺处，不改变原意，输出校核后问题。',
-                    '第二步：查看【历史案例引用的对规条款】，按【匹配度】从高到低排序，优先选择匹配度100%或最高的条款。',
-                    '第三步：从匹配度最高的1-3条历史案例条款中，选出与当前问题最相关的条款。',
-                    '第四步：【强制引用历史案例】如果【历史案例引用的对规条款】存在任何条款，必须从中选择，严禁跳过历史案例直接使用规章库条款。',
-                    '第五步：【直接原样引用】直接原样引用选中的历史案例条款，包括规章全名、文件编号、条款编号、条款原文，一字不差，严禁修改。',
-                    '第六步：按照标准格式输出对规结论。',
+                    '第二步：查看【对规条款候选列表】，按【匹配度】从高到低排序，优先选择匹配度最高的条款。',
+                    '第三步：从候选条款中，选出与当前问题描述最相关的1-3条条款。如果候选均为历史案例来源，优先引用匹配度最高的。',
+                    '第四步：直接引用选中的条款，包括规章全名、文件编号、条款编号、条款原文。',
+                    '第五步：按照标准格式输出对规结论。',
                     '',
-                    '【规则约束 - 严格按匹配度优先】',
-                    '1. 【🚨 最高优先级】历史案例条款是实际发生过的对规结论，具有最高参考价值，必须优先使用！',
-                    '2. 【🚨 强制使用历史案例】只要【历史案例引用的对规条款】不为空，必须从中选择条款，严禁跳过！',
-                    '3. 【🚨 直接原样引用】必须一字不差地引用历史案例中的条款原文，包括规章全名、文件编号、条款编号、条款内容，严禁修改、删减或改写！',
-                    '4. 【🚨 严禁替换】严禁用规章库中的条款替换历史案例中的条款，即使规章库中有相似内容！',
-                    '5. ' + ruleNote,
-                    '6. 对规结论必须精确写明：规章全名、文件编号、章/条/款编号（如"第三十六条第4款"）、条款完整原文（加引号）。',
-                    '7. 严禁在条款原文位置只写"（规章库中未找到该条款）"，必须从候选列表中找到具体的条款内容填写。',
-                    '8. 即使候选列表不完整，也必须从中给出最接近的对规结论，不能回答"无法对规"。',
-                    '9. 如来源为历史案例，在对规结论末尾注明"（来源：历史案例）"。',
-                    '10. 【严禁编造】条款内容必须来自候选列表，严禁自行编造或修改条款内容。',
-                    '11. 【严禁核对修正】严禁将历史案例条款与规章库进行核对后修正，必须直接原样引用历史案例中的条款内容。',
-                    '12. 【严禁跳过历史案例】只要历史案例候选存在，必须从中选择，不能跳过直接使用规章库条款。',
+                    '【规则约束】',
+                    '1. 条款内容必须来自候选列表，严禁自行编造或修改条款内容。',
+                    '2. 优先引用匹配度最高的条款，匹配度越高越值得信赖。',
+                    '3. ' + ruleNote,
+                    '4. 对规结论必须写明：规章全名、文件编号（如有）、章/条/款编号、条款完整原文（加引号）。',
+                    '5. 如候选列表中某条款缺少条款原文，直接引用已有内容并注明"（条款原文待查）"。',
+                    '6. 如来源为历史案例，在对规结论末尾注明"（来源：历史案例）"。',
+                    '7. 严禁回答"无法对规"，即使候选不完全匹配，也要给出最接近的参考。',
+                    '8. 严禁将历史案例条款与规章库进行核对后自行修改，必须直接引用候选中的原文。',
                     '',
-                    '【严格输出格式，一字不差】',
+                    '【严格输出格式】',
                     '═══════════════════════════════',
                     '【校核后问题】',
                     '{仅修正错别字和语句后的问题原文，保持原意}',
                     '',
                     '【对规结论】',
-                    '① 不符合/违反《{规章全名}》（{文件编号}）第{X}条第{X}款"{条款完整原文（原版，不少于30字）}"的规定。',
+                    '① 不符合/违反《{规章全名}》（{文件编号}）第{X}条第{X}款"{条款完整原文（不少于30字）}"的规定。',
                     '   ▷ 适用理由：{一句话说明为何适用本条款}',
                     '',
                     '② 不符合/违反《{规章全名}》…（如有次要条款）',
                     '═══════════════════════════════',
                     '',
-                    '【对规结论填写要求】',
-                    '1. 必须包含文件编号（如：兰铁安函〔2022〕398号）',
+                    '【填写要求】',
+                    '1. 必须包含文件编号（如：兰铁安函〔2022〕398号），如候选中无编号则省略',
                     '2. 必须精确到条款的具体位置（如：第三十六条第4款）',
                     '3. 必须引用条款的完整原文内容（不少于30字），不能只写节选或笼统描述',
-                    '4. 严禁只写"（规章库中未找到该条款）"，必须从候选列表中提取具体条款内容',
-                    '5. 示例格式（规章库来源）：不符合《兰州局集团公司铁路营业线施工作业监控系统运用管理办法》（兰铁安函〔2022〕398号）第三十六条第4款"普速铁路扰动线路基础的施工开通后，施工主体单位及设备管理单位必须对不少于3趟列车通过后的设备状态进行现场检查"的规定。',
-                    '6. 示例格式（历史案例来源）：不符合《兰州局集团公司普速铁路线路维修实施细则》（兰铁工〔2023〕11号）第4.2.3条"轨底调高垫板的使用应符合设计要求，超过一定厚度时应安装调高扣件或进行捣固作业"的规定（来源：历史案例，规章库中未找到该条款）。',
+                    '4. 必须从候选列表中提取具体条款内容',
+                    '5. 示例：不符合《兰州局集团公司铁路营业线施工作业监控系统运用管理办法》（兰铁安函〔2022〕398号）第三十六条第4款"普速铁路扰动线路基础的施工开通后，施工主体单位及设备管理单位必须对不少于3趟列车通过后的设备状态进行现场检查"的规定。',
                     '',
                     '【禁止输出整改建议、风险分析、事故预防等无关内容，严格只输出上述格式】',
                 ].join('\n');
@@ -9860,9 +10050,9 @@
 
                     // 置信度标签（案例验证优先）
                     const confidenceLabelMap = {
-                        high:   '<span class="confidence-badge high">✅ 高置信度 — 条款已在匹配案例中核实</span>',
-                        medium: '<span class="confidence-badge medium">⚠️ 中置信度 — 部分条款在匹配案例中找到，建议复核</span>',
-                        low:    '<span class="confidence-badge low">❓ 低置信度 — 未在匹配案例中找到，请人工核查</span>'
+                        high:   '<span class="confidence-badge high">✅ 高置信度 — 条款在匹配案例中核实</span>',
+                        medium: '<span class="confidence-badge medium">⚠️ 中置信度 — 部分条款在案例中找到，建议复核</span>',
+                        low:    '<span class="confidence-badge low">❓ 低置信度 — 条款未在案例中找到，请人工核查</span>'
                     };
 
                     // ── 验证明细（区分来源） ──
@@ -9901,12 +10091,12 @@
                     if (hasIssueCandidates) {
                         sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.82rem;color:#15803d;">'
                             + '<span style="font-size:1.1rem;">📋</span>'
-                            + '<span>本次验证基于 <strong>' + issueCandidates.length + ' 条匹配历史案例</strong>。AI输出条款如与案例中的规章引用一致，即为高置信度。</span>'
+                            + '<span>本次对规参考了 <strong>' + issueCandidates.length + ' 条匹配历史案例</strong>，AI从中选取了最相关的条款。条款内容来自历史案例中的引用记录，仅供参考，请以实际规章原文为准。</span>'
                             + '</div>';
                     } else {
                         sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;">'
                             + '<span style="font-size:1.1rem;">⚠️</span>'
-                            + '<span>未找到匹配的历史案例，AI对规结果仅供参考，请务必人工核查。</span>'
+                            + '<span>未找到匹配的历史案例，AI对规结果仅供参考，请务必与规章原文核实。</span>'
                             + '</div>';
                     }
 
@@ -10001,8 +10191,8 @@
                 if (smartBtn) {
                     smartBtn.dataset.state = 'local';
                     smartBtn.className = 'btn btn-primary';
-                    smartBtn.style.flex = '2';
-                    smartBtn.style.minWidth = '120px';
+                    smartBtn.style.flex = '1';
+                    smartBtn.style.minWidth = '90px';
                     smartBtn.style.fontWeight = '600';
                     smartBtn.textContent = '🔍 本地匹配';
                     smartBtn.classList.remove('state-ai');
@@ -10031,8 +10221,8 @@
                                 // 切换到AI对规状态
                                 smartBtn.dataset.state = 'ai';
                                 smartBtn.className = 'btn btn-info state-ai';
-                                smartBtn.style.flex = '2';
-                                smartBtn.style.minWidth = '120px';
+                                smartBtn.style.flex = '1';
+                                smartBtn.style.minWidth = '90px';
                                 smartBtn.style.fontWeight = '600';
                                 smartBtn.textContent = '🤖 AI 对规';
                             } else {
@@ -10041,8 +10231,8 @@
                                 // 完成后恢复到本地匹配
                                 smartBtn.dataset.state = 'local';
                                 smartBtn.className = 'btn btn-primary';
-                                smartBtn.style.flex = '2';
-                                smartBtn.style.minWidth = '120px';
+                                smartBtn.style.flex = '1';
+                                smartBtn.style.minWidth = '90px';
                                 smartBtn.style.fontWeight = '600';
                                 smartBtn.textContent = '🔍 本地匹配';
                                 smartBtn.classList.remove('state-ai');

@@ -2102,7 +2102,7 @@
             <nav class="nav" id="mainNav">
                 <!-- 检查手册移到最前面 -->
                 <button class="nav-btn active" onclick="switchTab('handbook')" id="tab-handbook"><span>📖</span> 检查手册</button>
-                <button class="nav-btn" onclick="switchTab('issue')" id="tab-issue"><span>🔍</span> 检查信息</button>
+                <button class="nav-btn" onclick="switchTab('issue')" id="tab-issue"><span>📊</span> 检查信息</button>
                 <button class="nav-btn" onclick="switchTab('rule')" id="tab-rule"><span>📋</span> 规章制度</button>
                 <button class="nav-btn" onclick="switchTab('diary')" id="tab-diary"><span>📝</span> 工作日志</button>
                 <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone"><span>📞</span> 车站电话</button>
@@ -2118,7 +2118,7 @@
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">📖</div>
-                        安全检查手册查询
+                        安全检查手册
                     </div>
                     <div class="card-subtitle">分级浏览检查项点 · 快速定位关键环节</div>
                 </div>
@@ -2139,9 +2139,9 @@
 
                     <!-- 浏览模式切换 -->
                     <div class="hb-view-toggle">
-                        <button class="active" id="hb-toggleSelect" onclick="hbSwitchView('select')">📋 分级选择</button>
+                        <button class="active" id="hb-toggleSelect" onclick="hbSwitchView('select')">🏷️ 分级选择</button>
                         <button id="hb-toggleOutline" onclick="hbSwitchView('outline')">📑 大纲浏览</button>
-                        <button id="hb-toggleRules" onclick="hbSwitchView('rules')">📖 规章制度</button>
+                        <button id="hb-toggleRules" onclick="hbSwitchView('rules')">📜 规章制度</button>
                     </div>
 
                     <!-- 分级选择模式（原有） -->
@@ -2204,8 +2204,8 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
-                        <div class="card-title-icon">🔍</div>
-                        检查信息智能查询
+                        <div class="card-title-icon">📊</div>
+                        检查信息查询
                     </div>
                     <div class="card-subtitle">多关键词定位 · 智能匹配快速检索</div>
                 </div>
@@ -2236,7 +2236,7 @@
                         <button class="btn-add" id="issue-btnAdd" onclick="issueAddKeyword()">+ 添加关键词 (最多4个)</button>
                         <div class="search-actions">
                             <button class="btn btn-primary btn-lg" onclick="issueDoSearch()">🔍 智能搜索</button>
-                            <button class="btn btn-secondary btn-lg" onclick="issueClearSearch()">重置条件</button>
+                            <button class="btn btn-secondary btn-lg" onclick="issueClearSearch()">重置</button>
                         </div>
                     </div>
                     
@@ -2245,7 +2245,7 @@
                             <span>高匹配(≥75%): <span class="stat-highlight" id="issue-highMatchCount">0</span> 条</span>
                             <span class="stat-muted" id="issue-lowMatchInfo" style="display:none;">(低匹配&lt;75%: <span id="issue-lowMatchCount" style="color:var(--accent);">0</span> 条隐藏)</span>
                         </div>
-                        <button class="btn btn-secondary" id="issue-toggleLowMatchBtn" onclick="issueToggleLowMatch()" style="display:none;">显示低匹配</button>
+                        <button class="btn btn-secondary" id="issue-toggleLowMatchBtn" onclick="issueToggleLowMatch()" style="display:none;">📊 低匹配结果</button>
                     </div>
                     
                     <div id="issue-results"></div>
@@ -2260,7 +2260,7 @@
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">📋</div>
-                        规章制度智能查询
+                        规章制度查询
                     </div>
                     <div class="card-subtitle">规章一站式管理 · 智能检索精准定位</div>
                 </div>
@@ -2277,7 +2277,7 @@
                         <div class="control-btns btn-group">
                             <button class="btn btn-import btn-success" id="rule-importBtn">📥 导入</button>
                             <button class="btn btn-export btn-primary" id="rule-exportBtn">📤 导出</button>
-                            <button class="btn btn-catalog btn-info" id="rule-catalogBtn">📋 目录</button>
+                            <button class="btn btn-catalog btn-info" id="rule-catalogBtn">🗂️ 目录</button>
                             <button class="btn btn-clear btn-warning" id="rule-clearBtn">🗑️ 清空</button>
                         </div>
                     </div>
@@ -2297,7 +2297,7 @@
                         
                         <div class="search-actions">
                             <button class="btn btn-primary btn-lg" id="rule-searchBtn">🔍 智能搜索</button>
-                            <button class="btn btn-secondary btn-lg" id="rule-clearSearchBtn">重置条件</button>
+                            <button class="btn btn-secondary btn-lg" id="rule-clearSearchBtn">重置</button>
                         </div>
                     </div>
 
@@ -2319,7 +2319,7 @@
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">📝</div>
-                        工作日志及备忘录
+                        工作日志
                     </div>
                     <div class="card-subtitle">日志备忘电子化 · 记录提醒两不误</div>
                 </div>
@@ -2356,7 +2356,7 @@
                             <span class="diary-view-title">✏️ 输入内容</span>
                             <div style="display:flex;gap:6px;align-items:center;">
                                 <button class="btn btn-primary btn-small" onclick="saveDiary(this)">💾 保存</button>
-                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)">📋 全部复制</button>
+                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)">📄 全部复制</button>
                             </div>
                         </div>
                         <!-- 日期选择（仅输入视图显示） -->
@@ -2384,7 +2384,7 @@
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">📞</div>
-                        车站电话查询
+                        车站电话
                     </div>
                     <div class="card-subtitle">铁路通讯录查询 · 一键快速拨号</div>
                 </div>
@@ -2434,7 +2434,7 @@
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">🤖</div>
-                         智能对规 对话写作
+                         智能助手
                     </div>
                     <div class="card-subtitle"> 本地数据联动 · 全面支撑对规 对规 对话写作</div>
                 </div>
@@ -2455,7 +2455,7 @@
                                     style="flex:1;min-width:140px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
                                 <button onclick="dsSetApiKey()" class="btn btn-primary btn-small">💾 保存配置</button>
                                 <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">🗑️ 清除</button>
-                                <button onclick="dsResetDefaultApi()" class="btn btn-info btn-small" style="font-size:0.78rem;">↩️ 恢复默认</button>
+                                <button onclick="dsResetDefaultApi()" class="btn btn-info btn-small" style="font-size:0.78rem;">🔄 恢复默认</button>
                                 <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
                             </div>
                         </div>
@@ -2494,15 +2494,15 @@
                     <!-- 子模块切换按钮 -->
                     <div id="ds-sub-tabs" style="display:flex;gap:6px;margin-bottom:12px;">
                         <button id="ds-sub-btn-check" onclick="dsSwitchSub('check')"
-                            style="flex:1;padding:10px 16px;border:2px solid #3b82f6;border-radius:var(--radius);background:#3b82f6;color:#fff;font-size:0.92rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            style="flex:1;padding:10px 18px;border:2px solid #3b82f6;border-radius:var(--radius-md);background:#3b82f6;color:#fff;font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
                             ⚖️ 智能对规
                         </button>
                         <button id="ds-sub-btn-chat" onclick="dsSwitchSub('chat')"
-                            style="flex:1;padding:10px 16px;border:2px solid var(--border);border-radius:var(--radius);background:#f8fafc;color:var(--text);font-size:0.92rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
                             💬 智能对话
                         </button>
                         <button id="ds-sub-btn-writer" onclick="dsSwitchSub('writer')"
-                            style="flex:1;padding:10px 16px;border:2px solid var(--border);border-radius:var(--radius);background:#f8fafc;color:var(--text);font-size:0.92rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
                             ✍️ 写作助手
                         </button>
                     </div>
@@ -2557,10 +2557,10 @@
                             
                             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                                 <!-- 两态合并按钮：第一次=本地匹配，第二次=AI对规 -->
-                                <button class="btn btn-primary" id="autoCheck-smartBtn" style="flex: 1; min-width: 90px; font-weight: 600; padding: 10px 18px; font-size: 0.875rem;">🔍 本地匹配</button>
-                                <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1; min-width: 90px; padding: 10px 18px; font-size: 0.875rem;" onclick="importRailwayTerms()">📚 导入词库</button>
-                                <button class="btn btn-success" id="autoCheck-exportBtn" style="flex: 1; min-width: 90px; padding: 10px 18px; font-size: 0.875rem;" onclick="exportRailwayTerms()">📤 导出词库</button>
-                                <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1; min-width: 70px; padding: 10px 18px; font-size: 0.875rem;">🔄 重置</button>
+                                <button class="btn btn-primary" id="autoCheck-smartBtn" style="flex: 1; font-weight: 600;">🔍 本地匹配</button>
+                                <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;" onclick="importRailwayTerms()">📚 导入词库</button>
+                                <button class="btn btn-success" id="autoCheck-exportBtn" style="flex: 1;" onclick="exportRailwayTerms()">📤 导出词库</button>
+                                <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1;">🔄 重置</button>
                             </div>
                             <!-- 本地匹配后提示必须先AI对规 -->
                             <div id="autoCheck-ai-hint" style="display:none;margin-top:6px;padding:6px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:0.78rem;color:#1d4ed8;text-align:center;">
@@ -2580,7 +2580,7 @@
                                 onmouseover="this.style.background='var(--primary-light)';this.style.borderColor='var(--primary)'"
                                 onmouseout="this.style.background='#f8fafc';this.style.borderColor='var(--border)'">
                                 <span id="ds-sidebar-toggle-icon">☰</span>
-                                <span id="ds-sidebar-toggle-text">历史记录</span>
+                                <span id="ds-sidebar-toggle-text">📋 历史记录</span>
                             </button>
                             <span style="font-size:0.78rem;color:var(--text-secondary);">💬 DeepSeek 对话</span>
                         </div>
@@ -2590,16 +2590,16 @@
                         <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;">
                             <textarea id="ds-user-input" rows="2" placeholder="输入问题，按 Ctrl+Enter 或点击发送..." oninput="autoResize(this)"
                                 style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;resize:none;line-height:1.5;max-height:120px;"></textarea>
-                            <div style="display:flex;flex-direction:column;gap:6px;">
-                                <button onclick="dsSendMsg()" id="ds-send-btn" class="btn btn-primary" style="padding:9px 12px;" title="发送消息">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <button onclick="dsSendMsg()" id="ds-send-btn" class="btn btn-primary" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;" title="发送消息">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
                                         <path d="M12 19V5"/>
                                         <path d="M5 12l7-7 7 7"/>
                                     </svg>
                                 </button>
                                 <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.doc,.docx,.xls,.xlsx,.pdf,.csv,.json"
                                     style="display:none;" onchange="dsHandleAttach(this)">
-                                <button onclick="document.getElementById('ds-attach-file').click()" class="btn btn-secondary btn-small" style="padding:6px 10px;font-size:0.82rem;" title="添加文件（TXT/MD/DOC/DOCX/XLS/XLSX/PDF/CSV/JSON）">📎</button>
+                                <button onclick="document.getElementById('ds-attach-file').click()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.4rem;" title="添加文件（TXT/MD/DOC/DOCX/XLS/XLSX/PDF/CSV/JSON）">+</button>
                             </div>
                         </div>
                         <!-- 已附加文件标签（已移除，改为直接显示在输入框中） -->
@@ -2642,11 +2642,11 @@
                                 </button>
                                 <button onclick="wrSwitchTab('materials')"
                                     style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;font-size:0.85rem;cursor:pointer;">
-                                    📁 资料管理
+                                    🗂️ 资料管理
                                 </button>
                                 <button onclick="wrClearConversation();wrSwitchTab('gen');"
                                     style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;font-size:0.85rem;cursor:pointer;display:flex;align-items:center;gap:4px;">
-                                    ↩️ 返回
+                                    ⬅️ 返回
                                 </button>
                             </div>
 
@@ -2688,7 +2688,7 @@
                                 <span style="font-size:0.8rem;color:var(--text-secondary);margin-right:2px;">分类：</span>
                                 <button onclick="wrMaterialFilter('all')" id="wr-mat-filter-all" class="wr-mat-tab wr-mat-tab-active" style="padding:5px 12px;border-radius:20px;border:1px solid var(--primary);background:var(--primary);color:#fff;font-size:0.78rem;cursor:pointer;white-space:nowrap;">全部</button>
                                 <button onclick="wrMaterialFilter('template')" id="wr-mat-filter-template" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">📝 写作模版</button>
-                                <button onclick="wrMatFilterHistory()" id="wr-mat-filter-history" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">🗂️ 历史报告</button>
+                                <button onclick="wrMatFilterHistory()" id="wr-mat-filter-history" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">📊 历史报告</button>
                                 <button onclick="wrMaterialFilter('inspect')" id="wr-mat-filter-inspect" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">🔍 检查信息</button>
                                 <!-- 故障报告（整合故障统计） -->
                                 <button onclick="wrMaterialFilter('fault')" id="wr-mat-filter-fault" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">⚡ 故障报告</button>
@@ -2739,7 +2739,7 @@
             <div style="font-size:0.85rem;color:var(--text-secondary);">请先选择资料类型，再选择文件导入：</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                 <button onclick="wrImportWithType('template')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📝 写作模版</button>
-                <button onclick="wrImportWithType('history')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">🗂️ 历史报告</button>
+                <button onclick="wrImportWithType('history')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📊 历史报告</button>
                 <button onclick="wrImportWithType('inspect')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">🔍 检查信息</button>
                 <button onclick="wrImportWithType('fault')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">⚡ 故障报告</button>
                 <button onclick="wrImportWithType('dispatch')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📨 通报文电</button>
@@ -7769,7 +7769,7 @@
                     sidebar.style.left = '-' + (sidebarWidth + 20) + 'px';
                     if (overlay) overlay.style.display = 'none';
                     if (icon) icon.textContent = '☰';
-                    if (text) text.textContent = '历史记录';
+                    if (text) text.textContent = '📋 历史记录';
                 }
             };
 
@@ -10214,7 +10214,7 @@
                     smartBtn.dataset.state = 'local';
                     smartBtn.className = 'btn btn-primary';
                     smartBtn.style.flex = '1';
-                    smartBtn.style.minWidth = '90px';
+                    smartBtn.style.minWidth = '';
                     smartBtn.style.fontWeight = '600';
                     smartBtn.disabled = false;
                     smartBtn.style.opacity = '1';
@@ -10248,7 +10248,7 @@
                                 smartBtn.dataset.state = 'ai';
                                 smartBtn.className = 'btn btn-info state-ai';
                                 smartBtn.style.flex = '1';
-                                smartBtn.style.minWidth = '90px';
+                                smartBtn.style.minWidth = '';
                                 smartBtn.style.fontWeight = '600';
                                 smartBtn.textContent = '🤖 AI 对规';
                                 // 显示提示
@@ -10265,7 +10265,7 @@
                                 smartBtn.dataset.state = 'ai';
                                 smartBtn.className = 'btn btn-info state-ai';
                                 smartBtn.style.flex = '1';
-                                smartBtn.style.minWidth = '90px';
+                                smartBtn.style.minWidth = '';
                                 smartBtn.style.fontWeight = '600';
                                 smartBtn.textContent = '🤖 AI 对规';
                                 // 显示提示
@@ -10279,7 +10279,7 @@
                                 smartBtn.dataset.state = 'local';
                                 smartBtn.className = 'btn btn-primary';
                                 smartBtn.style.flex = '1';
-                                smartBtn.style.minWidth = '90px';
+                                smartBtn.style.minWidth = '';
                                 smartBtn.style.fontWeight = '600';
                                 smartBtn.textContent = '🔍 本地匹配';
                                 smartBtn.classList.remove('state-ai');

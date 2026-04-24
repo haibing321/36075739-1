@@ -3060,11 +3060,11 @@
         // 导航栏 Tab 名称映射
         const TAB_LABELS = {
             handbook: '📖 检查手册',
-            issue: '🔍 检查信息',
+            issue: '📊 检查信息',
             rule: '📋 规章制度',
             diary: '📝 工作日志',
             phone: '📞 车站电话',
-            doubao: '🔍 智能助手'
+            doubao: '🤖 智能助手'
         };
 
         window.toggleNav = function() {
@@ -3712,25 +3712,30 @@
             let rulePage = 1, rulePageSize = 10, ruleTotalPages = 1, ruleAllResults = [];
 
             // IndexedDB 封装
-            const DB_NAME = 'RailwayRuleDB', STORE_NAME = 'ruleCollection', IMAGE_STORE_NAME = 'rule_images', DB_VERSION = 2;
+            const DB_NAME = 'RailwayRuleDB', STORE_NAME = 'ruleCollection', IMAGE_STORE_NAME = 'rule_images', DB_VERSION = 3;
             let db = null;
             function initRuleDB() {
                 return new Promise((resolve, reject) => {
                     if (db) return resolve(db);
                     const request = indexedDB.open(DB_NAME, DB_VERSION);
                     request.onerror = () => reject(request.error);
-                    request.onsuccess = () => { db = request.result; resolve(db); };
+                    request.onsuccess = () => {
+                        db = request.result;
+                        // 当其他标签页升级数据库版本时，主动关闭当前连接
+                        db.onversionchange = () => { db.close(); db = null; };
+                        resolve(db);
+                    };
                     request.onupgradeneeded = (e) => {
                         const database = e.target.result;
-                        const oldVersion = e.oldVersion;
+                        // 无论什么版本升级，确保两个 store 都存在即可
                         if (!database.objectStoreNames.contains(STORE_NAME)) {
                             const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
                             store.put({ id: 1, data: [] });
                         }
-                        // v2: 新增图片存储区
-                        if (oldVersion < 2 && !database.objectStoreNames.contains(IMAGE_STORE_NAME)) {
+                        if (!database.objectStoreNames.contains(IMAGE_STORE_NAME)) {
                             database.createObjectStore(IMAGE_STORE_NAME, { keyPath: 'id' });
                         }
+                        // v3: 无结构变更，仅版本号追齐
                     };
                 });
             }
@@ -3776,56 +3781,42 @@
                 });
             }
 
-            // 渲染规章 HTML（替换图片占位符为懒加载 img 标签）
+            // 渲染规章 HTML（兼容旧格式__IMG_ID__占位符 + 新格式 data-img-id 属性）
             function renderRuleHtml(html) {
                 if (!html) return html;
-                const imgIdRegex = /__IMG_ID__([a-zA-Z0-9_-]+)__/g;
-                const matches = html.match(imgIdRegex);
-                if (!matches) return html;
-
-                // 去重
-                const seen = new Set();
-                let renderedHtml = html;
-                matches.forEach(match => {
-                    if (seen.has(match)) return;
-                    seen.add(match);
-                    const id = match.replace(/__IMG_ID__/, '').replace(/__$/, '');
-                    // 占位 img，后续由 IntersectionObserver 懒加载
-                    renderedHtml = renderedHtml.split(match).join(
-                        `<img class="rule-lazy-img" data-img-id="${id}" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect fill='%23f0f0f0' width='300' height='200'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-size='14' fill='%23999'%3E%E5%8A%A0%E8%BD%BD%E4%B8%AD...%3C/text%3E%3C/svg%3E" alt="图片" />`
-                    );
+                // 兼容旧格式：把 src="__IMG_ID__xxx__" 形式的 img 标签转为 data-img-id 属性
+                html = html.replace(/<img([^>]*?)src="__IMG_ID__([a-zA-Z0-9_-]+)__"([^>]*?)>/gi, (match, pre, id, post) => {
+                    return `<img${pre}${post} class="rule-lazy-img" data-img-id="${id}" src="">`;
                 });
-                return renderedHtml;
+                // 兼容旧文本占位符（__IMG_ID__xxx__ 出现在文本节点里而非属性里）
+                html = html.replace(/__IMG_ID__([a-zA-Z0-9_-]+)__/g, (match, id) => {
+                    return `<img class="rule-lazy-img" data-img-id="${id}" src="">`;
+                });
+                return html;
             }
 
-            // IntersectionObserver 懒加载全文查看中的图片
-            let _imgLazyObserver = null;
+
+            // 直接加载全文查看中的图片（本地 IndexedDB，无需懒加载）
             function setupLazyImageObserver(container) {
-                // 断开旧观察者，避免重复创建
-                if (_imgLazyObserver) _imgLazyObserver.disconnect();
-                _imgLazyObserver = new IntersectionObserver((entries) => {
-                    entries.forEach(entry => {
-                        if (entry.isIntersecting) {
-                            const img = entry.target;
-                            const imgId = img.getAttribute('data-img-id');
-                            if (imgId && !img._loaded) {
-                                img._loaded = true;
-                                getImageFromDB(imgId).then(blob => {
-                                    if (blob) {
-                                        const url = URL.createObjectURL(blob);
-                                        img.src = url;
-                                        img.classList.remove('rule-lazy-img');
-                                    } else {
-                                        img.alt = '图片加载失败';
-                                    }
-                                });
-                            }
-                            _imgLazyObserver.unobserve(img);
-                        }
-                    });
-                }, { root: container, rootMargin: '200px' });
                 container.querySelectorAll('img[data-img-id]').forEach(img => {
-                    _imgLazyObserver.observe(img);
+                    if (img._loaded) return;
+                    img._loaded = true;
+                    const imgId = img.getAttribute('data-img-id');
+                    if (!imgId) return;
+                    getImageFromDB(imgId).then(blob => {
+                        if (blob) {
+                            const url = URL.createObjectURL(blob);
+                            img.src = url;
+                            img.classList.remove('rule-lazy-img');
+                            img.style.opacity = '1';
+                        } else {
+                            img.alt = '[图片未找到]';
+                            img.style.display = 'none';
+                        }
+                    }).catch(() => {
+                        img.alt = '[图片加载失败]';
+                        img.style.display = 'none';
+                    });
                 });
             }
 
@@ -3893,9 +3884,9 @@
                 });
                 
                 // 6. 压缩表格单元格内的空格
-                cleaned = cleaned.replace(/<td[^>]*>(.*?)<\/td>/gi, (match, content) => {
+                cleaned = cleaned.replace(/<td([^>]*)>([\s\S]*?)<\/td>/gi, (match, attrs, content) => {
                     const trimmed = content.replace(/\s+/g, ' ').trim();
-                    return ` onekey${trimmed} onekey`;
+                    return `<td${attrs}>${trimmed}</td>`;
                 });
                 
                 // 7. 最终trim
@@ -3945,18 +3936,28 @@
                 }
             }
             async function saveRulesToDB(rulesArray) {
-                try {
-                    await initRuleDB();
-                    return new Promise((resolve, reject) => {
-                        const transaction = db.transaction([STORE_NAME], 'readwrite');
-                        const store = transaction.objectStore(STORE_NAME);
-                        const request = store.put({ id: 1, data: rulesArray });
-                        request.onsuccess = () => resolve();
-                        request.onerror = () => reject(request.error);
-                    });
-                } catch (e) {
-                    console.error('IndexedDB保存失败', e);
+                // 若 db 连接已失效（如 versionchange），重置后重新初始化
+                if (db) {
+                    try { db.transaction([STORE_NAME], 'readonly').abort(); }
+                    catch(e) { db = null; }
                 }
+                await initRuleDB();
+                return new Promise((resolve, reject) => {
+                    let transaction;
+                    try {
+                        transaction = db.transaction([STORE_NAME], 'readwrite');
+                    } catch(e) {
+                        // 事务创建失败：重置连接，下次重试
+                        db = null;
+                        return reject(e);
+                    }
+                    transaction.onerror = () => reject(transaction.error);
+                    transaction.onabort = () => reject(new Error('IndexedDB 事务中断'));
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.put({ id: 1, data: rulesArray });
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
             }
             async function saveToStorage() {
                 try {
@@ -4377,7 +4378,8 @@
                                 const blob = new Blob([byteArray], { type: contentType });
                                 await saveImageToDB(imgId, blob);
                                 imageIds.push(imgId);
-                                return { src: '__IMG_ID__' + imgId + '__' };
+                                // 用 data-img-id 属性存储 ID，src 留空，避免占位符写入 src 值导致渲染损坏
+                                return { src: '', 'data-img-id': imgId, class: 'rule-lazy-img' };
                             });
                         })
                     };
@@ -4486,7 +4488,7 @@
                                         const blob = new Blob([byteArray], { type: contentType });
                                         await saveImageToDB(imgId, blob);
                                         imageIds.push(imgId);
-                                        return { src: '__IMG_ID__' + imgId + '__' };
+                                        return { src: '', 'data-img-id': imgId, class: 'rule-lazy-img' };
                                     });
                                 })
                             };
@@ -6954,7 +6956,16 @@
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const result = await mammoth.convertToHtml({ arrayBuffer });
+                    // 调试：输出mammoth转换的原始HTML（截取前3000字符）
+                    console.log('[手册导入] mammoth原始HTML长度:', result.value.length);
+                    console.log('[手册导入] mammoth HTML前2000字符:', result.value.substring(0, 2000));
+                    console.log('[手册导入] mammoth HTML后1000字符:', result.value.slice(-1000));
                     const parsedData = parseHandbookHtml(result.value);
+                    // 调试：输出解析结果
+                    console.log('[手册导入] 解析出', parsedData.length, '条记录');
+                    parsedData.forEach((d, i) => {
+                        console.log(`[${i}] ch="${d.chapter}" | sec="${d.section}" | item="${d.item}" | sub="${d.subitem}" | content="${d.content ? d.content.substring(0,80) : ''}"`);
+                    });
                     if (parsedData.length === 0) {
                         alert(`文件 "${file.name}" 未能解析出有效数据，已跳过`);
                         return null;
@@ -6987,7 +6998,7 @@
                 });
             }
 
-            // 解析检查手册HTML为多级结构数据（增强版，支持任意DOCX标题格式）
+            // 解析检查手册HTML为多级结构数据（增强版，支持任意DOCX标题格式 + 表格）
             function parseHandbookHtml(html) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
@@ -7002,11 +7013,11 @@
                     { level: 1, re: /^第[一二三四五六七八九十百千\d]+[章节部分篇]\s*/, maxLen: 60 },
                     { level: 1, re: /^[一二三四五六七八九十]+、/, maxLen: 60 },
                     { level: 1, re: /^\d+[、.．]\s*/, maxLen: 50 },
-                    // 第2级：第X节 / (一) / 1.1 / 1.1.1（仅当不是第1级时）
+                    // 第2级：第X节 / (一) / 1.1 / 1.1.1
                     { level: 2, re: /^第[一二三四五六七八九十百千\d]+节\s*/, maxLen: 80 },
                     { level: 2, re: /^[（(][一二三四五六七八九十]+[)）]/, maxLen: 80 },
                     { level: 2, re: /^\d+\.\d+[\s.、]/, maxLen: 80 },
-                    // 第3级：(一)（如果不是第2级） / 1) / （1）
+                    // 第3级：(一) / 1) / （1）
                     { level: 3, re: /^\d+[)）]\s*/, maxLen: 100 },
                     // 第4级：(1) / ① / a. / A.
                     { level: 4, re: /^[（(]\d+[)）]/, maxLen: 120 },
@@ -7021,12 +7032,25 @@
                     return 0; // 普通内容
                 }
 
+                function detectLevel(el, text) {
+                    const tag = el.tagName.toLowerCase();
+                    const cls = el.className || '';
+                    
+                    if (tag === 'h1' || /\bstyle3\b|\bMsoTitle\b/i.test(cls)) return 1;
+                    if (tag === 'h2' || /\bstyle4\b|\bMsoHeading1\b/i.test(cls)) return 2;
+                    if (tag === 'h3' || /\bstyle5\b|\bMsoHeading2\b/i.test(cls)) return 3;
+                    if (tag === 'h4' || /\bstyle6\b|\bMsoHeading3\b/i.test(cls)) return 4;
+                    if (tag === 'h5' || tag === 'h6' || /\bstyle7\b|\bMsoHeading4\b/i.test(cls)) return 5;
+
+                    return detectLevelByPattern(text);
+                }
+
                 function saveRecord() {
                     if (cur.chapter) {
                         data.push({
                             chapter: cur.chapter,
-                            section: cur.section || '默认分类',
-                            item: cur.item || '检查项点',
+                            section: cur.section || '',
+                            item: cur.item || '',
                             subitem: cur.subitem,
                             content: cur.content.trim()
                         });
@@ -7040,55 +7064,76 @@
                     if (level <= 4) { cur.content = ''; }
                 }
 
-                // 获取所有块级元素，保持文档顺序
-                const allElements = Array.from(doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6, p, div, li'));
+                // 策略：遍历所有块级容器，对每个容器的直接文本内容进行级别判断
+                // 使用更广泛的选择器确保不遗漏任何内容
+                const BLOCK_TAGS = 'h1,h2,h3,h4,h5,h6,p,div,li,td,th,table';
+                const allElements = Array.from(doc.body.querySelectorAll(BLOCK_TAGS));
 
-                // 检测mammoths生成标题对应的HTML级别
+                // 用已处理集合避免 td 和其父 table 的文本重复
+                const processedTexts = new Set();
+
                 allElements.forEach(el => {
+                    const tag = el.tagName.toLowerCase();
+
+                    // table 本身不处理文本，只作为结构标记
+                    if (tag === 'table') return;
+
+                    // 如果父元素已经被处理过（如 td 的文本已经取过），跳过
+                    // 但 h/p/div/li 这些独立块不需要跳过
+                    let parentProcessed = false;
+                    if (tag === 'td' || tag === 'th') {
+                        let p = el.parentElement;
+                        while (p && p !== doc.body) {
+                            if (processedTexts.has(p)) { parentProcessed = true; break; }
+                            p = p.parentElement;
+                        }
+                    }
+                    if (parentProcessed) return;
+
                     const text = el.textContent.trim();
                     if (!text) return;
 
-                    const tagName = el.tagName.toLowerCase();
-                    const className = el.className || '';
+                    processedTexts.add(el);
 
-                    // 通过HTML标签/style类名检测级别
-                    let htmlLevel = 0;
-                    if (tagName === 'h1' || className.includes('style3') || className.includes('MsoTitle')) htmlLevel = 1;
-                    else if (tagName === 'h2' || className.includes('style4') || className.includes('MsoHeading1')) htmlLevel = 2;
-                    else if (tagName === 'h3' || className.includes('style5') || className.includes('MsoHeading2')) htmlLevel = 3;
-                    else if (tagName === 'h4' || className.includes('style6') || className.includes('MsoHeading3')) htmlLevel = 4;
-                    else if (tagName === 'h5' || className.includes('style7') || className.includes('MsoHeading4')) htmlLevel = 5;
+                    const level = detectLevel(el, text);
 
-                    // 如果HTML标签无法判断，用文本模式
-                    let patternLevel = htmlLevel > 0 ? htmlLevel : detectLevelByPattern(text);
-
-                    if (patternLevel >= 1 && patternLevel <= 4) {
+                    if (level >= 1 && level <= 4) {
                         saveRecord();
-                        resetBelow(patternLevel);
-                        if (patternLevel === 1) cur.chapter = text;
-                        else if (patternLevel === 2) cur.section = text;
-                        else if (patternLevel === 3) cur.item = text;
-                        else if (patternLevel === 4) cur.subitem = text;
+                        resetBelow(level);
+                        if (level === 1) cur.chapter = text;
+                        else if (level === 2) cur.section = text;
+                        else if (level === 3) cur.item = text;
+                        else if (level === 4) cur.subitem = text;
                     } else {
-                        // 普通内容
+                        // 普通内容追加到当前记录
                         cur.content += (cur.content ? '\n' : '') + text;
                     }
                 });
 
                 saveRecord();
 
-                // 如果没有解析出结构，尝试用XML检测Word大纲级别
-                if (data.length === 0) {
+                // 后处理：清理无效记录（chapter存在但section/item/content都为空的）
+                // 这些通常是因为标题后紧跟另一个标题产生的空记录
+                const cleaned = data.filter(d => {
+                    if (!d.chapter) return false;
+                    // 有实际内容（section非空、或item非空、或content非空）
+                    return d.section || d.item || d.content;
+                });
+
+                // 如果清理后为空但有原始数据，保留原始数据（至少有chapter）
+                const finalData = cleaned.length > 0 ? cleaned : data;
+
+                // 最终兜底：如果完全没有解析出有效数据
+                if (finalData.length === 0) {
                     const paragraphs = doc.body.querySelectorAll('p');
                     let tempChapter = '未分类文档';
-                    let tempSection = '默认分类';
 
                     paragraphs.forEach((p, idx) => {
                         const text = p.textContent.trim();
                         if (text) {
-                            data.push({
+                            finalData.push({
                                 chapter: tempChapter,
-                                section: tempSection,
+                                section: '',
                                 item: `段落 ${idx + 1}`,
                                 subitem: '',
                                 content: text
@@ -7097,7 +7142,7 @@
                     });
                 }
 
-                return data;
+                return finalData;
             }
 
             // ========== 大纲浏览模式 ==========
@@ -7416,11 +7461,25 @@
                 // Toast 功能暂保留，显示切换历史
             };
 
+            // ---- 判断目标是否为输入类元素 ----
+            function _isInputTarget(el) {
+                if (!el) return false;
+                var tag = (el.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+                // 也要排除 contenteditable 元素
+                if (el.isContentEditable) return true;
+                // 排除滚动容器内的输入操作
+                if (el.closest && el.closest('input, textarea, select, [contenteditable="true"]')) return true;
+                return false;
+            }
+
             // ---- 触摸变量 ----
             var _tx0 = 0, _ty0 = 0, _tValid = false;
 
             // 用 capture 模式确保最先收到事件，不被子元素吞掉
             document.addEventListener('touchstart', function(e) {
+                // 输入框内触摸不启动侧滑判定
+                if (_isInputTarget(e.target)) { _tValid = false; return; }
                 if (e.touches.length !== 1) { _tValid = false; return; }
                 _tx0 = e.touches[0].clientX;
                 _ty0 = e.touches[0].clientY;
@@ -7430,6 +7489,10 @@
             document.addEventListener('touchend', function(e) {
                 if (!_tValid) return;
                 _tValid = false;
+                
+                // 再次检查 touchend 的目标是否为输入框（防止中途聚焦到输入框）
+                if (_isInputTarget(e.target)) return;
+                
                 if (e.changedTouches.length < 1) return;
 
                 var tx1 = e.changedTouches[0].clientX;
@@ -11193,6 +11256,41 @@
                                 const text = await file.text();
                                 try {
                                     const data = JSON.parse(text);
+                                    
+                                    // 检测是否为导出备份格式（含 materials 数组）
+                                    let jsonItems = null;
+                                    if (data.materials && Array.isArray(data.materials)) {
+                                        jsonItems = data.materials; // 导出备份格式，拆分存储
+                                    } else if (Array.isArray(data)) {
+                                        jsonItems = data; // 纯数组格式，拆分存储
+                                    }
+                                    
+                                    if (jsonItems && jsonItems.length > 0) {
+                                        // 拆分存储：每条记录独立存入数据库
+                                        console.log('[导入] JSON检测到' + jsonItems.length + '条记录，拆分存储');
+                                        for (const ji of jsonItems) {
+                                            const jiTitle = ji.title || ji.name || ji.fileName || file.name + '_' + jsonItems.indexOf(ji);
+                                            const jiContent = ji.content || '';
+                                            const jiMatType = ji.matType || ji.type || matType; // 优先用自带分类，否则用用户选的
+                                            
+                                            await wrDbPut(WR_MAT_STORE, {
+                                                matType:   jiMatType,
+                                                fileName:  ji.fileName || file.name,
+                                                title:     String(jiTitle).slice(0, 200),
+                                                fileSize:  ji.fileSize || file.size,
+                                                importAt:  ji.importAt || Date.now(),
+                                                content:   String(jiContent).slice(0, 20000),
+                                                sheets:    ji.sheets || null,
+                                                rowCount:  ji.rowCount || null,
+                                                rawText:   String(jiContent).slice(0, 5000)
+                                            });
+                                            successCount++;
+                                        }
+                                        processed++;
+                                        continue; // 跳过下面的单条保存逻辑
+                                    }
+                                    
+                                    // 非数组格式（单条JSON对象），作为整体存储
                                     item.content = JSON.stringify(data);
                                     item.rawText = typeof data === 'object' ? JSON.stringify(data, null, 2).slice(0, 5000) : String(data);
                                 } catch(err) {
@@ -12601,37 +12699,113 @@
                     for (const file of files) {
                         try {
                             const ext = file.name.split('.').pop().toLowerCase();
-                            let parsed;
                             if (ext === 'docx' || ext === 'doc') {
-                                parsed = await wrParseDocx(file);
+                                const parsed = await wrParseDocx(file);
+                                const matType = wrGuessMatType(file.name, parsed.content);
+                                await wrDbPut(WR_MAT_STORE, {
+                                    fileName:  file.name,
+                                    title:     parsed.title || file.name,
+                                    matType:   matType,
+                                    content:   (parsed.content || '').slice(0, 20000),
+                                    sheets:    parsed.sheets ? JSON.stringify(parsed.sheets) : null,
+                                    rowCount:  parsed.rowCount || null,
+                                    fileSize:  file.size,
+                                    importAt:  Date.now()
+                                });
+                                ok++;
                             } else if (ext === 'xlsx' || ext === 'xls') {
-                                parsed = await wrParseExcel(file);
+                                const parsed = await wrParseExcel(file);
+                                let matType = wrGuessMatType(file.name, parsed.content);
+                                if (matType === 'other') matType = 'stats';
+                                await wrDbPut(WR_MAT_STORE, {
+                                    fileName:  file.name,
+                                    title:     parsed.title,
+                                    matType:   matType,
+                                    content:   parsed.content.slice(0, 20000),
+                                    sheets:    parsed.sheets ? JSON.stringify(parsed.sheets) : null,
+                                    rowCount:  parsed.rowCount || null,
+                                    fileSize:  file.size,
+                                    importAt:  Date.now()
+                                });
+                                ok++;
                             } else if (ext === 'json') {
+                                // JSON导入：按条拆分存储，每条记录独立分类
                                 const text = await file.text();
                                 const data = JSON.parse(text);
-                                // JSON格式：数组或含items/data字段的对象
-                                const items = Array.isArray(data) ? data : (data.items || data.data || [data]);
-                                parsed = {
-                                    title:   file.name.replace(/\.json$/i, ''),
-                                    content: JSON.stringify(items, null, 2).slice(0, 5000),
-                                    sheets:  null
-                                };
+                                
+                                console.log('[智能写作-导入] 原始JSON顶级keys:', Object.keys(data));
+                                console.log('[智能写作-导入] 是否数组:', Array.isArray(data));
+                                if (data.materials) console.log('[智能写作-导入] materials数量:', data.materials.length);
+                                
+                                let items;
+                                // 兼容多种导出格式
+                                if (Array.isArray(data)) {
+                                    items = data;
+                                    console.log('[智能写作-导入] 走Array分支, 数量:', items.length);
+                                } else if (data.materials && Array.isArray(data.materials)) {
+                                    // 导出备份格式 { materials: [...], exportDate: "..." }
+                                    items = data.materials;
+                                    console.log('[智能写作-导入] 走materials分支, 数量:', items.length);
+                                    // 打印前3条的matType便于确认
+                                    items.slice(0, 3).forEach((it, i) => console.log('  ['+i+'] matType:', it.matType, 'title:', it.title));
+                                } else if (data.items && Array.isArray(data.items)) {
+                                    items = data.items;
+                                    console.log('[智能写作-导入] 走items分支, 数量:', items.length);
+                                } else if (data.data && Array.isArray(data.data)) {
+                                    items = data.data;
+                                    console.log('[智能写作-导入] 走data分支, 数量:', items.length);
+                                } else {
+                                    items = [data]; // 单条对象也包装为数组
+                                    console.log('[智能写作-导入] 走单条兜底分支, keys:', Object.keys(data));
+                                }
+
+                                let importedCount = 0;
+                                for (const item of items) {
+                                    // 每条记录提取标题和内容
+                                    const itemTitle = item.title || item.name || item.fileName || item.chapter
+                                                  || (item.section ? (item.chapter || '') + '-' + item.section : '')
+                                                  || file.name.replace(/\.json$/i, '') + '_' + importedCount;
+
+                                    // 提取内容：优先用content字段
+                                    let itemContent = '';
+                                    if (item.content && typeof item.content === 'string') {
+                                        itemContent = item.content;
+                                    } else if (item.contentHtml && typeof item.contentHtml === 'string') {
+                                        itemContent = item.contentHtml; // 手册格式兼容
+                                    } else {
+                                        // 去掉元数据字段后，序列化剩余部分作为内容
+                                        const { id: _id, title: _t, name: _n, fileName: _fn, chapter: _c, section: _s, matType: _m, type: _type, importAt: _ia, fileSize: _fs, rowCount: _rc, sheets: _sh, jsonIndex: _ji, ...rest } = item;
+                                        itemContent = Object.keys(rest).length > 0
+                                            ? JSON.stringify(rest, null, 2)
+                                            : (item.content || '');
+                                    }
+
+                                    // 判断资料类型：优先用记录自带的 matType/type 字段（保留原始分类）
+                                    let matType = item.matType || item.type || '';
+                                    if (!matType || !WR_MAT_TYPES[matType]) {
+                                        matType = wrGuessMatType(itemTitle, itemContent);
+                                    }
+
+                                    console.log('[智能写作-导入] 存入第' + importedCount + '条:', itemTitle, '| 类型:', matType, '| 内容长度:', itemContent.length);
+
+                                    await wrDbPut(WR_MAT_STORE, {
+                                        fileName:  item.fileName || file.name,
+                                        title:     String(itemTitle).slice(0, 200),
+                                        matType:   matType,
+                                        content:   String(itemContent).slice(0, 20000),
+                                        sheets:    item.sheets || null,
+                                        rowCount:  item.rowCount || null,
+                                        fileSize:  item.fileSize || file.size,
+                                        importAt:  item.importAt || Date.now(),
+                                        jsonIndex: importedCount
+                                    });
+                                    importedCount++;
+                                    ok++;
+                                }
+                                console.log('[智能写作] JSON导入 "' + file.name + '"：共 ' + importedCount + ' 条记录');
                             } else {
                                 fail++; continue;
                             }
-
-                            const matType = wrGuessMatType(file.name, parsed.content);
-                            await wrDbPut(WR_MAT_STORE, {
-                                fileName:  file.name,
-                                title:     parsed.title || file.name,
-                                matType:   matType,
-                                content:   (parsed.content || '').slice(0, 20000), // 存储不超过2万字
-                                sheets:    parsed.sheets ? JSON.stringify(parsed.sheets) : null,
-                                rowCount:  parsed.rowCount || null,
-                                fileSize:  file.size,
-                                importAt:  Date.now()
-                            });
-                            ok++;
                         } catch(err) {
                             console.error('导入失败：' + file.name, err);
                             fail++;

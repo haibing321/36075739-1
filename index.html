@@ -2047,7 +2047,9 @@
         /* 横屏手机优化 */
         @media (max-height: 500px) and (orientation: landscape) {
             .header { position: relative; }
-            .nav { max-height: 200px; }
+            /* 不再强制展开导航：max-height 由 nav-open 类控制，避免输入时自动弹出 */
+            .nav { transition: none; }
+            .logo { padding: 8px 0; }
             .logo { padding: 8px 0; }
             .main { padding: 12px; }
             .card { margin-bottom: 12px; }

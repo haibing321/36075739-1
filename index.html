@@ -7583,6 +7583,10 @@
             let dsConversations = []; // 所有对话列表 [{id, title, messages, timestamp, pinned}]
             let dsCurrentConvId = null; // 当前对话ID
 
+            // 全局候选映射表，用于"本地组装对规结论"（三阶段强约束）
+            let _globalCandidatesMap = {};
+            let _acAbortController = null; // 用于停止AI对规生成
+
             // ---- 初始化 ----
             function dsInit() {
                 dsApiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
@@ -8445,6 +8449,28 @@
                 const userText = input.value.trim();
                 if (!userText) return;
 
+                // ── 意图路由：自动切换子模块 ──
+                const _lowerText = userText;
+                const _isCheckIntent = /对规|违反了?哪|不符合|哪条|违章|超限|应对应|依据什么规|检查问题/.test(_lowerText);
+                const _isWriteIntent = /写报告|生成报告|起草|撰写|安全分析|月度总结|专项报告/.test(_lowerText);
+                if (_isCheckIntent && typeof dsSwitchSub === 'function') {
+                    input.value = '';
+                    dsSwitchSub('check');
+                    const acInput = document.getElementById('autoCheck-input');
+                    if (acInput) {
+                        acInput.value = userText;
+                        window.autoCheckAI_force();
+                    }
+                    return;
+                }
+                if (_isWriteIntent && typeof dsSwitchSub === 'function') {
+                    input.value = '';
+                    dsSwitchSub('write');
+                    const wrInput = document.getElementById('wr-query-input');
+                    if (wrInput) wrInput.value = userText;
+                    return;
+                }
+
                 const key = dsApiKey || localStorage.getItem(DS_API_KEY_STORAGE) || '';
                 if (!key || key === DS_PLACEHOLDER_KEY) {
                     dsAppendMsg('system', '⚠️ 请先配置 DeepSeek API Key（在上方输入框中输入并点击「保存」）。\n\n如需申请 API Key，请访问：https://platform.deepseek.com/');
@@ -8507,11 +8533,15 @@
 
                 dsStreaming = true;
                 const sendBtn = document.getElementById('ds-send-btn');
-                sendBtn.disabled = true;
-                sendBtn.style.opacity = '0.5';
-                sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"></circle></svg>';
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = '1';
+                sendBtn.style.background = '#e53e3e';
+                sendBtn.title = '点击停止生成';
+                sendBtn.onclick = function() { if (_acAbortController) _acAbortController.abort(); };
+                sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 
                 try {
+                    _acAbortController = new AbortController();
                     const resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: {
@@ -8524,7 +8554,8 @@
                             stream: true,
                             temperature: 0.7,
                             max_tokens: 2048
-                        })
+                        }),
+                        signal: _acAbortController.signal
                     });
 
                     if (!resp.ok) {
@@ -8589,15 +8620,31 @@
                     dsSaveHistory();
 
                 } catch(err) {
-                    dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
-                    dsRenderAll();
-                    dsSaveHistory();
+                    if (err.name === 'AbortError') {
+                        // 用户手动停止，保留已生成内容
+                        const chatBox2 = document.getElementById('ds-chat-box');
+                        if (chatBox2) {
+                            const cursors2 = chatBox2.querySelectorAll('.ds-cursor');
+                            cursors2.forEach(c => c.remove());
+                        }
+                        dsSaveHistory();
+                    } else {
+                        dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
+                        dsRenderAll();
+                        dsSaveHistory();
+                    }
                 } finally {
+                    _acAbortController = null;
                     dsStreaming = false;
-                    const sendBtn = document.getElementById('ds-send-btn');
-                    sendBtn.disabled = false;
-                    sendBtn.style.opacity = '1';
-                    sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
+                    const sendBtn2 = document.getElementById('ds-send-btn');
+                    if (sendBtn2) {
+                        sendBtn2.disabled = false;
+                        sendBtn2.style.opacity = '1';
+                        sendBtn2.style.background = '';
+                        sendBtn2.title = '发送（Ctrl+Enter）';
+                        sendBtn2.onclick = function() { dsSendMsg(); };
+                        sendBtn2.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
+                    }
                 }
             };
 
@@ -9519,14 +9566,32 @@
                 return Array.from(tokens).filter(function(t) { return !AUTOCHECK_STOP_WORDS.has(t); });
             }
 
+            // 建索引专用极简分词：纯2-gram，不遍历术语集，速度快10倍
+            function bm25TokenizeFast(text) {
+                const tokens = new Set();
+                const t = text.toLowerCase();
+                for (let i = 0; i < t.length - 1; i++) {
+                    const ch = t[i];
+                    if (/[\u4e00-\u9fa5]/.test(ch)) {
+                        tokens.add(t.slice(i, i + 2));
+                        if (i + 2 < t.length && /[\u4e00-\u9fa5]/.test(t[i+1])) {
+                            // 3-gram可选，跳过以保证速度
+                        }
+                    } else if (/[a-z0-9]/.test(ch)) {
+                        tokens.add(ch);
+                    }
+                }
+                return tokens;
+            }
+
             function buildBM25Index(docs) {
                 const df = {}, idf = {}, docLens = [], avgLen = { v: 0 };
                 const N = docs.length;
                 docs.forEach((doc, i) => {
-                    const tokens = bm25Tokenize(doc._text || '');
-                    docLens[i] = tokens.length;
-                    const seen = new Set(tokens);
-                    seen.forEach(t => { df[t] = (df[t] || 0) + 1; });
+                    // 建索引用快速分词，不遍历术语集，避免大规章库卡顿
+                    const tokens = bm25TokenizeFast(doc._text || '');
+                    docLens[i] = tokens.size;
+                    tokens.forEach(t => { df[t] = (df[t] || 0) + 1; });
                 });
                 avgLen.v = docLens.reduce((s, l) => s + l, 0) / Math.max(N, 1);
                 Object.keys(df).forEach(t => {
@@ -9535,19 +9600,23 @@
                 return { docs, df, idf, docLens, avgLen, N };
             }
 
-            function bm25Score(idx, query, docI) {
-                const qTokens = bm25Tokenize(query);
+            function bm25Score(idx, queryTokens, docI) {
+                // queryTokens: 预分好的token数组，避免每条规章重复分词
+                const qTokens = queryTokens;
                 const doc = idx.docs[docI];
                 const docText = doc._text || '';
                 const dl = idx.docLens[docI];
                 const avgDl = idx.avgLen.v;
                 let score = 0;
                 qTokens.forEach(t => {
+                    if (!t) return;
                     const idf = idx.idf[t] || 0;
+                    if (idf === 0 && !docText.includes(t)) return; // 快速跳过不可能匹配的token
                     // TF 用出现次数近似
                     let tf = 0;
                     let pos = 0;
                     while ((pos = docText.indexOf(t, pos)) !== -1) { tf++; pos += t.length; }
+                    if (tf === 0) return; // 该token未出现，跳过
                     const tfN = (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / Math.max(avgDl, 1)));
                     score += idf * tfN;
                 });
@@ -9555,21 +9624,34 @@
             }
 
             function localBM25Recall(query, topK) {
-                topK = topK || 20;
+                topK = topK || 6;
                 const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
                 if (!rules.length) return [];
-                // 构建/更新索引
-                if (!_bm25Index || _bm25Index.N !== rules.length) {
-                    const docs = rules.map(r => ({
-                        ...r,
-                        _text: ((r.title || '') + ' ' + (r.content || '').replace(/<[^>]+>/g, '')).slice(0, 2000)
-                    }));
-                    _bm25Index = buildBM25Index(docs);
+
+                // 【性能优化】彻底放弃BM25索引，改用简单关键词匹配，速度等同本地匹配
+                // 提取查询关键词（2字以上中文词）
+                const kwSet = new Set();
+                const qLower = query.toLowerCase();
+                // 提取2-4字中文词组
+                for (let i = 0; i < qLower.length - 1; i++) {
+                    if (/[\u4e00-\u9fa5]/.test(qLower[i])) {
+                        for (let len = 2; len <= Math.min(4, qLower.length - i); len++) {
+                            kwSet.add(qLower.slice(i, i + len));
+                        }
+                    }
                 }
-                const scores = rules.map((_, i) => ({ i, s: bm25Score(_bm25Index, query, i) }))
-                    .filter(x => x.s > 0)
-                    .sort((a, b) => b.s - a.s)
-                    .slice(0, topK);
+                const kws = Array.from(kwSet);
+                if (!kws.length) return [];
+
+                const scored = [];
+                for (let i = 0; i < rules.length; i++) {
+                    const r = rules[i];
+                    const text = ((r.title || '') + ' ' + (r.content || '').replace(/<[^>]+>/g, '')).slice(0, 1000).toLowerCase();
+                    let s = 0;
+                    kws.forEach(k => { if (text.includes(k)) s++; });
+                    if (s > 0) scored.push({ i, s });
+                }
+                const scores = scored.sort((a, b) => b.s - a.s).slice(0, topK);
                 return scores.map(x => {
                     const r = rules[x.i];
                     const rawText = (r.content || '').replace(/<[^>]+>/g, '');
@@ -9634,180 +9716,99 @@
 
             // ============================================================
             // 从历史案例中提取已有的对规条款引用（案例派生候选库）
+            // 【2026-04-27优化】正则提取 + 降级策略（原文兜底）
             // ============================================================
             function extractCandidatesFromIssues(query, topK) {
-                topK = topK || 15;
+                topK = topK || 4;
+                const startTime = Date.now();
                 
-                // 【关键修复】优先使用本地匹配缓存的结果，避免重新计算导致匹配丢失
-                let scoredIssues = [];
+                console.log(`【历史案例召回】开始处理，查询: "${query}", topK: ${topK}`);
+                
                 const cachedIssues = window._lastACIssues;
-                
-                if (cachedIssues && cachedIssues.length > 0) {
-                    // 使用本地匹配缓存的结果（保留原始匹配度）
-                    console.log('【历史案例召回】使用本地匹配缓存结果，共', cachedIssues.length, '条');
-                    // 格式转换：本地匹配使用 matchRate，但 extractCandidatesFromIssues 期望 score
-                    scoredIssues = cachedIssues.map(item => ({
-                        iss: item.iss,
-                        score: item.matchRate || 0,  // 转换 matchRate 为 score
-                        text: item.iss.content || ''
-                    })).slice(0, topK);
-                } else {
-                    // 如果没有缓存，重新计算匹配
-                    console.log('【历史案例召回】无缓存，重新计算匹配');
-                    const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
-                    if (!issues.length) return [];
-
-                    // 用BM25对案例文本评分，取相似的案例
-                    const lowerQ = query.toLowerCase();
-                    const qWords = bm25Tokenize(query);
-
-                    scoredIssues = issues.map(iss => {
-                        const text = ((iss.content || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
-                        // 计算百分比相似度（与本地匹配一致）
-                        const hitCount = qWords.filter(w => text.includes(w)).length;
-                        const scorePercent = qWords.length > 0 ? Math.round((hitCount / qWords.length) * 100) : 0;
-                        return { iss, score: scorePercent, text: iss.content || '' };
-                    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, topK);
+                if (!cachedIssues || !cachedIssues.length) {
+                    console.warn('【历史案例召回】无本地匹配缓存，返回空');
+                    return [];
                 }
                 
-                console.log('【历史案例召回】最终选中的案例数:', scoredIssues.length);
-                scoredIssues.forEach((item, idx) => {
-                    console.log(`  ${idx + 1}. 匹配度 ${item.score}%:`, (item.iss.content || '').slice(0, 60) + '...');
-                });
-
-                // 从相似案例中提取规章引用
-                // 策略：优先使用高匹配度案例中的条款，确保匹配度优先
-                const clauseMap = {}; // key -> {title, fileNumber, article, clause, count, issueRefs, maxScore}
+                console.log('【历史案例召回】使用本地匹配缓存结果，共', cachedIssues.length, '条');
                 
-                // 按匹配度排序遍历，确保高匹配度案例优先处理
-                scoredIssues.forEach(({ iss, score }, index) => {
-                    const fullText = iss.content || '';
-                    const rankWeight = Math.max(1, topK - index); // 排名越靠前权重越高
+                const issuesToProcess = cachedIssues.slice(0, topK);
+                const result = [];
+                
+                for (let index = 0; index < issuesToProcess.length; index++) {
+                    const { iss, score } = issuesToProcess[index];
                     
-                    // 策略1：尝试匹配完整的对规结论格式
+                    let fullText = iss.content || '';
+                    if (fullText.length > 2000) fullText = fullText.slice(0, 2000);
+                    
+                    // ── 策略1：正则提取标准格式条款 ──
                     // 格式：不符合《XXX》（文件编号）第X条第X款"内容"的规定
-                    // 支持多种引号：中文引号 ""、英文双引号 ""
-                    // 注意：使用 ["""] 来匹配中文引号（两个字符）和英文引号
-                    // 【修复】使用 Unicode 转义匹配中英文引号（U+0022英文引号、U+201C左引号、U+201D右引号）
-                    const fullPattern = /《([^》]{2,60})》（[^）]{5,40}号）第([\d一二三四五六七八九十百千]+条(?:第[\d一二三四五六七八九十]+款)?)[\u0022\u201C\u201D]([^\u0022\u201C\u201D]{15,300})[\u0022\u201C\u201D]/g;
-                    let m;
-                    while ((m = fullPattern.exec(fullText)) !== null) {
-                        const title = (m[1] || '').trim();
-                        const fileNumber = (m[2] || '').trim();
-                        const article = (m[3] || '').trim();
-                        const clause = (m[4] || '').trim();
-                        if (!title || !article) continue;
-                        const key = title + '||' + fileNumber + '||' + article;
-                        if (!clauseMap[key]) {
-                            clauseMap[key] = { title, fileNumber, article, clause, count: 0, issueRefs: [], issueScore: 0, maxScore: 0 };
+                    let extracted = false;
+                    try {
+                        const pattern = /《([^》]{2,60})》（[^）]{5,40}号）第([\d一二三四五六七八九十百千]+条(?:第[\d一二三四五六七八九十]+款)?)[\u0022\u201C\u201D]([^\u0022\u201C\u201D]{15,300})[\u0022\u201C\u201D]/g;
+                        let m;
+                        while ((m = pattern.exec(fullText)) !== null) {
+                            const title = (m[1] || '').trim();
+                            const article = (m[3] || '').trim();
+                            const clause = (m[4] || '').trim();
+                            if (!title || !article || !clause) continue;
+                            
+                            result.push({
+                                title: title,
+                                fileNumber: (m[2] || '').trim(),
+                                article: article,
+                                snippet: '"' + clause + '"',
+                                fullText: clause,
+                                score: score,
+                                source: 'issue',
+                                issueCount: 1,
+                                issueRefs: [{
+                                    category: iss.category || '',
+                                    nature: iss['性质'] || '',
+                                    snippet: fullText.slice(0, 120),
+                                    matchScore: score
+                                }],
+                                ruleRef: null
+                            });
+                            extracted = true;
+                            console.log(`【历史案例召回】正则提取: 《${title}》第${article}`);
+                            break; // 每条案例最多取1个
                         }
-                        clauseMap[key].count++;
-                        // 使用排名权重 + 原始分数，确保高匹配度案例优先
-                        const weightedScore = score * rankWeight;
-                        clauseMap[key].issueScore += weightedScore;
-                        clauseMap[key].maxScore = Math.max(clauseMap[key].maxScore, score);
-                        clauseMap[key].issueRefs.push({
-                            category: iss.category || '',
-                            nature: iss['性质'] || '',
-                            snippet: fullText.slice(0, 120),
-                            matchScore: score // 记录匹配度
-                        });
-                        console.log(`【条款提取-策略1】从案例中提取到条款: 《${title}》${fileNumber} 第${article}`);
+                    } catch(e) {
+                        console.warn(`【历史案例召回】正则处理案例${index+1}出错:`, e.message);
                     }
                     
-                    // 策略2：尝试匹配简化格式（无论策略1是否匹配到，都继续尝试）
-                    // 格式：《XXX》（可选内容）第X条"内容" 或 违反《XXX》第X条"内容"
-                    // 支持多种引号：中文引号 ""、英文双引号 ""
-                    // 【修复】使用 Unicode 转义匹配中英文引号
-                    const simplePattern = /(?:违反|不符合)?《([^》]{2,60})》(?:（[^）]{1,20}）)?[^\u0022\u201C\u201D]{0,10}第([\d一二三四五六七八九十百千\.]+条(?:第[\d一二三四五六七八九十]+款)?)[\u0022\u201C\u201D]([^\u0022\u201C\u201D]{15,300})[\u0022\u201C\u201D]/g;
-                    while ((m = simplePattern.exec(fullText)) !== null) {
-                        const title = (m[1] || '').trim();
-                        const article = (m[2] || '').trim();
-                        const clause = (m[3] || '').trim();
-                        if (!title || !article) continue;
-                        const key = title + '||' + article;
-                        // 如果已经通过策略1提取到了，跳过
-                        if (clauseMap[key] && clauseMap[key].fileNumber) continue;
-                        if (!clauseMap[key]) {
-                            clauseMap[key] = { title, fileNumber: '', article, clause, count: 0, issueRefs: [], issueScore: 0, maxScore: 0 };
-                        }
-                        clauseMap[key].count++;
-                        const weightedScore = score * rankWeight;
-                        clauseMap[key].issueScore += weightedScore;
-                        clauseMap[key].maxScore = Math.max(clauseMap[key].maxScore, score);
-                        clauseMap[key].issueRefs.push({
-                            category: iss.category || '',
-                            nature: iss['性质'] || '',
-                            snippet: fullText.slice(0, 120),
-                            matchScore: score
+                    // ── 策略2（降级）：正则没匹配到，直接取案例原文作为参考 ──
+                    if (!extracted) {
+                        const category = iss.category || iss['类别'] || '';
+                        const nature = iss['性质'] || '';
+                        // 取原文前500字作为摘要
+                        const summary = fullText.slice(0, 500);
+                        
+                        result.push({
+                            title: '历史案例参考',
+                            fileNumber: '',
+                            article: '',
+                            snippet: (category ? '[' + category + '] ' : '') + (nature ? '[' + nature + '] ' : '') + summary,
+                            fullText: summary,
+                            score: score,
+                            source: 'issue',
+                            issueCount: 1,
+                            issueRefs: [{
+                                category: category,
+                                nature: nature,
+                                snippet: fullText.slice(0, 120),
+                                matchScore: score
+                            }],
+                            ruleRef: null
                         });
-                        console.log(`【条款提取-策略2】从案例中提取到条款: 《${title}》第${article}`);
+                        console.log(`【历史案例召回】降级取原文: 案例${index+1}, 匹配度${Math.round(score*100)}%, ${category||nature||'无类别'}`);
                     }
                     
-                    // 策略3：尝试匹配只有规章名称和条款编号，没有条款原文的情况
-                    // 格式：不符合《XXX》（文件编号）第X条的规定
-                    const articleOnlyPattern = /《([^》]{2,60})》（[^）]{5,40}号）第([\d一二三四五六七八九十百千\.]+条(?:第[\d一二三四五六七八九十]+款)?)/g;
-                    while ((m = articleOnlyPattern.exec(fullText)) !== null) {
-                        const title = (m[1] || '').trim();
-                        const fileNumber = (m[2] || '').trim();
-                        const article = (m[3] || '').trim();
-                        if (!title || !article) continue;
-                        const key = title + '||' + fileNumber + '||' + article;
-                        // 如果已经有条款原文，跳过
-                        if (clauseMap[key] && clauseMap[key].clause) continue;
-                        if (!clauseMap[key]) {
-                            clauseMap[key] = { title, fileNumber, article, clause: '', count: 0, issueRefs: [], issueScore: 0, maxScore: 0 };
-                        }
-                        clauseMap[key].count++;
-                        const weightedScore = score * rankWeight;
-                        clauseMap[key].issueScore += weightedScore;
-                        clauseMap[key].maxScore = Math.max(clauseMap[key].maxScore, score);
-                        clauseMap[key].issueRefs.push({
-                            category: iss.category || '',
-                            nature: iss['性质'] || '',
-                            snippet: fullText.slice(0, 120),
-                            matchScore: score
-                        });
-                        console.log(`【条款提取-策略3】从案例中提取到条款(无原文): 《${title}》${fileNumber} 第${article}`);
-                    }
-                });
-
-                const result = Object.values(clauseMap)
-                    .filter(c => c.title.length >= 3)
-                    .sort((a, b) => {
-                        // 优先按最大匹配度排序
-                        if (b.maxScore !== a.maxScore) return b.maxScore - a.maxScore;
-                        // 其次按加权分数排序
-                        return b.issueScore - a.issueScore;
-                    })
-                    .slice(0, 10)
-                    .map(c => ({
-                        title: c.title,
-                        fileNumber: c.fileNumber,
-                        article: c.article,
-                        snippet: c.clause ? ('"' + c.clause + '"') : '（来自历史案例，暂无条款原文）',
-                        fullText: c.clause,
-                        score: c.maxScore, // 使用最大匹配度作为分数
-                        weightedScore: c.issueScore,
-                        source: 'issue',
-                        issueCount: c.count,
-                        issueRefs: c.issueRefs.slice(0, 3),
-                        ruleRef: null
-                    }));
-                
-                console.log(`【历史案例召回】共提取到 ${result.length} 条条款候选`);
-                result.forEach((c, i) => {
-                    console.log(`  ${i + 1}. 《${c.title}》${c.fileNumber} 第${c.article} 匹配度:${c.score}%`);
-                });
-                
-                // 【调试】如果提取结果为空，输出原始案例内容供排查
-                if (result.length === 0 && scoredIssues.length > 0) {
-                    console.log('【调试】未提取到条款，原始案例内容样例（前3条）：');
-                    scoredIssues.slice(0, 3).forEach((item, idx) => {
-                        console.log(`  案例${idx + 1}（匹配度${item.score}%）:`, (item.iss.content || '').slice(0, 200) + '...');
-                    });
+                    if (result.length >= topK) break;
                 }
                 
+                console.log(`【历史案例召回】完成，耗时: ${Date.now() - startTime}ms，提取到 ${result.length} 条`);
                 return result;
             }
 
@@ -10050,136 +10051,122 @@
                 const apiUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
                 const model  = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
 
+
                 const container = document.getElementById('autoCheck-results');
-                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>⚙️ 双路召回中（规章库 + 历史案例）…</span></div>';
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>⏳ 正在召回候选条款…</span></div>';
                 container.style.display = 'block';
 
-                // ── 路径1：同义词扩展 + BM25召回规章库 Top20 ──
-                const expandedQuery = expandQueryWithSynonyms(query);
-                const ruleCandidates = localBM25Recall(expandedQuery, 20);
+                // ── 阶段0：检查本地匹配缓存，如果没有则提示用户先执行本地匹配 ──
+                if (!window._lastACIssues || !window._lastACIssues.length) {
+                    console.warn('[AI对规] _lastACIssues 为空，需要先执行本地匹配');
+                    container.innerHTML = '<div style="padding:16px;color:var(--warning);background:#fffbeb;border-radius:10px;border-left:4px solid #f59e0b;">'
+                        + '<div style="font-weight:700;color:#b45309;font-size:0.95rem;margin-bottom:8px;">⚠️ 历史案例缓存为空</div>'
+                        + '<div style="font-size:0.85rem;color:#92400e;margin-bottom:10px;">系统包含3万+历史案例数据，直接扫描会导致时间过长。请先执行以下步骤：</div>'
+                        + '<div style="font-size:0.85rem;color:#92400e;margin-bottom:12px;">'
+                        + '1. 在输入框中填写检查问题描述<br>'
+                        + '2. 点击「🔍 本地匹配」按钮<br>'
+                        + '3. 系统会根据关键词筛选相关案例<br>'
+                        + '4. 成功匹配后，再点击「🤖 AI 对规」按钮'
+                        + '</div>'
+                        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+                        + '<button class="btn btn-primary btn-small" onclick="window.autoCheckLocal();document.getElementById(\'autoCheck-smartBtn\').dataset.state=\'ai\';">🔍 执行本地匹配</button>'
+                        + '<button class="btn btn-secondary btn-small" onclick="window.clearAutoCheck();">🔄 重置</button>'
+                        + '</div>'
+                        + '</div>';
+                    return; // 直接返回，不再继续执行
+                }
 
-                // ── 路径2：从相似历史案例中提取对规条款（优先） ──
-                const issueCandidates = extractCandidatesFromIssues(query, 15);
+                // ── 阶段1：双路召回 (BM25 + 历史案例) ──
+                // 每步 await setTimeout(0) 让浏览器先渲染提示，再执行同步计算
+                let expandedQuery, ruleCandidates, issueCandidates;
+                try {
+                    container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在扩展查询同义词…</div>';
+                    await new Promise(r => setTimeout(r, 0));
+                    expandedQuery = expandQueryWithSynonyms(query);
+                    console.log('[AI对规] 扩展后查询:', expandedQuery);
 
-                // ── 判断召回情况 ──
-                const hasRuleCandidates  = ruleCandidates.length > 0;
-                const hasIssueCandidates = issueCandidates.length > 0;
+                    container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在从规章库召回候选条款…</div>';
+                    await new Promise(r => setTimeout(r, 0));
+                    ruleCandidates  = localBM25Recall(expandedQuery, 6);
+                    console.log('[AI对规] 规章库召回', ruleCandidates.length, '条');
 
-                if (!hasRuleCandidates && !hasIssueCandidates) {
-                    // 真正空库，降级
-                    container.innerHTML = '<div style="padding:16px;color:#d97706;background:#fffbeb;border-radius:8px;border-left:4px solid #fcd34d;"><strong>⚠️ 规章库与历史案例均为空</strong><br>请先在对应模块导入数据，已切换为本地匹配模式。</div>';
+                    container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在从历史案例召回候选条款…</div>';
+                    await new Promise(r => setTimeout(r, 0));
+                    issueCandidates = extractCandidatesFromIssues(query, 4);
+                    console.log('[AI对规] 历史案例召回', issueCandidates.length, '条');
+                } catch (e) {
+                    console.error('[AI对规] 召回候选条款异常:', e);
+                    container.innerHTML = '<div style="padding:16px;color:#dc2626;background:#fef2f2;border-radius:8px;border-left:4px solid #ef4444;"><strong>❌ 召回候选条款失败：' + e.message + '</strong><br><span style="font-size:0.82rem;color:#991b1b;">' + (e.stack||'').slice(0,500) + '</span></div>';
+                    return;
+                }
+
+                if (!ruleCandidates.length && !issueCandidates.length) {
+                    container.innerHTML = '<div style="padding:16px;color:#d97706;background:#fffbeb;border-radius:8px;border-left:4px solid #fcd34d;"><strong>⚠️ 规章库与历史案例均为空</strong><br>请先导入数据，已切换为本地匹配模式。</div>';
                     setTimeout(() => window.autoCheckLocal(), 800);
                     return;
                 }
 
-                // ── 构建 Prompt（历史案例优先，规章库仅用于核实） ──
-                let candidateText = '';
-                let candidateCount = 0;
+                console.log('[AI对规] 阶段2：构建候选映射表，规章', ruleCandidates.length, '条，案例', issueCandidates.length, '条');
 
-                // 【关键修复】历史案例存在时，完全不发送规章库候选给AI
-                // 这样AI只能从历史案例中选择，减少臆造空间
-                if (hasIssueCandidates) {
-                    candidateText += '═══════════════════════════════════════════════════════\n';
-                    candidateText += '【对规条款候选列表（按匹配度从高到低排序）】\n';
-                    candidateText += '═══════════════════════════════════════════════════════\n';
-                    candidateText += '以下条款来自历史案例的实际对规结论，请优先引用匹配度高的条款。\n\n';
-                    issueCandidates.forEach(function(c, idx) {
-                        const refCount = c.issueCount > 1 ? '（' + c.issueCount + '次案例引用）' : '';
-                        const fileNum = c.fileNumber ? '（' + c.fileNumber + '）' : '';
-                        const article = c.article ? c.article : '';
-                        const matchScore = c.score || 0;
-                        candidateText += (++candidateCount) + '. 《' + c.title + '》' + fileNum + refCount + '【匹配度：' + matchScore + '%】\n';
-                        if (article) {
-                            candidateText += '   【条款编号】第' + article + '\n';
-                        }
-                        candidateText += '   【条款原文】' + c.snippet + '\n\n';
-                    });
-                    
-                    // 【关键】历史案例存在时，规章库候选不发给AI，只用于后端验证
-                    console.log('【Prompt构建】历史案例存在，规章库候选不发给AI（仅用于后端验证）');
-                } else {
-                    // 历史案例不存在时，才发送规章库候选
-                    if (hasRuleCandidates) {
-                        candidateText += '\n═══════════════════════════════════════════════════════\n';
-                        candidateText += '【规章库中匹配的条款】\n';
-                        candidateText += '═══════════════════════════════════════════════════════\n';
-                        candidateText += '【📋 来源说明】以下条款来自规章库检索，供对规参考\n\n';
-                        ruleCandidates.forEach((c, idx) => {
-                            const article = c.article || '';
-                            candidateText += (++candidateCount) + '. 《' + c.title + '》' + (article ? '【' + article + '】' : '') + '\n';
-                            candidateText += '   条款内容：' + c.snippet + '\n\n';
-                        });
-                    }
-                }
+                // ── 阶段2：构建全局候选映射表（ID → 完整条款） ──
+                _globalCandidatesMap = {};
+                let idCounter = 0;
+                const allCandidates = [];
 
-                // ── 规则说明 ──
-                const ruleNote = hasIssueCandidates 
-                    ? '【强制要求】必须从上方【对规条款候选列表】中选取最合适的1-3条，完整引用条款内容（包括规章全名、文件编号、条款位置、条款原文）。这是历史案例的实际对规结论，请直接原样引用。'
-                    : '【强制要求】必须从上方【规章库中匹配的条款】中选取最合适的1-3条，完整引用条款内容（包括规章全名、文件编号、条款位置、条款原文）。';
-
-                const sysPrompt = [
-                    '你是铁路安全监察领域的对规专家。严格按照以下流程和格式执行对规，不得偏离。',
-                    '',
-                    '【执行流程】',
-                    '第一步：对输入问题进行校核，仅修正明显错别字和语句不通顺处，不改变原意，输出校核后问题。',
-                    '第二步：查看【对规条款候选列表】，按【匹配度】从高到低排序，优先选择匹配度最高的条款。',
-                    '第三步：从候选条款中，选出与当前问题描述最相关的1-3条条款。如果候选均为历史案例来源，优先引用匹配度最高的。',
-                    '第四步：直接引用选中的条款，包括规章全名、文件编号、条款编号、条款原文。',
-                    '第五步：按照标准格式输出对规结论。',
-                    '',
-                    '【规则约束】',
-                    '1. 条款内容必须来自候选列表，严禁自行编造或修改条款内容。',
-                    '2. 优先引用匹配度最高的条款，匹配度越高越值得信赖。',
-                    '3. ' + ruleNote,
-                    '4. 对规结论必须写明：规章全名、文件编号（如有）、章/条/款编号、条款完整原文（加引号）。',
-                    '5. 如候选列表中某条款缺少条款原文，直接引用已有内容并注明"（条款原文待查）"。',
-                    '6. 如来源为历史案例，在对规结论末尾注明"（来源：历史案例）"。',
-                    '7. 严禁回答"无法对规"，即使候选不完全匹配，也要给出最接近的参考。',
-                    '8. 严禁将历史案例条款与规章库进行核对后自行修改，必须直接引用候选中的原文。',
-                    '',
-                    '【严格输出格式】',
-                    '═══════════════════════════════',
-                    '【校核后问题】',
-                    '{仅修正错别字和语句后的问题原文，保持原意}',
-                    '',
-                    '【对规结论】',
-                    '① 不符合/违反《{规章全名}》（{文件编号}）第{X}条第{X}款"{条款完整原文（不少于30字）}"的规定。',
-                    '   ▷ 适用理由：{一句话说明为何适用本条款}',
-                    '',
-                    '② 不符合/违反《{规章全名}》…（如有次要条款）',
-                    '═══════════════════════════════',
-                    '',
-                    '【填写要求】',
-                    '1. 必须包含文件编号（如：兰铁安函〔2022〕398号），如候选中无编号则省略',
-                    '2. 必须精确到条款的具体位置（如：第三十六条第4款）',
-                    '3. 必须引用条款的完整原文内容（不少于30字），不能只写节选或笼统描述',
-                    '4. 必须从候选列表中提取具体条款内容',
-                    '5. 示例：不符合《兰州局集团公司铁路营业线施工作业监控系统运用管理办法》（兰铁安函〔2022〕398号）第三十六条第4款"普速铁路扰动线路基础的施工开通后，施工主体单位及设备管理单位必须对不少于3趟列车通过后的设备状态进行现场检查"的规定。',
-                    '',
-                    '【禁止输出整改建议、风险分析、事故预防等无关内容，严格只输出上述格式】',
-                ].join('\n');
-
-                const userPrompt = [
-                    '检查问题：' + query,
-                    '',
-                    '候选条款列表（共' + candidateCount + '条）：',
-                    candidateText
-                ].join('\n');
-
-                // 调试：输出候选列表到控制台
-                console.log('=== AI 对规候选列表 ===');
-                console.log('历史案例候选数:', issueCandidates.length);
-                console.log('规章库候选数:', ruleCandidates.length);
-                console.log('历史案例候选详情:');
-                issueCandidates.forEach((c, i) => {
-                    console.log(`  ${i+1}. 《${c.title}》${c.article} 匹配度:${c.score}%`);
-                    console.log(`     条款原文:`, c.fullText ? c.fullText.substring(0, 100) + '...' : '无');
+                issueCandidates.forEach(c => {
+                    const id = 'cand_' + (idCounter++);
+                    _globalCandidatesMap[id] = {
+                        id, source: 'issue',
+                        title: c.title || '',
+                        fileNumber: c.fileNumber || '',
+                        article: c.article || '',
+                        clause: c.snippet || c.fullText || '',
+                        issueCount: c.issueCount || 1,
+                        score: c.score || 0
+                    };
+                    allCandidates.push(id);
                 });
-                console.log('候选列表内容:');
-                console.log(candidateText);
-                console.log('=======================');
+                ruleCandidates.forEach(c => {
+                    const id = 'cand_' + (idCounter++);
+                    _globalCandidatesMap[id] = {
+                        id, source: 'rule',
+                        title: c.title || '',
+                        fileNumber: c.fileNumber || '',
+                        article: c.article || '',
+                        clause: c.snippet || c.content || ''
+                    };
+                    allCandidates.push(id);
+                });
+
+                // ── 阶段3：AI只挑选ID，绝不输出原文 ──
+                const sysPrompt = [
+                    '你是铁路安监对规专家。请从以下候选条款列表中，挑选与检查问题最相关的1-3个条款ID。',
+                    '【输出要求】只输出一个合法JSON对象，禁止使用代码块（```），禁止任何说明文字。',
+                    '【correctedQuery】输出完整的问题描述原文（不要省略）。',
+                    '示例：{"correctedQuery":"机车备品管理问题","selectedIds":["cand_0","cand_2"],"reason":"备品不符"}',
+                    '',
+                    '候选条款列表：',
+                    allCandidates.map(id => {
+                        const c = _globalCandidatesMap[id];
+                        const src = c.source === 'issue' ? '[案例]' : '[规章库]';
+                        let line = '[' + id + '] ' + src;
+                        if (c.title) line += '《' + c.title + '》';
+                        if (c.fileNumber) line += '（' + c.fileNumber + '）';
+                        if (c.article)  line += ' 第' + c.article + '条';
+                        if (c.clause)   line += ' "' + c.clause.slice(0, 200) + '"';
+                        return line;
+                    }).join('\n'),
+                    '',
+                    '如果所有候选均不相关，selectedIds 返回空数组 []。'
+                ].join('\n');
+
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>🤖 AI 正在筛选最佳条款（强约束模式）…</span></div>';
+
+                console.log('[AI对规] 阶段3：发送AI请求，候选', allCandidates.length, '个，模型:', model);
 
                 try {
+                    _acAbortController = new AbortController();
+                    console.log('[AI对规] fetch 开始...', apiUrl);
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -10187,148 +10174,220 @@
                             model: model,
                             messages: [
                                 { role: 'system', content: sysPrompt },
-                                { role: 'user', content: userPrompt }
+                                { role: 'user', content: '检查问题：' + query }
                             ],
-                            temperature: 0.1,
-                            max_tokens: 1200
-                        })
+                            temperature: 0.0,
+                            max_tokens: 1024,
+                            stream: false
+                        }),
+                        signal: _acAbortController.signal
                     });
+
+                    console.log('[AI对规] fetch 响应:', resp.status, resp.ok);
+
                     if (!resp.ok) {
-                        const hints = { 401:'API Key 无效', 402:'账户余额不足，请前往 platform.deepseek.com 充值', 403:'Key 无访问权限', 429:'请求过于频繁，请稍后重试' };
+                        const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
                         throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
                     }
+
                     const data = await resp.json();
-                    const aiText = data.choices[0].message.content;
+                    const rawText = (data.choices[0].message.content || '').trim();
 
-                    // ── 本地验证（双路） ──
-                    const validation = validateAIOutput(aiText, ruleCandidates, issueCandidates);
-
-                    // 置信度标签（案例验证优先）
-                    const confidenceLabelMap = {
-                        high:   '<span class="confidence-badge high">✅ 高置信度 — 条款在匹配案例中核实</span>',
-                        medium: '<span class="confidence-badge medium">⚠️ 中置信度 — 部分条款在案例中找到，建议复核</span>',
-                        low:    '<span class="confidence-badge low">❓ 低置信度 — 条款未在案例中找到，请人工核查</span>'
-                    };
-
-                    // ── 验证明细（区分来源） ──
-                    let detailHtml = '';
-                    if (validation.details.length > 0) {
-                        detailHtml = '<div class="validation-detail">'
-                            + '<div class="vd-title">🔍 来源核验明细（' + validation.summary + '）</div>';
-                        validation.details.forEach(d => {
-                            // 【修改】简化样式逻辑：案例匹配=matched/ok，未找到=unmatched/fail
-                            const cls = d.source === 'issue' ? 'matched' : 'unmatched';
-                            const badgeCls = d.source === 'issue' ? 'ok' : 'fail';
-                            const sourceTag = d.source === 'issue'
-                                ? '<span style="font-size:0.68rem;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:8px;margin-left:4px;">案例核实</span>'
-                                : '<span style="font-size:0.68rem;background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;margin-left:4px;">未找到</span>';
-                            // 案例引用展开
-                            let issueRefHtml = '';
-                            if (d.source === 'issue' && d.issueRefs && d.issueRefs.length > 0) {
-                                issueRefHtml = '<div style="margin-top:4px;padding:4px 8px;background:#fffbeb;border-radius:4px;font-size:0.75rem;color:#92400e;">'
-                                    + '引用案例：' + d.issueRefs.map(r => '[' + (r.nature||'') + '] ' + r.snippet.slice(0,40) + '…').join(' | ')
-                                    + '</div>';
+                    // 提取JSON（多重容错）
+                    let aiJson;
+                    let parseErr = '';
+                    (function tryParse() {
+                        // 1. ```json ... ``` 包裹
+                        const m1 = rawText.match(/```json\s*([\s\S]*?)\s*```/);
+                        if (m1) { try { aiJson = JSON.parse(m1[1]); return; } catch(e) { parseErr = e.message; } }
+                        // 2. ``` ... ``` 包裹（无 json 标识）
+                        const m2 = rawText.match(/```\s*([\s\S]*?)\s*```/);
+                        if (m2) { try { aiJson = JSON.parse(m2[1]); return; } catch(e) { parseErr = e.message; } }
+                        // 3. 裸 JSON 提取
+                        const start = rawText.indexOf('{');
+                        const end   = rawText.lastIndexOf('}');
+                        if (start !== -1 && end > start) {
+                            let jsonStr = rawText.slice(start, end + 1);
+                            try { aiJson = JSON.parse(jsonStr); return; } catch(e) { parseErr = e.message; }
+                            // 4. 末尾逗号容错
+                            const fixed = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+                            try { aiJson = JSON.parse(fixed); return; } catch(e) { parseErr = e.message; }
+                            // 5. 截断补全（含未闭合字符串修复）
+                            let r = fixed;
+                            // 5a. 检测并修复未闭合的字符串（最常见截断场景）
+                            const quotes = r.match(/"/g) || [];
+                            if (quotes.length % 2 !== 0) {
+                                // 奇数个引号 → 最后一个字符串未闭合，补上闭合引号
+                                r += '"';
                             }
-                            detailHtml += '<div class="vd-item ' + cls + '">'
-                                + '<span class="vd-badge ' + badgeCls + '">' + d.label + '</span>'
-                                + '<span style="flex:1;font-size:0.8rem;">《' + d.title + '》' + sourceTag
-                                + (d.matchedRule && d.matchedRule !== d.title ? '<span style="color:#64748b;"> → 匹配：《' + d.matchedRule + '》</span>' : '')
-                                + (d.clause ? '<br><span style="color:#64748b;">引用条款：' + d.clause + '…</span>' : '')
-                                + issueRefHtml
-                                + '</span>'
+                            // 5b. 补全括号
+                            const oB = (r.match(/\{/g)||[]).length;
+                            const cB = (r.match(/\}/g)||[]).length;
+                            const oS = (r.match(/\[/g)||[]).length;
+                            const cS = (r.match(/\]/g)||[]).length;
+                            for(let i=0;i<oS-cS;i++) r += ']';
+                            for(let i=0;i<oB-cB-1;i++) r += '}';
+                            r += '}';
+                            try { aiJson = JSON.parse(r); return; } catch(e) { parseErr='截断修复: '+e.message; }
+                        }
+                        // 6. 直接解析整段
+                        try { aiJson = JSON.parse(rawText); } catch(e) { parseErr = e.message; }
+                    })();
+                    if (!aiJson || typeof aiJson !== 'object') {
+                        console.warn('[autoCheckAI] 解析失败，原始返回：', rawText, '  错误：', parseErr);
+                        throw new Error('AI返回格式异常（' + parseErr + '），已切换本地匹配');
+                    }
+                    // selectedIds 容错：允许字符串"cand_0,cand_1"或数组
+                    if (typeof aiJson.selectedIds === 'string') {
+                        aiJson.selectedIds = aiJson.selectedIds.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+                    }
+
+                    const { correctedQuery, selectedIds, reason } = aiJson;
+                    const validIds = (selectedIds || []).filter(id => _globalCandidatesMap[id]);
+
+                    // ── 本地拼装结论（100%来自映射表，不依赖AI原文）──
+                    const hasIssueSel = validIds.some(id => _globalCandidatesMap[id].source === 'issue');
+                    const sourceTipHtml = hasIssueSel
+                        ? '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.82rem;color:#15803d;"><span>📋</span><span>本次对规参考了 <strong>' + issueCandidates.length + ' 条匹配历史案例</strong>，条款来源已验证。</span></div>'
+                        : '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;"><span>⚠️</span><span>未找到历史案例，已从规章库检索，请人工核实。</span></div>';
+
+                    let conclusionHtml = '';
+                    if (validIds.length === 0) {
+                        conclusionHtml = '<p style="color:#d97706;padding:8px 0;">⚠️ 所有候选条款均不相关，建议人工核查或调整描述。</p>';
+                    } else {
+                        validIds.forEach((id, idx) => {
+                            const c = _globalCandidatesMap[id];
+                            const srcBadge = c.source === 'issue'
+                                ? '<span style="font-size:0.68rem;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:8px;margin-left:4px;">案例核实' + (c.issueCount > 1 ? c.issueCount + '次' : '') + '</span>'
+                                : '<span style="font-size:0.68rem;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px;margin-left:4px;">规章库</span>';
+                            conclusionHtml += '<div style="margin-bottom:14px;padding:12px;background:#f8fafc;border-radius:8px;border-left:3px solid ' + (c.source==='issue'?'#16a34a':'#2563eb') + ';">'
+                                + '<div style="font-weight:700;color:#1e3a5f;margin-bottom:6px;">'
+                                + (idx+1) + '. 不符合/违反《' + acEscHtml(c.title) + '》'
+                                + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '')
+                                + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '')
+                                + srcBadge + '</div>'
+                                + '<div style="background:#e0f2fe;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#0c4a6e;">'
+                                + '"' + acEscHtml(c.clause) + '"'
+                                + '</div>'
                                 + '</div>';
                         });
-                        detailHtml += '</div>';
                     }
 
-                    // ── 来源说明提示（案例验证优先） ──
-                    let sourceTipHtml = '';
-                    if (hasIssueCandidates) {
-                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.82rem;color:#15803d;">'
-                            + '<span style="font-size:1.1rem;">📋</span>'
-                            + '<span>本次对规参考了 <strong>' + issueCandidates.length + ' 条匹配历史案例</strong>，AI从中选取了最相关的条款。条款内容来自历史案例中的引用记录，仅供参考，请以实际规章原文为准。</span>'
-                            + '</div>';
-                    } else {
-                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;">'
-                            + '<span style="font-size:1.1rem;">⚠️</span>'
-                            + '<span>未找到匹配的历史案例，AI对规结果仅供参考，请务必与规章原文核实。</span>'
-                            + '</div>';
-                    }
+                    const issueCount = validIds.filter(id => _globalCandidatesMap[id].source === 'issue').length;
+                    const ruleCount  = validIds.filter(id => _globalCandidatesMap[id].source === 'rule').length;
 
-                    // ── 主结果卡 ──
-                    let aiHtml = '<div class="result-card" style="border-left:4px solid var(--primary);background:#f0f9ff;">'
-                        + '<div class="result-header">'
-                        + '<span class="tag" style="background:var(--primary);color:#fff;">🤖 AI 精排对规</span>'
-                        + '<span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px;">'
-                        + (hasIssueCandidates ? '匹配案例' + issueCandidates.length + '条' : '无匹配案例')
-                        + '</span>'
-                        + '</div>'
+                    // ── 生成反馈ID（用于DOM定位） ──
+                    const feedbackId = 'ac-fb-' + Date.now();
+
+                    container.innerHTML = '<div style="background:#f0f9ff;padding:16px;border-radius:12px;border-left:5px solid #2563eb;">'
+                        + '<h3 style="color:#1e3a5f;margin-bottom:12px;">⚖️ 对规结论 <span style="font-size:0.75rem;font-weight:400;color:#64748b;">（强约束模式·条款来自本地库）</span></h3>'
+                        + '<p style="margin-bottom:12px;"><strong>📌 校核后问题：</strong>' + acEscHtml(correctedQuery || query) + '</p>'
                         + sourceTipHtml
-                        + confidenceLabelMap[validation.confidence]
-                        + '<div class="result-content">'
-                        + '<div class="result-text" style="white-space:pre-wrap;line-height:1.85;">' + acEscHtml(aiText) + '</div>'
+                        + conclusionHtml
+                        + (validIds.length > 0 ? '<p style="color:#16a34a;font-size:0.82rem;margin-top:8px;">✅ 条款来源：案例库 ' + issueCount + ' 条，规章库 ' + ruleCount + ' 条 | 选择理由：' + acEscHtml(reason || '') + '</p>' : '')
+                        // ── 对规反馈区域 ──
+                        + '<div id="' + feedbackId + '" style="margin-top:14px;padding:12px 14px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;">'
+                        + '<div style="font-size:0.85rem;font-weight:600;color:#475569;margin-bottom:8px;">📝 本次对规结果是否正确？</div>'
+                        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+                        + '<button class="btn btn-small" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:6px 16px;border-radius:20px;font-size:0.82rem;cursor:pointer;" onclick="window.acFeedback(\'' + feedbackId + '\',\'correct\',this)">✅ 正确</button>'
+                        + '<button class="btn btn-small" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:6px 16px;border-radius:20px;font-size:0.82rem;cursor:pointer;" onclick="window.acFeedback(\'' + feedbackId + '\',\'partial\',this)">⚠️ 部分正确</button>'
+                        + '<button class="btn btn-small" style="background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;padding:6px 16px;border-radius:20px;font-size:0.82rem;cursor:pointer;" onclick="window.acFeedback(\'' + feedbackId + '\',\'wrong\',this)">❌ 不正确</button>'
                         + '</div>'
-                        + detailHtml
+                        + '</div>'
                         + '</div>';
 
-                    // ── 匹配案例参考（展示案例派生的条款） ──
-                    let refHtml = '';
-                    if (hasIssueCandidates) {
-                        refHtml = '<div style="margin-top:12px;">'
-                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 10px;border-radius:20px;">📋 匹配案例条款参考</span></div>'
-                            + '<div style="display:flex;flex-direction:column;gap:6px;">';
-                        issueCandidates.slice(0, 5).forEach((c, i) => {
-                            refHtml += '<div class="rule-card-item" style="padding:12px 16px;background:#f0fdf4;">'
-                                + '<div class="rule-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-                                + '<span style="flex:1;word-break:break-all;color:#166534;font-weight:600;">[' + (i+1) + '] 《' + c.title + '》' + (c.fileNumber || '') + ' 第' + c.article + '条</span>'
-                                + '<span style="font-size:0.7rem;color:#15803d;background:#dcfce7;padding:2px 8px;border-radius:12px;">' + (c.issueCount || 1) + '个案例引用</span>'
-                                + '</div>'
-                                + (c.snippet ? '<div style="margin-top:6px;font-size:0.8rem;color:#374151;line-height:1.5;">' + c.snippet + '</div>' : '')
-                                + '</div>';
-                        });
-                        refHtml += '</div></div>';
-                    } else {
-                        refHtml = '<div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:8px;font-size:0.8rem;color:#92400e;">未找到匹配的历史案例，无法提供条款参考。</div>';
-                    }
-
-                    // ── 案例印证列表（当案例有数据时展示） ──
-                    let issueRefHtml2 = '';
-                    if (hasIssueCandidates) {
-                        issueRefHtml2 = '<div style="margin-top:12px;">'
-                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:20px;">📂 案例印证条款来源</span></div>'
-                            + '<div style="display:flex;flex-direction:column;gap:4px;">';
-                        issueCandidates.slice(0, 5).forEach((c, i) => {
-                            issueRefHtml2 += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;">'
-                                + '<div style="font-size:0.85rem;font-weight:700;color:#92400e;margin-bottom:4px;">[' + (i+1) + '] 《' + c.title + '》'
-                                + '<span style="font-size:0.72rem;background:#fde68a;color:#78350f;padding:2px 8px;border-radius:10px;margin-left:6px;">' + c.issueCount + '次案例引用</span>'
-                                + '</div>'
-                                + (c.fullText ? '<div style="font-size:0.78rem;color:#78350f;background:#fef9ee;border-radius:4px;padding:4px 8px;">条款摘录：' + c.fullText.slice(0, 100) + (c.fullText.length > 100 ? '…' : '') + '</div>' : '')
-                                + (c.issueRefs && c.issueRefs.length ? '<div style="font-size:0.75rem;color:#a16207;margin-top:4px;">来源案例：' + c.issueRefs.map(r => '[' + (r.nature||r.category||'') + '] ' + r.snippet.slice(0,35) + '…').join(' | ') + '</div>' : '')
-                                + '</div>';
-                        });
-                        issueRefHtml2 += '</div></div>';
-                    }
-
-                    container.innerHTML = aiHtml + refHtml + issueRefHtml2;
-                    // 【修改】保存案例候选而不是规章候选
-                    window._lastACIssues = [];
-                    window._lastACRules = issueCandidates.slice(0, 5).map(c => ({ 
-                        title: c.title, 
-                        fileNumber: c.fileNumber,
-                        article: c.article,
-                        snippet: c.snippet,
-                        issueCount: c.issueCount,
-                        matchScore: c.score 
-                    }));
+                    // 保存供后续使用
+                    window._lastACRules = validIds.map(id => {
+                        const c = _globalCandidatesMap[id];
+                        return { title: c.title, fileNumber: c.fileNumber, article: c.article, snippet: c.clause };
+                    });
 
                 } catch(err) {
-                    let errMsg = err.message;
-                    if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('CORS') || errMsg.includes('net::ERR')) {
-                        errMsg = '网络请求失败，可能是 file:// 协议限制。请将 index.html 部署到 HTTP 服务器后使用 AI 功能，或改用本地匹配。';
+                    if (err.name === 'AbortError') {
+                        container.innerHTML = '<div style="color:#e53e3e;padding:12px;">⏹️ 已停止AI对规</div>';
+                    } else {
+                        container.innerHTML = '<div style="padding:16px;color:#e53e3e;">❌ AI对规失败：' + acEscHtml(err.message) + '<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>';
                     }
-                    container.innerHTML = '<div style="padding:16px;color:#e53e3e;">❌ AI 对规失败：' + acEscHtml(errMsg) + '<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>';
+                } finally {
+                    _acAbortController = null;
                 }
             };
+
+            // ── 对规反馈记录 ──
+            window.acFeedback = function(feedbackId, verdict, btnEl) {
+                // verdict: 'correct' | 'partial' | 'wrong'
+                const container = document.getElementById(feedbackId);
+                if (!container) return;
+
+                // 读取当前对规信息
+                const query = document.getElementById('autoCheck-input') ? document.getElementById('autoCheck-input').value.trim() : '';
+                const selectedIds = window._lastACRules || [];
+
+                // 构建反馈记录
+                const record = {
+                    id: Date.now(),
+                    time: new Date().toISOString(),
+                    query: query,
+                    verdict: verdict,
+                    selectedRules: selectedIds.map(r => ({
+                        title: r.title || '',
+                        fileNumber: r.fileNumber || '',
+                        article: r.article || ''
+                    }))
+                };
+
+                // 保存到 localStorage
+                const STORAGE_KEY = 'ac_feedback_records';
+                let records = [];
+                try {
+                    records = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+                } catch(e) { records = []; }
+                records.push(record);
+                // 只保留最近500条
+                if (records.length > 500) records = records.slice(-500);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+
+                // 更新UI：隐藏按钮，显示已反馈状态
+                const labels = { correct: '✅ 正确', partial: '⚠️ 部分正确', wrong: '❌ 不正确' };
+                const colors = { correct: '#166534', partial: '#92400e', wrong: '#991b1b' };
+
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">'
+                    + '<span style="font-size:0.88rem;font-weight:600;color:' + colors[verdict] + ';">' + labels[verdict] + '，已记录</span>'
+                    + (verdict === 'wrong' || verdict === 'partial'
+                        ? '<button class="btn btn-small" style="background:#eff6ff;color:#1e40af;border:1px solid #93c5fd;padding:4px 12px;border-radius:16px;font-size:0.78rem;cursor:pointer;" onclick="window.acFeedbackCorrection(\'' + record.id + '\')">✏️ 补充正确条款</button>'
+                        : '')
+                    + '<span style="font-size:0.75rem;color:#94a3b8;">累计 ' + records.length + ' 条反馈</span>'
+                    + '</div>';
+
+                console.log('[对规反馈]', verdict, '查询:', query.slice(0, 40), '...', '累计', records.length, '条');
+            };
+
+            // ── 补充正确条款（反馈修正） ──
+            window.acFeedbackCorrection = function(recordId) {
+                const correction = prompt('请输入正确的规章条款，格式如：\n《规章名称》文号 第X条');
+                if (!correction || !correction.trim()) return;
+
+                const STORAGE_KEY = 'ac_feedback_records';
+                let records = [];
+                try {
+                    records = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+                } catch(e) { records = []; }
+
+                const rec = records.find(r => r.id === recordId);
+                if (rec) {
+                    rec.correction = correction.trim();
+                    rec.correctionTime = new Date().toISOString();
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                    alert('已记录修正：' + correction.trim());
+                    console.log('[对规反馈修正]', rec.query.slice(0, 30), '→', correction.trim());
+                }
+            };
+
+            // 停止AI对规生成
+            window.stopACGeneration = function() {
+                if (_acAbortController) _acAbortController.abort();
+            };
+
 
             window.clearAutoCheck = function() {
                 document.getElementById('autoCheck-input').value = '';
@@ -11750,10 +11809,42 @@
             // ================================================================
             // ── Prompt 构造器 ──
             // ================================================================
+            /**
+             * 从检查信息台账中提取实际统计数据（防止AI编造数字）
+             */
+            function wrExtractStatsFromIssues(parsedQuery) {
+                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+                if (!issues.length || !parsedQuery.dateRange) return null;
+                const { start, end } = parsedQuery.dateRange;
+                const filtered = issues.filter(iss => {
+                    if (!iss.datetime) return false;
+                    const d = new Date(iss.datetime);
+                    return d >= new Date(start) && d <= new Date(end);
+                });
+                if (filtered.length === 0) return null;
+                const total = filtered.length;
+                const catMap = { 'A': 0, 'B': 0, 'C': 0, '红线': 0, '其他': 0 };
+                filtered.forEach(iss => {
+                    const xz = (iss['性质'] || '').trim();
+                    if (xz.includes('A')) catMap['A']++;
+                    else if (xz.includes('B')) catMap['B']++;
+                    else if (xz.includes('C')) catMap['C']++;
+                    else if (xz.includes('红线')) catMap['红线']++;
+                    else catMap['其他']++;
+                });
+                const typicals = filtered.slice(0, 5).map((iss, idx) =>
+                    (idx + 1) + '. [' + (iss['性质'] || '') + '][' + (iss.category || '') + '] ' + String(iss.content || '').slice(0, 100)
+                ).join('\n');
+                return { total, catMap, typicals, dateLabel: parsedQuery.dateLabel || '' };
+            }
+
             function wrBuildPrompt(query, materials) {
                 const { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials } = materials;
                 const today = new Date();
                 const todayStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
+
+                // 从台账提取真实统计（防止 AI 编造数字）
+                const realStats = wrExtractStatsFromIssues(parsed);
 
                 const sysLines = [
                     '你是铁路安全监察领域的专业智能写作。请根据用户提供的模板、台账数据、历史报告，生成符合规范的铁路安监文档。',
@@ -11780,7 +11871,18 @@
                 if (template) {
                     const tplType = template.matType || template.category || 'template';
                     userLines.push('【写作模板（' + wrCatName(tplType) + '）】');
-                    const tplContent = template.content || '';
+                    let tplContent = template.content || '';
+                    // 用真实统计数据替换模板占位符（防止 AI 编造数字）
+                    if (realStats) {
+                        tplContent = tplContent
+                            .replace(/{{问题总数}}/g, '【数据:' + realStats.total + '】')
+                            .replace(/{{A类数量}}/g,  '【数据:' + realStats.catMap['A'] + '】')
+                            .replace(/{{B类数量}}/g,  '【数据:' + realStats.catMap['B'] + '】')
+                            .replace(/{{C类数量}}/g,  '【数据:' + realStats.catMap['C'] + '】')
+                            .replace(/{{红线数量}}/g, '【数据:' + realStats.catMap['红线'] + '】')
+                            .replace(/{{典型问题列表}}/g, '【数据:典型问题\n' + realStats.typicals + '\n】')
+                            .replace(/{{日期}}/g, '【数据:' + realStats.dateLabel + '】');
+                    }
                     userLines.push(tplContent.slice(0, 6000) + (tplContent.length > 6000 ? '\n（模板内容过长，已截取前6000字，请严格按模板章节结构输出全部内容）' : ''));
                     userLines.push('');
                 } else {
@@ -11791,11 +11893,17 @@
 
                 // 台账统计
                 if (stats && issues.length > 0) {
-                    userLines.push('【台账统计数据（' + parsed.dateLabel + '，共' + stats.total + '条）】');
+                    userLines.push('【台账统计数据（' + parsed.dateLabel + '，共' + stats.total + '条）—— 这些数字已由系统统计，报告中必须完全照搬，不得修改】');
                     userLines.push('- 问题总数：' + stats.total + '条');
                     userLines.push('- 问题性质分布：' + stats.natSummary);
-                    userLines.push('- 典型问题（前5条）：');
-                    userLines.push(stats.typicals);
+                    if (realStats) {
+                        userLines.push('- A类：' + realStats.catMap['A'] + '条，B类：' + realStats.catMap['B'] + '条，C类：' + realStats.catMap['C'] + '条，红线：' + realStats.catMap['红线'] + '条');
+                        userLines.push('- 典型问题（前5条，必须完整引用）：');
+                        userLines.push(realStats.typicals);
+                    } else {
+                        userLines.push('- 典型问题（前5条）：');
+                        userLines.push(stats.typicals);
+                    }
                     userLines.push('');
                 } else {
                     userLines.push('【台账数据】');
@@ -11922,6 +12030,8 @@
                 if (resultEl) { resultEl.innerHTML = html; resultEl.style.display = 'block'; }
             };
 
+            let _wrAbortController = null; // 用于停止写作生成
+
             window.wrGenerate = async function() {
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!q.trim()) { alert('请输入写作需求'); return; }
@@ -12006,6 +12116,7 @@
                     messages.push({ role: 'user', content: userPrompt });
 
                     // 调用API（流式）
+                    _wrAbortController = new AbortController();
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -12015,7 +12126,8 @@
                             stream: true,
                             temperature: 0.3,
                             max_tokens: 4096
-                        })
+                        }),
+                        signal: _wrAbortController.signal
                     });
 
                     if (!resp.ok) {
@@ -12059,6 +12171,10 @@
                     // 去掉流式气泡的 id（流式结束）
                     if (aiBubble) aiBubble.id = '';
                     if (streamBubbleContent) streamBubbleContent.id = '';
+
+                    // 清理数据标记（只保留数值，去掉【数据:…】外壳）
+                    fullText = fullText.replace(/【数据:典型问题\n([\s\S]*?)\n】/g, '$1');
+                    fullText = fullText.replace(/【数据:([^\】]*?)】/g, '$1');
 
                     // 记录 AI 回复到对话历史
                     _wrConvHistory.push({ role: 'assistant', content: fullText, timestamp: Date.now() });
@@ -12105,20 +12221,35 @@
                     wrUpdateConvBtn();
 
                 } catch(err) {
-                    let msg = err.message || '未知错误';
-                    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('net::ERR')) {
-                        msg = '网络请求失败（可能是 file:// 限制），请部署到 HTTP 服务器后使用。';
-                    }
-                    // 更新气泡为错误信息
-                    if (streamBubbleContent) {
-                        streamBubbleContent.style.background = '#fff5f5';
-                        streamBubbleContent.style.color = '#e53e3e';
-                        streamBubbleContent.style.border = '1px solid #fca5a5';
-                        streamBubbleContent.textContent = '❌ 生成失败：' + msg;
+                    if (err.name === 'AbortError') {
+                        if (streamBubbleContent) {
+                            streamBubbleContent.style.background = '#fff7ed';
+                            streamBubbleContent.style.color = '#9a3412';
+                            streamBubbleContent.style.border = '1px solid #fdba74';
+                            streamBubbleContent.textContent = '⏹️ 已停止生成';
+                        }
+                    } else {
+                        let msg = err.message || '未知错误';
+                        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('net::ERR')) {
+                            msg = '网络请求失败（可能是 file:// 限制），请部署到 HTTP 服务器后使用。';
+                        }
+                        // 更新气泡为错误信息
+                        if (streamBubbleContent) {
+                            streamBubbleContent.style.background = '#fff5f5';
+                            streamBubbleContent.style.color = '#e53e3e';
+                            streamBubbleContent.style.border = '1px solid #fca5a5';
+                            streamBubbleContent.textContent = '❌ 生成失败：' + msg;
+                        }
                     }
                 } finally {
+                    _wrAbortController = null;
                     if (writeBtn)  { writeBtn.disabled = false;  writeBtn.textContent = '✍️ 开始写作'; }
                 }
+            };
+
+            // 停止写作生成
+            window.stopWrGeneration = function() {
+                if (_wrAbortController) _wrAbortController.abort();
             };
 
             // ---- 修改报告功能：选择增加资料后确认完成 ----

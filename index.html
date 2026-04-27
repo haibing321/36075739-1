@@ -10113,14 +10113,32 @@
                 let idCounter = 0;
                 const allCandidates = [];
 
+                // ── 从案例全文中提取规章引用部分 ──
+                function extractRegulationQuote(text) {
+                    if (!text) return '';
+                    // 匹配"不符合/违反《...》...的要求/的规定/的约束"格式
+                    var m = text.match(/(?:不符合|违反)《[^》]*》[^。]*?(?:的要求|的规定|的约束)/);
+                    if (m) return m[0];
+                    // 降级：匹配"不符合/违反《...》...。"整句
+                    m = text.match(/(?:不符合|违反)《[^》]*》[^。]*。/);
+                    if (m) return m[0];
+                    // 再降级：匹配"《...》...的要求/的规定"
+                    m = text.match(/《[^》]*》[^。]*?(?:的要求|的规定|的约束)/);
+                    if (m) return m[0];
+                    // 兜底：截取前200字
+                    return text.length > 200 ? text.slice(0, 200) + '…' : text;
+                }
+
                 issueCandidates.forEach(c => {
                     const id = 'cand_' + (idCounter++);
+                    const rawClause = c.snippet || c.fullText || '';
                     _globalCandidatesMap[id] = {
                         id, source: 'issue',
                         title: c.title || '',
                         fileNumber: c.fileNumber || '',
                         article: c.article || '',
-                        clause: c.snippet || c.fullText || '',
+                        clause: extractRegulationQuote(rawClause),
+                        rawClause: rawClause,  // 保留原文供参考
                         issueCount: c.issueCount || 1,
                         score: c.score || 0
                     };
@@ -10246,35 +10264,134 @@
                     const validIds = (selectedIds || []).filter(id => _globalCandidatesMap[id]);
 
                     // ── 本地拼装结论（100%来自映射表，不依赖AI原文）──
-                    const hasIssueSel = validIds.some(id => _globalCandidatesMap[id].source === 'issue');
-                    const sourceTipHtml = hasIssueSel
-                        ? '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.82rem;color:#15803d;"><span>📋</span><span>本次对规参考了 <strong>' + issueCandidates.length + ' 条匹配历史案例</strong>，条款来源已验证。</span></div>'
-                        : '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;"><span>⚠️</span><span>未找到历史案例，已从规章库检索，请人工核实。</span></div>';
+                    const issueSelected = validIds.filter(id => _globalCandidatesMap[id].source === 'issue');
+                    const ruleSelected  = validIds.filter(id => _globalCandidatesMap[id].source === 'rule');
+                    const hasIssueSel = issueSelected.length > 0;
+                    const hasRuleSel  = ruleSelected.length > 0;
 
+                    // ── 来源提示（区分三种情况） ──
+                    let sourceTipHtml = '';
+                    if (hasIssueSel && hasRuleSel) {
+                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.82rem;color:#15803d;"><span>📋</span><span>本次对规参考了 <strong>' + issueCandidates.length + ' 条历史案例</strong> 和 <strong>' + ruleCandidates.length + ' 条规章库条款</strong>，AI从中选取了最相关的条款。</span></div>';
+                    } else if (hasIssueSel) {
+                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac;margin-bottom:10px;font-size:0.82rem;color:#15803d;"><span>📋</span><span>本次对规参考了 <strong>' + issueCandidates.length + ' 条匹配历史案例</strong>，条款来源已验证。</span></div>';
+                    } else {
+                        sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;"><span>⚠️</span><span>未找到历史案例，已从规章库检索，请人工核实。</span></div>';
+                    }
+
+                    // ── 对规结论（分区展示：案例条款 + 规章库条款） ──
                     let conclusionHtml = '';
                     if (validIds.length === 0) {
                         conclusionHtml = '<p style="color:#d97706;padding:8px 0;">⚠️ 所有候选条款均不相关，建议人工核查或调整描述。</p>';
                     } else {
-                        validIds.forEach((id, idx) => {
-                            const c = _globalCandidatesMap[id];
-                            const srcBadge = c.source === 'issue'
-                                ? '<span style="font-size:0.68rem;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:8px;margin-left:4px;">案例核实' + (c.issueCount > 1 ? c.issueCount + '次' : '') + '</span>'
-                                : '<span style="font-size:0.68rem;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px;margin-left:4px;">规章库</span>';
-                            conclusionHtml += '<div style="margin-bottom:14px;padding:12px;background:#f8fafc;border-radius:8px;border-left:3px solid ' + (c.source==='issue'?'#16a34a':'#2563eb') + ';">'
-                                + '<div style="font-weight:700;color:#1e3a5f;margin-bottom:6px;">'
-                                + (idx+1) + '. 不符合/违反《' + acEscHtml(c.title) + '》'
-                                + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '')
-                                + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '')
-                                + srcBadge + '</div>'
-                                + '<div style="background:#e0f2fe;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#0c4a6e;">'
-                                + '"' + acEscHtml(c.clause) + '"'
-                                + '</div>'
-                                + '</div>';
-                        });
+                        // 案例条款区域（绿色）
+                        if (issueSelected.length > 0) {
+                            conclusionHtml += '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 10px;border-radius:20px;">📋 历史案例中的规章引用</span></div>';
+                            issueSelected.forEach((id, idx) => {
+                                const c = _globalCandidatesMap[id];
+                                conclusionHtml += '<div style="margin-bottom:10px;padding:12px;background:#f0fdf4;border-radius:8px;border-left:3px solid #16a34a;">'
+                                    + '<div style="font-weight:700;color:#166534;margin-bottom:6px;">'
+                                    + (idx+1) + '. 不符合/违反《' + acEscHtml(c.title) + '》'
+                                    + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '')
+                                    + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '')
+                                    + '<span style="font-size:0.68rem;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:8px;margin-left:4px;">案例核实' + (c.issueCount > 1 ? c.issueCount + '次' : '') + '</span>'
+                                    + '</div>'
+                                    + '<div style="background:#e8f5e9;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#1b5e20;">'
+                                    + '"' + acEscHtml(c.clause) + '"'
+                                    + '</div>'
+                                    + '</div>';
+                            });
+                        }
+                        // 规章库条款区域（蓝色）
+                        if (ruleSelected.length > 0) {
+                            conclusionHtml += '<div style="margin-bottom:6px;margin-top:' + (issueSelected.length > 0 ? '10' : '0') + 'px;"><span style="font-size:0.78rem;font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:20px;">⚖️ 规章库匹配条款</span></div>';
+                            ruleSelected.forEach((id, idx) => {
+                                const c = _globalCandidatesMap[id];
+                                conclusionHtml += '<div style="margin-bottom:10px;padding:12px;background:#eff6ff;border-radius:8px;border-left:3px solid #2563eb;">'
+                                    + '<div style="font-weight:700;color:#1e40af;margin-bottom:6px;">'
+                                    + (idx+1) + '. 不符合/违反《' + acEscHtml(c.title) + '》'
+                                    + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '')
+                                    + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '')
+                                    + '<span style="font-size:0.68rem;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px;margin-left:4px;">规章库</span>'
+                                    + '</div>'
+                                    + '<div style="background:#e0f2fe;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#0c4a6e;">'
+                                    + '"' + acEscHtml(c.clause) + '"'
+                                    + '</div>'
+                                    + '</div>';
+                            });
+                        }
                     }
 
-                    const issueCount = validIds.filter(id => _globalCandidatesMap[id].source === 'issue').length;
-                    const ruleCount  = validIds.filter(id => _globalCandidatesMap[id].source === 'rule').length;
+                    // ── 条款来源案例标识（只显示[性质·类别]标签） ──
+                    let caseSourceHtml = '';
+                    if (hasIssueSel) {
+                        caseSourceHtml = '<div style="margin-top:12px;">'
+                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:20px;">📂 条款来源案例标识</span></div>'
+                            + '<div style="display:flex;flex-direction:column;gap:4px;">';
+                        issueSelected.forEach((id, idx) => {
+                            const c = _globalCandidatesMap[id];
+                            // 从原始issueCandidates中查找案例引用信息
+                            const matchIssue = issueCandidates.find(ic =>
+                                ic.title === c.title && ic.article === c.article
+                            );
+                            const issueRefs = (matchIssue && matchIssue.issueRefs) ? matchIssue.issueRefs : [];
+                            caseSourceHtml += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;">'
+                                + '<div style="font-size:0.85rem;font-weight:600;color:#92400e;">'
+                                + '[' + (idx+1) + '] 《' + acEscHtml(c.title) + '》'
+                                + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '')
+                                + '</div>';
+                            if (issueRefs.length > 0) {
+                                caseSourceHtml += '<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">';
+                                issueRefs.forEach(r => {
+                                    const tag = (r.nature || '') + (r.category ? '·' + r.category : '');
+                                    caseSourceHtml += '<span style="font-size:0.7rem;background:#fde68a;color:#78350f;padding:2px 8px;border-radius:10px;">[' + acEscHtml(tag || '案例') + ']</span>';
+                                });
+                                caseSourceHtml += '</div>';
+                            }
+                            caseSourceHtml += '</div>';
+                        });
+                        caseSourceHtml += '</div></div>';
+                    }
+
+                    // ── 历史案例规章参考（展示所有召回的案例候选，不限于AI选中） ──
+                    let issueRefHtml = '';
+                    if (issueCandidates.length > 0) {
+                        issueRefHtml = '<div style="margin-top:12px;">'
+                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 10px;border-radius:20px;">📋 匹配案例条款参考</span></div>'
+                            + '<div style="display:flex;flex-direction:column;gap:6px;">';
+                        issueCandidates.slice(0, 5).forEach((c, i) => {
+                            var refQuote = extractRegulationQuote(c.snippet || c.fullText || '');
+                            issueRefHtml += '<div class="rule-card-item" style="padding:12px 16px;background:#f0fdf4;border-radius:8px;">'
+                                + '<div class="rule-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+                                + '<span style="flex:1;word-break:break-all;color:#166534;font-weight:600;">[' + (i+1) + '] 《' + acEscHtml(c.title) + '》' + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '') + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '') + '</span>'
+                                + '<span style="font-size:0.7rem;color:#15803d;background:#dcfce7;padding:2px 8px;border-radius:12px;">' + (c.issueCount || 1) + '个案例引用</span>'
+                                + '</div>'
+                                + (refQuote ? '<div style="margin-top:6px;font-size:0.8rem;color:#374151;line-height:1.5;">' + acEscHtml(refQuote) + '</div>' : '')
+                                + '</div>';
+                        });
+                        issueRefHtml += '</div></div>';
+                    }
+
+                    // ── 规章库匹配参考（展示所有召回的规章库候选） ──
+                    let ruleRefHtml = '';
+                    if (ruleCandidates.length > 0) {
+                        ruleRefHtml = '<div style="margin-top:12px;">'
+                            + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:20px;">⚖️ 规章库匹配参考</span></div>'
+                            + '<div style="display:flex;flex-direction:column;gap:6px;">';
+                        ruleCandidates.slice(0, 5).forEach((c, i) => {
+                            ruleRefHtml += '<div class="rule-card-item" style="padding:12px 16px;background:#eff6ff;border-radius:8px;">'
+                                + '<div class="rule-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+                                + '<span style="flex:1;word-break:break-all;color:#1e40af;font-weight:600;">[' + (i+1) + '] 《' + acEscHtml(c.title) + '》' + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '') + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '') + '</span>'
+                                + '<span style="font-size:0.7rem;color:#1e40af;background:#dbeafe;padding:2px 8px;border-radius:12px;">规章库</span>'
+                                + '</div>'
+                                + (c.snippet || c.content ? '<div style="margin-top:6px;font-size:0.8rem;color:#374151;line-height:1.5;">' + acEscHtml(c.snippet || c.content) + '</div>' : '')
+                                + '</div>';
+                        });
+                        ruleRefHtml += '</div></div>';
+                    }
+
+                    const issueCount = issueSelected.length;
+                    const ruleCount  = ruleSelected.length;
 
                     // ── 生成反馈ID（用于DOM定位） ──
                     const feedbackId = 'ac-fb-' + Date.now();
@@ -10284,7 +10401,11 @@
                         + '<p style="margin-bottom:12px;"><strong>📌 校核后问题：</strong>' + acEscHtml(correctedQuery || query) + '</p>'
                         + sourceTipHtml
                         + conclusionHtml
+                        + caseSourceHtml
                         + (validIds.length > 0 ? '<p style="color:#16a34a;font-size:0.82rem;margin-top:8px;">✅ 条款来源：案例库 ' + issueCount + ' 条，规章库 ' + ruleCount + ' 条 | 选择理由：' + acEscHtml(reason || '') + '</p>' : '')
+                        // ── 参考区域（结论卡片外部）──
+                        + issueRefHtml
+                        + ruleRefHtml
                         // ── 对规反馈区域 ──
                         + '<div id="' + feedbackId + '" style="margin-top:14px;padding:12px 14px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;">'
                         + '<div style="font-size:0.85rem;font-weight:600;color:#475569;margin-bottom:8px;">📝 本次对规结果是否正确？</div>'

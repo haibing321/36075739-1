@@ -8763,77 +8763,229 @@
             }
 
             // ========== 自动对规子模块 ==========
-            // 铁路专业术语词典（优先整体匹配，避免拆散）
-            const RAILWAY_TERMS = new Set([
-                '天窗点', '天窗点外', '上道作业', '下道避车', '防护员', '驻站联络员',
-                'LKJ', 'CIR', '列控', '联锁', '闭塞', '接发列车', '调车作业',
-                '施工封锁', '慢行', '限速', '超限货物', '红牌', '蓝牌', '行车凭证',
-                '调度命令', '车机联控', '一度停车', '紧急制动', '弓网故障',
-                '接触网', '电力机车', '内燃机车', '动车组', '轨道车', '轻型车辆',
-                '单线', '双线', '区间', '站间', '咽喉', '道岔', '岔区', '绝缘接头',
-                '施工作业', '维修作业', '检查作业', '天窗', '施工计划', '维修计划',
-                '封锁区间', '开通区间', '区间封锁', '线路封锁', '慢行处所', '慢行地点',
-                '列车调度员', '车站值班员', '机车司机', '添乘人员', '现场防护员',
-                '远端防护员', '中间防护员', '电话防护', '瞭望', '鸣笛', '信号旗',
-                '手信号', '移动信号', '固定信号', '信号机', '臂板信号', '色灯信号',
-                '进站信号', '出站信号', '通过信号', '预告信号', '接近信号',
-                '引导信号', '容许信号', '遮断信号', '减速信号', '加速信号',
-                '途中折返', '退行', '推进', '牵引', '挂车', '摘车', '溜放',
-                '连挂', '解编', '编组', '解体', '取送车', '专用线', '尽头线',
-                '安全线', '避难线', '脱轨器', '防护信号', '停车信号', '好了信号',
-                '股道', '道岔', '交叉渡线', '菱形交叉', '复式交分',
-                '绝缘节', '电气节', '机械节', '关节', '极性', '极性交叉',
-                '轨道电路', '区段', '轨道区段', '发码', '发码电路', '码序',
-                '机车信号', '车上信号', '地面信号', '主体信号', '从属信号',
-                'CTC', 'TDCS', 'ITCS', 'CBTC', 'ATP', 'LKJ2000', 'LKJ2000A',
-                '列控车载设备', '应答器', 'LEU', '轨道电路信息', '运行监控',
-                '监控装置', '调整状态', '降级状态', '故障状态', '常用制动', '紧急制动',
-                '缓解', '解锁', '警惕', '定标', '走停走', '引导进路', '发车进路',
-                '接车进路', '通过进路', '调车进路', '敌对进路', '抵触进路',
-                '进路锁闭', '进路解锁', '区段锁闭', '道岔锁闭', '单独锁闭',
-                '手柄', '制动机', '单独制动机', '自动制动机', '紧急放风阀',
-                '折角塞门', '截断塞门', '缓解阀', '风表', '压力表', '风压',
-                '制动缸', '副风缸', '工作风缸', '容积风缸', '储风缸',
-                '过充', '慢充', '快充', '保压', '漏泄', '自然缓解', '自然制动',
-                '感度试验', '安定试验', '紧急试验', '全部试验', '简略试验',
-                '过球试验', '感度保压', '持续保压', '减压', '追加减压',
-                '再制动', '试风', '拉风', '排风', '摘管', '接管', '接风管',
-                '车列', '车组', '车辆', '车体', '转向架', '轮对', '车轴', '车轮',
-                '闸瓦', '闸片', '盘形制动', '磁轨制动', '再生制动', '电阻制动',
-                '空压机', '空压机组', '干燥器', '油水分离器', '冷却器', '散热器',
-                '通风机', '油泵', '水泵', '燃泵', '励磁', '整流', '逆变',
-                '受电弓', '接触网', '接触线', '承力索', '吊弦', '定位器', '支柱',
-                '硬横梁', '软横跨', '腕臂', '拉杆', '承力索', '张力补偿',
-                '锚段', '锚段关节', '分相', '分相器', '中性区', '无电区', '分闸',
-                '合闸', '倒闸', '作业命令', '停电命令', '送电命令', '销令',
-                '接触网工', '电力工', '电气化', '高空作业', 'V形作业', '停电作业',
-                '间接带电作业', '直接带电作业', '远离作业', '防护栅栏', '安全作业区'
-            ]);
+            // ========== 结构化术语库（带专业标签） ==========
+            let PATCH_TERM_LIBRARY = [];
+            let PATCH_TERM_MAP = new Map();
+
+            function rebuildTermMap() {
+                PATCH_TERM_MAP.clear();
+                PATCH_TERM_LIBRARY.forEach(item => {
+                    if (item && item.term) PATCH_TERM_MAP.set(item.term.toLowerCase(), item.trade || '通用');
+                });
+            }
+
+            // 默认词库（原有术语 + 专业标签）
+            const DEFAULT_TERMS = [
+                { term: '天窗点', trade: '通用' }, { term: '天窗点外', trade: '通用' },
+                { term: '上道作业', trade: '工务' }, { term: '下道避车', trade: '通用' },
+                { term: '防护员', trade: '通用' }, { term: '驻站联络员', trade: '通用' },
+                { term: 'LKJ', trade: '电务' }, { term: 'CIR', trade: '通信' },
+                { term: '列控', trade: '电务' }, { term: '联锁', trade: '电务' },
+                { term: '闭塞', trade: '电务' }, { term: '接发列车', trade: '车务' },
+                { term: '调车作业', trade: '车务' }, { term: '施工封锁', trade: '通用' },
+                { term: '慢行', trade: '通用' }, { term: '限速', trade: '通用' },
+                { term: '超限货物', trade: '货运' }, { term: '红牌', trade: '通用' },
+                { term: '蓝牌', trade: '通用' }, { term: '行车凭证', trade: '车务' },
+                { term: '调度命令', trade: '车务' }, { term: '车机联控', trade: '车务' },
+                { term: '一度停车', trade: '车务' }, { term: '紧急制动', trade: '机务' },
+                { term: '弓网故障', trade: '供电' }, { term: '接触网', trade: '供电' },
+                { term: '电力机车', trade: '机务' }, { term: '内燃机车', trade: '机务' },
+                { term: '动车组', trade: '机务' }, { term: '轨道车', trade: '工务' },
+                { term: '轻型车辆', trade: '通用' }, { term: '单线', trade: '通用' },
+                { term: '双线', trade: '通用' }, { term: '区间', trade: '通用' },
+                { term: '站间', trade: '通用' }, { term: '咽喉', trade: '通用' },
+                { term: '道岔', trade: '工务' }, { term: '岔区', trade: '工务' },
+                { term: '绝缘接头', trade: '电务' }, { term: '施工作业', trade: '通用' },
+                { term: '维修作业', trade: '通用' }, { term: '检查作业', trade: '通用' },
+                { term: '天窗', trade: '通用' }, { term: '施工计划', trade: '通用' },
+                { term: '维修计划', trade: '通用' }, { term: '封锁区间', trade: '通用' },
+                { term: '开通区间', trade: '通用' }, { term: '区间封锁', trade: '通用' },
+                { term: '线路封锁', trade: '工务' }, { term: '慢行处所', trade: '通用' },
+                { term: '慢行地点', trade: '通用' }, { term: '列车调度员', trade: '车务' },
+                { term: '车站值班员', trade: '车务' }, { term: '机车司机', trade: '机务' },
+                { term: '添乘人员', trade: '机务' }, { term: '现场防护员', trade: '通用' },
+                { term: '远端防护员', trade: '通用' }, { term: '中间防护员', trade: '通用' },
+                { term: '电话防护', trade: '通用' }, { term: '瞭望', trade: '通用' },
+                { term: '鸣笛', trade: '通用' }, { term: '信号旗', trade: '通用' },
+                { term: '手信号', trade: '通用' }, { term: '移动信号', trade: '通用' },
+                { term: '固定信号', trade: '通用' }, { term: '信号机', trade: '电务' },
+                { term: '臂板信号', trade: '电务' }, { term: '色灯信号', trade: '电务' },
+                { term: '进站信号', trade: '电务' }, { term: '出站信号', trade: '电务' },
+                { term: '通过信号', trade: '电务' }, { term: '预告信号', trade: '电务' },
+                { term: '接近信号', trade: '电务' }, { term: '引导信号', trade: '电务' },
+                { term: '容许信号', trade: '电务' }, { term: '遮断信号', trade: '电务' },
+                { term: '减速信号', trade: '电务' }, { term: '加速信号', trade: '电务' },
+                { term: '途中折返', trade: '车务' }, { term: '退行', trade: '车务' },
+                { term: '推进', trade: '车务' }, { term: '牵引', trade: '机务' },
+                { term: '挂车', trade: '车辆' }, { term: '摘车', trade: '车辆' },
+                { term: '溜放', trade: '车务' }, { term: '连挂', trade: '车辆' },
+                { term: '解编', trade: '车务' }, { term: '编组', trade: '车务' },
+                { term: '解体', trade: '车务' }, { term: '取送车', trade: '车务' },
+                { term: '专用线', trade: '通用' }, { term: '尽头线', trade: '通用' },
+                { term: '安全线', trade: '工务' }, { term: '避难线', trade: '工务' },
+                { term: '脱轨器', trade: '工务' }, { term: '防护信号', trade: '通用' },
+                { term: '停车信号', trade: '通用' }, { term: '好了信号', trade: '通用' },
+                { term: '股道', trade: '通用' }, { term: '交叉渡线', trade: '工务' },
+                { term: '菱形交叉', trade: '工务' }, { term: '复式交分', trade: '工务' },
+                { term: '绝缘节', trade: '电务' }, { term: '电气节', trade: '电务' },
+                { term: '机械节', trade: '工务' }, { term: '极性交叉', trade: '电务' },
+                { term: '轨道电路', trade: '电务' }, { term: '轨道区段', trade: '电务' },
+                { term: '发码', trade: '电务' }, { term: '发码电路', trade: '电务' },
+                { term: '码序', trade: '电务' }, { term: '机车信号', trade: '电务' },
+                { term: '车上信号', trade: '机务' }, { term: '地面信号', trade: '电务' },
+                { term: '主体信号', trade: '电务' }, { term: '从属信号', trade: '电务' },
+                { term: 'CTC', trade: '电务' }, { term: 'TDCS', trade: '电务' },
+                { term: 'ITCS', trade: '电务' }, { term: 'CBTC', trade: '电务' },
+                { term: 'ATP', trade: '电务' }, { term: 'LKJ2000', trade: '电务' },
+                { term: 'LKJ2000A', trade: '电务' }, { term: '列控车载设备', trade: '电务' },
+                { term: '应答器', trade: '电务' }, { term: 'LEU', trade: '电务' },
+                { term: '轨道电路信息', trade: '电务' }, { term: '运行监控', trade: '机务' },
+                { term: '监控装置', trade: '机务' }, { term: '调整状态', trade: '机务' },
+                { term: '降级状态', trade: '机务' }, { term: '故障状态', trade: '电务' },
+                { term: '常用制动', trade: '机务' }, { term: '缓解', trade: '机务' },
+                { term: '解锁', trade: '电务' }, { term: '警惕', trade: '机务' },
+                { term: '定标', trade: '机务' }, { term: '走停走', trade: '机务' },
+                { term: '引导进路', trade: '电务' }, { term: '发车进路', trade: '电务' },
+                { term: '接车进路', trade: '电务' }, { term: '通过进路', trade: '电务' },
+                { term: '调车进路', trade: '电务' }, { term: '敌对进路', trade: '电务' },
+                { term: '抵触进路', trade: '电务' }, { term: '进路锁闭', trade: '电务' },
+                { term: '进路解锁', trade: '电务' }, { term: '区段锁闭', trade: '电务' },
+                { term: '道岔锁闭', trade: '电务' }, { term: '单独锁闭', trade: '电务' },
+                { term: '手柄', trade: '机务' }, { term: '制动机', trade: '机务' },
+                { term: '单独制动机', trade: '机务' }, { term: '自动制动机', trade: '机务' },
+                { term: '紧急放风阀', trade: '机务' }, { term: '折角塞门', trade: '机务' },
+                { term: '截断塞门', trade: '机务' }, { term: '缓解阀', trade: '车辆' },
+                { term: '风表', trade: '机务' }, { term: '压力表', trade: '机务' },
+                { term: '风压', trade: '机务' }, { term: '制动缸', trade: '机务' },
+                { term: '副风缸', trade: '机务' }, { term: '工作风缸', trade: '机务' },
+                { term: '容积风缸', trade: '机务' }, { term: '储风缸', trade: '机务' },
+                { term: '过充', trade: '机务' }, { term: '慢充', trade: '机务' },
+                { term: '快充', trade: '机务' }, { term: '保压', trade: '机务' },
+                { term: '漏泄', trade: '机务' }, { term: '自然缓解', trade: '机务' },
+                { term: '自然制动', trade: '机务' }, { term: '感度试验', trade: '机务' },
+                { term: '安定试验', trade: '机务' }, { term: '紧急试验', trade: '机务' },
+                { term: '全部试验', trade: '机务' }, { term: '简略试验', trade: '机务' },
+                { term: '过球试验', trade: '机务' }, { term: '感度保压', trade: '机务' },
+                { term: '持续保压', trade: '机务' }, { term: '减压', trade: '机务' },
+                { term: '追加减压', trade: '机务' }, { term: '再制动', trade: '机务' },
+                { term: '试风', trade: '机务' }, { term: '拉风', trade: '机务' },
+                { term: '排风', trade: '机务' }, { term: '摘管', trade: '机务' },
+                { term: '接管', trade: '通用' }, { term: '接风管', trade: '机务' },
+                { term: '车列', trade: '车辆' }, { term: '车组', trade: '车辆' },
+                { term: '车体', trade: '车辆' }, { term: '转向架', trade: '车辆' },
+                { term: '轮对', trade: '车辆' }, { term: '车轴', trade: '车辆' },
+                { term: '车轮', trade: '车辆' }, { term: '闸瓦', trade: '车辆' },
+                { term: '闸片', trade: '车辆' }, { term: '盘形制动', trade: '车辆' },
+                { term: '磁轨制动', trade: '车辆' }, { term: '再生制动', trade: '机务' },
+                { term: '电阻制动', trade: '机务' }, { term: '空压机', trade: '机务' },
+                { term: '空压机组', trade: '机务' }, { term: '干燥器', trade: '机务' },
+                { term: '油水分离器', trade: '机务' }, { term: '冷却器', trade: '机务' },
+                { term: '散热器', trade: '机务' }, { term: '通风机', trade: '机务' },
+                { term: '油泵', trade: '机务' }, { term: '水泵', trade: '机务' },
+                { term: '燃泵', trade: '机务' }, { term: '励磁', trade: '机务' },
+                { term: '整流', trade: '机务' }, { term: '逆变', trade: '机务' },
+                { term: '受电弓', trade: '供电' }, { term: '接触线', trade: '供电' },
+                { term: '承力索', trade: '供电' }, { term: '吊弦', trade: '供电' },
+                { term: '定位器', trade: '供电' }, { term: '支柱', trade: '供电' },
+                { term: '硬横梁', trade: '供电' }, { term: '软横跨', trade: '供电' },
+                { term: '腕臂', trade: '供电' }, { term: '拉杆', trade: '供电' },
+                { term: '张力补偿', trade: '供电' }, { term: '锚段', trade: '供电' },
+                { term: '锚段关节', trade: '供电' }, { term: '分相', trade: '供电' },
+                { term: '分相器', trade: '供电' }, { term: '中性区', trade: '供电' },
+                { term: '无电区', trade: '供电' }, { term: '分闸', trade: '供电' },
+                { term: '合闸', trade: '供电' }, { term: '倒闸', trade: '供电' },
+                { term: '作业命令', trade: '通用' }, { term: '停电命令', trade: '供电' },
+                { term: '送电命令', trade: '供电' }, { term: '销令', trade: '供电' },
+                { term: '接触网工', trade: '供电' }, { term: '电力工', trade: '供电' },
+                { term: '电气化', trade: '供电' }, { term: '高空作业', trade: '供电' },
+                { term: 'V形作业', trade: '供电' }, { term: '停电作业', trade: '供电' },
+                { term: '间接带电作业', trade: '供电' }, { term: '直接带电作业', trade: '供电' },
+                { term: '远离作业', trade: '供电' }, { term: '防护栅栏', trade: '通用' },
+                { term: '安全作业区', trade: '通用' }
+            ];
+
+            // 加载并迁移词库（旧版纯字符串 → 新版结构化）
+            (function loadAndMigrateTerms() {
+                let oldTerms = [];
+                try {
+                    const rawOld = localStorage.getItem('railway_terms_custom');
+                    if (rawOld) { oldTerms = JSON.parse(rawOld); if (!Array.isArray(oldTerms)) oldTerms = []; }
+                } catch(e) { oldTerms = []; }
+
+                let savedTerms = [];
+                try {
+                    const rawNew = localStorage.getItem('patch_term_library_v2');
+                    if (rawNew) { savedTerms = JSON.parse(rawNew); if (!Array.isArray(savedTerms)) savedTerms = []; }
+                } catch(e) { savedTerms = []; }
+
+                const migrated = oldTerms.filter(t => typeof t === 'string' && t.length >= 2).map(term => ({ term, trade: '通用' }));
+                const map = new Map();
+                DEFAULT_TERMS.forEach(item => map.set(item.term.toLowerCase(), item));
+                migrated.forEach(item => map.set(item.term.toLowerCase(), item));
+                savedTerms.forEach(item => { if (item && item.term) map.set(item.term.toLowerCase(), item); });
+                PATCH_TERM_LIBRARY = Array.from(map.values());
+                rebuildTermMap();
+                if (oldTerms.length > 0) localStorage.removeItem('railway_terms_custom');
+                localStorage.setItem('patch_term_library_v2', JSON.stringify(PATCH_TERM_LIBRARY));
+                console.log('[词库] 结构化词库加载完成，共 ' + PATCH_TERM_LIBRARY.length + ' 个术语');
+            })();
+
+            // 兼容旧代码（保持全局 RAILWAY_TERMS Set 可用）
+            let RAILWAY_TERMS = new Set(PATCH_TERM_LIBRARY.map(i => i.term));
+            function syncTermSet() { RAILWAY_TERMS = new Set(PATCH_TERM_LIBRARY.map(i => i.term)); }
+
+
+            const PATCH_TRADE_KEYWORDS = {
+                '车务': ['接发列车', '调车', '进路', '行车凭证', '闭塞', '联控', '防溜', '调度命令',
+                        '车机联控', '一度停车', '退行', '推进', '溜放', '司机', '运转', '行车日志',
+                        '信号员', '值班员', '助理值班员', '电子运统', '施工登销记', '错办进路',
+                        '分路不良', '超限列车', '专特运'],
+                '工务': ['线路', '道岔', '钢轨', '轨枕', '道床', '限界', '防护栅栏', '上道作业',
+                        '胀轨', '无缝线路', '巡道', '探伤', '轨道几何', '道口', '栅栏', '护网',
+                        '路基', '桥隧', '护坡', '排水', '轨距', '水平', '高低', '轨向', '三角坑',
+                        '捣固', '清筛', '打磨'],
+                '电务': ['信号机', '转辙机', '轨道电路', '联锁', 'CTC', 'LKJ', '机车信号', '电缆',
+                        '继电器', '应答器', '列控', '闭塞', '发码', '电源屏', 'TDCS', 'ITCS',
+                        '道岔缺口', '密贴力', '表示杆', 'ZPW-2000', '红光带'],
+                '供电': ['接触网', '受电弓', '分相', '锚段', '承力索', '隔离开关', 'V停', '停电作业',
+                        '验电接地', '绝缘子', '供电线', '分区所', '开闭所', '牵引变', '接触线',
+                        '回流线', '架空地线', '保护线', '弓网', '拉出值', '导高', '硬点', '燃弧'],
+                '机务': ['机车', '动车组', '制动', '司机', '添乘', 'LKJ', '牵引', '制动机',
+                        '走行部', '轮对', '受电弓', '动车', '驾驶', '送车', '接车', '整备',
+                        '待乘', '试风', '监控关机', '违章解锁', '冒进', '冒出', '超速'],
+                '车辆': ['客车', '货车', '轮对', '闸瓦', '转向架', '轴温', '5T', '列检', '防溜',
+                        '制动梁', '车钩', '风管', '缓解阀', '制动机试验', 'TFDS', 'THDS',
+                        'TPDS', '切轴', '热轴', '关门车'],
+                '货运': ['装载', '加固', '超限', '偏载', '集重', '危险品', '集装箱', '篷布',
+                        '轮重测定仪', '货物', '装卸', '货检', '超长货物', '混运', '匿报品名'],
+                '通信': ['无线列调', 'CIR', 'GSM-R', '光纤', '漏缆', '直放站', '电源屏', '传输',
+                        '数调', '录音', '广播', '综合网管', '纤芯劣化', '误码率'],
+                '房建': ['站台', '雨棚', '房屋', '给排水', '围墙', '站房', '天桥', '地道', '限界',
+                        '防雷', '侵限', '轻飘物'],
+                '通用': []
+            };
+
+            function patchInferTrade(query) {
+                if (!query) return null;
+                const lowerQ = query.toLowerCase();
+                const scores = {};
+                for (const [trade, keywords] of Object.entries(PATCH_TRADE_KEYWORDS)) {
+                    let score = 0;
+                    for (const kw of keywords) {
+                        if (lowerQ.includes(kw)) {
+                            score += Math.min(kw.length, 6);
+                        }
+                    }
+                    if (score > 0) scores[trade] = score;
+                }
+                const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+                return sorted.length > 0 ? sorted[0][0] : null;
+            }
 
             // HTML转义函数
             function acEscHtml(s) {
                 return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
             }
-
-            // 词库存储键名（用于localStorage）
-            const RAILWAY_TERMS_STORAGE_KEY = 'railway_terms_custom';
-
-            // 从localStorage加载自定义词库
-            (function loadCustomTerms() {
-                try {
-                    const customTerms = JSON.parse(localStorage.getItem(RAILWAY_TERMS_STORAGE_KEY) || '[]');
-                    if (Array.isArray(customTerms)) {
-                        customTerms.forEach(term => {
-                            if (typeof term === 'string' && term.length >= 2) {
-                                RAILWAY_TERMS.add(term);
-                            }
-                        });
-                        console.log('已从localStorage加载 ' + customTerms.length + ' 个自定义术语，当前词库共 ' + RAILWAY_TERMS.size + ' 个');
-                    }
-                } catch (e) {
-                    console.error('加载自定义词库失败:', e);
-                }
-            })();
 
             // 铁路安监领域违规行为关键词（用于增强关键词提取，捕捉违规描述）
             const VIOLATION_ACTION_WORDS = new Set([
@@ -8882,26 +9034,49 @@
                 '严重', '一般', '较大', '重大', '特别', '主要', '次要'
             ]);
 
-            // ---- 关键词提取（从词库+违规行为词中筛选输入文本里包含的术语）----
-            function acExtractKeywords(text) {
+            // ---- 单位名称判定：匹配以"段"、"站"等结尾，或包含"车间"等词的模式 ----
+            function isOrgName(term) {
+                if (!term || term.length > 12) return false; // 过长的词可能是描述，保留
+                // 明确的单位后缀
+                const orgSuffix = term.match(/(段|站|中心|车间|工区|班组|分公司|子公司|处|室)$/);
+                if (orgSuffix) return true;
+                // 特定模式：高铁基础设施段、车务段、工务段、电务段、供电段、车辆段、机务段、通信段、房建段、货运中心等
+                if (/基础设施段|车务段|工务段|电务段|供电段|车辆段|机务段|通信段|房建段|货运中心|高铁基础设施段/.test(term)) return true;
+                // 模式："XX站" 且不是专有名词（排除 "会让站" "编组站" "技术站" 这种通用术语）
+                if (/站$/.test(term) && !['会让站','编组站','中间站','区段站','越行站'].includes(term)) return true;
+                return false;
+            }
+
+            // ---- 关键词提取（从结构化词库+违规行为词中筛选，按专业加权） ----
+            function acExtractKeywords(text, inferredTrade) {
                 const kwSet = new Set();
                 const lowerText = text.toLowerCase();
-                // 第一类：术语词（按长度降序匹配，最长优先）
-                const sortedTerms = Array.from(RAILWAY_TERMS).sort((a, b) => b.length - a.length);
-                let termCount = 0;
-                for (const term of sortedTerms) {
-                    if (++termCount > 5000) break;
-                    if (lowerText.includes(term.toLowerCase())) {
-                        kwSet.add(term);
+
+                // 第一类：术语词（结构化词库，按专业+长度加权排序），并过滤掉单位名称
+                const scored = [];
+                PATCH_TERM_LIBRARY.forEach(function(item) {
+                    if (lowerText.includes(item.term.toLowerCase())) {
+                        // 跳过单位名称
+                        if (isOrgName(item.term)) return;
+                        
+                        let weight = item.term.length;
+                        if (inferredTrade && item.trade === inferredTrade) {
+                            weight += 100; // 同专业加权
+                        }
+                        scored.push({ term: item.term, weight });
                     }
-                }
-                // 第二类：违规行为词（单独提取，不受术语长度过滤限制）
+                });
+                scored.sort(function(a, b) { return b.weight - a.weight; });
+                scored.forEach(function(s) { kwSet.add(s.term); });
+
+                // 第二类：违规行为词
                 VIOLATION_ACTION_WORDS.forEach(function(word) {
                     if (lowerText.includes(word.toLowerCase())) {
                         kwSet.add(word);
                     }
                 });
-                // 第三类：同义词扩展（如果输入包含某词，其同义词也加入候选）
+                
+                // 第三类：同义词扩展
                 Object.entries(SYNONYM_MAP).forEach(function([key, syns]) {
                     const keyIncluded = lowerText.includes(key.toLowerCase());
                     if (keyIncluded) {
@@ -8912,8 +9087,9 @@
                         });
                     }
                 });
-                // 按长度降序返回，过滤掉被更长词包含的短词（仅对<=3字的短词过滤）
-                const allTokens = Array.from(kwSet).sort((a, b) => b.length - a.length);
+                
+                // 按长度降序，过滤被更长词包含的短词（<=3字）
+                const allTokens = Array.from(kwSet).sort(function(a, b) { return b.length - a.length; });
                 return allTokens.filter(function(w, i) {
                     if (w.length <= 3) {
                         return !allTokens.slice(0, i).some(function(lg) { return lg.length >= 4 && lg.includes(w); });
@@ -8921,6 +9097,46 @@
                     return true;
                 }).slice(0, 50);
             }
+
+            // ---- 纯关键词提取（不依赖词库建议，用于检索，严格过滤单位名称） ----
+            function acExtractPureKeywords(text) {
+                const kwSet = new Set();
+
+                // 1. 提取违规行为关键词
+                VIOLATION_ACTION_WORDS.forEach(function(word) {
+                    // 确保关键词前后有边界，避免 "未设" 匹配到 "设计" 等
+                    const boundaryRegex = new RegExp('(?:^|[^\\w\\d\u4e00-\u9fa5])(' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=[^\\w\\d\u4e00-\u9fa5]|$)', 'i');
+                    if (boundaryRegex.test(text)) {
+                        kwSet.add(word);
+                    }
+                });
+
+                // 2. 从词库中提取专业术语，但精确过滤掉单位名称
+                PATCH_TERM_LIBRARY.forEach(function(item) {
+                    if (text.includes(item.term)) {
+                        // 严格过滤单位名称：只保留非单位名称的专业术语
+                        if (!isOrgName(item.term)) {
+                            kwSet.add(item.term);
+                        }
+                    }
+                });
+
+                // 3. 提取长度大于等于3且不包含在词库中的词组（自然语言关键词）
+                // 简单按标点、空格分词，提取有意义的较长词组
+                const segments = text.split(/[，。！？、；：""''（）\s]+/);
+                segments.forEach(seg => {
+                    if (seg.length >= 3 && seg.length <= 12) { // 限制长度，避免长句
+                        // 排除纯数字、纯标点
+                        if (/^[\d\.\-\+\/]+$/.test(seg)) return;
+                        // 作为文本固有词提取
+                        kwSet.add(seg);
+                    }
+                });
+
+                // 最后过滤一遍，确保结果中没有单位名称
+                return Array.from(kwSet).filter(kw => !isOrgName(kw));
+            }
+
 
             // ---- 文本片段高亮关键词命中位置 ----
             function acGetSnippet(content, keywords, maxLen) {
@@ -8976,7 +9192,7 @@
                 }
                 // 防抖 300ms 后提取
                 _acInputTimer = setTimeout(function() {
-                    const newCandidates = acExtractKeywords(query);
+                    const newCandidates = acExtractKeywords(query, patchInferTrade(query));
                     // 仅当候选词集合变化时才重置选中状态
                     const newSet = new Set(newCandidates);
                     const changed = newCandidates.length !== acCandidateKeywords.length ||
@@ -8998,7 +9214,7 @@
                 
                 // 若还没提取过候选词，先提取一次
                 if (acCandidateKeywords.length === 0) {
-                    acCandidateKeywords = acExtractKeywords(query);
+                    acCandidateKeywords = acExtractKeywords(query, patchInferTrade(query));
                 }
                 
                 // 若有已选关键词则用已选的，否则用全部候选词；若候选词也为空则提示
@@ -9190,21 +9406,17 @@
                 keywords.forEach(kw => {
                     if (!RAILWAY_TERMS.has(kw)) {
                         RAILWAY_TERMS.add(kw);
+                        const item = { term: kw, trade: '通用' };
+                        if (!PATCH_TERM_LIBRARY.some(i => i.term === kw)) {
+                            PATCH_TERM_LIBRARY.push(item);
+                        }
                         addedCount++;
                     }
                 });
                 
                 if (addedCount > 0) {
-                    // 保存到localStorage
-                    const customTerms = JSON.parse(localStorage.getItem(RAILWAY_TERMS_STORAGE_KEY) || '[]');
-                    keywords.forEach(kw => {
-                        if (!customTerms.includes(kw)) {
-                            customTerms.push(kw);
-                        }
-                    });
-                    localStorage.setItem(RAILWAY_TERMS_STORAGE_KEY, JSON.stringify(customTerms));
-                    
-                    // 显示提示
+                    localStorage.setItem('patch_term_library_v2', JSON.stringify(PATCH_TERM_LIBRARY));
+                    syncTermSet();
                     console.log('已自动添加 ' + addedCount + ' 个关键词到词库:', keywords);
                 }
             }
@@ -9228,11 +9440,21 @@
 
                 // ---------- 检查数据源是否为空 ----------
                 const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
-                const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                let rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
                 const handbooks = typeof window.getHandbookData === 'function' ? window.getHandbookData() : [];
                 if (issues.length === 0 && rules.length === 0 && handbooks.length === 0) {
                     container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);"><div style="font-size:2rem;margin-bottom:8px;">📭</div><p>检查信息、规章制度、检查手册均为空</p><p style="font-size:0.85rem;margin-top:8px;">请先在对应模块导入数据后再使用自动对规功能</p></div>';
                     container.style.display = 'block'; return;
+                }
+
+                // ── 专业推断：同专业规章优先排序（直接用 r.trade 字段） ──
+                const _pmQuery = document.getElementById('autoCheck-input') ? document.getElementById('autoCheck-input').value.trim() : '';
+                const _pmTrade = patchInferTrade(_pmQuery);
+                if (_pmTrade && rules.length > 0) {
+                    const sameTrade = rules.filter(function(r) { return r.trade === _pmTrade; });
+                    const otherTrade = rules.filter(function(r) { return r.trade !== _pmTrade || !r.trade; });  // 缺失 trade 归入"其他"
+                    rules = sameTrade.concat(otherTrade);
+                    console.log('[专业过滤] 推断专业:', _pmTrade, '同专业规章数:', sameTrade.length, '其他:', otherTrade.length);
                 }
 
                 const lowerKws = keywords.map(function(k) { return k.toLowerCase(); });
@@ -10018,7 +10240,7 @@
                 // 使用与本地匹配一致的关键词计算相似度
                 const keywords = Array.from(acSelectedKeywords).length > 0
                     ? Array.from(acSelectedKeywords)
-                    : acExtractKeywords(query);
+                    : acExtractKeywords(query, patchInferTrade(query));
                 const maxSimilarity = calcIssueMaxSimilarityWithKeywords(query, keywords);
 
                 // ── 相似度低于35，提示重新调整关键词 ──
@@ -10156,11 +10378,25 @@
                     allCandidates.push(id);
                 });
 
-                // ── 阶段3：AI只挑选ID，绝不输出原文 ──
+                // ── 阶段3：专业推断 + 重排候选 + AI挑选ID ──
+                const _aiTrade = patchInferTrade(query);
+                // 同专业的规章库候选排到前面（直接用 trade 字段）
+                if (_aiTrade) {
+                    ruleCandidates.sort(function(a, b) {
+                        const aMatch = a.trade === _aiTrade;
+                        const bMatch = b.trade === _aiTrade;
+                        if (aMatch && !bMatch) return -1;
+                        if (!aMatch && bMatch) return 1;
+                        return 0;
+                    });
+                    console.log('[专业指引] 推断专业:', _aiTrade, '已对规章库候选按 trade 字段重排');
+                }
+
                 const sysPrompt = [
                     '你是铁路安监对规专家。请从以下候选条款列表中，挑选与检查问题最相关的1-3个条款ID。',
                     '【输出要求】只输出一个合法JSON对象，禁止使用代码块（```），禁止任何说明文字。',
                     '【correctedQuery】输出完整的问题描述原文（不要省略）。',
+                    _aiTrade ? '【专业指引】本次问题推断涉及"' + _aiTrade + '"专业，请优先选用该专业规章条款。' : '',
                     '示例：{"correctedQuery":"机车备品管理问题","selectedIds":["cand_0","cand_2"],"reason":"备品不符"}',
                     '',
                     '候选条款列表：',
@@ -10379,10 +10615,11 @@
                             + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:20px;">⚖️ 规章库匹配参考</span></div>'
                             + '<div style="display:flex;flex-direction:column;gap:6px;">';
                         ruleCandidates.slice(0, 5).forEach((c, i) => {
+                            const tradeTag = c.trade ? ('【' + acEscHtml(c.trade) + '】') : '';
                             ruleRefHtml += '<div class="rule-card-item" style="padding:12px 16px;background:#eff6ff;border-radius:8px;">'
                                 + '<div class="rule-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
                                 + '<span style="flex:1;word-break:break-all;color:#1e40af;font-weight:600;">[' + (i+1) + '] 《' + acEscHtml(c.title) + '》' + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '') + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '') + '</span>'
-                                + '<span style="font-size:0.7rem;color:#1e40af;background:#dbeafe;padding:2px 8px;border-radius:12px;">规章库</span>'
+                                + '<span style="font-size:0.7rem;color:#1e40af;background:#dbeafe;padding:2px 8px;border-radius:12px;">' + tradeTag + ' 规章库</span>'
                                 + '</div>'
                                 + (c.snippet || c.content ? '<div style="margin-top:6px;font-size:0.8rem;color:#374151;line-height:1.5;">' + acEscHtml(c.snippet || c.content) + '</div>' : '')
                                 + '</div>';
@@ -10609,7 +10846,6 @@
                 else bind();
             })();
             window.importRailwayTerms = function() {
-                // 创建文件输入元素
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.json,.txt,.csv';
@@ -10622,68 +10858,81 @@
                     const reader = new FileReader();
                     reader.onload = function(event) {
                         try {
-                            let newTerms = [];
-                            const content = event.target.result;
+                            let content = event.target.result;
+                            // 解析为结构化条目 [{term, trade}]
+                            let items = [];
 
-                            // 解析不同格式
                             if (file.name.endsWith('.json')) {
-                                const data = JSON.parse(content);
-                                if (Array.isArray(data)) {
-                                    newTerms = data;
-                                } else if (data.terms) {
-                                    newTerms = data.terms;
-                                }
+                                // 去除 JSON 中的注释，兼容带 // 行注释和 /* */ 块注释的文件
+                                const cleaned = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+                                const data = JSON.parse(cleaned);
+                                const raw = Array.isArray(data) ? data : (data.terms || []);
+                                raw.forEach(function(r) {
+                                    if (typeof r === 'string' && r.trim().length >= 2) {
+                                        items.push({ term: r.trim(), trade: '通用' });
+                                    } else if (r && typeof r.term === 'string' && r.term.trim().length >= 2) {
+                                        items.push({ term: r.term.trim(), trade: r.trade || '通用' });
+                                    }
+                                });
                             } else {
-                                // TXT/CSV格式：按行分割，去除空行和空白
-                                newTerms = content.split(/[\r\n,，;；]+/).map(t => t.trim()).filter(t => t.length >= 2);
+                                // TXT/CSV：每行/每逗号一个术语，统一归入"通用"
+                                content.split(/[\r\n,，;；]+/).forEach(function(t) {
+                                    const s = t.trim();
+                                    if (s.length >= 2) items.push({ term: s, trade: '通用' });
+                                });
                             }
 
-                            // 验证并添加术语
-                            const validTerms = newTerms.filter(t => typeof t === 'string' && t.length >= 2);
-                            if (validTerms.length === 0) {
+                            if (items.length === 0) {
                                 alert('未找到有效的术语，请检查文件格式');
                                 return;
                             }
 
-                            // 合并到词库并保存到localStorage
-                            const existing = JSON.parse(localStorage.getItem(RAILWAY_TERMS_STORAGE_KEY) || '[]');
-                            const merged = [...new Set([...existing, ...validTerms])];
-                            localStorage.setItem(RAILWAY_TERMS_STORAGE_KEY, JSON.stringify(merged));
+                            // 合并去重（以 term 为主键）
+                            const existingMap = new Map(PATCH_TERM_LIBRARY.map(function(i) { return [i.term, i]; }));
+                            let addedCount = 0;
+                            items.forEach(function(item) {
+                                if (!existingMap.has(item.term)) {
+                                    PATCH_TERM_LIBRARY.push(item);
+                                    existingMap.set(item.term, item);
+                                    addedCount++;
+                                }
+                            });
 
-                            // 更新内存中的词库
-                            validTerms.forEach(t => RAILWAY_TERMS.add(t));
+                            // 持久化 + 同步 Set
+                            localStorage.setItem('patch_term_library_v2', JSON.stringify(PATCH_TERM_LIBRARY));
+                            syncTermSet();
 
-                            // 显示成功信息
                             const container = document.getElementById('autoCheck-results');
                             container.innerHTML = '<div style="padding:16px;color:var(--success);background:#f0fdf4;border-radius:8px;border-left:4px solid var(--success);">' +
                                 '<strong>✅ 词库导入成功</strong><br>' +
-                                '已成功导入 <strong>' + validTerms.length + '</strong> 个专业术语<br>' +
+                                '新增 <strong>' + addedCount + '</strong> 个专业术语（跳过重复 ' + (items.length - addedCount) + ' 个）<br>' +
                                 '<span style="font-size:0.85rem;color:var(--text-secondary);">总词库容量：' + RAILWAY_TERMS.size + ' 个术语</span><br><br>' +
                                 '<button class="btn btn-primary btn-small" onclick="document.getElementById(\'autoCheck-results\').style.display=\'none\';">关闭</button>' +
                                 '</div>';
                             container.style.display = 'block';
-
-                            console.log('已导入 ' + validTerms.length + ' 个术语，当前词库共 ' + RAILWAY_TERMS.size + ' 个');
+                            console.log('词库导入：新增 ' + addedCount + ' 个，当前共 ' + RAILWAY_TERMS.size + ' 个');
                         } catch (err) {
                             alert('文件解析失败：' + err.message + '\n请确保文件格式正确（JSON/TXT/CSV）');
                         }
                     };
                     reader.readAsText(file);
-                    // 清理input
                     input.remove();
                 };
                 document.body.appendChild(input);
                 input.click();
             };
 
-            // 导出词库功能（可选，方便用户备份）
+            // 导出词库（结构化格式，含 term + trade）
             window.exportRailwayTerms = function() {
-                const terms = Array.from(RAILWAY_TERMS).sort();
-                const blob = new Blob([JSON.stringify({terms: terms, count: terms.length, exportDate: new Date().toISOString()}, null, 2)], {type: 'application/json'});
+                const sorted = PATCH_TERM_LIBRARY.slice().sort(function(a, b) {
+                    return (a.trade || '').localeCompare(b.trade || '') || a.term.localeCompare(b.term);
+                });
+                const payload = { terms: sorted, count: sorted.length, exportDate: new Date().toISOString(), version: 2 };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = '铁路专业词库_' + new Date().toISOString().slice(0,10) + '.json';
+                a.download = '铁路专业词库_' + new Date().toISOString().slice(0, 10) + '.json';
                 a.click();
                 URL.revokeObjectURL(url);
             };

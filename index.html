@@ -13733,7 +13733,93 @@ ${details || '(无)'}
         });
 
         window.onclick = function(e) { if (e.target.classList.contains('modal')) e.target.classList.remove('active'); };
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+        // ========== PWA 安装提示 ==========
+        (function() {
+            if (!('serviceWorker' in navigator)) return;
+            var _deferredPrompt = null;
+            var _installBtn = null;
+            var _installBtnAdded = false;
+
+            // 注册 Service Worker
+            navigator.serviceWorker.register('sw.js').then(function() {
+                console.log('[PWA] SW 注册成功');
+            }).catch(function(err) {
+                console.warn('[PWA] SW 注册失败:', err);
+            });
+
+            // 监听可安装事件
+            window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault(); // 阻止默认小弹窗
+                _deferredPrompt = e;
+                showInstallButton();
+            });
+
+            // 监听安装完成
+            window.addEventListener('appinstalled', function() {
+                console.log('[PWA] 应用已安装');
+                _deferredPrompt = null;
+                hideInstallButton();
+            });
+
+            function showInstallButton() {
+                if (_installBtnAdded) return;
+                _installBtnAdded = true;
+                _installBtn = document.createElement('div');
+                _installBtn.id = '_pwa_install_bar';
+                _installBtn.innerHTML = [
+                    '<span style="font-size:1.2rem;">📲</span>',
+                    '<span style="flex:1;text-align:left;">安装「安监助手」到桌面</span>',
+                    '<button id="_pwa_install_btn" style="',
+                    '  background:#fff;color:#1a365d;border:none;border-radius:20px;',
+                    '  padding:6px 18px;font-size:0.85rem;font-weight:700;cursor:pointer;',
+                    '  white-space:nowrap;',
+                    '">安装</button>',
+                    '<button id="_pwa_install_close" style="',
+                    '  background:none;border:none;color:rgba(255,255,255,0.6);',
+                    '  font-size:1.1rem;cursor:pointer;padding:0 4px;margin-left:4px;',
+                    '">✕</button>'
+                ].join('');
+                Object.assign(_installBtn.style, {
+                    position:'fixed', bottom:'0', left:'0', right:'0',
+                    background:'rgba(26,54,93,0.97)', color:'#fff',
+                    display:'flex', alignItems:'center', gap:'8px',
+                    padding:'12px 16px', zIndex:'99999',
+                    fontSize:'0.92rem', fontWeight:'600',
+                    boxShadow:'0 -2px 12px rgba(0,0,0,.25)',
+                    transform:'translateY(100%)', transition:'transform .3s ease'
+                });
+                document.body.appendChild(_installBtn);
+                // 弹出
+                requestAnimationFrame(function() { _installBtn.style.transform = 'translateY(0)'; });
+
+                // 安装按钮点击
+                document.getElementById('_pwa_install_btn').onclick = function() {
+                    if (!_deferredPrompt) return;
+                    _deferredPrompt.prompt();
+                    _deferredPrompt.userChoice.then(function(choice) {
+                        console.log('[PWA] 用户选择:', choice.outcome);
+                        _deferredPrompt = null;
+                    });
+                };
+                // 关闭按钮
+                document.getElementById('_pwa_install_close').onclick = function() {
+                    hideInstallButton();
+                };
+            }
+
+            function hideInstallButton() {
+                if (_installBtn) {
+                    _installBtn.style.transform = 'translateY(100%)';
+                    setTimeout(function() { if (_installBtn && _installBtn.parentNode) _installBtn.parentNode.removeChild(_installBtn); _installBtnAdded = false; _installBtn = null; }, 300);
+                }
+            }
+
+            // 如果已经安装过（通过 display-mode 判断），不再显示安装提示
+            if (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: window-controls-overlay)').matches) {
+                console.log('[PWA] 已作为应用运行');
+            }
+        })();
 
         // ========== 屏蔽 Kimi 扩展悬浮按钮（JS 层兜底）==========
         (function() {

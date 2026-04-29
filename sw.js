@@ -1,5 +1,5 @@
 // 缓存名称，更新 SW 后需修改版本号
-const CACHE_NAME = 'anjian-v3';
+const CACHE_NAME = 'anjian-v1';
 
 // 需要预缓存的所有资源（路径相对于网站根目录）
 const PRECACHE_URLS = [

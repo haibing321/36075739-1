@@ -5815,7 +5815,7 @@
                 isEditMode = true; // 标记为编辑模式
                 currentEditDate = diary.date; // 记录原始编辑日期
                 // 切换到输入视图（会清空媒体缓存和预览）
-                showInputView(true);
+                await showInputView(true);
                 // 加载目标日记的内容和媒体
                 document.getElementById('diary-date').value = diary.date;
                 document.getElementById('diary-work').value = diary.work;

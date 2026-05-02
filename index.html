@@ -5734,13 +5734,19 @@
                 if (!work && collectIssues().length === 0) { alert('请输入工作内容或问题'); return; }
                 const issues = collectIssues();
 
-                // 保存媒体文件到 IndexedDB（含拍摄时间）
+                // 保存媒体文件到 IndexedDB（新文件存入，旧文件复用 ID）
                 const mediaIds = [];
                 if (_mediaFiles && _mediaFiles.length > 0) {
                     for (let i = 0; i < _mediaFiles.length; i++) {
-                        const capTime = _mediaCaptureTimes[i] || '';
-                        const id = await saveMediaToDB(_mediaFiles[i], capTime);
-                        if (id !== null) mediaIds.push(id);
+                        if (_existingMediaIds[i] !== undefined) {
+                            // 已有媒体，复用旧 ID
+                            mediaIds.push(_existingMediaIds[i]);
+                        } else {
+                            // 新文件，存入 IndexedDB
+                            const capTime = _mediaCaptureTimes[i] || '';
+                            const id = await saveMediaToDB(_mediaFiles[i], capTime);
+                            if (id !== null) mediaIds.push(id);
+                        }
                     }
                 }
 
@@ -5772,6 +5778,7 @@
                 _mediaFiles = [];
                 _mediaPreviews = [];
                 _mediaCaptureTimes = [];
+                _existingMediaIds = [];
                 document.getElementById('media-preview').innerHTML = '';
 
                 // 切换到查询视图
@@ -5802,18 +5809,19 @@
                 // 切换到输入视图（跳过自动加载当日记录）
                 showInputView(true);
             };
-            window.editDiary = function(date) {
+            window.editDiary = async function(date) {
                 const diary = diaries.find(d => d.date === date);
                 if (!diary) return;
                 isEditMode = true; // 标记为编辑模式
                 currentEditDate = diary.date; // 记录原始编辑日期
+                // 切换到输入视图（会清空媒体缓存和预览）
+                showInputView(true);
+                // 加载目标日记的内容和媒体
                 document.getElementById('diary-date').value = diary.date;
                 document.getElementById('diary-work').value = diary.work;
                 autoResize(document.getElementById('diary-work'));
                 renderIssueFields(diary.issues || []);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                // 切换到输入视图以便编辑（跳过自动加载当日记录，已有目标数据）
-                showInputView(true);
+                await loadDiaryMedia(diary);
             };
             window.deleteDiary = function(date) {
                 if (!confirm('确定要删除该日期的记录吗？')) return;
@@ -6075,10 +6083,16 @@
             }
 
             // 切换视图函数
-            function showInputView(skipAutoLoad) {
+            async function showInputView(skipAutoLoad) {
                 diaryFilterMode = 'input';
                 document.getElementById('diary-input-view').style.display = 'block';
                 document.getElementById('diary-history-view').style.display = 'none';
+                // 清空媒体缓存和预览
+                _mediaFiles = [];
+                _mediaPreviews = [];
+                _mediaCaptureTimes = [];
+                _existingMediaIds = [];
+                document.getElementById('media-preview').innerHTML = '';
                 // 初始化焦点追踪（使多媒体按钮能检测到当前聚焦的文本框）
                 initFocusTracking();
                 // 如果当日已有记录，自动加载到输入框（在历史基础上追加）
@@ -6093,6 +6107,8 @@
                         document.getElementById('diary-work').value = existing.work;
                         autoResize(document.getElementById('diary-work'));
                         renderIssueFields(existing.issues || []);
+                        // 加载已有媒体
+                        await loadDiaryMedia(existing);
                     }
                 }
                 // 按钮状态
@@ -6121,16 +6137,59 @@
             window.showQuery = showQuery;
             
             // ---- 多媒体采集与处理 ----
-            let _mediaFiles = [];          // 暂存的文件对象
+            let _mediaFiles = [];          // 暂存的文件对象（含已加载的旧文件）
             let _mediaPreviews = [];      // 预览URL（blob）
             let _lastFocusedTextarea = null; // 最近聚焦的文本框
             let _mediaCaptureTimes = [];   // 拍摄时间戳
+            let _existingMediaIds = [];    // 已有媒体对应的 IndexedDB ID（用于编辑时复用）
 
             // 格式化时间为 "YYYY-MM-DD HH:MM" 或更紧凑格式
             function formatTime(d) {
                 const pad = n => String(n).padStart(2, '0');
                 return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
                     + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            }
+
+            // 从已有日记记录加载媒体到 _mediaFiles / _existingMediaIds / 预览区
+            async function loadDiaryMedia(diary) {
+                if (!diary.mediaIds || diary.mediaIds.length === 0) return;
+                const previewDiv = document.getElementById('media-preview');
+                for (let i = 0; i < diary.mediaIds.length; i++) {
+                    const record = await getMediaFromDB(diary.mediaIds[i]);
+                    if (record && record.blob) {
+                        const blob = new Blob([record.blob], { type: record.type || 'image/jpeg' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        _mediaFiles.push(blob);
+                        _mediaPreviews.push(blobUrl);
+                        _mediaCaptureTimes.push(record.captureTime || '');
+                        _existingMediaIds.push(diary.mediaIds[i]);
+                        // 预览元素
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'position:relative;display:inline-block;vertical-align:top;';
+                        const isVideo = record.type && record.type.startsWith('video/');
+                        const isAudio = record.type && record.type.startsWith('audio/');
+                        let el;
+                        if (isVideo) {
+                            el = document.createElement('video'); el.controls = true;
+                            el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
+                        } else if (isAudio) {
+                            el = document.createElement('audio'); el.controls = true; el.preload = 'auto';
+                            el.style.cssText = 'width:220px;height:40px;border-radius:6px;margin:2px 0;';
+                        } else {
+                            el = document.createElement('img');
+                            el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
+                        }
+                        el.src = blobUrl;
+                        wrapper.appendChild(el);
+                        if (record.captureTime) {
+                            const badge = document.createElement('div');
+                            badge.textContent = record.captureTime;
+                            badge.style.cssText = 'position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;pointer-events:none;';
+                            wrapper.appendChild(badge);
+                        }
+                        previewDiv.appendChild(wrapper);
+                    }
+                }
             }
 
             // 初始化焦点追踪（事件委托：捕获 diary-input-view 内的 textarea 焦点）
@@ -6171,7 +6230,7 @@
             }
             window.toggleMultimediaPanel = toggleMultimediaPanel;
 
-            // 处理拍照/录像
+            // 处理拍照/录像/录音
             async function handleMediaCapture(input, type) {
                 const file = input.files[0];
                 if (!file) return;
@@ -6198,7 +6257,8 @@
                     el = document.createElement('audio');
                     el.src = blobUrl;
                     el.controls = true;
-                    el.style.cssText = 'max-width:200px;height:40px;border-radius:6px;margin:2px 0;';
+                    el.preload = 'auto';
+                    el.style.cssText = 'width:220px;height:40px;border-radius:6px;margin:2px 0;';
                 } else {
                     el = document.createElement(type === 'video' ? 'video' : 'img');
                     el.src = blobUrl;
@@ -6218,6 +6278,9 @@
                 const tagMap = { photo: '📷照片', video: '🎥录像', audio: '🎤录音' };
                 const tag = '[' + (tagMap[type] || '文件') + idx + ']';
                 insertTextAtCursor(getActiveTextarea(), tag);
+
+                // 重置 input value，允许再次选择同一文件
+                input.value = '';
             }
             window.handleMediaCapture = handleMediaCapture;
 

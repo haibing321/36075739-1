@@ -2381,12 +2381,38 @@
                             <div style="display:flex;gap:6px;align-items:center;">
                                 <button class="btn btn-primary btn-small" onclick="saveDiary(this)">💾 保存</button>
                                 <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)">📄 全部复制</button>
+                                <button class="btn btn-accent" onclick="toggleMultimediaPanel()" id="btn-multimedia-toggle" style="background:#d97706;color:white;">📸 多媒体录入</button>
                             </div>
                         </div>
                         <!-- 日期选择（仅输入视图显示） -->
                         <div class="diary-date-row">
                             <label>📅 日期:</label>
                             <input type="date" id="diary-date">
+                        </div>
+                        <!-- 多媒体录入面板 -->
+                        <div id="multimedia-panel" style="display:none; padding:12px; background:#f8fafc; border-radius:8px; margin-bottom:16px;">
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                                <!-- 拍照 -->
+                                <label class="btn btn-info" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    📷 拍照
+                                    <input type="file" accept="image/*" capture="environment" id="camera-input" onchange="handleMediaCapture(this, 'photo')" hidden>
+                                </label>
+                                <!-- 录像 -->
+                                <label class="btn btn-info" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    🎥 录像
+                                    <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
+                                </label>
+                                <!-- 语音输入 -->
+                                <button class="btn btn-success" id="voice-btn" onclick="startVoiceInput()">🎤 开始说话</button>
+                                <span id="voice-status" style="color:var(--text-secondary); line-height:2;"></span>
+                            </div>
+                            <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（工作内容或问题框）</div>
+                            <!-- 多媒体预览区 -->
+                            <div id="media-preview" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                            <!-- 关闭按钮 -->
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-secondary" onclick="closeMultimediaPanel()">❌ 关闭</button>
+                            </div>
                         </div>
                         <div class="diary-section">
                             <div class="diary-section-title">📋 工作内容</div>
@@ -5699,55 +5725,32 @@
                 }
                 return issues;
             }
-            window.saveDiary = function(btnEl) {
+            window.saveDiary = async function(btnEl) {
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();
                 if (!date) { alert('请选择日期'); return; }
                 if (!work && collectIssues().length === 0) { alert('请输入工作内容或问题'); return; }
                 const issues = collectIssues();
 
+                // 保存媒体文件到 IndexedDB（含拍摄时间）
+                const mediaIds = [];
+                if (_mediaFiles && _mediaFiles.length > 0) {
+                    for (let i = 0; i < _mediaFiles.length; i++) {
+                        const capTime = _mediaCaptureTimes[i] || '';
+                        const id = await saveMediaToDB(_mediaFiles[i], capTime);
+                        if (id !== null) mediaIds.push(id);
+                    }
+                }
+
                 // 检查日期是否已有记录
                 const existingIdx = diaries.findIndex(d => d.date === date);
 
-                // 如果有重叠记录，弹出选项
+                // 已有记录则覆盖（用户已在输入前加载历史内容并追加）
                 if (existingIdx !== -1) {
-                    // 已有记录，提示选择覆盖、合并或另存
-                    const choice = prompt('该日期已有记录，请选择操作：\n1 - 覆盖（用新内容替换）\n2 - 合并（追加到现有内容）\n3 - 另存为（选择其他日期）\n\n请输入 1、2 或 3');
-                    if (choice === null || choice === '') { alert('已取消'); return; }
-                    if (choice === '1') {
-                        // 覆盖
-                        diaries[existingIdx] = { date, work, issues };
-                        alert('已覆盖保存');
-                    } else if (choice === '2') {
-                        // 合并：工作内容后缀追加，问题按序号继续排
-                        const existing = diaries[existingIdx];
-                        const mergedWork = existing.work + '\n' + work;
-                        const mergedIssues = [...(existing.issues || []), ...issues];
-                        diaries[existingIdx] = { date, work: mergedWork, issues: mergedIssues };
-                        alert('已合并保存');
-                    } else if (choice === '3') {
-                        // 另存为 - 弹出日期选择器让用户选择新日期
-                        const newDate = prompt('请输入新的日期（格式：YYYY-MM-DD）：', date);
-                        if (!newDate || !newDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                            alert('无效的日期格式');
-                            return;
-                        }
-                        // 检查新日期是否也有记录
-                        const anotherIdx = diaries.findIndex(d => d.date === newDate);
-                        if (anotherIdx !== -1) {
-                            alert('该日期也有记录，请先删除或选择其他日期');
-                            return;
-                        }
-                        diaries.push({ date: newDate, work, issues });
-                        alert('已另存到 ' + newDate);
-                    } else {
-                        alert('无效选择，请输入1、2或3');
-                        return;
-                    }
+                    diaries[existingIdx] = { date, work, issues, mediaIds };
                 } else {
                     // 没有重叠，直接添加
-                    diaries.push({ date, work, issues });
-                    alert('已添加新记录');
+                    diaries.push({ date, work, issues, mediaIds });
                 }
 
                 diaries.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -5762,6 +5765,12 @@
                 document.getElementById('diary-work').value = '';
                 renderIssueFields([]);
                 document.getElementById('diary-date').valueAsDate = new Date();
+
+                // 清空多媒体
+                _mediaFiles = [];
+                _mediaPreviews = [];
+                _mediaCaptureTimes = [];
+                document.getElementById('media-preview').innerHTML = '';
 
                 // 切换到查询视图
                 showQuery();
@@ -5788,8 +5797,8 @@
                 document.getElementById('diary-work').value = '';
                 autoResize(document.getElementById('diary-work'));
                 renderIssueFields([]);
-                // 切换到输入视图
-                showInputView();
+                // 切换到输入视图（跳过自动加载当日记录）
+                showInputView(true);
             };
             window.editDiary = function(date) {
                 const diary = diaries.find(d => d.date === date);
@@ -5801,8 +5810,8 @@
                 autoResize(document.getElementById('diary-work'));
                 renderIssueFields(diary.issues || []);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-                // 切换到输入视图以便编辑
-                showInputView();
+                // 切换到输入视图以便编辑（跳过自动加载当日记录，已有目标数据）
+                showInputView(true);
             };
             window.deleteDiary = function(date) {
                 if (!confirm('确定要删除该日期的记录吗？')) return;
@@ -6059,13 +6068,31 @@
 
                 container.innerHTML = html;
                 container.style.display = 'block';
+                // 渲染多媒体内容（替换标签为实际图片/视频）
+                renderDiaryMedia(diary.mediaIds);
             }
 
             // 切换视图函数
-            function showInputView() {
+            function showInputView(skipAutoLoad) {
                 diaryFilterMode = 'input';
                 document.getElementById('diary-input-view').style.display = 'block';
                 document.getElementById('diary-history-view').style.display = 'none';
+                // 初始化焦点追踪（使多媒体按钮能检测到当前聚焦的文本框）
+                initFocusTracking();
+                // 如果当日已有记录，自动加载到输入框（在历史基础上追加）
+                if (!skipAutoLoad) {
+                    const d = new Date();
+                    const todayStr = d.getFullYear() + '-' + 
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+                        String(d.getDate()).padStart(2, '0');
+                    const existing = diaries.find(d => d.date === todayStr);
+                    if (existing) {
+                        document.getElementById('diary-date').value = todayStr;
+                        document.getElementById('diary-work').value = existing.work;
+                        autoResize(document.getElementById('diary-work'));
+                        renderIssueFields(existing.issues || []);
+                    }
+                }
                 // 按钮状态
                 document.getElementById('diary-input-btn').classList.add('btn-info');
                 document.getElementById('diary-input-btn').classList.remove('btn-secondary');
@@ -6091,6 +6118,287 @@
             window.showInputView = showInputView;
             window.showQuery = showQuery;
             
+            // ---- 多媒体采集与处理 ----
+            let _mediaFiles = [];          // 暂存的文件对象
+            let _mediaPreviews = [];      // 预览URL（blob）
+            let _voiceRecognition = null; // Web Speech API 实例
+            let _lastFocusedTextarea = null; // 最近聚焦的文本框
+            let _mediaCaptureTimes = [];   // 拍摄时间戳
+
+            // 格式化时间为 "YYYY-MM-DD HH:MM" 或更紧凑格式
+            function formatTime(d) {
+                const pad = n => String(n).padStart(2, '0');
+                return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            }
+
+            // 初始化焦点追踪（事件委托：捕获 diary-input-view 内的 textarea 焦点）
+            function initFocusTracking() {
+                const view = document.getElementById('diary-input-view');
+                if (!view) return;
+                // 移除旧监听避免重复绑定
+                view.removeEventListener('focus', _focusHandler, true);
+                view.addEventListener('focus', _focusHandler, true);
+            }
+            function _focusHandler(e) {
+                if (e.target && e.target.tagName === 'TEXTAREA' && e.target.closest('#diary-input-view')) {
+                    _lastFocusedTextarea = e.target;
+                }
+            }
+
+            // 获取多媒体输入的目标文本框
+            function getActiveTextarea() {
+                // 优先用焦点追踪记录的上次聚焦文本框
+                if (_lastFocusedTextarea && _lastFocusedTextarea.closest('#diary-input-view')) {
+                    return _lastFocusedTextarea;
+                }
+                // 回退到 work 框
+                return document.getElementById('diary-work');
+            }
+
+            // 打开/关闭多媒体面板
+            function toggleMultimediaPanel() {
+                const panel = document.getElementById('multimedia-panel');
+                const toggleBtn = document.getElementById('btn-multimedia-toggle');
+                if (panel.style.display === 'none' || !panel.style.display) {
+                    panel.style.display = 'block';
+                    toggleBtn.textContent = '❌ 关闭多媒体';
+                } else {
+                    panel.style.display = 'none';
+                    toggleBtn.textContent = '📸 多媒体录入';
+                }
+            }
+            window.toggleMultimediaPanel = toggleMultimediaPanel;
+
+            // 处理拍照/录像
+            async function handleMediaCapture(input, type) {
+                const file = input.files[0];
+                if (!file) return;
+                
+                const now = new Date();
+                const captureTimeStr = formatTime(now);
+                
+                let processedFile = file;
+                if (type === 'photo') {
+                    processedFile = await addTimestampToPhoto(file, captureTimeStr);
+                }
+                
+                _mediaFiles.push(processedFile);
+                _mediaCaptureTimes.push(captureTimeStr);
+                
+                // 预览（带时间戳叠加）
+                const blobUrl = URL.createObjectURL(processedFile);
+                _mediaPreviews.push(blobUrl);
+                const previewDiv = document.getElementById('media-preview');
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'position:relative;display:inline-block;';
+                const el = document.createElement(type === 'video' ? 'video' : 'img');
+                el.src = blobUrl;
+                el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
+                el.controls = type === 'video';
+                wrapper.appendChild(el);
+                // 时间戳标签（叠加在右下角）
+                const badge = document.createElement('div');
+                badge.textContent = captureTimeStr;
+                badge.style.cssText = 'position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;pointer-events:none;';
+                wrapper.appendChild(badge);
+                previewDiv.appendChild(wrapper);
+                
+                // 插入媒体标签到光标所在的文本框
+                const idx = _mediaFiles.length;
+                const tag = type === 'photo' ? ('[📷照片' + idx + ']') : ('[🎥录像' + idx + ']');
+                insertTextAtCursor(getActiveTextarea(), tag);
+            }
+            window.handleMediaCapture = handleMediaCapture;
+
+            // 照片烧录时间戳（使用 Canvas）
+            function addTimestampToPhoto(file, timeStr) {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        // 原图
+                        ctx.drawImage(img, 0, 0);
+                        // 时间戳样式
+                        const fontSize = Math.max(14, Math.min(canvas.width, canvas.height) * 0.025);
+                        ctx.font = 'bold ' + fontSize + 'px "Microsoft YaHei", Arial, sans-serif';
+                        ctx.textAlign = 'right';
+                        ctx.textBaseline = 'bottom';
+                        // 测量文字宽度
+                        const textWidth = ctx.measureText(timeStr).width;
+                        const padding = fontSize * 0.5;
+                        const margin = 12;
+                        const x = canvas.width - margin;
+                        const y = canvas.height - margin;
+                        const bgH = fontSize + padding * 2;
+                        const bgW = textWidth + padding * 2;
+                        // 半透明背景
+                        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                        ctx.fillRect(x - bgW, y - bgH, bgW, bgH);
+                        // 白色文字
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(timeStr, x - padding, y - padding);
+                        
+                        canvas.toBlob(blob => {
+                            if (blob) resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                            else resolve(file);
+                        }, 'image/jpeg', 0.92);
+                    };
+                    img.onerror = () => resolve(file);
+                    img.src = URL.createObjectURL(file);
+                });
+            }
+
+            // 在文本框光标位置插入文本
+            function insertTextAtCursor(textarea, text) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const before = textarea.value.substring(0, start);
+                const after = textarea.value.substring(end);
+                textarea.value = before + text + after;
+                // 光标移到插入文本之后
+                const newPos = start + text.length;
+                textarea.selectionStart = textarea.selectionEnd = newPos;
+                textarea.focus();
+                autoResize(textarea);
+            }
+
+            // 语音输入
+            function startVoiceInput() {
+                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                    alert('您的浏览器不支持语音识别，请使用 Chrome 浏览器');
+                    return;
+                }
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (_voiceRecognition) {
+                    _voiceRecognition.abort();
+                }
+                _voiceRecognition = new SpeechRecognition();
+                _voiceRecognition.lang = 'zh-CN';
+                _voiceRecognition.interimResults = false;
+                _voiceRecognition.maxAlternatives = 1;
+
+                document.getElementById('voice-btn').disabled = true;
+                document.getElementById('voice-status').textContent = '正在聆听...';
+
+                _voiceRecognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    const ta = getActiveTextarea();
+                    insertTextAtCursor(ta, transcript);
+                };
+                _voiceRecognition.onerror = (event) => {
+                    document.getElementById('voice-status').textContent = '识别失败: ' + event.error;
+                };
+                _voiceRecognition.onend = () => {
+                    document.getElementById('voice-btn').disabled = false;
+                    document.getElementById('voice-status').textContent = '点击开始说话';
+                };
+                _voiceRecognition.start();
+            }
+            window.startVoiceInput = startVoiceInput;
+
+            function closeMultimediaPanel() {
+                document.getElementById('multimedia-panel').style.display = 'none';
+                document.getElementById('btn-multimedia-toggle').textContent = '📸 多媒体录入';
+            }
+            window.closeMultimediaPanel = closeMultimediaPanel;
+
+            // 多媒体文件存储到 IndexedDB
+            function saveMediaToDB(file, captureTime) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const data = reader.result; // ArrayBuffer
+                        const request = indexedDB.open('DiaryMediaDB', 1);
+                        request.onupgradeneeded = e => {
+                            e.target.result.createObjectStore('media', { keyPath: 'id', autoIncrement: true });
+                        };
+                        request.onsuccess = e => {
+                            const db = e.target.result;
+                            const tx = db.transaction('media', 'readwrite');
+                            const store = tx.objectStore('media');
+                            const addReq = store.add({ blob: data, type: file.type, name: file.name, timestamp: Date.now(), captureTime: captureTime || '' });
+                            addReq.onsuccess = e => resolve(e.target.result);
+                            addReq.onerror = () => resolve(null);
+                        };
+                        request.onerror = () => resolve(null);
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+            window.saveMediaToDB = saveMediaToDB;
+
+            // 从 IndexedDB 读取媒体文件
+            function getMediaFromDB(id) {
+                return new Promise((resolve) => {
+                    const request = indexedDB.open('DiaryMediaDB', 1);
+                    request.onupgradeneeded = e => {
+                        e.target.result.createObjectStore('media', { keyPath: 'id', autoIncrement: true });
+                    };
+                    request.onsuccess = e => {
+                        const db = e.target.result;
+                        const tx = db.transaction('media', 'readonly');
+                        const store = tx.objectStore('media');
+                        const getReq = store.get(id);
+                        getReq.onsuccess = () => resolve(getReq.result || null);
+                        getReq.onerror = () => resolve(null);
+                    };
+                    request.onerror = () => resolve(null);
+                });
+            }
+
+            // 渲染日记记录中的多媒体内容（替换 [📷照片N] / [🎥录像N] 标签为实际媒体）
+            async function renderDiaryMedia(mediaIds) {
+                if (!mediaIds || mediaIds.length === 0) return;
+                const workContent = document.querySelector('.diary-work-content');
+                const issueItems = document.querySelectorAll('.diary-issue-item-content');
+                const elements = workContent ? [workContent, ...issueItems] : [...issueItems];
+                for (const el of elements) {
+                    await replaceMediaTags(el, mediaIds);
+                }
+            }
+            // 在元素中替换媒体标签
+            async function replaceMediaTags(el, mediaIds) {
+                let html = el.innerHTML;
+                const tagRegex = /\[(📷照片|🎥录像)(\d+)\]/g;
+                const replacements = [];
+                let match;
+                while ((match = tagRegex.exec(html)) !== null) {
+                    const fullTag = match[0];
+                    const isVideo = match[1] === '🎥录像';
+                    const idx = parseInt(match[2]) - 1;
+                    const mediaId = idx >= 0 && idx < mediaIds.length ? mediaIds[idx] : null;
+                    replacements.push({ fullTag, mediaId, isVideo });
+                }
+                if (replacements.length === 0) return;
+                for (const rep of replacements) {
+                    if (rep.mediaId !== null) {
+                        const record = await getMediaFromDB(rep.mediaId);
+                        if (record && record.blob) {
+                            const blob = new Blob([record.blob], { type: record.type || 'image/jpeg' });
+                            const url = URL.createObjectURL(blob);
+                            const capTime = record.captureTime || '';
+                            let mediaHtml;
+                            if (rep.isVideo) {
+                                // 视频：叠加时间戳标签（照片已烧录到图内）
+                                mediaHtml = '<div style="position:relative;display:inline-block;max-width:100%;vertical-align:top;">'
+                                    + '<video src="' + url + '" controls style="max-width:100%;max-height:300px;border-radius:6px;margin:4px 0;"></video>'
+                                    + '<div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);color:#fff;font-size:12px;padding:2px 8px;border-radius:4px;pointer-events:none;">' + capTime + '</div>'
+                                    + '</div>';
+                            } else {
+                                // 照片：时间戳已烧录在图像内
+                                mediaHtml = '<img src="' + url + '" style="max-width:100%;max-height:300px;border-radius:6px;margin:4px 0;cursor:pointer;" onclick="window.open(this.src)" />';
+                            }
+                            html = html.replace(rep.fullTag, mediaHtml);
+                        }
+                    }
+                }
+                el.innerHTML = html;
+            }
+
             // 导出日记数据
             window.exportDiary = function() {
                 if (diaries.length === 0) { alert('没有数据可导出'); return; }
@@ -11515,7 +11823,13 @@
                     alert('请先在上方"写作需求"中输入您要撰写的内容。');
                     return;
                 }
-                
+
+                // 已有对话历史 → 继续修改，跳过模板/资料弹窗，直接生成
+                if (_wrConvHistory.length > 0) {
+                    wrGenerate();
+                    return;
+                }
+
                 // 从资料库中获取写作模版（matType === 'template'）
                 wrDbGetAll(WR_MAT_STORE).then(mats => {
                     const tpls = mats.filter(m => m.matType === 'template');
@@ -11597,8 +11911,9 @@
                             matHtml += '<div style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:4px;padding:4px 8px;background:#f0f7ff;border-radius:4px;">' + typeLabel + '</div>';
                             matHtml += '<div style="display:flex;flex-direction:column;gap:4px;">';
                             groups[typeLabel].forEach(m => {
+                                const isChecked = window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.includes(m.id) ? 'checked' : '';
                                 matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#f8fafc;cursor:pointer;font-size:0.85rem;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#f8fafc\'">'
-                                    + '<input type="checkbox" class="wr-mat-checkbox" value="' + m.id + '" style="cursor:pointer;">'
+                                    + '<input type="checkbox" class="wr-mat-checkbox" value="' + m.id + '" ' + isChecked + ' style="cursor:pointer;">'
                                     + '<span style="flex:1;">' + wrEsc(m.title || m.fileName) + '</span>'
                                     + '<span style="font-size:0.75rem;color:var(--text-secondary);">' + wrFmtDate(m.importAt).slice(0,10) + '</span>'
                                     + '</label>';
@@ -12336,14 +12651,16 @@
             };
 
             async function wrUpdateMaterialPreview(query) {
-                const materials = await wrRetrieveMaterials(query);
                 const tags = [];
-                if (materials.template) tags.push('<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📄 ' + wrEsc(materials.template.title) + '</span>');
-                if (materials.issues.length) tags.push('<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📊 台账' + materials.issues.length + '条</span>');
-                if (materials.localMaterials && materials.localMaterials.length) tags.push('<span style="background:#fff7ed;color:#9a3412;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📁 资料' + materials.localMaterials.length + '份</span>');
-                if (materials.similarReports.length) tags.push('<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📂 历史' + materials.similarReports.length + '篇</span>');
-                if (materials.ruleCandidates.length) tags.push('<span style="background:#fce7f3;color:#9d174d;padding:3px 10px;border-radius:20px;font-size:0.78rem;">⚖️ 规章' + materials.ruleCandidates.length + '条</span>');
-                if (!tags.length) tags.push('<span style="color:var(--text-secondary);font-size:0.78rem;">暂未检索到相关资料，将使用AI通用知识生成</span>');
+                if (window._wrSelectedTemplate) {
+                    tags.push('<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📄 ' + wrEsc(window._wrSelectedTemplate.title) + '</span>');
+                }
+                if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
+                    tags.push('<span style="background:#fff7ed;color:#9a3412;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📁 已选' + window._wrSelectedMaterialIds.length + '份资料</span>');
+                }
+                if (!window._wrSelectedTemplate && (!window._wrSelectedMaterialIds || window._wrSelectedMaterialIds.length === 0)) {
+                    tags.push('<span style="color:#d97706;font-size:0.78rem;">⚠️ 尚未选择模板和资料，请点击「开始写作」选择</span>');
+                }
 
                 const preview = document.getElementById('wr-material-preview');
                 const tagsEl  = document.getElementById('wr-material-tags');
@@ -12356,11 +12673,17 @@
             window.wrPreviewMaterials = async function() {
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!q.trim()) { alert('请先输入写作需求'); return; }
-                const materials = await wrRetrieveMaterials(q);
-                const { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials } = materials;
+                const parsed = wrParseQuery(q);
+                let template = window._wrSelectedTemplate || null;
+                let localMaterials = [];
+                if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
+                    const allMats = await wrDbGetAll(WR_MAT_STORE);
+                    localMaterials = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id));
+                }
+                const materials = { parsed, template, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: localMaterials };
 
                 let html = '<div style="padding:14px;background:#f8fafc;border-radius:10px;border:1px solid var(--border);font-size:0.85rem;line-height:1.7;">';
-                html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px;">🔍 资料检索预览</div>';
+                html += '<div style="font-weight:700;color:var(--primary);margin-bottom:10px;">🔍 已选资料预览（未选择的将不会发送给AI）</div>';
 
                 html += '<div style="margin-bottom:8px;"><strong>📋 解析结果：</strong><br>'
                     + '类型：' + wrCatName(parsed.reportType) + '　'
@@ -12371,8 +12694,7 @@
                     + (template ? '<span style="color:#059669;">《' + wrEsc(template.title) + '》</span>' : '<span style="color:#d97706;">无，将使用默认结构</span>') + '</div>';
 
                 html += '<div style="margin-bottom:8px;"><strong>📊 台账数据：</strong>'
-                    + (issues.length ? '<span style="color:#059669;">' + issues.length + '条' + (stats ? '（' + stats.natSummary + '）' : '') + '</span>'
-                    : '<span style="color:#d97706;">无匹配数据</span>') + '</div>';
+                    + '<span style="color:#d97706;">不自动检索，请手动选择资料</span></div>';
 
                 // 本地资料库
                 if (localMaterials && localMaterials.length > 0) {
@@ -12386,13 +12708,9 @@
                     html += '<div style="margin-bottom:8px;"><strong>📁 本地资料：</strong><span style="color:#d97706;">无匹配资料（可到「资料库」导入文件）</span></div>';
                 }
 
-                html += '<div style="margin-bottom:8px;"><strong>📂 历史参考：</strong>'
-                    + (similarReports.length ? '<span style="color:#059669;">' + similarReports.map(r => '《' + wrEsc(r.title||'未命名') + '》').join('、') + '</span>'
-                    : '<span style="color:#d97706;">无</span>') + '</div>';
+                html += '<div style="margin-bottom:8px;"><strong>📂 历史参考：</strong><span style="color:#d97706;">不自动检索</span></div>';
 
-                html += '<div><strong>⚖️ 规章条款：</strong>'
-                    + (ruleCandidates.length ? '<span style="color:#059669;">' + ruleCandidates.slice(0,3).map(r => '《' + wrEsc(r.title) + '》').join('、') + (ruleCandidates.length > 3 ? '等' : '') + '</span>'
-                    : '<span style="color:#d97706;">无</span>') + '</div>';
+                html += '<div><strong>⚖️ 规章条款：</strong><span style="color:#d97706;">不自动检索</span></div>';
 
                 html += '</div>';
 
@@ -12447,26 +12765,26 @@
                 if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
 
                 try {
-                    // 检索资料（使用原始查询）
-                    const materials = await wrRetrieveMaterials(q);
-
-                    // 合并用户手动选择的资料
+                    // 仅使用用户手动选择的资料（不自动检索本地资料库）
+                    const parsed = wrParseQuery(q);
+                    let template = null;
+                    let localMaterials = [];
                     if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
                         const allMats = await wrDbGetAll(WR_MAT_STORE);
-                        const selectedMats = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id));
-                        const existingIds = new Set((materials.localMaterials || []).map(m => m.id));
-                        selectedMats.forEach(m => {
-                            if (!existingIds.has(m.id)) {
-                                materials.localMaterials = materials.localMaterials || [];
-                                materials.localMaterials.push(m);
-                            }
-                        });
+                        localMaterials = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id) && m.matType !== 'template');
                     }
-
-                    // 如果有选中的模板，覆盖默认模板
                     if (window._wrSelectedTemplate) {
-                        materials.template = window._wrSelectedTemplate;
+                        template = window._wrSelectedTemplate;
                     }
+                    const materials = {
+                        parsed: parsed,
+                        template: template,
+                        issues: [],
+                        stats: null,
+                        similarReports: [],
+                        ruleCandidates: [],
+                        localMaterials: localMaterials
+                    };
 
                     // 构建提示词（使用增强后的查询，包含文件内容）
                     const { sysPrompt, userPrompt } = wrBuildPrompt(enhancedQuery, materials);
@@ -12552,7 +12870,6 @@
                     // 保存当前报告内容用于修改功能
                     window._wrCurrentReportContent = fullText;
                     window._wrCurrentReportQuery   = enhancedQuery;
-                    const { parsed } = materials;
                     window._wrCurrentReportParsed  = parsed;
 
                     // 保存到历史
@@ -12725,26 +13042,26 @@
                     if (writeBtn)  { writeBtn.disabled = true; }
 
                     try {
-                        // 检索资料
-                        const materials = await wrRetrieveMaterials(q);
-                        
-                        // 合并用户手动选择的资料
+                        // 仅使用用户手动选择的资料（不自动检索）
+                        const parsed = wrParseQuery(q);
+                        let modifyTemplate = null;
+                        let modifyLocalMaterials = [];
                         if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
                             const allMats = await wrDbGetAll(WR_MAT_STORE);
-                            const selectedMats = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id));
-                            const existingIds = new Set((materials.localMaterials || []).map(m => m.id));
-                            selectedMats.forEach(m => {
-                                if (!existingIds.has(m.id)) {
-                                    materials.localMaterials = materials.localMaterials || [];
-                                    materials.localMaterials.push(m);
-                                }
-                            });
+                            modifyLocalMaterials = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id) && m.matType !== 'template');
                         }
-                        
-                        // 如果有选中的模板
                         if (window._wrSelectedTemplate) {
-                            materials.template = window._wrSelectedTemplate;
+                            modifyTemplate = window._wrSelectedTemplate;
                         }
+                        const materials = {
+                            parsed: parsed,
+                            template: modifyTemplate,
+                            issues: [],
+                            stats: null,
+                            similarReports: [],
+                            ruleCandidates: [],
+                            localMaterials: modifyLocalMaterials
+                        };
                         
                         // 添加修改提示
                         const modifyHint = '\n\n【修改要求】请在原有报告基础上，根据新增资料进行补充和完善，保持报告结构一致。';

@@ -2402,9 +2402,11 @@
                                     🎥 录像
                                     <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                                 </label>
-                                <!-- 语音输入 -->
-                                <button class="btn btn-success" id="voice-btn" onclick="startVoiceInput()">🎤 开始说话</button>
-                                <span id="voice-status" style="color:var(--text-secondary); line-height:2;"></span>
+                                <!-- 语音录音 -->
+                                <label class="btn btn-success" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    🎤 录音
+                                    <input type="file" accept="audio/*" capture id="audio-input" onchange="handleMediaCapture(this, 'audio')" hidden>
+                                </label>
                             </div>
                             <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（工作内容或问题框）</div>
                             <!-- 多媒体预览区 -->
@@ -6121,7 +6123,6 @@
             // ---- 多媒体采集与处理 ----
             let _mediaFiles = [];          // 暂存的文件对象
             let _mediaPreviews = [];      // 预览URL（blob）
-            let _voiceRecognition = null; // Web Speech API 实例
             let _lastFocusedTextarea = null; // 最近聚焦的文本框
             let _mediaCaptureTimes = [];   // 拍摄时间戳
 
@@ -6191,11 +6192,19 @@
                 _mediaPreviews.push(blobUrl);
                 const previewDiv = document.getElementById('media-preview');
                 const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'position:relative;display:inline-block;';
-                const el = document.createElement(type === 'video' ? 'video' : 'img');
-                el.src = blobUrl;
-                el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
-                el.controls = type === 'video';
+                wrapper.style.cssText = 'position:relative;display:inline-block;vertical-align:top;';
+                let el;
+                if (type === 'audio') {
+                    el = document.createElement('audio');
+                    el.src = blobUrl;
+                    el.controls = true;
+                    el.style.cssText = 'max-width:200px;height:40px;border-radius:6px;margin:2px 0;';
+                } else {
+                    el = document.createElement(type === 'video' ? 'video' : 'img');
+                    el.src = blobUrl;
+                    el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
+                    el.controls = type === 'video';
+                }
                 wrapper.appendChild(el);
                 // 时间戳标签（叠加在右下角）
                 const badge = document.createElement('div');
@@ -6206,7 +6215,8 @@
                 
                 // 插入媒体标签到光标所在的文本框
                 const idx = _mediaFiles.length;
-                const tag = type === 'photo' ? ('[📷照片' + idx + ']') : ('[🎥录像' + idx + ']');
+                const tagMap = { photo: '📷照片', video: '🎥录像', audio: '🎤录音' };
+                const tag = '[' + (tagMap[type] || '文件') + idx + ']';
                 insertTextAtCursor(getActiveTextarea(), tag);
             }
             window.handleMediaCapture = handleMediaCapture;
@@ -6265,40 +6275,6 @@
                 textarea.focus();
                 autoResize(textarea);
             }
-
-            // 语音输入
-            function startVoiceInput() {
-                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                    alert('您的浏览器不支持语音识别，请使用 Chrome 浏览器');
-                    return;
-                }
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (_voiceRecognition) {
-                    _voiceRecognition.abort();
-                }
-                _voiceRecognition = new SpeechRecognition();
-                _voiceRecognition.lang = 'zh-CN';
-                _voiceRecognition.interimResults = false;
-                _voiceRecognition.maxAlternatives = 1;
-
-                document.getElementById('voice-btn').disabled = true;
-                document.getElementById('voice-status').textContent = '正在聆听...';
-
-                _voiceRecognition.onresult = (event) => {
-                    const transcript = event.results[0][0].transcript;
-                    const ta = getActiveTextarea();
-                    insertTextAtCursor(ta, transcript);
-                };
-                _voiceRecognition.onerror = (event) => {
-                    document.getElementById('voice-status').textContent = '识别失败: ' + event.error;
-                };
-                _voiceRecognition.onend = () => {
-                    document.getElementById('voice-btn').disabled = false;
-                    document.getElementById('voice-status').textContent = '点击开始说话';
-                };
-                _voiceRecognition.start();
-            }
-            window.startVoiceInput = startVoiceInput;
 
             function closeMultimediaPanel() {
                 document.getElementById('multimedia-panel').style.display = 'none';
@@ -6363,15 +6339,15 @@
             // 在元素中替换媒体标签
             async function replaceMediaTags(el, mediaIds) {
                 let html = el.innerHTML;
-                const tagRegex = /\[(📷照片|🎥录像)(\d+)\]/g;
+                const tagRegex = /\[(📷照片|🎥录像|🎤录音)(\d+)\]/g;
                 const replacements = [];
                 let match;
                 while ((match = tagRegex.exec(html)) !== null) {
                     const fullTag = match[0];
-                    const isVideo = match[1] === '🎥录像';
+                    const tagType = match[1];
                     const idx = parseInt(match[2]) - 1;
                     const mediaId = idx >= 0 && idx < mediaIds.length ? mediaIds[idx] : null;
-                    replacements.push({ fullTag, mediaId, isVideo });
+                    replacements.push({ fullTag, mediaId, tagType });
                 }
                 if (replacements.length === 0) return;
                 for (const rep of replacements) {
@@ -6382,11 +6358,17 @@
                             const url = URL.createObjectURL(blob);
                             const capTime = record.captureTime || '';
                             let mediaHtml;
-                            if (rep.isVideo) {
-                                // 视频：叠加时间戳标签（照片已烧录到图内）
+                            if (rep.tagType === '🎥录像') {
+                                // 视频：叠加时间戳标签
                                 mediaHtml = '<div style="position:relative;display:inline-block;max-width:100%;vertical-align:top;">'
                                     + '<video src="' + url + '" controls style="max-width:100%;max-height:300px;border-radius:6px;margin:4px 0;"></video>'
                                     + '<div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);color:#fff;font-size:12px;padding:2px 8px;border-radius:4px;pointer-events:none;">' + capTime + '</div>'
+                                    + '</div>';
+                            } else if (rep.tagType === '🎤录音') {
+                                // 录音：音频播放器 + 时间戳
+                                mediaHtml = '<div style="display:flex;align-items:center;gap:6px;margin:4px 0;">'
+                                    + '<audio src="' + url + '" controls style="height:36px;border-radius:6px;flex:1;"></audio>'
+                                    + '<span style="font-size:11px;color:#64748b;white-space:nowrap;">' + capTime + '</span>'
                                     + '</div>';
                             } else {
                                 // 照片：时间戳已烧录在图像内

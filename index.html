@@ -2402,11 +2402,9 @@
                                     🎥 录像
                                     <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                                 </label>
-                                <!-- 语音录音 -->
-                                <label class="btn btn-success" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
-                                    🎤 录音
-                                    <input type="file" accept="audio/*" capture id="audio-input" onchange="handleMediaCapture(this, 'audio')" hidden>
-                                </label>
+                                <!-- 语音录音（MediaRecorder API） -->
+                                <button class="btn btn-success" id="audio-record-btn" onclick="toggleAudioRecording()">🎤 开始录音</button>
+                                <span id="audio-record-status" style="color:var(--text-secondary); line-height:2;"></span>
                             </div>
                             <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（工作内容或问题框）</div>
                             <!-- 多媒体预览区 -->
@@ -6142,6 +6140,10 @@
             let _lastFocusedTextarea = null; // 最近聚焦的文本框
             let _mediaCaptureTimes = [];   // 拍摄时间戳
             let _existingMediaIds = [];    // 已有媒体对应的 IndexedDB ID（用于编辑时复用）
+            let _mediaRecorder = null;     // MediaRecorder 实例（录音）
+            let _audioChunks = [];         // 录音数据块
+            let _audioStream = null;       // 麦克风流
+            let _isRecording = false;      // 是否正在录音
 
             // 格式化时间为 "YYYY-MM-DD HH:MM" 或更紧凑格式
             function formatTime(d) {
@@ -6253,17 +6255,15 @@
                 const wrapper = document.createElement('div');
                 wrapper.style.cssText = 'position:relative;display:inline-block;vertical-align:top;';
                 let el;
-                if (type === 'audio') {
-                    el = document.createElement('audio');
+                if (type === 'video') {
+                    el = document.createElement('video');
                     el.src = blobUrl;
                     el.controls = true;
-                    el.preload = 'auto';
-                    el.style.cssText = 'width:220px;height:40px;border-radius:6px;margin:2px 0;';
+                    el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
                 } else {
-                    el = document.createElement(type === 'video' ? 'video' : 'img');
+                    el = document.createElement('img');
                     el.src = blobUrl;
                     el.style.cssText = 'max-width:200px;max-height:200px;border-radius:6px;';
-                    el.controls = type === 'video';
                 }
                 wrapper.appendChild(el);
                 // 时间戳标签（叠加在右下角）
@@ -6344,6 +6344,86 @@
                 document.getElementById('btn-multimedia-toggle').textContent = '📸 多媒体录入';
             }
             window.closeMultimediaPanel = closeMultimediaPanel;
+
+            // ---- MediaRecorder 录音 ----
+            function toggleAudioRecording() {
+                if (_isRecording) { stopAudioRecording(); }
+                else { startAudioRecording(); }
+            }
+            window.toggleAudioRecording = toggleAudioRecording;
+
+            async function startAudioRecording() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    _audioStream = stream;
+                    _audioChunks = [];
+                    const mimeType = 'audio/webm;codecs=opus';
+                    _mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : ''
+                    });
+                    _mediaRecorder.ondataavailable = e => {
+                        if (e.data.size > 0) _audioChunks.push(e.data);
+                    };
+                    _mediaRecorder.onstop = () => {
+                        const blob = new Blob(_audioChunks, { type: 'audio/webm' });
+                        _audioChunks = [];
+                        if (_audioStream) {
+                            _audioStream.getTracks().forEach(t => t.stop());
+                            _audioStream = null;
+                        }
+                        handleAudioCapture(blob);
+                    };
+                    _mediaRecorder.start();
+                    _isRecording = true;
+                    const btn = document.getElementById('audio-record-btn');
+                    btn.textContent = '⏹ 停止录音';
+                    btn.className = 'btn btn-danger';
+                    document.getElementById('audio-record-status').textContent = '🎙️ 录音中...';
+                } catch (err) {
+                    alert('无法访问麦克风: ' + err.message);
+                }
+            }
+
+            function stopAudioRecording() {
+                if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+                    _mediaRecorder.stop();
+                }
+                _isRecording = false;
+                const btn = document.getElementById('audio-record-btn');
+                btn.textContent = '🎤 开始录音';
+                btn.className = 'btn btn-success';
+                document.getElementById('audio-record-status').textContent = '';
+            }
+
+            // 处理录音完成的音频文件
+            function handleAudioCapture(blob) {
+                const now = new Date();
+                const captureTimeStr = formatTime(now);
+                const file = new File([blob], '录音_' + now.getTime() + '.webm', { type: 'audio/webm' });
+                _mediaFiles.push(file);
+                _mediaCaptureTimes.push(captureTimeStr);
+                // 预览
+                const blobUrl = URL.createObjectURL(blob);
+                _mediaPreviews.push(blobUrl);
+                const previewDiv = document.getElementById('media-preview');
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'position:relative;display:inline-block;vertical-align:top;';
+                const el = document.createElement('audio');
+                el.src = blobUrl;
+                el.controls = true;
+                el.preload = 'auto';
+                el.style.cssText = 'width:220px;height:40px;border-radius:6px;margin:2px 0;';
+                wrapper.appendChild(el);
+                const badge = document.createElement('div');
+                badge.textContent = captureTimeStr;
+                badge.style.cssText = 'position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;pointer-events:none;';
+                wrapper.appendChild(badge);
+                previewDiv.appendChild(wrapper);
+                // 插入标签
+                const idx = _mediaFiles.length;
+                const tag = '[🎤录音' + idx + ']';
+                insertTextAtCursor(getActiveTextarea(), tag);
+            }
 
             // 多媒体文件存储到 IndexedDB
             function saveMediaToDB(file, captureTime) {

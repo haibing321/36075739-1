@@ -6982,6 +6982,19 @@
             // 暴露数据获取接口（供联动数据使用）
             window.getPhoneData = function() { return phoneData; };
 
+            // ── 连接配置（本地 file:// 走代理，网站部署直接调 API）──
+            const isLocal = document.location.protocol === 'file:';
+            const PROXY = isLocal ? 'http://127.0.0.1:5188' : null;
+            function weatherUrl(lat, lon) {
+                const p = new URLSearchParams({
+                    latitude:lat, longitude:lon,
+                    current:'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure',
+                    daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max',
+                    forecast_days:7, timezone:'Asia/Shanghai', wind_speed_unit:'ms',
+                });
+                return 'https://api.open-meteo.com/v1/forecast?' + p;
+            }
+
             // ── 天气查询（美化版 + 联网查坐标 & 自动保存到本地）──
             window.phoneGetWeather = async function(stationName, lat, lon, boxId) {
                 const box = document.getElementById(boxId);
@@ -6994,22 +7007,34 @@
                 try {
                     // 无坐标时联网搜索并保存到本地
                     if (!lat) {
-                        const gr = await fetch(`http://127.0.0.1:5188/geo?name=${encodeURIComponent(stationName)}`);
-                        if (gr.ok) {
-                            const gd = await gr.json();
-                            if (gd && gd.lat) {
-                                lat = gd.lat;
-                                lon = gd.lon;
-                                // 保存到 phoneData 和 localStorage
-                                for (let i = 0; i < phoneData.length; i++) {
-                                    if (phoneData[i].站名 === stationName) {
-                                        phoneData[i].纬度 = lat;
-                                        phoneData[i].经度 = lon;
-                                        break;
-                                    }
-                                }
-                                saveToStorage();
+                        // 有代理走 /geo，否则直接调 Open-Meteo Geocoding
+                        if (PROXY) {
+                            const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(stationName)}`);
+                            if (gr.ok) {
+                                const gd = await gr.json();
+                                if (gd && gd.lat) { lat = gd.lat; lon = gd.lon; }
                             }
+                        } else {
+                            try {
+                                const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(stationName)}&count=3&language=zh&format=json`;
+                                const gr = await fetch(url);
+                                const gd = await gr.json();
+                                if (gd.results && gd.results.length > 0) {
+                                    const cn = gd.results.find(x => x.country_code === 'CN') || gd.results[0];
+                                    lat = cn.latitude; lon = cn.longitude;
+                                }
+                            } catch(_) {}
+                        }
+                        // 保存到 phoneData 和 localStorage
+                        if (lat) {
+                            for (let i = 0; i < phoneData.length; i++) {
+                                if (phoneData[i].站名 === stationName) {
+                                    phoneData[i].纬度 = lat;
+                                    phoneData[i].经度 = lon;
+                                    break;
+                                }
+                            }
+                            saveToStorage();
                         }
                     }
 
@@ -7018,7 +7043,7 @@
                         return;
                     }
 
-                    const r = await fetch(`http://127.0.0.1:5188/weather?lat=${lat}&lon=${lon}`);
+                    const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
                     if (!r.ok) throw new Error('服务暂时不可用');
                     const w = await r.json();
                     const cur = w.current;
@@ -7072,7 +7097,7 @@
                         </div>
                     `;
                 } catch(e) {
-                    box.innerHTML = `<span class="err">⚠️ 查询失败${e.message.includes('fetch')?'：请确认天气代理已启动':''}</span>`;
+                    box.innerHTML = `<span class="err">⚠️ 查询失败${e.message.includes('fetch')?(PROXY?'：请确认天气代理已启动':'：网络请求失败，请检查站点能否访问 Open-Meteo'):''}</span>`;
                 } finally {
                     if (btn) btn.disabled = false;
                 }

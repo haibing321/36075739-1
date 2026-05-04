@@ -593,6 +593,27 @@
             font-weight: 500;
         }
         .phone-link:hover { text-decoration: underline; }
+        /* 电话卡片天气按钮 */
+        .phone-weather-btn {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: linear-gradient(135deg,#1e3a5f,#2563eb);
+            color: #fff; border: none; border-radius: 6px;
+            padding: 4px 10px; font-size: 0.78rem; font-weight: 600;
+            cursor: pointer; transition: opacity .2s;
+        }
+        .phone-weather-btn:hover { opacity: .85; }
+        .phone-weather-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .phone-weather-box {
+            background: #f0f7ff; border: 1px solid #bfdbfe;
+            border-radius: 8px; padding: 10px 14px; margin-top: 8px;
+            font-size: 0.85rem; line-height: 1.7; display: none;
+        }
+        .phone-weather-box .temp { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
+        .phone-weather-box .desc { color: var(--text-secondary); }
+        .phone-weather-box .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+        .phone-weather-box .stats span { color: var(--text-secondary); font-size: 0.78rem; }
+        .phone-weather-box .err { color: #dc2626; }
+        @keyframes weatherFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
         
         /* ========== 规章制度卡片 ========== */
         .rule-card-item {
@@ -6824,12 +6845,13 @@
                     return;
                 }
                 let html = '';
-                filtered.forEach(item => {
+                filtered.forEach((item, idx) => {
                     const cityPhoneRaw = item.市电 || '';
                     const cityPhoneDigits = cityPhoneRaw.replace(/\D/g, '');
                     const telHref = cityPhoneDigits ? `tel:${cityPhoneDigits}` : '#';
+                    const weatherId = 'pw' + idx;
                     html += `
-                        <div class="result-card">
+                        <div class="result-card" style="position:relative;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                 <h3 style="font-size:1.1rem; color:var(--primary);">${escapeHtml(item.站名 || '')}</h3>
                                 <span class="tag tag-category">${escapeHtml(item.单位 || '')}</span>
@@ -6840,7 +6862,12 @@
                                 <span style="color:var(--text-secondary);">市电：</span>
                                 <span><a href="${telHref}" class="phone-link" title="点击拨号">${escapeHtml(cityPhoneRaw)}</a></span>
                                 ${item.备注 ? `<span style="color:var(--text-secondary);">备注：</span><span>${escapeHtml(item.备注)}</span>` : ''}
+                                ${(item.纬度) ? `
+                                <span style="color:var(--text-secondary);">天气：</span>
+                                <span><button class="phone-weather-btn" onclick="phoneGetWeather('${escapeHtml(item.站名||'')}',${item.纬度},${item.经度},'${weatherId}')">☀️ 查看天气</button></span>
+                                ` : ''}
                             </div>
+                            <div class="phone-weather-box" id="${weatherId}"></div>
                         </div>
                     `;
                 });
@@ -6954,6 +6981,103 @@
             document.getElementById('phone-fileInput').addEventListener('change', phoneHandleFile);
             // 暴露数据获取接口（供联动数据使用）
             window.getPhoneData = function() { return phoneData; };
+
+            // ── 天气查询（美化版 + 联网查坐标 & 自动保存到本地）──
+            window.phoneGetWeather = async function(stationName, lat, lon, boxId) {
+                const box = document.getElementById(boxId);
+                if (!box) return;
+                box.style.display = 'block';
+                box.innerHTML = '<span style="color:var(--text-secondary)">⏳ 查询中…</span>';
+                const btn = box.previousElementSibling?.querySelector?.('.phone-weather-btn');
+                if (btn) btn.disabled = true;
+
+                try {
+                    // 无坐标时联网搜索并保存到本地
+                    if (!lat) {
+                        const gr = await fetch(`http://127.0.0.1:5188/geo?name=${encodeURIComponent(stationName)}`);
+                        if (gr.ok) {
+                            const gd = await gr.json();
+                            if (gd && gd.lat) {
+                                lat = gd.lat;
+                                lon = gd.lon;
+                                // 保存到 phoneData 和 localStorage
+                                for (let i = 0; i < phoneData.length; i++) {
+                                    if (phoneData[i].站名 === stationName) {
+                                        phoneData[i].纬度 = lat;
+                                        phoneData[i].经度 = lon;
+                                        break;
+                                    }
+                                }
+                                saveToStorage();
+                            }
+                        }
+                    }
+
+                    if (!lat) {
+                        box.innerHTML = `<div style="background:#450a0a;border-radius:8px;padding:10px;color:#fca5a5;font-size:.82rem;text-align:center;">⚠️ 未找到坐标，暂无法查天气。<br><span style="opacity:.7;font-size:.78rem">联网搜索不可用时请手动补充</span></div>`;
+                        return;
+                    }
+
+                    const r = await fetch(`http://127.0.0.1:5188/weather?lat=${lat}&lon=${lon}`);
+                    if (!r.ok) throw new Error('服务暂时不可用');
+                    const w = await r.json();
+                    const cur = w.current;
+                    const daily = w.daily;
+                    const wmo = {
+                        0:['☀️','晴','sunny'],1:['🌤️','少云','sunny'],2:['⛅','多云','cloudy'],3:['☁️','阴','cloudy'],
+                        45:['🌫️','雾','foggy'],51:['🌦️','毛毛雨','rainy'],61:['🌧️','小雨','rainy'],
+                        63:['🌧️','中雨','rainy'],65:['🌧️','大雨','rainy'],71:['❄️','小雪','snowy'],
+                        73:['❄️','中雪','snowy'],75:['❄️','大雪','snowy'],95:['⛈️','雷暴','stormy'],
+                    };
+                    const [icon, desc] = wmo[cur.weather_code] || ['🌡️',`码${cur.weather_code}`];
+                    const dirs = ['北','东北','东','东南','南','西南','西','西北'];
+                    const windDir = dirs[Math.round(cur.wind_direction_10m / 45) % 8];
+
+                    const now = new Date();
+                    const timeStr = now.toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+                    const wd = (s,i) => i===0?'今天':i===1?'明天':'周'+['日','一','二','三','四','五','六'][new Date(s).getDay()];
+
+                    let forecastHtml = '';
+                    for (let i = 0; i < daily.time.length; i++) {
+                        const [fi] = wmo[daily.weather_code[i]] || ['🌡️',''];
+                        const dayLabel = wd(daily.time[i], i);
+                        forecastHtml += `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;min-width:40px;font-size:.78rem;color:#e2e8f0">
+                            <span style="color:#94a3b8;font-weight:500">${dayLabel}</span>
+                            <span style="font-size:1.2rem">${fi}</span>
+                            <span><span style="color:#f87171;font-weight:600">${Math.round(daily.temperature_2m_max[i])}°</span> <span style="color:#93c5fd">${Math.round(daily.temperature_2m_min[i])}°</span></span>
+                        </span>`;
+                    }
+
+                    box.innerHTML = `
+                        <div style="background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:10px;padding:14px;margin:-2px;">
+                            <div style="display:flex;align-items:center;gap:16px;">
+                                <div style="font-size:4rem;line-height:1;animation:weatherFloat 3s ease-in-out infinite;">${icon}</div>
+                                <div style="flex:1">
+                                    <div style="display:flex;align-items:baseline;gap:6px;">
+                                        <span style="font-size:2.2rem;font-weight:700;color:#fff">${Math.round(cur.temperature_2m)}°C</span>
+                                        <span style="font-size:.85rem;color:#94a3b8">${desc}</span>
+                                    </div>
+                                    <div style="font-size:.78rem;color:#94a3b8;margin-top:2px;">🤚 体感 ${Math.round(cur.apparent_temperature)}°C · ⏱ ${timeStr}</div>
+                                </div>
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:.82rem;color:#cbd5e1;border-top:1px solid #475569;padding-top:8px;">
+                                <span>💧 湿度 ${cur.relative_humidity_2m}%</span>
+                                <span>🌬️ ${windDir} ${cur.wind_speed_10m}m/s</span>
+                                <span>🌧️ 降水 ${cur.precipitation}mm</span>
+                                <span>📊 气压 ${Math.round(cur.surface_pressure)}hPa</span>
+                            </div>
+                            <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid #475569;flex-wrap:wrap;justify-content:space-between;">
+                                ${forecastHtml}
+                            </div>
+                        </div>
+                    `;
+                } catch(e) {
+                    box.innerHTML = `<span class="err">⚠️ 查询失败${e.message.includes('fetch')?'：请确认天气代理已启动':''}</span>`;
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            };
+
             loadFromStorage();
         })();
 

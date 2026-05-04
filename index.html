@@ -6845,10 +6845,16 @@
                     return;
                 }
                 let html = '';
+                // 多号码拆分函数
+                function phoneLinks(text) {
+                    if (!text) return '<span style="color:var(--text-secondary)">—</span>';
+                    return text.split('\n').map((n, i) => {
+                        n = n.trim();
+                        const d = n.replace(/\D/g, '');
+                        return d ? `<a href="tel:${d}" class="phone-link" title="点击拨号${i>0?' '+ (i+1):''}">${escapeHtml(n)}</a>` : escapeHtml(n);
+                    }).join('<br>');
+                }
                 filtered.forEach((item, idx) => {
-                    const cityPhoneRaw = item.市电 || '';
-                    const cityPhoneDigits = cityPhoneRaw.replace(/\D/g, '');
-                    const telHref = cityPhoneDigits ? `tel:${cityPhoneDigits}` : '#';
                     const weatherId = 'pw' + idx;
                     html += `
                         <div class="result-card" style="position:relative;">
@@ -6858,11 +6864,11 @@
                             </div>
                             <div style="display:grid; grid-template-columns:auto 1fr; gap:8px 12px; margin-bottom:8px;">
                                 <span style="color:var(--text-secondary);">线名：</span><span>${escapeHtml(item.线名 || '')}</span>
-                                <span style="color:var(--text-secondary);">路电：</span><span>${escapeHtml(item.路电 || '')}</span>
+                                <span style="color:var(--text-secondary);">路电：</span><span>${phoneLinks(item.路电)}</span>
                                 <span style="color:var(--text-secondary);">市电：</span>
-                                <span><a href="${telHref}" class="phone-link" title="点击拨号">${escapeHtml(cityPhoneRaw)}</a></span>
+                                <span>${phoneLinks(item.市电)}</span>
                                 ${item.备注 ? `<span style="color:var(--text-secondary);">备注：</span><span>${escapeHtml(item.备注)}</span>` : ''}
-                                ${(item.纬度) ? `
+                                ${(item.站名) ? `
                                 <span style="color:var(--text-secondary);">天气：</span>
                                 <span><button class="phone-weather-btn" onclick="phoneGetWeather('${escapeHtml(item.站名||'')}',${item.纬度},${item.经度},'${weatherId}')">☀️ 查看天气</button></span>
                                 ` : ''}

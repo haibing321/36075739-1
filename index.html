@@ -1841,20 +1841,16 @@
                 flex: 0 1 auto;
                 text-align: center;
             }
-        }
 
-        /* ========== 全局响应式适配 ========== */
-        @media (max-width: 768px) {
+            /* 合并：全局响应式独有规则 */
             body { font-size: 14px; }
             .header-inner { padding: 0 12px; }
             .logo-title { font-size: 1.1rem; }
             .logo-subtitle { display: none; }
             .card-header { padding: 14px 16px; }
             .card-body { padding: 14px 16px; }
-            .nav-tabs { padding: 8px 10px; gap: 2px; }
-            .nav-btn { padding: 8px 10px; font-size: 0.8rem; }
             .btn { padding: 8px 12px; font-size: 0.8rem; }
-            .form-input, .form-select { padding: 10px 12px; font-size: 0.85rem; }
+
         }
         
         @media (max-width: 480px) {
@@ -2084,6 +2080,216 @@
             .card { box-shadow: none; border: 1px solid #000; page-break-inside: avoid; }
             .card-body { padding: 10px; }
             body { background: #fff; color: #000; font-size: 12pt; }
+        }
+
+        /* ========== 🚀 现代化增强样式 (2026) ========== */
+
+        /* ---- 无障碍：减少动画偏好 ---- */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+            .spinner { animation: none; border-color: var(--border); border-top-color: var(--info); }
+        }
+
+        /* ---- 骨架屏加载态 ---- */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.5s ease-in-out infinite;
+            border-radius: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+        @keyframes skeleton-shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton-text { height: 16px; margin-bottom: 10px; }
+        .skeleton-text:last-child { margin-bottom: 0; }
+        .skeleton-title { height: 24px; width: 60%; margin-bottom: 16px; }
+        .skeleton-card { height: 120px; margin-bottom: 16px; border-radius: 12px; }
+
+        /* ---- Toast 通知系统 ---- */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+            max-width: 380px;
+            width: calc(100vw - 40px);
+        }
+        .toast {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 14px 18px;
+            border-radius: 12px;
+            background: white;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+            border-left: 4px solid var(--primary);
+            pointer-events: auto;
+            animation: toast-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            backdrop-filter: blur(12px);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateX(100%) scale(0.95); }
+            to { opacity: 1; transform: translateX(0) scale(1); }
+        }
+        @keyframes toast-out {
+            from { opacity: 1; transform: translateX(0) scale(1); }
+            to { opacity: 0; transform: translateX(100%) scale(0.95); }
+        }
+        .toast.toast-exit { animation: toast-out 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards; }
+        .toast-success { border-left-color: var(--success); }
+        .toast-error { border-left-color: var(--accent); }
+        .toast-warning { border-left-color: var(--warning); }
+        .toast-info { border-left-color: var(--info); }
+        .toast-icon { font-size: 1.2rem; flex-shrink: 0; line-height: 1; }
+        .toast-body { flex: 1; min-width: 0; }
+        .toast-title { font-weight: 600; color: var(--text); }
+        .toast-msg { color: var(--text-secondary); font-size: 0.82rem; margin-top: 2px; word-break: break-word; }
+        .toast-close {
+            flex-shrink: 0; width: 22px; height: 22px;
+            border: none; background: transparent;
+            cursor: pointer; color: var(--text-secondary);
+            font-size: 14px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .toast-close:hover { background: rgba(0,0,0,0.08); color: var(--text); }
+
+        /* 手机端 Toast 全宽 */
+        @media (max-width: 600px) {
+            .toast-container {
+                top: auto; bottom: 80px; left: 12px; right: 12px;
+                max-width: none; width: auto;
+            }
+        }
+
+        /* ---- 按钮 Ripple 点击波纹效果 ---- */
+        .btn {
+            position: relative;
+            overflow: hidden;
+        }
+        .btn .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.35);
+            transform: scale(0);
+            animation: ripple-anim 0.6s linear;
+            pointer-events: none;
+        }
+        @keyframes ripple-anim {
+            to { transform: scale(4); opacity: 0; }
+        }
+        /* 按钮 loading 状态 */
+        .btn.loading {
+            color: transparent !important;
+            pointer-events: none;
+            position: relative;
+        }
+        .btn.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 16px; height: 16px;
+            margin: -8px 0 0 -8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .btn-secondary.loading::after {
+            border-top-color: var(--primary);
+            border-color: rgba(26,54,93,0.15);
+        }
+
+        /* ---- 卡片微交互增强 ---- */
+        .card {
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                        box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                        border-color 0.25s ease;
+            contain: layout style paint;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(66, 153, 225, 0.25);
+        }
+        .card:active { transform: translateY(0); }
+
+        /* ---- 表单输入焦点增强 ---- */
+        input:focus, select:focus, textarea:focus {
+            transition: border-color 0.2s ease, box-shadow 0.2s ease,
+                        background-color 0.2s ease;
+        }
+
+        /* ---- 触摸目标优化（最小44px）---- */
+        @media (pointer: coarse) {
+            .btn { min-height: 44px; }
+            .nav-btn { min-height: 48px; }
+            .btn-small { min-height: 36px; }
+            .btn-tiny { min-height: 32px; padding: 6px 10px; }
+            .btn-remove { width: 36px; height: 36px; }
+            .btn-remove-issue { width: 32px; height: 32px; }
+            .catalog-actions .btn { min-height: 40px; }
+        }
+
+        /* ---- 页面切换过渡增强 ---- */
+        .panel { animation: panelIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes panelIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ---- 结果卡片交错动画 ---- */
+        .result-card { animation: cardStagger 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        @keyframes cardStagger {
+            from { opacity: 0; transform: translateX(-16px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .rule-card-item { animation: cardFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        @keyframes cardFadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ---- 滚动条美化增强 ---- */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(26,54,93,0.15); border-radius: 3px; transition: background 0.2s; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(26,54,93,0.3); }
+        /* Firefox 滚动条 */
+        * { scrollbar-width: thin; scrollbar-color: rgba(26,54,93,0.15) transparent; }
+
+        /* ---- Focus 可见性增强（键盘导航）---- */
+        :focus-visible {
+            outline: 2px solid var(--info);
+            outline-offset: 2px;
+        }
+        button:focus:not(:focus-visible), a:focus:not(:focus-visible), input:focus:not(:focus-visible) {
+            outline: none;
+        }
+
+        /* ---- 图片懒加载过渡 ---- */
+        img[data-src] { opacity: 0; transition: opacity 0.5s ease; }
+        img.loaded { opacity: 1; }
+
+        /* ---- 导航 Tab 切换滑动指示器 ---- */
+        .nav-indicator {
+            position: absolute; bottom: 0;
+            height: 3px; background: var(--accent-light);
+            border-radius: 3px 3px 0 0;
+            transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
     </style>
@@ -14444,6 +14650,286 @@ ${details || '(无)'}
             });
             mo.observe(document.body, { childList: true, subtree: true });
         })();
+    </script>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--  🚀 前端增强引擎 (2026)                      -->
+    <!--  Toast通知 / 模态框增强 / Ripple / 懒加载 / 性能优化 -->
+    <!-- ═══════════════════════════════════════════ -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ============================================================
+        // 1. Toast 通知系统
+        // ============================================================
+        var Toast = {
+            _container: null,
+            _init: function() {
+                if (this._container) return;
+                this._container = document.createElement('div');
+                this._container.className = 'toast-container';
+                this._container.setAttribute('aria-live', 'polite');
+                document.body.appendChild(this._container);
+            },
+            show: function(type, title, msg, duration) {
+                duration = duration || 3000;
+                this._init();
+                var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+                var toast = document.createElement('div');
+                toast.className = 'toast toast-' + (type || 'info');
+                var iconEl = '<span class="toast-icon">' + (icons[type] || icons.info) + '</span>';
+                var bodyHtml = '<div class="toast-body"><div class="toast-title">' + title + '</div>';
+                if (msg) bodyHtml += '<div class="toast-msg">' + msg + '</div>';
+                bodyHtml += '</div>';
+                var closeBtn = '<button class="toast-close" aria-label="关闭">✕</button>';
+                toast.innerHTML = iconEl + bodyHtml + closeBtn;
+
+                // 关闭按钮事件
+                var closeFn = function() { Toast.dismiss(toast); };
+                toast.querySelector('.toast-close').addEventListener('click', closeFn);
+
+                this._container.appendChild(toast);
+
+                // 自动关闭
+                if (duration > 0) {
+                    setTimeout(function() { Toast.dismiss(toast); }, duration);
+                }
+
+                return toast;
+            },
+            dismiss: function(toastEl) {
+                if (!toastEl || !toastEl.parentNode || toastEl.classList.contains('toast-exit')) return;
+                toastEl.classList.add('toast-exit');
+                setTimeout(function() {
+                    if (toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
+                }, 320);
+            },
+            success: function(title, msg, dur) { return this.show('success', title, msg, dur); },
+            error: function(title, msg, dur) { return this.show('error', title, msg, dur); },
+            warning: function(title, msg, dur) { return this.show('warning', title, msg, dur); },
+            info: function(title, msg, dur) { return this.show('info', title, msg, dur); }
+        };
+        window.Toast = Toast;
+
+        // ============================================================
+        // 2. 模态框增强（ESC关闭 + 点击蒙层关闭）
+        // ============================================================
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                // 找到所有可见的模态框
+                var modals = document.querySelectorAll('.modal.active');
+                for (var i = modals.length - 1; i >= 0; i--) {
+                    var m = modals[i];
+                    // 排除需要用户确认的输入型模态
+                    var inputInside = m.querySelector('input:focus, textarea:focus, [contenteditable="true"]:focus');
+                    if (!inputInside) {
+                        m.classList.remove('active');
+                        m.style.display = '';
+                        break; // 只关闭最上层的
+                    }
+                }
+            }
+        });
+
+        // 点击蒙层关闭
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('modal') && e.target.classList.contains('active')) {
+                e.target.classList.remove('active');
+                e.target.style.display = '';
+            }
+        }, true);
+
+        // ============================================================
+        // 3. 按钮 Ripple 点击波纹效果
+        // ============================================================
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.btn');
+            if (!btn) return;
+
+            // 创建 ripple
+            var rect = btn.getBoundingClientRect();
+            var size = Math.max(rect.width, rect.height);
+            var x = e.clientX - rect.left - size / 2;
+            var y = e.clientY - rect.top - size / 2;
+
+            var ripple = document.createElement('span');
+            ripple.className = 'ripple';
+            ripple.style.cssText = 'width:' + size + 'px;height:' + size + 'px;left:' + x + 'px;top:' + y + 'px;';
+            btn.appendChild(ripple);
+
+            setTimeout(function() { if (ripple.parentNode) ripple.remove(); }, 650);
+        });
+
+        // ============================================================
+        // 4. 结果卡片交错动画（动态设置 delay）
+        // ============================================================
+        function applyCardStagger(containerSelector, cardSelector, baseDelay) {
+            containerSelector = containerSelector || '.result-list';
+            cardSelector = cardSelector || '.result-card, .rule-card-item';
+            baseDelay = baseDelay || 80;
+            var containers = document.querySelectorAll(containerSelector);
+            containers.forEach(function(container) {
+                var cards = container.querySelectorAll(cardSelector);
+                cards.forEach(function(card, idx) {
+                    card.style.animationDelay = (idx * baseDelay) + 'ms';
+                });
+            });
+        }
+        // 使用 MutationObserver 自动为新结果添加动画
+        var resultObserver = new MutationObserver(function(mutations) {
+            mutations.forEach(function(m) {
+                if (m.addedNodes.length > 0) {
+                    applyCardStagger();
+                    applyCardStagger(null, '.rule-card-item');
+                }
+            });
+        });
+        // 延迟观察，等 DOM 稳定后启动
+        setTimeout(function() {
+            var issueResults = document.getElementById('issue-results');
+            if (issueResults) resultObserver.observe(issueResults, { childList: true, subtree: true });
+            applyCardStagger();
+            applyCardStagger(null, '.rule-card-item');
+        }, 500);
+        window.applyCardStagger = applyCardStagger;
+
+        // ============================================================
+        // 5. 图片懒加载
+        // ============================================================
+        function initLazyLoad() {
+            var lazyImages = document.querySelectorAll('img[data-src]');
+            if (!lazyImages.length) return;
+
+            if ('IntersectionObserver' in window) {
+                var imgObserver = new IntersectionObserver(function(entries) {
+                    entries.forEach(function(entry) {
+                        if (entry.isIntersecting) {
+                            var img = entry.target;
+                            img.src = img.dataset.src;
+                            img.removeAttribute('data-src');
+                            img.classList.add('loaded');
+                            imgObserver.unobserve(img);
+                        }
+                    });
+                }, { rootMargin: '80px' });
+                lazyImages.forEach(function(img) { imgObserver.observe(img); });
+            } else {
+                // 降级处理
+                lazyImages.forEach(function(img) {
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                    img.classList.add('loaded');
+                });
+            }
+        }
+        // 初始化 + 动态监听
+        setTimeout(initLazyLoad, 300);
+        new MutationObserver(initLazyLoad).observe(document.body, { childList: true, subtree: true });
+        window.initLazyLoad = initLazyLoad;
+
+        // ============================================================
+        // 6. 触摸设备反馈增强
+        // ============================================================
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            document.documentElement.setAttribute('data-touch', '');
+            // 为可点击元素添加触摸反馈样式已通过 CSS :hover 处理
+        }
+
+        // ============================================================
+        // 7. 页面可见性变化时暂停动画/计时器（省电）
+        // ============================================================
+        document.addEventListener('visibilitychange', function() {
+            document.body.classList.toggle('page-hidden', document.hidden);
+        });
+
+        // ============================================================
+        // 8. 替代 alert() 为 Toast（可选 hook）
+        // ============================================================
+        var _origAlert = window.alert;
+        window.showAlert = function(msg) {
+            // 如果是简单成功消息，用 Toast；否则回退原生
+            if (typeof msg === 'string' && msg.length < 100) {
+                if (msg.includes('成功') || msg.includes('已复制') || msg.includes('已添加') || msg.includes('已完成') || msg.includes('已导出')) {
+                    Toast.success('操作成功', msg.replace(/[！。]/g, ''), 2500);
+                    return;
+                }
+                if (msg.includes('失败') || msg.includes('错误') || msg.includes('为空')) {
+                    Toast.error('操作失败', msg.replace(/[！。]/g, ''), 3000);
+                    return;
+                }
+            }
+            _origAlert.call(window, msg);
+        };
+
+        // ============================================================
+        // 9. 导航 Tab 切换平滑过渡指示器
+        // ============================================================
+        (function() {
+            var nav = document.getElementById('mainNav');
+            if (!nav) return;
+            var activeBtn = nav.querySelector('.nav-btn.active');
+            if (!activeBtn || window.innerWidth <= 768) return; // 移动端不需要
+
+            var indicator = document.createElement('div');
+            indicator.className = 'nav-indicator';
+            nav.appendChild(indicator);
+
+            function updateIndicator(btn) {
+                if (!btn) return;
+                indicator.style.width = btn.offsetWidth + 'px';
+                indicator.style.left = btn.offsetLeft + 'px';
+            }
+            updateIndicator(activeBtn);
+
+            // 监听 tab 切换（通过观察 active 类变化）
+            var navObserver = new MutationObserver(function(mutations) {
+                mutations.forEach(function(m) {
+                    if (m.attributeName === 'class' && m.target.classList.contains('nav-btn') && m.target.classList.contains('active')) {
+                        updateIndicator(m.target);
+                    }
+                });
+            });
+            nav.querySelectorAll('.nav-btn').forEach(function(btn) {
+                navObserver.observe(btn, { attributes: true });
+            });
+
+            // 窗口 resize 更新
+            window.addEventListener('resize', function() {
+                var curActive = nav.querySelector('.nav-btn.active');
+                if (curActive && window.innerWidth > 768) updateIndicator(curActive);
+            });
+        })();
+
+        // ============================================================
+        // 10. 输入防抖工具函数（供全局使用）
+        // ============================================================
+        window.debounce = function(fn, delay) {
+            var timer = null;
+            return function() {
+                var ctx = this, args = arguments;
+                clearTimeout(timer);
+                timer = setTimeout(function() { fn.apply(ctx, args); }, delay || 300);
+            };
+        };
+
+        // ============================================================
+        // 11. CSS contain 属性自动注入（重绘优化）
+        // ============================================================
+        function addContainOptimizations() {
+            var selectors = ['.result-list', '.diary-records-list', '.catalog-list',
+                             '#autoCheck-results', '#ds-history-list', '.hb-outline-content'];
+            selectors.forEach(function(sel) {
+                try {
+                    var el = document.querySelector(sel);
+                    if (el) el.style.contain = 'content';
+                } catch(e) {}
+            });
+        }
+        setTimeout(addContainOptimizations, 800);
+
+        console.log('%c🚀 安监智能查询系统 · 前端增强引擎已加载', 'color:#1a365d;font-weight:bold;font-size:12px;');
+    })();
     </script>
 </body>
 </html>

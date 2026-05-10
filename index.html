@@ -9256,11 +9256,13 @@
                 const userText = input.value.trim();
                 if (!userText) return;
 
-                // ── 意图路由：自动切换子模块 ──
+                // ── 意图路由：自动切换子模块（支持技能按钮豁免）──
+                var _skipRouting = window._skipIntentRouting_inner === true;
+                window._skipIntentRouting_inner = false;
                 const _lowerText = userText;
                 const _isCheckIntent = /对规|违反了?哪|不符合|哪条|违章|超限|应对应|依据什么规|检查问题/.test(_lowerText);
                 const _isWriteIntent = /写报告|生成报告|起草|撰写|安全分析|月度总结|专项报告/.test(_lowerText);
-                if (_isCheckIntent && typeof dsSwitchSub === 'function') {
+                if (!_skipRouting && _isCheckIntent && typeof dsSwitchSub === 'function') {
                     input.value = '';
                     dsSwitchSub('check');
                     const acInput = document.getElementById('autoCheck-input');
@@ -9270,7 +9272,7 @@
                     }
                     return;
                 }
-                if (_isWriteIntent && typeof dsSwitchSub === 'function') {
+                if (!_skipRouting && _isWriteIntent && typeof dsSwitchSub === 'function') {
                     input.value = '';
                     dsSwitchSub('write');
                     const wrInput = document.getElementById('wr-query-input');
@@ -15112,46 +15114,68 @@ ${details || '(无)'}
         return ref;
       }
 
-      // ---------- 6. 联网搜索 ----------
-      let userSearchEndpoint = '';
-      window.setSearchEndpoint = function(url) { userSearchEndpoint = url; console.log('搜索端点已设置', url); };
-
-      async function webSearch(query) {
-        if (!userSearchEndpoint) {
-          return { error: '未配置搜索API。请运行 setSearchEndpoint("你的搜索API地址") 进行配置。推荐使用自建 SearXNG 或 OpenSERP。' };
-        }
-        try {
-          const url = userSearchEndpoint + encodeURIComponent(query) + '&format=json';
-          const resp = await fetch(url);
-          const data = await resp.json();
-          if (data.results) return data.results;
-          else return [];
-        } catch(e) { return { error: '搜索失败: ' + e.message }; }
-      }
+      // ---------- 6. 联网搜索（DuckDuckGo + CORS代理，免配置）----------
+      window.setSearchEndpoint = function(url) {
+        console.log('内置搜索代理已启用，无需配置端点。如果你需要自定义，可传入 url 覆盖。');
+      };
 
       window.runWebSearch = async function() {
         const input = document.getElementById('ds-user-input');
         let query = input ? input.value.trim() : '';
-        if (!query) { const ai = document.getElementById('autoCheck-input'); if (ai) query = ai.value.trim(); }
-        if (!query) return alert('请输入要搜索的内容');
-        const results = await webSearch(query);
-        let resultText = '';
-        if (results.error) {
-          resultText = '🌐 联网搜索暂不可用：' + results.error + '\n\n请配置搜索端点后再试。';
-        } else if (!results.length) {
-          resultText = '🔍 未找到相关结果。';
-        } else {
-          resultText = '🔍 网络搜索结果：\n\n';
-          results.slice(0, 5).forEach(function(item, idx) {
-            resultText += (idx+1) + '. [' + (item.title || '无标题') + '](' + item.url + ')\n   ' + (item.snippet || item.description || '') + '\n\n';
-          });
-          resultText += '以上信息来自互联网，仅供参考。';
+        if (!query) {
+          const aiInput = document.getElementById('autoCheck-input');
+          if (aiInput) query = aiInput.value.trim();
         }
+        if (!query) {
+          if (typeof window.Toast !== 'undefined') window.Toast.warning('请输入搜索内容');
+          else alert('请输入搜索内容');
+          return;
+        }
+
+        const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+        const SEARCH_API = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1&skip_disambig=1';
+        const url = CORS_PROXY + encodeURIComponent(SEARCH_API);
+
+        let results = [];
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+          if (data.AbstractText) {
+            results.push({ title: data.Heading || '摘要', url: data.AbstractURL || '#', snippet: data.AbstractText });
+          }
+          if (data.RelatedTopics && data.RelatedTopics.length) {
+            for (var topic of data.RelatedTopics) {
+              if (topic.Text && topic.FirstURL) {
+                results.push({ title: topic.Text.split(' - ')[0] || '相关链接', url: topic.FirstURL, snippet: topic.Text });
+              }
+            }
+          }
+          results = results.slice(0, 8);
+        } catch (err) {
+          console.error('搜索失败', err);
+          if (typeof window.Toast !== 'undefined') window.Toast.error('搜索失败，请检查网络或稍后重试');
+          else alert('搜索失败，请检查网络');
+          return;
+        }
+
+        if (results.length === 0) {
+          if (typeof window.Toast !== 'undefined') window.Toast.info('未找到相关结果');
+          else alert('未找到相关结果');
+          return;
+        }
+
+        var _esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : function(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+        let resultText = '🔍 网络搜索结果：\n\n';
+        results.forEach(function(item, idx) {
+          resultText += (idx+1) + '. [' + item.title + '](' + item.url + ')\n   ' + item.snippet + '\n\n';
+        });
+        resultText += '以上信息来自互联网，仅供参考。';
+
         const chatBox = document.getElementById('ds-chat-box');
         if (chatBox) {
           const bubble = document.createElement('div');
           bubble.className = 'ds-row-assistant';
-          bubble.innerHTML = '<div class="ds-bubble-assistant" style="white-space:pre-wrap;">' + (typeof escapeHtml === 'function' ? escapeHtml(resultText) : resultText) + '</div>';
+          bubble.innerHTML = '<div class="ds-bubble-assistant" style="white-space:pre-wrap;">' + _esc(resultText) + '</div>';
           chatBox.appendChild(bubble);
           chatBox.scrollTop = chatBox.scrollHeight;
         }
@@ -15237,13 +15261,52 @@ ${details || '(无)'}
       }
 
       // ---------- 9. 增强 dsSendMsg ----------
+      // 在覆盖前保存原始函数引用，供后续调用
       var originalDsSendMsg = window.dsSendMsg;
+      // 暴露辅助函数/变量到 window，让外部重写的 dsSendMsg 也能访问
+      window.ROLE_PROMPTS = ROLE_PROMPTS;
+      window.extractFacts = extractFacts;
+      window.addMemory = addMemory;
+      window.getRelevantMemories = getRelevantMemories;
+      window.retrieveLocalData = retrieveLocalData;
+      window.buildReferenceText = buildReferenceText;
+      window._originalSendMsg = originalDsSendMsg;
+
       if (typeof originalDsSendMsg === 'function') {
         window.dsSendMsg = async function() {
           const inputEl = document.getElementById('ds-user-input');
           let userText = inputEl ? inputEl.value.trim() : '';
           if (!userText) return;
 
+          // ----- 意图路由：技能按钮豁免 -----
+          var skipRouting = window._skipIntentRouting === true;
+          window._skipIntentRouting = false; // 一次性，用后即清
+          // 同步到内层原始函数（原始 dsSendMsg 内也有意图路由）
+          if (skipRouting) window._skipIntentRouting_inner = true;
+
+          if (!skipRouting) {
+            const _isCheckIntent = /对规|违反了?哪|不符合|哪条|违章|超限|应对应|依据什么规|检查问题/.test(userText);
+            const _isWriteIntent = /写报告|生成报告|起草|撰写|安全分析|月度总结|专项报告/.test(userText);
+
+            if (_isCheckIntent && typeof window.dsSwitchSub === 'function') {
+              inputEl.value = '';
+              window.dsSwitchSub('check');
+              const acInput = document.getElementById('autoCheck-input');
+              if (acInput) acInput.value = userText;
+              if (typeof window.autoCheckAI_force === 'function') window.autoCheckAI_force();
+              return;
+            }
+            if (_isWriteIntent && typeof window.dsSwitchSub === 'function') {
+              inputEl.value = '';
+              window.dsSwitchSub('writer');
+              const wrInput = document.getElementById('wr-query-input');
+              if (wrInput) wrInput.value = userText;
+              if (typeof window.wrWrite === 'function') window.wrWrite();
+              return;
+            }
+          }
+
+          // ----- 正常对话：记忆 + 角色 + 本地检索 + 发送 -----
           const newFacts = extractFacts(userText);
           newFacts.forEach(function(f){ addMemory(f); });
 
@@ -15291,6 +15354,8 @@ ${details || '(无)'}
             btn.onclick = function(){ window.runWebSearch(); };
           } else {
             (function(s){ btn.onclick = function() {
+              // 设置豁免标志：本次发送走普通对话，不触发意图路由
+              window._skipIntentRouting = true;
               var input = document.getElementById('ds-user-input');
               if (input) { input.value = s.prompt; input.focus(); }
             }; })(skill);

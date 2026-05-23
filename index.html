@@ -1683,70 +1683,6 @@
                 opacity: 0.6;
                 transition: opacity 0.3s ease;
             }
-            /* 手机端隐藏原生滚动条 */
-            #rule-fullContentBody {
-                scrollbar-width: none;
-                -ms-overflow-style: none;
-            }
-            #rule-fullContentBody::-webkit-scrollbar {
-                display: none;
-            }
-            /* 自定义悬浮滚动条容器 */
-            #rule-fvScrollWrap {
-                position: relative;
-                overflow: hidden;
-            }
-            /* 悬浮滚动条轨道 */
-            #rule-fvScrollbar {
-                position: absolute;
-                right: 0;
-                top: 0;
-                bottom: 0;
-                width: 14px;
-                pointer-events: none;
-                z-index: 20;
-                opacity: 0;
-                transition: opacity 0.35s ease;
-                background: transparent;
-                display: flex;
-                align-items: flex-start;
-                justify-content: center;
-                padding: 2px 3px;
-                box-sizing: border-box;
-            }
-            #rule-fvScrollbar.visible {
-                opacity: 1;
-                pointer-events: auto;
-            }
-            /* 轨道背景线 */
-            #rule-fvScrollbar::before {
-                content: '';
-                position: absolute;
-                top: 4px; bottom: 4px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: 3px;
-                background: rgba(0,0,0,0.08);
-                border-radius: 2px;
-            }
-            /* 滑块 */
-            #rule-fvScrollThumb {
-                position: absolute;
-                left: 3px;
-                right: 3px;
-                width: auto;
-                min-height: 60px;
-                background: rgba(80,120,200,0.55);
-                border-radius: 4px;
-                cursor: pointer;
-                touch-action: none;
-                box-shadow: 0 1px 4px rgba(0,0,0,0.18);
-                transition: background 0.15s;
-            }
-            #rule-fvScrollThumb:active,
-            #rule-fvScrollThumb.dragging {
-                background: rgba(60,100,200,0.78);
-            }
         }
 
         /* 响应式调整 */
@@ -3417,124 +3353,8 @@
         };
         window.openModal = function(id) { document.getElementById(id).classList.add('active'); };
 
-        // ========== 自定义悬浮滚动条（手机端全文查看）==========
-        (function() {
-            const isMobile = () => window.matchMedia('(max-width: 600px)').matches;
-            let _sbFadeTimer = null;
-
-            function updateThumb() {
-                const body  = document.getElementById('rule-fullContentBody');
-                const bar   = document.getElementById('rule-fvScrollbar');
-                const thumb = document.getElementById('rule-fvScrollThumb');
-                if (!body || !bar || !thumb) return;
-                if (!isMobile()) { bar.classList.remove('visible'); return; }
-
-                const trackH  = body.clientHeight;
-                const scrollH = body.scrollHeight;
-                if (scrollH <= trackH + 2) { bar.classList.remove('visible'); return; }
-
-                // 轨道跟随内容区，不依赖 offsetTop（弹窗内部可能有误差）
-                bar.style.top    = '0';
-                bar.style.height = trackH + 'px';
-
-                const ratio    = trackH / scrollH;
-                const thumbH   = Math.max(60, Math.round(trackH * ratio));
-                const maxTop   = trackH - thumbH;
-                const thumbTop = Math.round((body.scrollTop / (scrollH - trackH)) * maxTop);
-
-                thumb.style.height = thumbH + 'px';
-                thumb.style.top    = thumbTop + 'px';
-            }
-
-            function showBar(keepMs) {
-                const bar  = document.getElementById('rule-fvScrollbar');
-                if (!bar || !isMobile()) return;
-                const body = document.getElementById('rule-fullContentBody');
-                if (!body || body.scrollHeight <= body.clientHeight + 2) return;
-                bar.classList.add('visible');
-                clearTimeout(_sbFadeTimer);
-                _sbFadeTimer = setTimeout(() => bar.classList.remove('visible'), keepMs || 1800);
-            }
-
-            function hideBarDelayed(ms) {
-                clearTimeout(_sbFadeTimer);
-                _sbFadeTimer = setTimeout(() => {
-                    const bar = document.getElementById('rule-fvScrollbar');
-                    if (bar) bar.classList.remove('visible');
-                }, ms || 1800);
-            }
-
-            // 滚动时同步 + 显示
-            document.addEventListener('DOMContentLoaded', function() {
-                const body  = document.getElementById('rule-fullContentBody');
-                const thumb = document.getElementById('rule-fvScrollThumb');
-                if (!body || !thumb) return;
-
-                // 内容区滚动时同步滑块位置
-                body.addEventListener('scroll', function() {
-                    updateThumb();
-                    showBar(1500);
-                });
-
-                // 手指触摸内容区时立即显示滚动条（不等滚动事件）
-                body.addEventListener('touchstart', function() {
-                    updateThumb();
-                    showBar(3000);
-                }, { passive: true });
-
-                // 内容变化后重算（图片加载等）
-                const ro = new ResizeObserver(() => {
-                    updateThumb();
-                });
-                ro.observe(body);
-
-                // -------- touch 拖拽滑块 --------
-                let _dragging = false, _startY = 0, _startScrollTop = 0;
-
-                thumb.addEventListener('touchstart', function(e) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    _dragging = true;
-                    thumb.classList.add('dragging');
-                    _startY = e.touches[0].clientY;
-                    _startScrollTop = body.scrollTop;
-                    clearTimeout(_sbFadeTimer);
-                }, { passive: false });
-
-                document.addEventListener('touchmove', function(e) {
-                    if (!_dragging) return;
-                    e.preventDefault();
-                    const b     = document.getElementById('rule-fullContentBody');
-                    const bar   = document.getElementById('rule-fvScrollbar');
-                    const th    = document.getElementById('rule-fvScrollThumb');
-                    if (!b || !bar || !th) return;
-                    const trackH  = b.clientHeight;
-                    const scrollH = b.scrollHeight;
-                    const thumbH  = parseFloat(th.style.height) || 60;
-                    const maxTop  = trackH - thumbH;
-                    const dy      = e.touches[0].clientY - _startY;
-                    const ratio   = maxTop > 0 ? dy / maxTop : 0;
-                    b.scrollTop   = _startScrollTop + ratio * (scrollH - trackH);
-                    updateThumb();
-                }, { passive: false });
-
-                document.addEventListener('touchend', function() {
-                    if (_dragging) {
-                        _dragging = false;
-                        thumb.classList.remove('dragging');
-                        hideBarDelayed(1800);
-                    }
-                });
-            });
-
-            // 每次打开全文弹窗时重算并显示
-            window._fvScrollbarReset = function() {
-                setTimeout(() => {
-                    updateThumb();
-                    showBar(2500);
-                }, 80);
-            };
-        })();
+        // 自定义滚动条已移除（改用原生滚动，消除手机端高频DOM计算卡顿）
+        window._fvScrollbarReset = function() {}; // 空函数，保持原有调用不报错
 
         window.autoResize = function(textarea) {
             if (!textarea) return;
@@ -4086,28 +3906,47 @@
             }
 
 
-            // 直接加载全文查看中的图片（本地 IndexedDB，无需懒加载）
-            function setupLazyImageObserver(container) {
-                container.querySelectorAll('img[data-img-id]').forEach(img => {
-                    if (img._loaded) return;
-                    img._loaded = true;
-                    const imgId = img.getAttribute('data-img-id');
-                    if (!imgId) return;
-                    getImageFromDB(imgId).then(blob => {
-                        if (blob) {
-                            const url = URL.createObjectURL(blob);
-                            img.src = url;
-                            img.classList.remove('rule-lazy-img');
-                            img.style.opacity = '1';
-                        } else {
-                            img.alt = '[图片未找到]';
-                            img.style.display = 'none';
-                        }
-                    }).catch(() => {
-                        img.alt = '[图片加载失败]';
+            // 真正的懒加载：IntersectionObserver 按需加载图片（解决含大量图片时手机端卡顿）
+            async function loadImageFromDB(img) {
+                if (img._loaded) return;
+                img._loaded = true;
+                const imgId = img.getAttribute('data-img-id');
+                if (!imgId) return;
+                try {
+                    const blob = await getImageFromDB(imgId);
+                    if (blob) {
+                        img.src = URL.createObjectURL(blob);
+                        img.classList.remove('rule-lazy-img');
+                        img.style.opacity = '1';
+                    } else {
+                        img.alt = '[图片未找到]';
                         img.style.display = 'none';
+                    }
+                } catch (e) {
+                    img.alt = '[图片加载失败]';
+                    img.style.display = 'none';
+                }
+            }
+
+            function setupLazyImageObserver(container) {
+                if (!('IntersectionObserver' in window)) {
+                    // 降级：直接加载全部图片
+                    container.querySelectorAll('img[data-img-id]').forEach(img => loadImageFromDB(img));
+                    return;
+                }
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            loadImageFromDB(entry.target);
+                            observer.unobserve(entry.target);
+                        }
                     });
+                }, {
+                    root: container,
+                    rootMargin: '200px', // 提前 200px 开始加载，滚动时无缝衔接
+                    threshold: 0.01
                 });
+                container.querySelectorAll('img[data-img-id]').forEach(img => observer.observe(img));
             }
 
             // 通用文件下载函数，兼容Safari/微信/iOS等不支持 a.click() 的浏览器
@@ -5584,15 +5423,15 @@
                     setTimeout(() => ruleFvScrollToHl(_fvCurHl), 150);
                 }
                 
-                // 绑定图片点击放大功能
-                setTimeout(() => {
-                    const images = bodyEl.querySelectorAll('img');
-                    images.forEach(img => {
-                        img.addEventListener('click', function() {
-                            this.classList.toggle('zoomed');
-                        });
+                // 图片点击放大：事件委托，无需遍历绑定（新增图片也自动生效）
+                if (!bodyEl._imgClickDelegated) {
+                    bodyEl._imgClickDelegated = true;
+                    bodyEl.addEventListener('click', function(e) {
+                        if (e.target.tagName === 'IMG') {
+                            e.target.classList.toggle('zoomed');
+                        }
                     });
-                }, 200);
+                }
             };
 
             // 点击搜索结果段落时打开全文并滚动到对应位置
@@ -5820,15 +5659,15 @@
                     }
                 }, 300);
                 
-                // 绑定图片点击放大功能
-                setTimeout(() => {
-                    const images = bodyEl.querySelectorAll('img');
-                    images.forEach(img => {
-                        img.addEventListener('click', function() {
-                            this.classList.toggle('zoomed');
-                        });
+                // 图片点击放大：事件委托（与 ruleViewFullText 共用同一个委托监听，不重复绑定）
+                if (!bodyEl._imgClickDelegated) {
+                    bodyEl._imgClickDelegated = true;
+                    bodyEl.addEventListener('click', function(e) {
+                        if (e.target.tagName === 'IMG') {
+                            e.target.classList.toggle('zoomed');
+                        }
                     });
-                }, 350);
+                }
             };
 
             function ruleFvScrollToHl(idx) {

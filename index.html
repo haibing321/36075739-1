@@ -13231,6 +13231,7 @@
                             stream: true,
                             temperature: 0.3,
                             max_tokens: 16384
+                        })
                     });
 
                     if (!resp.ok) {
@@ -13495,9 +13496,14 @@
                                 stream: true,
                                 temperature: 0.3,
                                 max_tokens: 16384
+                            })
+                        })
+
+                        if (!resp.ok) {
                             const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
                             throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
                         }
+
 
                         // 流式读取，写入气泡
                         let fullText = '';

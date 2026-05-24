@@ -13230,9 +13230,7 @@
                             messages: messages,
                             stream: true,
                             temperature: 0.3,
-                            max_tokens: 4096
-                        }),
-                        signal: _wrAbortController.signal
+                            max_tokens: 16384
                     });
 
                     if (!resp.ok) {
@@ -13496,11 +13494,7 @@
                                 ],
                                 stream: true,
                                 temperature: 0.3,
-                                max_tokens: 4096
-                            })
-                        });
-
-                        if (!resp.ok) {
+                                max_tokens: 16384
                             const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
                             throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
                         }
@@ -15010,10 +15004,31 @@ ${details || '(无)'}
 
       // ---------- 5. 本地检索 RAG ----------
       async function retrieveLocalData(query, options) {
-        options = options || { topNRules: 3, topNIssues: 3 };
+        // 智能写作已选模版+资料时跳过 BM25 检索，避免卡死
+        if (window._wrSkipLocalSearch) {
+          console.log('[retrieveLocalData] 跳过检索：_wrSkipLocalSearch=' + window._wrSkipLocalSearch);
+          return { rules: [], issues: [], skipped: true };
+        }
+        options = options || { topNRules: 3, topNIssues: 3, recentMonth: false };
         let rules = [], issues = [];
         try { const r = getBM25Rules(); if (r) rules = r.search(query, options.topNRules); } catch(e) {}
-        try { const i = getBM25Issues(); if (i) issues = i.search(query, options.topNIssues); } catch(e) {}
+        try {
+          const i = getBM25Issues();
+          if (i) {
+            let raw = i.search(query, options.topNIssues * 3); // 多搜一些，再按时间过滤
+            if (options.recentMonth) {
+              const oneMonthAgo = new Date();
+              oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+              raw = raw.filter(function(item) {
+                const t = item.datetime || item['时间'] || '';
+                if (!t) return false;
+                const d = new Date(t.replace(/\//g, '-'));
+                return d >= oneMonthAgo;
+              });
+            }
+            issues = raw.slice(0, options.topNIssues);
+          }
+        } catch(e) {}
         return { rules, issues };
       }
 
@@ -15161,17 +15176,29 @@ ${details || '(无)'}
           const q = document.getElementById('wr-query-input') ? document.getElementById('wr-query-input').value : '';
           if (!q) return originalWrGenerate();
 
-          // 已选择模版且已选择资料，且用户未明确要求检索本地数据 → 跳过本地检索，避免卡死
-          var hasTemplate = window._wrSelectedTemplate && window._wrSelectedTemplate.title;
-          var hasMaterials = window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0;
+          // 判断是否需要跳过本地检索
+          // 新规则：只要选了资料就停止本地搜索（资料已给足，不卡死）
+          //       没选资料时 → 做本地检索（仅最近1个月检查信息）
+          //       用户明确要求搜索时 → 不受资料限制，仍做本地检索
+          var hasMaterials = !!(window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0);
           var askForSearch = /检索|搜索|查找|查询.*规章|查询.*检查|关联.*资料|本地.*数据|补充.*资料/.test(q);
+          var shouldSkipSearch = hasMaterials && !askForSearch;
 
-          if (hasTemplate && hasMaterials && !askForSearch) {
-            await originalWrGenerate();
+          console.log('[wrGenerate] hasMaterials=' + hasMaterials + ' askForSearch=' + askForSearch + ' shouldSkipSearch=' + shouldSkipSearch);
+
+          if (shouldSkipSearch) {
+            // 跳过本地检索，直接生成
+            window._wrSkipLocalSearch = true;
+            try {
+              await originalWrGenerate();
+            } finally {
+              window._wrSkipLocalSearch = false;
+            }
             return;
           }
 
-          const { issues } = await retrieveLocalData(q, { topNIssues: 8 });
+          // 需要本地检索：仅搜索最近1个月检查信息（recentMonth: true）
+          const { issues } = await retrieveLocalData(q, { topNIssues: 8, recentMonth: true });
           let statsText = '';
           if (issues.length) {
             const total = issues.length;
@@ -15179,7 +15206,7 @@ ${details || '(无)'}
             const nb = issues.filter(function(i){ return (i['性质']||'').includes('B'); }).length;
             const nc = issues.filter(function(i){ return (i['性质']||'').includes('C'); }).length;
             const typicals = issues.slice(0,5).map(function(i,idx){ return (idx+1)+'. '+i.content.slice(0,150); }).join('\n');
-            statsText = '【台账真实数据】\n- 匹配问题总数：'+total+'条（A类'+na+'，B类'+nb+'，C类'+nc+'）\n- 典型问题：\n'+typicals+'\n\n';
+            statsText = '【台账真实数据（最近1个月）】\n- 匹配问题总数：'+total+'条（A类'+na+'，B类'+nb+'，C类'+nc+'）\n- 典型问题：\n'+typicals+'\n\n';
           }
           const originalInput = document.getElementById('wr-query-input');
           if (originalInput && statsText) {

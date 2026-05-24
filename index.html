@@ -4056,17 +4056,20 @@
                         const request = store.get(1);
                         request.onsuccess = () => {
                             const result = request.result;
-                            if (result && Array.isArray(result.data)) {
+                            // 只有当 data 是长度>0的数组时才使用，空数组或非法数据回退到示例
+                            if (result && Array.isArray(result.data) && result.data.length > 0) {
                                 rules = result.data;
+                                console.log('[loadRulesFromDB] 加载成功，共 ' + rules.length + ' 条规章');
                             } else {
                                 rules = sampleRules.map(r => ({ ...r }));
+                                console.log('[loadRulesFromDB] IndexedDB 无数据或为空，使用 ' + rules.length + ' 条示例规章');
                             }
                             resolve(rules);
                         };
                         request.onerror = () => reject(request.error);
                     });
                 } catch (e) {
-                    console.warn('IndexedDB加载失败，使用示例数据', e);
+                    console.warn('[loadRulesFromDB] IndexedDB加载失败，使用示例数据', e);
                     rules = sampleRules.map(r => ({ ...r }));
                     return rules;
                 }
@@ -4345,7 +4348,7 @@
                 return collected;
             }
 
-            function processParagraph(paragraph, index, allParagraphs, keywords, ruleIdx, matchMode = 'and') {
+            function processParagraph(paragraph, index, allParagraphs, keywords, ruleIdx, matchMode = 'and', absIdx = -1) {
                 const len = paragraph.length;
                 const SHORT_THRESHOLD = 50, LONG_THRESHOLD = 400, PREV_TARGET = 150, NEXT_TARGET = 190, MAX_PREV_PARAS = 6;
                 
@@ -4357,11 +4360,11 @@
                     let html = '';
                     fragments.forEach(f => {
                         // 函数返回的片段已经包含省略号，直接使用
-                        html += `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${ruleIdx}, ${index})">${highlightKeywords(f.text, keywords)}</p>`;
+                        html += `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(f.text, keywords)}</p>`;
                     });
                     return html;
                 } else if (len >= SHORT_THRESHOLD && len <= LONG_THRESHOLD) {
-                    return `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${ruleIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</p>`;
+                    return `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</p>`;
                 } else {
                     const prevParas = collectPrevParagraphs(allParagraphs, index, PREV_TARGET, MAX_PREV_PARAS);
                     let nextPara = '';
@@ -4371,13 +4374,16 @@
                     }
                     let html = '';
                     prevParas.forEach(p => html += `<span class="rule-context">${escapeHtml(p)}</span> `);
-                    html += `<span class="rule-matched-paragraph rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${ruleIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</span>`;
+                    html += `<span class="rule-matched-paragraph rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</span>`;
                     if (nextPara) html += ` <span class="rule-context">${escapeHtml(nextPara)}</span>`;
                     return `<p>${html}</p>`;
                 }
             }
 
             function generateRuleSnippet(rule, keywords, ruleIdx, matchMode = 'and') {
+                // 修复：从原始规章数组获取绝对索引（不受专业过滤影响）
+                const allRules = typeof window.getRulesData === 'function' ? window.getRulesData() : rules;
+                const absIdx = allRules.indexOf(rule);
                 const paragraphs = smartSplitParagraphs(rule.content);
                 if (paragraphs.length === 0) return '';
                 const lowerKeywords = keywords.map(k => k.toLowerCase());
@@ -4392,7 +4398,7 @@
                 if (matchedIndices.length === 0) return '';
                 let html = '';
                 matchedIndices.forEach(idx => {
-                    html += processParagraph(paragraphs[idx], idx, paragraphs, keywords, ruleIdx, matchMode);
+                    html += processParagraph(paragraphs[idx], idx, paragraphs, keywords, ruleIdx, matchMode, absIdx);
                 });
                 return html;
             }
@@ -5029,11 +5035,21 @@
                 const header = document.querySelector('#panel-rule .results-header');
                 if (!resultsList) return;
 
-                console.log('[renderResults] rules总数:', rules.length, 'trade:', trade, 'keywords:', keywords, 'matchMode:', matchMode);
+                // 如果没有任何规章数据，显示提示
+                if (rules.length === 0) {
+                    resultsList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>暂无规章数据，请先导入规章</p></div>';
+                    resultsList.style.display = 'block';
+                    if (resultCount) resultCount.textContent = '0 项';
+                    if (header) header.style.display = 'flex';
+                    return;
+                }
 
-                if (trade === '' && keywords.length === 0) {
+                // ===== 修改点1：只要没有关键词，就不搜索（选择专业也不触发）=====
+                if (keywords.length === 0) {
                     resultsList.style.display = 'none';
+                    resultsList.innerHTML = '';
                     if (header) header.style.display = 'none';
+                    if (resultCount) resultCount.textContent = '0 项';
                     return;
                 }
 
@@ -5043,13 +5059,10 @@
                 let filtered = rules;
                 if (trade !== '') filtered = filtered.filter(r => r.trade === trade);
 
-                console.log('[renderResults] 过滤后:', filtered.length);
-
                 let results = [];
                 if (keywords.length > 0) {
                     filtered.forEach((rule, ruleIdx) => {
                         const content = rule.content;
-                        console.log('[renderResults] 处理规则:', rule.title, 'content长度:', (content||'').length, 'content前100字:', (content||'').substring(0,100));
                         if (ruleSearchMode === 'full') {
                             const lowerContent = content.toLowerCase();
                             
@@ -5064,10 +5077,9 @@
                         } else {
                             try {
                                 const snippetHtml = generateRuleSnippet(rule, keywords, ruleIdx, matchMode);
-                                console.log('[renderResults] snippetHtml长度:', (snippetHtml||'').length);
                                 if (snippetHtml) {
                                     const matchCount = (snippetHtml.match(/<p>/g) || []).length;
-                                    // 计算匹配分数（OR模式下按命中关键词数量排序）
+                                    // 计算匹配分数（AND模式下按命中关键词数量排序）
                                     const matchScore = calculateMatchScore(rule, keywords, matchMode);
                                     results.push({ rule, snippetHtml, matchCount, matchScore });
                                 }
@@ -5075,14 +5087,6 @@
                                 console.error('[renderResults] generateRuleSnippet报错:', rule.title, snippetErr);
                             }
                         }
-                    });
-                } else {
-                    filtered.forEach(rule => {
-                        const content = rule.content || '';
-                        const paragraphs = smartSplitParagraphs(content);
-                        let fullHtml = '';
-                        paragraphs.forEach(para => fullHtml += `<p>${escapeHtml(para)}</p>`);
-                        results.push({ rule, snippetHtml: fullHtml, matchCount: paragraphs.length, matchScore: 0 });
                     });
                 }
 
@@ -5094,7 +5098,6 @@
                 ruleAllResults = results;
                 ruleTotalPages = Math.ceil(results.length / rulePageSize) || 1;
                 rulePage = 1;
-                console.log('[renderResults] 最终结果数:', results.length, 'results详情:', results.map(r => ({title:r.rule.title, snippetLen:r.snippetHtml.length})));
                 displayRulePage();
                 if (resultCount) resultCount.textContent = results.length + ' 项';
                 } catch(renderErr) {
@@ -5147,13 +5150,14 @@
                 }
                 
                 pageResults.forEach(item => {
-                    const ruleIdx = ruleAllResults.indexOf(item);
-                    const absIdx = rules.indexOf(item.rule);
-                    // 计算首个命中段落，供全文定位使用
+                    // ===== 修改点：从原始规章数组获取绝对索引（不受专业过滤影响）=====
+                    const allRules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                    const absIdx = allRules.indexOf(item.rule);
+                    
                     const firstParaText = _getRuleFirstMatchPara(item.rule);
-                    if (firstParaText !== null) {
+                    if (firstParaText !== null && absIdx !== -1) {
                         _ruleFirstMatchPara[absIdx] = firstParaText;
-                    } else {
+                    } else if (absIdx !== -1) {
                         delete _ruleFirstMatchPara[absIdx];
                     }
                     html += '<div class="rule-card-item">';
@@ -14398,28 +14402,26 @@ ${details || '(无)'}
 
         window.onclick = function(e) { if (e.target.classList.contains('modal')) e.target.classList.remove('active'); };
 
-        // ========== PWA 安装提示 ==========
+        // ========== PWA 安装提示（修复图标丢失 + 反复提示）==========
         (function() {
             if (!('serviceWorker' in navigator)) return;
             var _deferredPrompt = null;
             var _installBtn = null;
             var _installBtnAdded = false;
 
-            // 注册 Service Worker
             navigator.serviceWorker.register('sw.js').then(function() {
                 console.log('[PWA] SW 注册成功');
             }).catch(function(err) {
                 console.warn('[PWA] SW 注册失败:', err);
             });
 
-            // 监听可安装事件
             window.addEventListener('beforeinstallprompt', function(e) {
-                e.preventDefault(); // 阻止默认小弹窗
+                if (localStorage.getItem('pwa_install_dismissed') === '1') return;
+                e.preventDefault();
                 _deferredPrompt = e;
                 showInstallButton();
             });
 
-            // 监听安装完成
             window.addEventListener('appinstalled', function() {
                 console.log('[PWA] 应用已安装');
                 _deferredPrompt = null;
@@ -14454,10 +14456,8 @@ ${details || '(无)'}
                     transform:'translateY(100%)', transition:'transform .3s ease'
                 });
                 document.body.appendChild(_installBtn);
-                // 弹出
                 requestAnimationFrame(function() { _installBtn.style.transform = 'translateY(0)'; });
 
-                // 安装按钮点击
                 document.getElementById('_pwa_install_btn').onclick = function() {
                     if (!_deferredPrompt) return;
                     _deferredPrompt.prompt();
@@ -14466,21 +14466,24 @@ ${details || '(无)'}
                         _deferredPrompt = null;
                     });
                 };
-                // 关闭按钮
                 document.getElementById('_pwa_install_close').onclick = function() {
                     hideInstallButton();
+                    try { localStorage.setItem('pwa_install_dismissed', '1'); } catch(e) {}
                 };
             }
 
             function hideInstallButton() {
                 if (_installBtn) {
                     _installBtn.style.transform = 'translateY(100%)';
-                    setTimeout(function() { if (_installBtn && _installBtn.parentNode) _installBtn.parentNode.removeChild(_installBtn); _installBtnAdded = false; _installBtn = null; }, 300);
+                    setTimeout(function() {
+                        if (_installBtn && _installBtn.parentNode) _installBtn.parentNode.removeChild(_installBtn);
+                        _installBtnAdded = false;
+                        _installBtn = null;
+                    }, 300);
                 }
             }
 
-            // 如果已经安装过（通过 display-mode 判断），不再显示安装提示
-            if (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: window-controls-overlay)').matches) {
+            if (window.matchMedia('(display-mode: standalone)').matches) {
                 console.log('[PWA] 已作为应用运行');
             }
         })();

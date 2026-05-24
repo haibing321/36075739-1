@@ -1,14 +1,11 @@
 {
   "name": "安监智能查询系统",
   "short_name": "安监助手",
-  "description": "铁路安全监察智能查询与对规系统",
   "start_url": ".",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#1a365d",
   "theme_color": "#1a365d",
-  "scope": ".",
   "icons": [
     {
       "src": "icon-192.png",

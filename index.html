@@ -15160,6 +15160,17 @@ ${details || '(无)'}
         window.wrGenerate = async function() {
           const q = document.getElementById('wr-query-input') ? document.getElementById('wr-query-input').value : '';
           if (!q) return originalWrGenerate();
+
+          // 已选择模版且已选择资料，且用户未明确要求检索本地数据 → 跳过本地检索，避免卡死
+          var hasTemplate = window._wrSelectedTemplate && window._wrSelectedTemplate.title;
+          var hasMaterials = window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0;
+          var askForSearch = /检索|搜索|查找|查询.*规章|查询.*检查|关联.*资料|本地.*数据|补充.*资料/.test(q);
+
+          if (hasTemplate && hasMaterials && !askForSearch) {
+            await originalWrGenerate();
+            return;
+          }
+
           const { issues } = await retrieveLocalData(q, { topNIssues: 8 });
           let statsText = '';
           if (issues.length) {

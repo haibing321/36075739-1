@@ -3956,22 +3956,39 @@
                 container.querySelectorAll('img[data-img-id]').forEach(img => observer.observe(img));
             }
 
-            // 通用文件下载函数，兼容Safari/微信/iOS等不支持 a.click() 的浏览器
+            // 通用文件下载函数，兼容所有浏览器（含华为/Edge/Safari/微信/iOS等）
             function downloadBlob(blob, filename) {
-                // 方案1: msSaveBlob（IE/旧Edge）
+                // 确保ZIP文件有正确的MIME类型（华为等浏览器对此更严格）
+                if (filename.endsWith('.zip') && (!blob.type || blob.type === '' || blob.type === 'application/octet-stream')) {
+                    blob = new Blob([blob], { type: 'application/zip' });
+                }
+                
+                // 方案1: msSaveOrOpenBlob（EdgeHTML / 新版Edge部分版本）
+                if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+                    window.navigator.msSaveOrOpenBlob(blob, filename);
+                    return;
+                }
+                // 方案2: msSaveBlob（IE / 旧Edge）
                 if (window.navigator && window.navigator.msSaveBlob) {
                     window.navigator.msSaveBlob(blob, filename);
                     return;
                 }
+                
                 const url = URL.createObjectURL(blob);
-                // 方案2: 标准 a.click()
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;
+                a.style.display = 'none';
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                
+                // 延迟移除：华为等浏览器下载管线需要更多时间启动
+                // 不要立即removeChild，否则华为浏览器可能取消下载
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    // 延迟释放URL：大文件或慢速网络需要更长时间
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                }, 500);
             }
 
             // 从 HTML 提取纯文本，保留段落换行
@@ -4779,10 +4796,11 @@
                         hasImages: allImageIds.size > 0
                     }, null, 2));
                     
-                    // 生成ZIP文件
+                    // 生成ZIP文件（显式设置MIME类型，兼容华为等浏览器）
                     const zipBlob = await zip.generateAsync({ type: 'blob' });
+                    const typedZipBlob = new Blob([zipBlob], { type: 'application/zip' });
                     const tradeSuffix = selectedTrade ? '_' + selectedTrade : '_全部';
-                    downloadBlob(zipBlob, '铁路规章' + tradeSuffix + '_' + new Date().toISOString().slice(0, 10) + '.zip');
+                    downloadBlob(typedZipBlob, '铁路规章' + tradeSuffix + '_' + new Date().toISOString().slice(0, 10) + '.zip');
                     
                     alert('导出成功！共 ' + exportRules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : ''));
                 } catch (err) {
@@ -4849,9 +4867,10 @@
                         hasImages: allImageIds.size > 0
                     }, null, 2));
                     
-                    // 生成ZIP文件
+                    // 生成ZIP文件（显式设置MIME类型，兼容华为等浏览器）
                     const zipBlob = await zip.generateAsync({ type: 'blob' });
-                    downloadBlob(zipBlob, '铁路规章备份_' + new Date().toISOString().slice(0, 10) + '.zip');
+                    const typedZipBlob = new Blob([zipBlob], { type: 'application/zip' });
+                    downloadBlob(typedZipBlob, '铁路规章备份_' + new Date().toISOString().slice(0, 10) + '.zip');
                     
                     alert('导出成功！共 ' + rules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : ''));
                 } catch (err) {

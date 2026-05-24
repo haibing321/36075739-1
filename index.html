@@ -3976,14 +3976,14 @@
                 
                 const url = URL.createObjectURL(blob);
                 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+                const isZip = filename.endsWith('.zip');
                 
-                if (isMobile) {
-                    // === 手机端：异步操作后用户手势已丢失 ===
-                    // a.click() 在手势丢失后会被华为等浏览器拦截
-                    // 方案：window.open() 优先，被拦截则显示可点击下载按钮
-                    mobileDownload(url, filename);
+                if (isMobile && isZip) {
+                    // === 手机端 + ZIP：await 后手势已丢失，直接显示下载按钮 ===
+                    // window.open() 对 blob URL 永远返回 window 对象但不会下载，跳过
+                    showMobileDownloadBtn(url, filename);
                 } else {
-                    // === 桌面端：标准 a.click() ===
+                    // === 桌面端 / 手机端同步文件（JSON等）：标准 a.click() ===
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = filename;
@@ -3993,21 +3993,8 @@
                     setTimeout(() => {
                         document.body.removeChild(a);
                         setTimeout(() => URL.revokeObjectURL(url), 60000);
-                    }, 500);
+                    }, isMobile ? 2000 : 500);
                 }
-            }
-            
-            // 手机端下载（适配华为等浏览器异步后手势丢失场景）
-            function mobileDownload(url, filename) {
-                // 尝试 window.open —— 部分手机浏览器对 blob URL 会自动触发下载
-                var w = window.open(url, '_blank');
-                if (w) {
-                    // window.open 成功，延时释放 URL
-                    setTimeout(function() { URL.revokeObjectURL(url); }, 120000);
-                    return;
-                }
-                // 弹窗被拦截 → 显示可点击的下载按钮（用户手动点击 = 新手势，100%有效）
-                showMobileDownloadBtn(url, filename);
             }
             
             function showMobileDownloadBtn(url, filename) {
@@ -4042,11 +4029,11 @@
                 
                 document.body.appendChild(btn);
                 
-                // 60秒后自动移除
+                // 10秒后自动移除
                 setTimeout(function() {
                     if (btn.parentNode) btn.parentNode.removeChild(btn);
-                    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
-                }, 60000);
+                    setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
+                }, 10000);
             }
 
             // 从 HTML 提取纯文本，保留段落换行
@@ -4860,7 +4847,7 @@
                     const tradeSuffix = selectedTrade ? '_' + selectedTrade : '_全部';
                     downloadBlob(typedZipBlob, '铁路规章' + tradeSuffix + '_' + new Date().toISOString().slice(0, 10) + '.zip');
                     
-                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '\n\n手机端如未自动下载，请点击屏幕底部「下载」按钮。' : '';
+                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '\n\n【手机端】请点击屏幕底部「📥 下载」按钮完成下载。' : '';
                     alert('导出成功！共 ' + exportRules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : '') + mobileMsg);
                 } catch (err) {
                     console.error('ZIP导出失败:', err);
@@ -4931,7 +4918,7 @@
                     const typedZipBlob = new Blob([zipBlob], { type: 'application/zip' });
                     downloadBlob(typedZipBlob, '铁路规章备份_' + new Date().toISOString().slice(0, 10) + '.zip');
                     
-                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '\n\n手机端如未自动下载，请点击屏幕底部「下载」按钮。' : '';
+                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '\n\n【手机端】请点击屏幕底部「📥 下载」按钮完成下载。' : '';
                     alert('导出成功！共 ' + rules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : '') + mobileMsg);
                 } catch (err) {
                     console.error('ZIP导出失败:', err);

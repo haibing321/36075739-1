@@ -95,6 +95,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pinyin/2.11.0/pinyin.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xml-js/1.6.11/xml-js.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1a365d">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2816,6 +2818,7 @@
                             <option value="fangjian">🏗️ 房建安全监察</option>
                             <option value="huoyun">📦 货运安全监察</option>
                             <option value="tongyong">🛡️ 综合安全监察</option>
+                            <option value="frontend">💻 前端工程师</option>
                           </select>
                           <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
                             <input type="checkbox" id="memoryEnable" checked> 🧠 长期记忆
@@ -2878,6 +2881,10 @@
                                 <button onclick="wrWrite()" id="wr-write-btn"
                                     style="flex:1;padding:10px 16px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-md);font-size:0.92rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
                                     ✍️ 开始写作
+                                </button>
+                                <button onclick="stopWrGeneration()" id="wr-stop-btn"
+                                    style="display:none;padding:10px 14px;background:#e53e3e;color:#fff;border:none;border-radius:var(--radius-md);font-size:0.85rem;cursor:pointer;font-weight:700;">
+                                    ⏹️ 停止生成
                                 </button>
                                 <button onclick="wrSwitchTab('materials')"
                                     style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;font-size:0.85rem;cursor:pointer;">
@@ -3033,6 +3040,7 @@
                 <div style="display:flex;gap:6px;flex-shrink:0;">
                     <button onclick="wrCopyReport()" style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">📋 复制</button>
                     <button onclick="wrDownloadReport()" style="padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📥 下载TXT</button>
+                    <button onclick="wrDownloadDocxFromTemplate()" style="padding:6px 12px;background:#2b6cb0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📄 导出DOCX(模板)</button>
                     <button onclick="document.getElementById('wr-report-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);padding:0 4px;">✕</button>
                 </div>
             </div>
@@ -8299,6 +8307,8 @@
             const DS_PLACEHOLDER_KEY = 'YOUR_API_KEY_HERE';
 
             let dsHistory = [];   // [{role:'user'|'assistant', content:'...'}]
+            // 暴露给外部（反馈按钮下载对话用）
+            Object.defineProperty(window, 'dsHistory', { get: function(){ return dsHistory; }, configurable: true });
             let dsApiKey  = '';
             let dsApiUrl  = DS_DEFAULT_API_URL;
             let dsModel   = DS_DEFAULT_MODEL;
@@ -8332,31 +8342,20 @@
                 }
                 // 加载多对话历史
                 dsLoadConversations();
-                // 恢复上次对话（如有），否则自动创建一个新会话
-                const lastConvId = localStorage.getItem(DS_CURRENT_CONV_ID);
-                if (lastConvId && dsConversations.find(c => c.id === lastConvId)) {
-                    dsCurrentConvId = lastConvId;
-                    const conv = dsConversations.find(c => c.id === lastConvId);
-                    dsHistory = conv ? (conv.messages || []) : [];
-                } else if (dsConversations.length > 0) {
-                    // 恢复最近一条对话
-                    dsCurrentConvId = dsConversations[0].id;
-                    dsHistory = dsConversations[0].messages || [];
-                } else {
-                    // 首次使用，自动建立会话
-                    dsCurrentConvId = dsGenerateId();
-                    dsHistory = [];
-                    dsConversations.unshift({
-                        id: dsCurrentConvId,
-                        title: '新对话',
-                        messages: [],
-                        timestamp: Date.now(),
-                        pinned: false
-                    });
-                    dsSaveConversations();
-                }
+                // 每次打开默认显示新对话
+                dsCurrentConvId = dsGenerateId();
+                dsHistory = [];
+                dsConversations.unshift({
+                    id: dsCurrentConvId,
+                    title: '新对话',
+                    messages: [],
+                    timestamp: Date.now(),
+                    pinned: false
+                });
+                dsSaveConversations();
                 localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
                 dsRenderAll();
+                dsScrollBottom();
                 dsRenderHistoryList();
                 dsUpdateCtxInfo();
                 // 初始化侧边栏隐藏位置（适配手机端vw宽度）
@@ -8482,6 +8481,7 @@
                 localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
                 dsSaveConversations();
                 dsRenderAll();
+                dsScrollBottom();
                 dsRenderHistoryList();
                 // 切换对话后自动收起抽屉
                 if (_dsSidebarOpen) dsToggleSidebar();
@@ -9023,17 +9023,17 @@
                 });
             };
 
-            // 读取Word文件（使用mammoth.js）
+            // 读取Word文件（使用mammoth.js，保留表格结构）
             window.dsReadWordFile = function(file) {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         try {
                             const arrayBuffer = e.target.result;
-                            // 使用mammoth.js提取文本
-                            mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+                            // 使用 convertToHtml 保留表格结构
+                            mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
                                 .then(function(result) {
-                                    const text = result.value || '';
+                                    const text = window._htmlToTextPreserveTables(result.value || '');
                                     if (!text) {
                                         resolve('[Word文件] ' + file.name + '\n\n未能提取到文本内容，可能是图片为主的文档。\n\n文件大小：' + (file.size / 1024).toFixed(2) + ' KB');
                                     } else {
@@ -9428,12 +9428,37 @@
                 if (box) box.scrollTop = box.scrollHeight;
             }
 
+            // ---- 代码块下载 ----
+            window.dsDownloadCode = function(btn) {
+                var pre = btn.parentElement.querySelector('pre');
+                if (!pre) return;
+                var code = pre.textContent;
+                var ext = btn.getAttribute('data-ext') || 'txt';
+                var mimeMap = { html:'text/html', css:'text/css', js:'application/javascript', json:'application/json', xml:'application/xml', svg:'image/svg+xml' };
+                var mime = mimeMap[ext] || 'text/plain';
+                var blob = new Blob([code], {type: mime + ';charset=utf-8'});
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'code.' + ext;
+                a.click();
+                setTimeout(function() { URL.revokeObjectURL(a.href); }, 100);
+            };
+
             // ---- 简易 Markdown 渲染 ----
             function dsMarkdown(text) {
                 if (!text) return '';
                 let s = dsEsc(text);
-                // 代码块
-                s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre style="background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:6px 0;white-space:pre-wrap;">$1</pre>');
+                // 代码块（含下载按钮）
+                s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+                    var ext = (lang || 'txt').toLowerCase();
+                    var fileExts = { html:'html', css:'css', js:'js', javascript:'js', ts:'ts', typescript:'ts', json:'json', py:'py', python:'py', sh:'sh', bash:'sh', sql:'sql', md:'md', xml:'xml', svg:'svg', txt:'txt' };
+                    var fileExt = fileExts[ext] || ext;
+                    return '<div style="position:relative;margin:6px 0;">' +
+                        '<button onclick="window.dsDownloadCode(this)" data-ext="' + fileExt + '" ' +
+                        'style="position:absolute;top:6px;right:6px;background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
+                        'onmouseover="this.style.background=\'#2563eb\'" onmouseout="this.style.background=\'#3b82f6\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
+                        '<pre style="background:#1e293b;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';
+                });
                 // 行内代码
                 s = s.replace(/`([^`]+)`/g, '<code style="background:#e8ecf3;color:#c7254e;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>');
                 // 粗体
@@ -11697,10 +11722,26 @@
 
             // ---- IndexedDB 操作 ----
             let _wrDB = null;
+            let _wrDBOpening = null;
 
             function wrOpenDB() {
-                return new Promise((resolve, reject) => {
-                    if (_wrDB) return resolve(_wrDB);
+                // 如果正在打开中，复用同一个 Promise
+                if (_wrDBOpening) return _wrDBOpening;
+
+                _wrDBOpening = new Promise((resolve, reject) => {
+                    // 检查缓存连接是否仍然有效
+                    if (_wrDB) {
+                        try {
+                            // 快速有效性检测：数据库关闭后 objectStoreNames 不可访问
+                            void _wrDB.objectStoreNames;
+                            _wrDBOpening = null;
+                            return resolve(_wrDB);
+                        } catch(e) {
+                            console.log('[DB] 缓存连接已失效，重新打开');
+                            _wrDB = null;
+                        }
+                    }
+
                     const req = indexedDB.open(WR_DB_NAME, WR_DB_VER);
                     req.onupgradeneeded = e => {
                         const db = e.target.result;
@@ -11721,47 +11762,76 @@
                             ms.createIndex('importAt', 'importAt', { unique: false });
                         }
                     };
-                    req.onsuccess = e => { _wrDB = e.target.result; resolve(_wrDB); };
-                    req.onerror  = e => reject(e.target.error);
+                    req.onsuccess = e => {
+                        _wrDB = e.target.result;
+                        // 监听连接关闭，自动清除缓存
+                        _wrDB.onclose = () => {
+                            console.log('[DB] 连接已关闭，清除缓存');
+                            _wrDB = null;
+                            _wrDBOpening = null;
+                        };
+                        _wrDBOpening = null;
+                        resolve(_wrDB);
+                    };
+                    req.onerror = e => { _wrDBOpening = null; reject(e.target.error); };
+                    req.onblocked = () => {
+                        console.warn('[DB] 数据库被阻塞，关闭旧连接');
+                        if (_wrDB) { _wrDB.close(); _wrDB = null; }
+                    };
+                });
+
+                return _wrDBOpening;
+            }
+
+            // 事务重试包装：连接关闭时自动重连重试一次
+            function _wrRetry(fn) {
+                return fn().catch(err => {
+                    if (err && err.name === 'InvalidStateError' || String(err.message).includes('closing')) {
+                        console.log('[DB] 事务失败(连接关闭)，重试...');
+                        _wrDB = null;
+                        _wrDBOpening = null;
+                        return fn();
+                    }
+                    throw err;
                 });
             }
 
             function wrDbPut(store, item) {
-                return wrOpenDB().then(db => new Promise((res, rej) => {
+                return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
                     const tx = db.transaction(store, 'readwrite');
                     const req = tx.objectStore(store).put(item);
                     req.onsuccess = e => res(e.target.result);
                     req.onerror   = e => rej(e.target.error);
                     tx.oncomplete = () => console.log('[DB] 事务完成:', store);
                     tx.onerror    = () => rej(tx.error);
-                }));
+                })));
             }
 
             function wrDbGetAll(store) {
-                return wrOpenDB().then(db => new Promise((res, rej) => {
+                return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
                     const tx = db.transaction(store, 'readonly');
                     const req = tx.objectStore(store).getAll();
                     req.onsuccess = e => res(e.target.result);
                     req.onerror   = e => rej(e.target.error);
-                }));
+                })));
             }
 
             function wrDbDelete(store, id) {
-                return wrOpenDB().then(db => new Promise((res, rej) => {
+                return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
                     const tx = db.transaction(store, 'readwrite');
                     const req = tx.objectStore(store).delete(id);
                     req.onsuccess = () => res();
                     req.onerror   = e => rej(e.target.error);
-                }));
+                })));
             }
 
             function wrDbClear(store) {
-                return wrOpenDB().then(db => new Promise((res, rej) => {
+                return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
                     const tx = db.transaction(store, 'readwrite');
                     const req = tx.objectStore(store).clear();
                     req.onsuccess = () => res();
                     req.onerror   = e => rej(e.target.error);
-                }));
+                })));
             }
 
             // ---- 内置模板库 ----
@@ -11939,8 +12009,17 @@
             function wrStreamFormat(text) {
                 if (!text) return '';
                 let s = wrEsc(text);
-                // 代码块（防止内部转义）
-                s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre style="background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:6px 0;white-space:pre-wrap;">$1</pre>');
+                // 代码块（含下载按钮）
+                s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+                    var ext = (lang || 'txt').toLowerCase();
+                    var fileExts = { html:'html', css:'css', js:'js', javascript:'js', ts:'ts', typescript:'ts', json:'json', py:'py', python:'py', sh:'sh', bash:'sh', sql:'sql', md:'md', xml:'xml', svg:'svg', txt:'txt' };
+                    var fileExt = fileExts[ext] || ext;
+                    return '<div style="position:relative;margin:6px 0;">' +
+                        '<button onclick="(window.dsDownloadCode||function(b){var p=b.parentElement.querySelector(\'pre\');if(!p)return;var a=document.createElement(\'a\');a.href=URL.createObjectURL(new Blob([p.textContent],{type:\'text/plain;charset=utf-8\'}));a.download=\'code.' + fileExt + '\';a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},100)})(this)" data-ext="' + fileExt + '" ' +
+                        'style="position:absolute;top:6px;right:6px;background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
+                        'onmouseover="this.style.background=\'#2563eb\'" onmouseout="this.style.background=\'#3b82f6\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
+                        '<pre style="background:#1e293b;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';
+                });
                 // 粗体
                 s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
                 // 斜体
@@ -12241,137 +12320,63 @@
                     return;
                 }
 
-                // 已有对话历史 → 继续修改，跳过模板/资料弹窗，直接生成
                 if (_wrConvHistory.length > 0) {
                     wrGenerate();
                     return;
                 }
 
-                // 从资料库中获取写作模版（matType === 'template'）
-                wrDbGetAll(WR_MAT_STORE).then(mats => {
-                    const tpls = mats.filter(m => m.matType === 'template');
-                    if (!tpls || tpls.length === 0) {
-                        // 无模板，直接进入选择资料步骤
-                        window._wrSelectedTemplate = null;
-                        wrShowMaterialSelectionModal();
-                        return;
-                    }
-                    // 有模板，弹出选择弹窗（第一步：选择模板）
-                    let tplHtml = '<div style="display:flex;flex-direction:column;gap:6px;">';
-                    tpls.forEach(t => {
-                        tplHtml += '<button onclick="wrSelectTplAndProceed(' + t.id + ')" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.87rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#f8fafc\'">'
-                            + '<span>📝</span><span><strong>' + (t.title || t.fileName) + '</strong><span style="font-size:0.76rem;color:var(--text-secondary);margin-left:8px;">' + wrFmtDate(t.importAt).slice(0,10) + '</span></span>'
-                            + '</button>';
-                    });
-                    tplHtml += '<button onclick="wrSelectTplAndProceed(null)" style="padding:10px 14px;border:2px dashed #a0aec0;border-radius:8px;background:#f8fafc;font-size:0.87rem;cursor:pointer;color:#718096;" onmouseover="this.style.background=\'#f0f4f8\'" onmouseout="this.style.background=\'#f8fafc\'">🆕 不使用模板（自由撰写）</button>';
-                    tplHtml += '</div>';
-
-                    // 简单弹窗
+                // 一步展示：模板 + 资料库（合并）
+                Promise.all([wrDbGetAll(WR_MAT_STORE), wrDbGetAll(WR_RPT_STORE)]).then(([mats, reports]) => {
+                    const templates = mats.filter(m => m.matType === 'template');
+                    const otherMats = mats.filter(m => m.matType !== 'template');
+                    
+                    let modalHtml = `
+                    <div style="background:#fff;border-radius:14px;padding:20px;width:min(560px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✍️ 选择模板和参考资料</span>
+                            <button onclick="this.closest('.wr-step-modal').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;">✕</button>
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--text-secondary);">模板为可选，资料可多选（故障报告、检查信息等）</div>
+                        <div><label style="font-weight:600;">📄 写作模板</label>
+                        <select id="wr-step-template" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
+                            <option value="">-- 不使用模板 --</option>
+                            ${templates.map(t => `<option value="${t.id}">${wrEsc(t.title)}</option>`).join('')}
+                        </select></div>
+                        <div><label style="font-weight:600;">📚 参考资料（多选）</label>
+                        <div style="max-height:40vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;">
+                            ${otherMats.length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>' : otherMats.map(m => `<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="${m.id}"> ${wrEsc(m.title || m.fileName)} <span style="font-size:0.7rem;color:gray;">(${WR_MAT_TYPES[m.matType]?.label || m.matType})</span></label>`).join('')}
+                        </div></div>
+                        <div style="display:flex;gap:8px;justify-content:flex-end;">
+                            <button onclick="wrConfirmSelection()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;">确认并生成</button>
+                            <button onclick="this.closest('.wr-step-modal').remove()" style="padding:8px 16px;">取消</button>
+                        </div>
+                    </div>`;
                     const modal = document.createElement('div');
-                    modal.id = 'wr-write-step1-modal';
-                    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10100;display:flex;align-items:center;justify-content:center;';
-                    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(440px,95vw);max-height:80vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">'
-                        + '<div style="display:flex;align-items:center;justify-content:space-between;">'
-                        + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✍️ 第1步：选择写作模版</span>'
-                        + '<button onclick="this.closest(\'[style*=position\\:fixed]\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>'
-                        + '</div>'
-                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">选择合适的模板作为报告框架，或选择"不使用模板"自由撰写</div>'
-                        + tplHtml
-                        + '</div>';
+                    modal.className = 'wr-step-modal';
+                    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;display:flex;align-items:center;justify-content:center;';
+                    modal.innerHTML = modalHtml;
                     document.body.appendChild(modal);
                 });
             };
 
-            // 选择模板后进入第二步：选择资料
-            window.wrSelectTplAndProceed = function(tplId) {
-                // 关闭第一步弹窗
-                const step1Modal = document.getElementById('wr-write-step1-modal');
-                if (step1Modal) step1Modal.remove();
+            window.wrConfirmSelection = function() {
+                const templateSelect = document.getElementById('wr-step-template');
+                const selectedTemplateId = templateSelect ? templateSelect.value : '';
+                const selectedMatIds = Array.from(document.querySelectorAll('.wr-step-mat:checked')).map(cb => parseInt(cb.value));
                 
-                // 保存选中的模板
-                if (tplId) {
+                if (selectedTemplateId) {
                     wrDbGetAll(WR_MAT_STORE).then(mats => {
-                        const tpl = mats.find(m => m.id === tplId && m.matType === 'template');
-                        window._wrSelectedTemplate = tpl || null;
-                        wrShowMaterialSelectionModal();
+                        window._wrSelectedTemplate = mats.find(m => m.id == selectedTemplateId) || null;
+                        window._wrSelectedMaterialIds = selectedMatIds;
+                        document.querySelector('.wr-step-modal').remove();
+                        wrGenerate();
                     });
                 } else {
                     window._wrSelectedTemplate = null;
-                    wrShowMaterialSelectionModal();
+                    window._wrSelectedMaterialIds = selectedMatIds;
+                    document.querySelector('.wr-step-modal').remove();
+                    wrGenerate();
                 }
-            };
-
-            // 第二步：显示资料选择弹窗
-            window.wrShowMaterialSelectionModal = function() {
-                const query = (document.getElementById('wr-query-input') || {}).value || '';
-                
-                // 获取所有可用资料
-                wrDbGetAll(WR_MAT_STORE).then(mats => {
-                    // 过滤出非模板的资料（台账、检查信息、故障报告等）
-                    const materials = mats.filter(m => m.matType !== 'template');
-                    
-                    // 按类型分组
-                    const groups = {};
-                    materials.forEach(m => {
-                        const typeLabel = (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它';
-                        if (!groups[typeLabel]) groups[typeLabel] = [];
-                        groups[typeLabel].push(m);
-                    });
-
-                    let matHtml = '<div style="display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto;">';
-                    
-                    if (materials.length === 0) {
-                        matHtml += '<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:0.85rem;">暂无可用资料，可直接确认生成报告</div>';
-                    } else {
-                        Object.keys(groups).forEach(typeLabel => {
-                            matHtml += '<div style="margin-bottom:8px;">';
-                            matHtml += '<div style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:4px;padding:4px 8px;background:#f0f7ff;border-radius:4px;">' + typeLabel + '</div>';
-                            matHtml += '<div style="display:flex;flex-direction:column;gap:4px;">';
-                            groups[typeLabel].forEach(m => {
-                                const isChecked = window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.includes(m.id) ? 'checked' : '';
-                                matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#f8fafc;cursor:pointer;font-size:0.85rem;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#f8fafc\'">'
-                                    + '<input type="checkbox" class="wr-mat-checkbox" value="' + m.id + '" ' + isChecked + ' style="cursor:pointer;">'
-                                    + '<span style="flex:1;">' + wrEsc(m.title || m.fileName) + '</span>'
-                                    + '<span style="font-size:0.75rem;color:var(--text-secondary);">' + wrFmtDate(m.importAt).slice(0,10) + '</span>'
-                                    + '</label>';
-                            });
-                            matHtml += '</div></div>';
-                        });
-                    }
-                    matHtml += '</div>';
-
-                    const modal = document.createElement('div');
-                    modal.id = 'wr-write-step2-modal';
-                    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10100;display:flex;align-items:center;justify-content:center;';
-                    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
-                        + '<div style="display:flex;align-items:center;justify-content:space-between;">'
-                        + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">📚 第2步：选择相关资料</span>'
-                        + '<button onclick="this.closest(\'[style*=position\\:fixed]\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>'
-                        + '</div>'
-                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">勾选需要纳入报告的资料（可多选），然后点击确认</div>'
-                        + matHtml
-                        + '<div style="display:flex;gap:10px;margin-top:8px;">'
-                        + '<button onclick="wrConfirmWrite()" style="flex:1;padding:10px;background:linear-gradient(135deg,#1e3a5f,#2d5a87);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 确认形成报告</button>'
-                        + '<button onclick="document.getElementById(\'wr-write-step2-modal\').remove()" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.9rem;cursor:pointer;">取消</button>'
-                        + '</div>'
-                        + '</div>';
-                    document.body.appendChild(modal);
-                });
-            };
-
-            // 确认撰写报告（第三步：形成报告）
-            window.wrConfirmWrite = function() {
-                // 获取选中的资料
-                const checkboxes = document.querySelectorAll('#wr-write-step2-modal .wr-mat-checkbox:checked');
-                const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-                window._wrSelectedMaterialIds = selectedIds;
-                
-                // 关闭弹窗
-                const step2Modal = document.getElementById('wr-write-step2-modal');
-                if (step2Modal) step2Modal.remove();
-                
-                // 执行生成
-                wrGenerate();
             };
 
             // ---- 统一导入入口（弹出类型选择弹窗）----
@@ -12495,9 +12500,14 @@
                                 } else {
                                     try {
                                         const arrayBuffer = await file.arrayBuffer();
-                                        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                                        item.content = result.value || '';
-                                        item.rawText = result.value ? result.value.slice(0, 10000) : '[DOCX文件，内容为空]';
+                                        const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                                        const text = window._htmlToTextPreserveTables(result.value || '');
+                                        item.content = text;
+                                        item.rawText = text.slice(0, 10000);
+                                        // 如果是模板类型，保存原始 ArrayBuffer 用于后续 DOCX 导出
+                                        if (matType === 'template') {
+                                            item.templateBuffer = arrayBuffer;
+                                        }
                                     } catch(err) {
                                         console.error('[导入] DOCX解析失败:', err);
                                         item.rawText = '[DOCX解析失败: ' + (err.message || '未知错误') + ']';
@@ -12553,7 +12563,7 @@
                             console.log('[导入] 保存成功, ID:', savedId);
                             successCount++;
                         } catch(err) {
-                            console.error('[导入] 导入文件失败:', file.name, err);
+                            console.error('导入失败：' + file.name, err);
                             errorMessages.push(file.name + ': ' + (err.message || '未知错误'));
                         }
                         processed++;
@@ -12590,10 +12600,11 @@
                         ? '\n\n💡 历史报告已导入，您可以在资料管理中选中它并点击"设为模板"来创建自定义模板。'
                         : '';
                     
-                    let msg = '✅ 已成功导入 ' + successCount + '/' + files.length + ' 个文件到「' + typeLabel + '」分类。' + tip;
+                    let msg = '✅ 已成功导入 ' + successCount + '/' + files.length + ' 个文件到「' + typeLabel + '」分类。';
                     if (errorMessages.length > 0) {
-                        msg += '\n\n❌ 以下文件导入失败:\n' + errorMessages.join('\n');
+                        msg += '\n\n❌ 导入失败 ' + errorMessages.length + ' 个：\n' + errorMessages.join('\n');
                     }
+                    if (tip) msg += '\n' + tip;
                     alert(msg);
                     
                     fileInput.remove();
@@ -12959,13 +12970,34 @@
                     '5. 语言风格：严谨、规范、简洁，使用铁路安监专业术语。',
                     '6. 今天日期：' + todayStr + '。',
                     '',
-                    '【输出要求】',
-                    '- 直接输出最终文档内容，无需解释说明。',
-                    '- 按模板章节结构输出，不随意增减章节。',
-                    '- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。',
-                    '- 统计数字、日期等关键信息必须与台账数据一致。',
-                    '- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。',
                 ];
+
+                // 根据是否有模板，修改输出要求
+                if (template) {
+                    const placeholders = extractPlaceholders(template.content || '');
+                    if (placeholders.length > 0) {
+                        sysLines.push('【任务要求】');
+                        sysLines.push('请根据以下占位符列表，生成一个纯 JSON 对象（不要包裹在 ```json 代码块中），键为占位符名称（不含大括号），值为替换后的具体内容。');
+                        sysLines.push('占位符列表：' + placeholders.join(', '));
+                        sysLines.push('输出格式示例：{"问题总数":"12","A类数量":"3","典型问题列表":"1. 信号机故障\\n2. 轨道电路异常"}');
+                        sysLines.push('重要：JSON 中的多行文本值必须使用 \\\\n 表示换行，不能包含实际换行符。整个 JSON 必须在一行或严格符合 JSON 语法。');
+                        sysLines.push('只输出 JSON 对象，不要输出任何其他内容。');
+                    } else {
+                        sysLines.push('【输出要求】');
+                        sysLines.push('- 直接输出最终文档内容，无需解释说明。');
+                        sysLines.push('- 按模板章节结构输出，不随意增减章节。');
+                        sysLines.push('- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。');
+                        sysLines.push('- 统计数字、日期等关键信息必须与台账数据一致。');
+                        sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。');
+                    }
+                } else {
+                    sysLines.push('【输出要求】');
+                    sysLines.push('- 直接输出最终文档内容，无需解释说明。');
+                    sysLines.push('- 按模板章节结构输出，不随意增减章节。');
+                    sysLines.push('- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。');
+                    sysLines.push('- 统计数字、日期等关键信息必须与台账数据一致。');
+                    sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。');
+                }
 
                 const userLines = ['【用户需求】', query, ''];
 
@@ -13143,95 +13175,65 @@
                 const apiKey = localStorage.getItem(WR_API_KEY_K) || '';
                 const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
                 const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-chat';
-                if (!apiKey) {
-                    alert('请先在智能助手模块中配置 API Key。');
-                    return;
-                }
+                if (!apiKey) { alert('请先在智能助手模块中配置 API Key。'); return; }
 
-                const writeBtn  = document.getElementById('wr-write-btn');
+                const writeBtn = document.getElementById('wr-write-btn');
+                const stopBtn = document.getElementById('wr-stop-btn');
+                // 显示停止按钮
+                if (stopBtn) stopBtn.style.display = 'inline-block';
 
-                // 合并上传的文件内容到查询中
+                // 合并上传的文件内容
                 let enhancedQuery = q;
                 const uploadedFiles = (window._wrUploadedFiles || []).filter(Boolean);
-                if (uploadedFiles.length > 0) {
+                if (uploadedFiles.length) {
                     enhancedQuery += '\n\n【上传的文件内容】\n';
-                    uploadedFiles.forEach(f => {
-                        enhancedQuery += `\n--- 文件：${f.name} ---\n${f.content}\n`;
-                    });
+                    uploadedFiles.forEach(f => { enhancedQuery += `\n--- 文件：${f.name} ---\n${f.content}\n`; });
                 }
 
-                // 追加用户消息气泡
                 wrAppendChatBubble('user', q);
-                // 记录到对话历史（使用增强后的查询）
                 _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
-
-                // 清空输入框（保留内容给下次参考，但清空输入区）
-                const qInput = document.getElementById('wr-query-input');
-                if (qInput) { qInput.value = ''; qInput.style.height = ''; }
+                document.getElementById('wr-query-input').value = '';
                 wrUpdateConvBtn();
 
-                // 显示 AI 流式气泡（loading）
                 const aiBubble = wrAppendChatBubble('assistant', '', true);
                 const streamBubbleContent = document.getElementById('wr-stream-bubble-content');
-
-                // 修改报告按钮已移除，不需要禁用
-                if (writeBtn)  { writeBtn.disabled = true; }
+                if (writeBtn) writeBtn.disabled = true;
 
                 // 隐藏旧结果区
                 const resultEl = document.getElementById('wr-gen-result');
                 if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
 
                 try {
-                    // 仅使用用户手动选择的资料（不自动检索本地资料库）
-                    const parsed = wrParseQuery(q);
-                    let template = null;
+                    // 获取用户选择的模板和资料
+                    let template = window._wrSelectedTemplate;
                     let localMaterials = [];
-                    if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
+                    if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length) {
                         const allMats = await wrDbGetAll(WR_MAT_STORE);
                         localMaterials = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id) && m.matType !== 'template');
                     }
-                    if (window._wrSelectedTemplate) {
-                        template = window._wrSelectedTemplate;
-                    }
-                    const materials = {
-                        parsed: parsed,
-                        template: template,
-                        issues: [],
-                        stats: null,
-                        similarReports: [],
-                        ruleCandidates: [],
-                        localMaterials: localMaterials
-                    };
+                    const parsed = wrParseQuery(q);
+                    const materials = { parsed, template, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials };
 
-                    // 构建提示词（使用增强后的查询，包含文件内容）
+                    // 构建提示词
                     const { sysPrompt, userPrompt } = wrBuildPrompt(enhancedQuery, materials);
 
-                    // 构建消息序列（支持连续对话上下文）
+                    // 构建消息序列（保留最近4轮对话上下文）
                     const messages = [{ role: 'system', content: sysPrompt }];
-                    // 加入历史对话（最近4轮，避免超token）
                     const histSlice = _wrConvHistory.slice(-8);
                     histSlice.forEach(h => {
-                        if (h.role === 'user' && h.content !== enhancedQuery) {
-                            messages.push({ role: 'user', content: h.content });
-                        } else if (h.role === 'assistant') {
-                            messages.push({ role: 'assistant', content: h.content.slice(0, 1500) }); // 截断过长的历史回复
-                        }
+                        if (h.role === 'user' && h.content !== enhancedQuery) messages.push({ role: 'user', content: h.content });
+                        else if (h.role === 'assistant') messages.push({ role: 'assistant', content: h.content.slice(0, 1500) });
                     });
-                    // 加入当前 userPrompt（含资料检索上下文和文件内容）
                     messages.push({ role: 'user', content: userPrompt });
 
-                    // 调用API（流式）
                     _wrAbortController = new AbortController();
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
                         body: JSON.stringify({
-                            model: model,
-                            messages: messages,
-                            stream: true,
-                            temperature: 0.3,
-                            max_tokens: 16384
-                        })
+                            model, messages, stream: true, temperature: 0.3, max_tokens: 16384
+                        }),
+                        signal: _wrAbortController.signal
                     });
 
                     if (!resp.ok) {
@@ -13240,11 +13242,12 @@
                     }
 
                     let fullText = '';
-
-                    // 流式读取，更新气泡内容
                     const reader = resp.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
+                    let lastRender = 0;
+                    const RENDER_INTERVAL = 100; // 限制渲染频率
+
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
@@ -13260,93 +13263,96 @@
                                 const delta = obj.choices?.[0]?.delta?.content || '';
                                 if (delta) {
                                     fullText += delta;
-                                    if (streamBubbleContent) {
-                                        // 用 innerHTML 保留换行，将 \n 转为 <br>
+                                    const now = Date.now();
+                                    if (now - lastRender > RENDER_INTERVAL && streamBubbleContent) {
                                         streamBubbleContent.innerHTML = wrStreamFormat(fullText);
-                                        // 滚动对话区到底部
                                         const histEl = document.getElementById('wr-chat-history');
                                         if (histEl) histEl.scrollTop = histEl.scrollHeight;
+                                        lastRender = now;
                                     }
                                 }
                             } catch(e) {}
                         }
                     }
-
-                    // 去掉流式气泡的 id（流式结束）
+                    // 最后一次渲染
+                    if (streamBubbleContent) streamBubbleContent.innerHTML = wrStreamFormat(fullText);
+                    
+                    // 去掉流式气泡 id
                     if (aiBubble) aiBubble.id = '';
                     if (streamBubbleContent) streamBubbleContent.id = '';
 
-                    // 清理数据标记（只保留数值，去掉【数据:…】外壳）
+                    // 清理数据标记
                     fullText = fullText.replace(/【数据:典型问题\n([\s\S]*?)\n】/g, '$1');
                     fullText = fullText.replace(/【数据:([^\】]*?)】/g, '$1');
 
-                    // 记录 AI 回复到对话历史
+                    // ★ 关键改进：如果使用了模板，真正应用占位符替换 ★
+                    if (template && template.content) {
+                        const mapping = wrParseMapping(fullText);
+                        if (mapping && typeof mapping === 'object') {
+                            fullText = applyTemplatePlaceholders(template.content, mapping);
+                            // 重新渲染气泡：模板替换后内容已是 HTML，不能用 wrStreamFormat（会二次转义）
+                            if (streamBubbleContent) streamBubbleContent.innerHTML = fullText;
+                            const histEl = document.getElementById('wr-chat-history');
+                            if (histEl) histEl.scrollTop = histEl.scrollHeight;
+                        } else {
+                            console.warn('未解析到有效映射，保留 AI 原始输出');
+                        }
+                    }
+
+                    // 记录到对话历史
                     _wrConvHistory.push({ role: 'assistant', content: fullText, timestamp: Date.now() });
 
-                    // 保存当前报告内容用于修改功能
+                    // 保存当前报告内容
                     window._wrCurrentReportContent = fullText;
                     window._wrCurrentReportQuery   = enhancedQuery;
                     window._wrCurrentReportParsed  = parsed;
 
                     // 保存到历史
-                    let savedId = null;
-                    try {
-                        const reportTitle = q.slice(0, 30) + (q.length > 30 ? '…' : '');
-                        savedId = await wrSaveReport({
-                            title: reportTitle,
-                            category: parsed.reportType,
-                            query: enhancedQuery,
-                            content: fullText,
-                            materialCount: { issues: materials.issues.length, rules: materials.ruleCandidates.length, reports: materials.similarReports.length },
-                            date: Date.now()
-                        });
-                        window._wrCurrentReportId = savedId;
-                        console.log('[智能写作] 报告已保存，ID:', savedId);
-                    } catch (saveErr) {
-                        console.error('[智能写作] 保存报告失败:', saveErr);
-                    }
+                    const savedId = await wrSaveReport({
+                        title: q.slice(0, 30) + (q.length > 30 ? '…' : ''),
+                        category: parsed.reportType,
+                        query: enhancedQuery,
+                        content: fullText,
+                        materialCount: { issues: 0, rules: 0, reports: 0 },
+                        date: Date.now(),
+                        templateId: template ? template.id : null
+                    });
+                    window._wrCurrentReportId = savedId;
 
-                    // 在气泡下方追加操作按钮行
+                    // 在气泡下方追加操作按钮
                     if (aiBubble) {
                         const actionsDiv = document.createElement('div');
                         actionsDiv.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
-                        actionsDiv.innerHTML = (savedId
-                            ? '<button onclick="wrCopyText(\'' + savedId + '\')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>'
-                            + '<button onclick="wrDownloadText(\'' + savedId + '\')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>'
-                            + '<span style="font-size:0.72rem;color:#059669;align-self:center;">✅ 已保存</span>'
-                            : '<button onclick="wrCopyText()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>');
+                        actionsDiv.innerHTML = `
+                            <button onclick="wrCopyText('${savedId}')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>
+                            <button onclick="wrDownloadText('${savedId}')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>
+                            ${template && template.templateBuffer ? `<button onclick="wrDownloadDocxFromTemplate()" style="padding:5px 10px;background:#2b6cb0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📄 导出DOCX</button>` : ''}
+                            <span style="font-size:0.72rem;color:#059669;align-self:center;">✅ 已保存</span>
+                        `;
                         aiBubble.appendChild(actionsDiv);
                     }
 
-                    // 更新写作需求框提示词（引导继续修改）
-                    const qEl = document.getElementById('wr-query-input');
-                    if (qEl) qEl.placeholder = '继续提出修改需求，例如：请将第二节的典型问题改为更详细的描述…';
+                    document.getElementById('wr-query-input').placeholder = '继续提出修改需求…';
                     wrUpdateConvBtn();
-
                 } catch(err) {
                     if (err.name === 'AbortError') {
                         if (streamBubbleContent) {
                             streamBubbleContent.style.background = '#fff7ed';
-                            streamBubbleContent.style.color = '#9a3412';
-                            streamBubbleContent.style.border = '1px solid #fdba74';
                             streamBubbleContent.textContent = '⏹️ 已停止生成';
                         }
                     } else {
                         let msg = err.message || '未知错误';
-                        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('net::ERR')) {
-                            msg = '网络请求失败（可能是 file:// 限制），请部署到 HTTP 服务器后使用。';
-                        }
-                        // 更新气泡为错误信息
+                        if (msg.includes('Failed to fetch')) msg = '网络请求失败，请检查服务器配置';
                         if (streamBubbleContent) {
                             streamBubbleContent.style.background = '#fff5f5';
                             streamBubbleContent.style.color = '#e53e3e';
-                            streamBubbleContent.style.border = '1px solid #fca5a5';
                             streamBubbleContent.textContent = '❌ 生成失败：' + msg;
                         }
                     }
                 } finally {
+                    if (writeBtn) { writeBtn.disabled = false; writeBtn.textContent = '✍️ 开始写作'; }
+                    if (stopBtn) stopBtn.style.display = 'none';
                     _wrAbortController = null;
-                    if (writeBtn)  { writeBtn.disabled = false;  writeBtn.textContent = '✍️ 开始写作'; }
                 }
             };
 
@@ -13420,179 +13426,32 @@
 
             // 确认修改报告
             window.wrConfirmModify = async function() {
-                // 获取选中的资料
                 const checkboxes = document.querySelectorAll('#wr-modify-modal .wr-modify-mat-checkbox:checked');
                 const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
                 window._wrSelectedMaterialIds = selectedIds;
-                
-                // 关闭弹窗
-                const modal = document.getElementById('wr-modify-modal');
-                if (modal) modal.remove();
-                
-                // 如果有新选中的资料，重新生成报告
-                if (selectedIds.length > 0) {
-                    const q = window._wrCurrentReportQuery || (document.getElementById('wr-query-input') || {}).value || '';
-                    if (!q.trim()) {
-                        alert('写作需求为空，无法重新生成');
-                        return;
-                    }
-                    
-                    const apiKey = localStorage.getItem(WR_API_KEY_K) || '';
-                    const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
-                    const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-chat';
-                    if (!apiKey) {
-                        alert('请先在智能助手模块中配置 API Key。');
-                        return;
-                    }
+                document.getElementById('wr-modify-modal')?.remove();
 
-                    const writeBtn  = document.getElementById('wr-write-btn');
-
-                    // 追加用户修改请求气泡
-                    wrAppendChatBubble('user', '📝 [修改报告] 根据新增资料补充完善');
-
-                    // 追加 AI 流式气泡
-                    const aiBubble = wrAppendChatBubble('assistant', '', true);
-                    const streamBubbleContent = document.getElementById('wr-stream-bubble-content');
-                    if (streamBubbleContent) streamBubbleContent.textContent = '';
-
-                    if (writeBtn)  { writeBtn.disabled = true; }
-
-                    try {
-                        // 仅使用用户手动选择的资料（不自动检索）
-                        const parsed = wrParseQuery(q);
-                        let modifyTemplate = null;
-                        let modifyLocalMaterials = [];
-                        if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
-                            const allMats = await wrDbGetAll(WR_MAT_STORE);
-                            modifyLocalMaterials = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id) && m.matType !== 'template');
-                        }
-                        if (window._wrSelectedTemplate) {
-                            modifyTemplate = window._wrSelectedTemplate;
-                        }
-                        const materials = {
-                            parsed: parsed,
-                            template: modifyTemplate,
-                            issues: [],
-                            stats: null,
-                            similarReports: [],
-                            ruleCandidates: [],
-                            localMaterials: modifyLocalMaterials
-                        };
-                        
-                        // 添加修改提示
-                        const modifyHint = '\n\n【修改要求】请在原有报告基础上，根据新增资料进行补充和完善，保持报告结构一致。';
-                        const { sysPrompt, userPrompt } = wrBuildPrompt(q + modifyHint, materials);
-
-                        // 调用API
-                        const resp = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-                            body: JSON.stringify({
-                                model: model,
-                                messages: [
-                                    { role: 'system', content: sysPrompt + '\n\n【当前报告内容】\n' + window._wrCurrentReportContent },
-                                    { role: 'user', content: userPrompt }
-                                ],
-                                stream: true,
-                                temperature: 0.3,
-                                max_tokens: 16384
-                            })
-                        })
-
-                        if (!resp.ok) {
-                            const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
-                            throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
-                        }
-
-
-                        // 流式读取，写入气泡
-                        let fullText = '';
-                        const reader = resp.body.getReader();
-                        const decoder = new TextDecoder();
-                        let buffer = '';
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-                            buffer += decoder.decode(value, { stream: true });
-                            const lines = buffer.split('\n');
-                            buffer = lines.pop();
-                            for (const line of lines) {
-                                if (!line.startsWith('data: ')) continue;
-                                const data = line.slice(6).trim();
-                                if (data === '[DONE]') break;
-                                try {
-                                    const obj = JSON.parse(data);
-                                    const delta = obj.choices?.[0]?.delta?.content || '';
-                                    if (delta) {
-                                        fullText += delta;
-                                        // 实时更新气泡
-                                        const bubbleEl = document.getElementById('wr-stream-bubble-content');
-                                        if (bubbleEl) {
-                                            bubbleEl.innerHTML = wrStreamFormat(fullText);
-                                            const histEl = document.getElementById('wr-chat-history');
-                                            if (histEl) histEl.scrollTop = histEl.scrollHeight;
-                                        }
-                                    }
-                                } catch(e) {}
-                            }
-                        }
-
-                        // 流式结束，清除气泡id
-                        if (aiBubble) aiBubble.id = '';
-                        const finalBubble = document.getElementById('wr-stream-bubble-content');
-                        if (finalBubble) finalBubble.id = '';
-
-                        // 保存到历史
-                        let savedId = null;
-                        try {
-                            const reportTitle = (q.slice(0, 30) + (q.length > 30 ? '…' : '')) + ' [修改版]';
-                            savedId = await wrSaveReport({
-                                title: reportTitle,
-                                category: (window._wrCurrentReportParsed || {}).reportType || 'custom',
-                                query: q,
-                                content: fullText,
-                                materialCount: { issues: materials.issues.length, rules: materials.ruleCandidates.length, reports: materials.similarReports.length },
-                                date: Date.now()
-                            });
-                            window._wrCurrentReportId = savedId;
-                        } catch (saveErr) {
-                            console.error('[智能写作] 保存修改报告失败:', saveErr);
-                        }
-
-                        // 在气泡下方追加操作按钮
-                        if (aiBubble) {
-                            const actionsDiv = document.createElement('div');
-                            actionsDiv.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
-                            actionsDiv.innerHTML = (savedId
-                                ? '<button onclick="wrCopyText(\'' + savedId + '\')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>'
-                                + '<button onclick="wrDownloadText(\'' + savedId + '\')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>'
-                                + '<span style="font-size:0.72rem;color:#059669;align-self:center;">✅ 已保存</span>'
-                                : '');
-                            aiBubble.appendChild(actionsDiv);
-                        }
-
-                        // 更新当前报告内容
-                        window._wrCurrentReportContent = fullText;
-
-                    } catch(err) {
-                        let msg = err.message || '未知错误';
-                        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('net::ERR')) {
-                            msg = '网络请求失败（可能是 file:// 限制），请部署到 HTTP 服务器后使用。';
-                        }
-                        // 在气泡中展示错误
-                        const bubbleEl = document.getElementById('wr-stream-bubble-content');
-                        if (bubbleEl) {
-                            bubbleEl.style.color = '#e53e3e';
-                            bubbleEl.textContent = '❌ 修改失败：' + msg;
-                        } else {
-                            alert('修改失败：' + msg);
-                        }
-                    } finally {
-                        if (writeBtn)  { writeBtn.disabled = false;  writeBtn.textContent = '✍️ 开始写作'; }
-                    }
-                } else {
+                if (!selectedIds.length) {
                     alert('未选择新增资料，报告保持不变。');
+                    return;
                 }
+
+                // 获取上一轮报告内容
+                const previousReport = window._wrCurrentReportContent;
+                if (!previousReport) {
+                    alert('没有可修改的报告');
+                    return;
+                }
+
+                const modifyInstruction = `请基于以下【当前报告】内容，并根据新增资料进行补充和完善。不要从头生成，尽量保持原有结构和大部分文字，仅在必要时修改或增加段落。\n\n【当前报告】\n${previousReport}\n\n`;
+                const originalInput = document.getElementById('wr-query-input');
+                const originalVal = originalInput ? originalInput.value : '';
+                if (originalInput) originalInput.value = modifyInstruction + (originalVal || '用户要求：根据新增资料完善报告');
+                
+                // 复用生成流程
+                await wrGenerate();
+                
+                if (originalInput) originalInput.value = originalVal;
             };
 
             window.wrClearResult = function() {
@@ -13759,6 +13618,100 @@
                 return saved;
             }
 
+            // ---- 占位符提取函数 ----
+            function extractPlaceholders(text) {
+                const regex = /\{\{(\w+)\}\}/g;
+                const matches = new Set();
+                let m;
+                while ((m = regex.exec(text)) !== null) {
+                    matches.add(m[1]);
+                }
+                return Array.from(matches);
+            }
+
+            // ---- 解析 AI 返回的 JSON 映射 ----
+            function wrParseMapping(text) {
+                try {
+                    const trimmed = text.trim();
+                    // 尝试直接解析 JSON
+                    if (trimmed.startsWith('{')) {
+                        const parsed = JSON.parse(trimmed);
+                        if (typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+                    }
+                } catch(e) {
+                    console.log('[wrParseMapping] 直接解析失败:', e.message);
+                }
+                try {
+                    // 尝试从 markdown 代码块中提取
+                    let jsonStr = null;
+                    const mdMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+                    if (mdMatch) {
+                        jsonStr = mdMatch[1].trim();
+                    } else {
+                        // 使用贪婪匹配找到最后一个完整的 JSON 对象
+                        const braceMatch = text.match(/(\{[\s\S]*\})/);
+                        if (braceMatch) jsonStr = braceMatch[1].trim();
+                    }
+                    if (jsonStr) {
+                        const parsed = JSON.parse(jsonStr);
+                        if (typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+                    }
+                } catch(e) {
+                    console.log('[wrParseMapping] 提取解析失败:', e.message);
+                }
+                return null;
+            }
+
+            // ---- 真正应用占位符替换 ----
+            function applyTemplatePlaceholders(templateContent, mapping) {
+                if (!templateContent || !mapping) return templateContent;
+                let result = templateContent;
+                for (const [key, value] of Object.entries(mapping)) {
+                    const placeholder = `{{${key}}}`;
+                    result = result.split(placeholder).join(String(value));
+                }
+                // 清理未替换的占位符
+                result = result.replace(/\{\{\w+\}\}/g, '（待补充）');
+                return result;
+            }
+
+            // ---- 导出 DOCX（使用 html-docx-js） ----
+            window.wrDownloadDocxFromTemplate = async function() {
+                const modal = document.getElementById('wr-report-modal');
+                const report = modal._currentReport;
+                if (!report) {
+                    // 如果没有打开模态框，尝试使用当前生成的报告
+                    if (!window._wrCurrentReportContent) {
+                        alert('没有可导出的报告');
+                        return;
+                    }
+                    await exportDocxFromHtml(window._wrCurrentReportContent, '报告');
+                    return;
+                }
+                await exportDocxFromHtml(report.content, report.title);
+            };
+
+            async function exportDocxFromHtml(htmlContent, fileName) {
+                if (typeof window.htmlDocx === 'undefined') {
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js';
+                        script.onload = resolve;
+                        script.onerror = () => reject(new Error('加载 html-docx-js 失败'));
+                        document.head.appendChild(script);
+                    });
+                }
+                const fullHtml = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>' + fileName + '</title></head>\n<body>\n' + htmlContent + '\n</body>\n</html>';
+                const blob = window.htmlDocx.asBlob(fullHtml);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName + '.docx';
+                a.click();
+                URL.revokeObjectURL(url);
+                if (typeof Toast !== 'undefined') Toast.success('DOCX 已生成');
+            }
+
             window.wrRenderHistory = async function() {
                 const reports = await wrDbGetAll(WR_RPT_STORE);
                 const listEl  = document.getElementById('wr-history-list');
@@ -13880,13 +13833,68 @@
             }
 
             /**
+             * HTML → 纯文本，保留表格结构为 pipe 行格式
+             * 表格每行输出为 | cell1 | cell2 | ... |，非表格块级元素每行一个
+             */
+            function _htmlToTextPreserveTables(html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html || '', 'text/html');
+                const lines = [];
+
+                function _walk(node) {
+                    if (!node) return;
+                    const tag = (node.tagName || '').toLowerCase();
+
+                    // 表格：每行输出 pipe 格式
+                    if (tag === 'table') {
+                        const rows = node.querySelectorAll('tr');
+                        if (rows.length > 0) {
+                            rows.forEach(tr => {
+                                const cells = tr.querySelectorAll('td, th');
+                                if (cells.length > 0) {
+                                    const rowText = '| ' + Array.from(cells).map(c => c.textContent.trim()).join(' | ') + ' |';
+                                    lines.push(rowText);
+                                }
+                            });
+                            lines.push(''); // 表格后空行分隔
+                        }
+                        return;
+                    }
+
+                    // 段落/标题/列表项 → 一行
+                    if (tag === 'p' || /^h[1-6]$/.test(tag) || tag === 'li' || tag === 'div') {
+                        const text = node.textContent.trim();
+                        if (text) lines.push(text);
+                        return;
+                    }
+
+                    // 文本节点
+                    if (node.nodeType === 3) {
+                        const text = node.textContent.trim();
+                        if (text) lines.push(text);
+                        return;
+                    }
+
+                    // 其他元素：递归子节点
+                    if (node.childNodes) {
+                        node.childNodes.forEach(_walk);
+                    }
+                }
+
+                _walk(doc.body);
+                return lines.join('\n').trim();
+            }
+            window._htmlToTextPreserveTables = _htmlToTextPreserveTables;
+
+            /**
              * 解析DOCX文件 → { title, content, sheets:null }
+             * 使用 convertToHtml 保留表格结构
              */
             async function wrParseDocx(file) {
                 if (typeof mammoth === 'undefined') throw new Error('mammoth 库未加载，请检查网络');
                 const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.extractRawText({ arrayBuffer });
-                const content = (result.value || '').trim();
+                const result = await mammoth.convertToHtml({ arrayBuffer });
+                const content = _htmlToTextPreserveTables(result.value || '');
                 // 尝试从正文首行提取标题
                 const firstLine = content.split('\n').find(l => l.trim().length > 2) || file.name.replace(/\.docx?$/i, '');
                 return {
@@ -14883,7 +14891,8 @@ ${details || '(无)'}
         'tongxin':  '你现在作为一名通信安全监察专家进行工作，精通GSM-R、光纤、数调等规章，请从通信专业视角分析问题。',
         'fangjian': '你现在作为一名房建安全监察专家进行工作，精通站台限界、雨棚、房屋等规章，请从房建专业视角分析问题。',
         'huoyun':   '你现在作为一名货运安全监察专家进行工作，精通装载加固、超限货物等规章，请从货运专业视角分析问题。',
-        'tongyong': '你现在作为一名铁路综合安全监察专家，能够进行跨专业的综合分析、风险研判。'
+        'tongyong': '你现在作为一名铁路综合安全监察专家，能够进行跨专业的综合分析、风险研判。',
+        'frontend': '你是一位资深前端工程师。请根据用户需求编写干净的 HTML/CSS/JS 代码。要求：代码自包含，可直接运行；使用现代浏览器特性；输出完整 HTML 代码块。'
       };
 
       // ---------- 2.1 角色数据源配置 ----------
@@ -14897,7 +14906,8 @@ ${details || '(无)'}
         'tongxin':  { rules: true,  issues: false },
         'fangjian': { rules: true,  issues: false },
         'huoyun':   { rules: true,  issues: true  },
-        'tongyong': { rules: true,  issues: true  }
+        'tongyong': { rules: true,  issues: true  },
+        'frontend': { rules: false, issues: false }
       };
 
       // ---------- 3. 长期记忆管理 ----------
@@ -15354,10 +15364,37 @@ ${details || '(无)'}
       // ---------- 11. 反馈收集 ----------
       function addFeedbackButtons(messageDiv, assistantContent) {
         var fbDiv = document.createElement('div');
-        fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px;';
-        fbDiv.innerHTML = '<button class="feedback-good" style="background:none; border:1px solid #ccc; border-radius:12px; padding:2px 8px; font-size:0.7rem; cursor:pointer;">👍 有用</button>' +
-                          '<button class="feedback-bad" style="background:none; border:1px solid #ccc; border-radius:12px; padding:2px 8px; font-size:0.7rem; cursor:pointer;">👎 无用</button>';
+        fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px; flex-wrap:wrap;';
+        fbDiv.innerHTML = '<button class="feedback-copy" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#10b981\';this.style.color=\'#10b981\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="复制本条回复">📋 复制</button>' +
+                          '<button class="feedback-download" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#8b5cf6\';this.style.color=\'#8b5cf6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="下载本条回复">📥 下载</button>' +
+                          '<button class="feedback-good" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👍 有用</button>' +
+                          '<button class="feedback-bad" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#ef4444\';this.style.color=\'#ef4444\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👎 无用</button>';
         messageDiv.appendChild(fbDiv);
+        // 复制本消息
+        fbDiv.querySelector('.feedback-copy').onclick = function(){
+          var txt = assistantContent;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(txt).then(function(){
+              if (typeof window.Toast !== 'undefined') window.Toast.success('已复制到剪贴板');
+            }).catch(function(){ fallbackCopy(txt); });
+          } else { fallbackCopy(txt); }
+        };
+        function fallbackCopy(txt) {
+          var ta = document.createElement('textarea');
+          ta.value = txt; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy'); document.body.removeChild(ta);
+          if (typeof window.Toast !== 'undefined') window.Toast.success('已复制到剪贴板');
+        }
+        // 下载本消息
+        fbDiv.querySelector('.feedback-download').onclick = function(){
+          var blob = new Blob([assistantContent], {type: 'text/plain;charset=utf-8'});
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = '智能对话_' + new Date().toISOString().slice(0,10) + '.txt';
+          a.click();
+          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 100);
+        };
         fbDiv.querySelector('.feedback-good').onclick = function(){ saveFeedback('good', assistantContent); };
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };
       }
@@ -15381,7 +15418,7 @@ ${details || '(无)'}
                 if (node.nodeType === 1 && node.classList && node.classList.contains('ds-row-assistant')) {
                   var bubble = node.querySelector('.ds-bubble-assistant');
                   if (bubble && !bubble.querySelector('.feedback-good')) {
-                    addFeedbackButtons(node, bubble.innerText);
+                    addFeedbackButtons(bubble, bubble.innerText);
                   }
                 }
               });

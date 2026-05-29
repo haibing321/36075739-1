@@ -2807,7 +2807,7 @@
                         <!-- ========== 智能助手增强工具栏 ========== -->
                         <div id="agent-toolbar" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
                           <select id="expertRole" style="background: white; border: 1px solid #cbd5e1; border-radius: 20px; padding: 5px 12px; font-size: 0.85rem;">
-                            <option value="">🧑‍💼 通用安全监察</option>
+                            <option value="">🧑‍💼 通用</option>
                             <option value="dianwu">⚡ 电务安全监察</option>
                             <option value="gongwu">🛤️ 工务安全监察</option>
                             <option value="gongdian">🔌 供电安全监察</option>
@@ -2822,6 +2822,9 @@
                           </select>
                           <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
                             <input type="checkbox" id="memoryEnable" checked> 🧠 长期记忆
+                          </label>
+                          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
+                            <input type="checkbox" id="webSearchEnable"> 🌐 联网搜索
                           </label>
                           <div style="flex:1"></div>
                           <div id="skillButtons" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
@@ -15308,8 +15311,28 @@ ${details || '(无)'}
             }
           }
 
-          // 4. 组装最终消息
-          const finalMessage = rolePrompt + memoryText + refText + '用户问题：' + finalUserText;
+          // 4. 联网搜索（如启用）
+          const webSearchCheck = document.getElementById('webSearchEnable');
+          let webText = '';
+          if (webSearchCheck && webSearchCheck.checked) {
+            try {
+              const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+              const SEARCH_API = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(finalUserText) + '&format=json&no_html=1&skip_disambig=1';
+              const resp = await fetch(CORS_PROXY + encodeURIComponent(SEARCH_API));
+              const data = await resp.json();
+              let results = [];
+              if (data.AbstractText) results.push(data.AbstractText);
+              if (data.RelatedTopics && data.RelatedTopics.length) {
+                data.RelatedTopics.forEach(function(t){ if (t.Text) results.push(t.Text); });
+              }
+              if (results.length) {
+                webText = '【联网搜索结果】\n' + results.slice(0, 5).join('\n\n') + '\n\n';
+              }
+            } catch(e) { /* 搜索失败静默，不影响对话 */ }
+          }
+
+          // 5. 组装最终消息
+          const finalMessage = rolePrompt + memoryText + webText + refText + '用户问题：' + finalUserText;
           inputEl.value = finalMessage;
           await originalDsSendMsg();
           inputEl.value = '';
@@ -15470,7 +15493,8 @@ ${details || '(无)'}
         if (!roleSelect || !skillContainer) return;
 
         function updateSkillVisibility() {
-          skillContainer.style.display = roleSelect.value ? 'flex' : 'none';
+          // 前端工程师和未选角色时隐藏技能
+          skillContainer.style.display = (roleSelect.value && roleSelect.value !== 'frontend') ? 'flex' : 'none';
         }
 
         roleSelect.addEventListener('change', updateSkillVisibility);

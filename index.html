@@ -14874,16 +14874,30 @@ ${details || '(无)'}
 
       // ---------- 2. 角色提示词 ----------
       const ROLE_PROMPTS = {
-        'dianwu':   '你是一位电务安全监察专家，精通信号、联锁、闭塞、CTC、LKJ、轨道电路、电缆、道岔缺口监测等电务规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'gongwu':   '你是一位工务安全监察专家，精通线路、桥隧、道口、防护栅栏、防洪、胀轨、轨检等工务规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'gongdian': '你是一位供电安全监察专家，精通接触网、变电、电力、远动、停送电管理等供电规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'chewu':    '你是一位车务安全监察专家，精通接发列车、调车、列尾、施工登销记、防溜等车务规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'jiwu':     '你是一位机务安全监察专家，精通机车运用、乘务管理、LKJ分析、制动机试验、整备等机务规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'cheliang': '你是一位车辆安全监察专家，精通客车、货车检修、5T系统、轮轴、制动梁等车辆规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'tongxin':  '你是一位通信安全监察专家，精通无线列调、GSM-R、光纤、漏缆、数调等通信规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'fangjian': '你是一位房建安全监察专家，精通站台限界、雨棚、房屋、给排水等房建规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'huoyun':   '你是一位货运安全监察专家，精通装载加固、超限货物、危险品运输、集装箱等货运规章。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。',
-        'tongyong': '你是一位综合安全监察专家，擅长跨专业安全分析、风险研判。请严格依据【参考资料】中的规章条款和检查信息进行分析，给出专业判断。'
+        'dianwu':   '你现在作为一名电务安全监察专家进行工作，精通信号、联锁、CTC、轨道电路等规章，请从电务专业视角分析问题。',
+        'gongwu':   '你现在作为一名工务安全监察专家进行工作，精通线路、桥隧、防洪等规章，请从工务专业视角分析问题。',
+        'gongdian': '你现在作为一名供电安全监察专家进行工作，精通接触网、变电、电力等规章，请从供电专业视角分析问题。',
+        'chewu':    '你现在作为一名车务安全监察专家进行工作，精通接发列车、调车、施工登销记等规章，请从车务专业视角分析问题。',
+        'jiwu':     '你现在作为一名机务安全监察专家进行工作，精通机车运用、乘务管理、LKJ分析等规章，请从机务专业视角分析问题。',
+        'cheliang': '你现在作为一名车辆安全监察专家进行工作，精通5T系统、轮轴、制动等规章，请从车辆专业视角分析问题。',
+        'tongxin':  '你现在作为一名通信安全监察专家进行工作，精通GSM-R、光纤、数调等规章，请从通信专业视角分析问题。',
+        'fangjian': '你现在作为一名房建安全监察专家进行工作，精通站台限界、雨棚、房屋等规章，请从房建专业视角分析问题。',
+        'huoyun':   '你现在作为一名货运安全监察专家进行工作，精通装载加固、超限货物等规章，请从货运专业视角分析问题。',
+        'tongyong': '你现在作为一名铁路综合安全监察专家，能够进行跨专业的综合分析、风险研判。'
+      };
+
+      // ---------- 2.1 角色数据源配置 ----------
+      const ROLE_DATA_SOURCES = {
+        'dianwu':   { rules: true,  issues: true  },
+        'gongwu':   { rules: true,  issues: false },
+        'gongdian': { rules: true,  issues: false },
+        'chewu':    { rules: true,  issues: true  },
+        'jiwu':     { rules: true,  issues: true  },
+        'cheliang': { rules: true,  issues: false },
+        'tongxin':  { rules: true,  issues: false },
+        'fangjian': { rules: true,  issues: false },
+        'huoyun':   { rules: true,  issues: true  },
+        'tongyong': { rules: true,  issues: true  }
       };
 
       // ---------- 3. 长期记忆管理 ----------
@@ -15231,6 +15245,7 @@ ${details || '(无)'}
       var originalDsSendMsg = window.dsSendMsg;
       // 暴露辅助函数/变量到 window，让外部重写的 dsSendMsg 也能访问
       window.ROLE_PROMPTS = ROLE_PROMPTS;
+      window.ROLE_DATA_SOURCES = ROLE_DATA_SOURCES;
       window.extractFacts = extractFacts;
       window.addMemory = addMemory;
       window.getRelevantMemories = getRelevantMemories;
@@ -15244,36 +15259,50 @@ ${details || '(无)'}
           let userText = inputEl ? inputEl.value.trim() : '';
           if (!userText) return;
 
-          // ── 意图路由：已关闭，对话完全独立 ──
-          // var skipRouting = window._skipIntentRouting === true;
-          // window._skipIntentRouting = false;
-          // if (skipRouting) window._skipIntentRouting_inner = true;
-          // if (!skipRouting) {
-          //   const _isCheckIntent = /对规|违反了?哪|不符合|哪条|违章|超限|应对应|依据什么规|检查问题/.test(userText);
-          //   const _isWriteIntent = /写报告|生成报告|起草|撰写|安全分析|月度总结|专项报告/.test(userText);
-          //   if (_isCheckIntent && typeof window.dsSwitchSub === 'function') {
-          //     inputEl.value = '';
-          //     window.dsSwitchSub('check');
-          //     const acInput = document.getElementById('autoCheck-input');
-          //     if (acInput) acInput.value = userText;
-          //     if (typeof window.autoCheckAI_force === 'function') window.autoCheckAI_force();
-          //     return;
-          //   }
-          //   if (_isWriteIntent && typeof window.dsSwitchSub === 'function') {
-          //     inputEl.value = '';
-          //     window.dsSwitchSub('writer');
-          //     const wrInput = document.getElementById('wr-query-input');
-          //     if (wrInput) wrInput.value = userText;
-          //     if (typeof window.wrWrite === 'function') window.wrWrite();
-          //     return;
-          //   }
-          // }
+          // 获取角色
+          const roleSelect = document.getElementById('expertRole');
+          const selectedRole = roleSelect ? roleSelect.value : '';
+          const isProfessional = selectedRole !== '';
 
-          // ----- 消息预处理已由角色联动模块接管，此处仅透传 -----
-          if (inputEl) {
-            await originalDsSendMsg();
-            inputEl.value = '';
+          // 1. 角色设定
+          let rolePrompt = '';
+          if (isProfessional && ROLE_PROMPTS[selectedRole]) {
+            rolePrompt = '【角色设定】\n' + ROLE_PROMPTS[selectedRole] + '\n\n';
           }
+
+          // 2. 长期记忆
+          const newFacts = extractFacts(userText);
+          newFacts.forEach(f => addMemory(f));
+          const memories = getRelevantMemories(userText);
+          const memoryText = memories.length ? '【长期记忆】\n' + memories.map(m => '• ' + m.fact).join('\n') + '\n\n' : '';
+
+          // 3. 智能本地数据检索（按技能触发）
+          const LOCAL_TAG = '__LOCAL_DATA__';
+          let finalUserText = userText;
+          let refText = '';
+
+          if (userText.startsWith(LOCAL_TAG)) {
+            finalUserText = userText.slice(LOCAL_TAG.length).trim();
+            if (isProfessional) {
+              const dataConfig = ROLE_DATA_SOURCES[selectedRole] || { rules: true, issues: false };
+              const searchTerms = window._currentSkillTerms || finalUserText;
+              const searchOptions = {
+                topNRules: dataConfig.rules ? 3 : 0,
+                topNIssues: dataConfig.issues ? 3 : 0
+              };
+              const { rules, issues } = await retrieveLocalData(searchTerms, searchOptions);
+              if (dataConfig.rules && dataConfig.issues) refText = buildReferenceText(rules, issues);
+              else if (dataConfig.rules) refText = buildReferenceText(rules, []);
+              else if (dataConfig.issues) refText = buildReferenceText([], issues);
+              window._currentSkillTerms = null;
+            }
+          }
+
+          // 4. 组装最终消息
+          const finalMessage = rolePrompt + memoryText + refText + '用户问题：' + finalUserText;
+          inputEl.value = finalMessage;
+          await originalDsSendMsg();
+          inputEl.value = '';
 
           let convCount = parseInt(localStorage.getItem('conv_count') || '0') + 1;
           localStorage.setItem('conv_count', convCount);
@@ -15282,56 +15311,18 @@ ${details || '(无)'}
 
       // ---------- 10. 技能按钮动态生成 ----------
       var skillsList = [
-        {
-          name: '⚖️ 智能对规',
-          prompt: '',
-          isSpecial: true,
-          action: 'enhancedAutoCheck'
-        },
-        {
-          name: '🔍 规章漏洞查找',
-          prompt: '请依据【相关规章条款】和【参考资料】，逐条分析其中可能存在的漏洞、冲突或模糊地带，结合检查案例给出修订建议。\n分析对象：'
-        },
-        {
-          name: '⚠️ 风险研判',
-          prompt: '请根据【相似历史检查问题】和【参考资料】，从发生频率、危害程度、管控现状三个维度进行风险研判，给出分级结论和防控措施。\n风险描述：'
-        },
-        {
-          name: '📋 事故故障分析',
-          prompt: '请运用"直接原因→间接原因→管理原因"模型，对输入的事故/故障进行深度分析，列出违反的规章条款及整改建议。\n事故简要：'
-        },
-        {
-          name: '📊 检查信息分析',
-          prompt: '请对近期检查台账数据进行统计分析，指出问题集中的专业、岗位和环节，识别趋势性问题，并提出专项检查建议。\n分析要求：'
-        },
-        {
-          name: '🚧 施工安全分析',
-          prompt: '请根据【参考资料】中的施工规章和检查案例，分析输入施工方案的安全风险点，提出卡控措施和盯控重点。\n施工内容：'
-        },
-        {
-          name: '🍂 季节性安全分析',
-          prompt: '请结合当前季节特点和【参考资料】中的历史案例，分析季节性安全风险（如防洪、防胀、防寒、防风等），提出专项检查项点和防范措施。\n季节/场景：'
-        },
-        {
-          name: '🚨 应急处置评估',
-          prompt: '请根据【参考资料】中的应急预案和案例，对输入的应急处置过程进行评估，指出存在的问题和改进方向。\n应急处置情况：'
-        },
-        {
-          name: '📐 标准对标分析',
-          prompt: '请将输入的现场作业情况与【参考资料】中的技术标准、作业指导书进行对比分析，找出偏差并给出整改建议。\n现场描述：'
-        },
-        {
-          name: '📝 培训考核生成',
-          prompt: '请依据【参考资料】中的规章和常见问题，生成一套针对当前专业的培训考核试卷（含选择题、判断题各5题）。\n专业方向：'
-        },
-        {
-          name: '📅 检查方案生成',
-          prompt: '请根据【参考资料】中的设备状态和问题分布，生成一份周/月安全重点检查方案，包含检查项点、检查频次和责任人建议。\n检查周期及重点：'
-        },
-        {
-          name: '📖 铁路专业分析',
-          prompt: '请从铁路专业角度（默认按你担任的安全监察角色），对输入的主题进行全面分析，结合规章和案例，提出专业意见。\n主题：'
-        }
+        { name: '⚖️ 智能对规', isSpecial: true, action: 'enhancedAutoCheck' },
+        { name: '🔍 规章漏洞查找', prompt: '请逐条分析相关规章中可能存在的漏洞、冲突或模糊地带，并结合检查案例给出修订建议。', localSearchTerms: '规章 冲突 漏洞 修订 检查案例' },
+        { name: '⚠️ 风险研判', prompt: '请从发生频率、危害程度、管控现状三个维度对以下风险进行研判，给出分级结论和具体防控措施。', localSearchTerms: '风险 事故 故障 频率 管控 措施' },
+        { name: '📋 事故故障分析', prompt: '请运用"直接原因→间接原因→管理原因"模型对本次事故/故障进行深度分析，列出违反的规章条款及整改建议。', localSearchTerms: '事故 故障 原因 违反 规章 条款 整改' },
+        { name: '📊 检查信息分析', prompt: '请对近期检查台账数据进行多维度统计分析，指出问题集中的专业和环节，识别趋势性问题并提出专项检查建议。', localSearchTerms: '检查 问题 台账 统计 专业 趋势 建议' },
+        { name: '🚧 施工安全分析', prompt: '请分析该施工方案的安全风险点，并提出针对性的卡控措施和盯控重点。', localSearchTerms: '施工 方案 风险 卡控 措施 安全' },
+        { name: '🍂 季节性安全分析', prompt: '请结合当前季节特点，分析季节性安全风险，并提出专项检查项点和防范措施。', localSearchTerms: '防洪 防胀 防寒 防风 季节性 安全 检查' },
+        { name: '🚨 应急处置评估', prompt: '请对本次应急处置过程进行专业评估，指出存在的问题和改进方向。', localSearchTerms: '应急 处置 预案 评估 问题 改进' },
+        { name: '📐 标准对标分析', prompt: '请将以下现场作业情况与技术标准、作业指导书进行对比，找出偏差并给出整改建议。', localSearchTerms: '标准 对标 作业 偏差 整改' },
+        { name: '📝 培训考核生成', prompt: '请生成一套针对当前专业的培训考核试卷，包含选择题和判断题各5题。', localSearchTerms: '培训 考核 试卷 选择题 判断题' },
+        { name: '📅 检查方案生成', prompt: '请根据当前安全形势，生成一份周/月安全重点检查方案，包含检查项点、检查频次和责任人建议。', localSearchTerms: '检查 方案 计划 重点 频次' },
+        { name: '📖 铁路专业分析', prompt: '请从铁路专业角度对以下主题进行全面分析，结合规章和案例，提出专业意见。', localSearchTerms: '专业 分析 主题 规章 案例 意见' }
       ];
 
       function buildSkillButtons() {
@@ -15346,14 +15337,14 @@ ${details || '(无)'}
           btn.onmouseleave = function(){ btn.style.background = '#eff6ff'; };
           if (skill.isSpecial && skill.action === 'enhancedAutoCheck') {
             btn.onclick = function(){ window.enhancedAutoCheck(); };
-          } else if (skill.isSpecial && skill.action === 'webSearch') {
-            btn.onclick = function(){ window.runWebSearch(); };
           } else {
             (function(s){ btn.onclick = function() {
-              // 设置豁免标志：本次发送走普通对话，不触发意图路由
-              window._skipIntentRouting = true;
               var input = document.getElementById('ds-user-input');
-              if (input) { input.value = s.prompt; input.focus(); }
+              if (input) {
+                window._currentSkillTerms = s.localSearchTerms || '';
+                input.value = '__LOCAL_DATA__' + (s.prompt || '') + '\n';
+                input.focus();
+              }
             }; })(skill);
           }
           container.appendChild(btn);
@@ -15435,7 +15426,7 @@ ${details || '(无)'}
       buildSkillButtons();
       observeAssistantBubbles();
 
-      // ---------- 角色联动：通用角色隐藏技能、不使用本地数据 ----------
+      // ---------- 角色联动：通用角色隐藏技能 ----------
       (function() {
         const roleSelect = document.getElementById('expertRole');
         const skillContainer = document.getElementById('skillButtons');
@@ -15447,46 +15438,6 @@ ${details || '(无)'}
 
         roleSelect.addEventListener('change', updateSkillVisibility);
         updateSkillVisibility();
-      })();
-
-      // 修改重写的 dsSendMsg：根据角色决定是否注入本地数据
-      (function() {
-        const origSend = window.dsSendMsg;
-        if (!origSend) return;
-
-        window.dsSendMsg = async function() {
-          const inputEl = document.getElementById('ds-user-input');
-          let userText = inputEl ? inputEl.value.trim() : '';
-          if (!userText) return;
-
-          const roleSelect = document.getElementById('expertRole');
-          const selectedRole = roleSelect ? roleSelect.value : '';
-          const isProfessional = selectedRole !== '';
-
-          // 角色设定
-          let rolePrompt = '';
-          if (isProfessional && ROLE_PROMPTS[selectedRole]) {
-            rolePrompt = '【角色设定】' + ROLE_PROMPTS[selectedRole] + '\n\n';
-          }
-
-          // 记忆提取
-          const newFacts = extractFacts(userText);
-          newFacts.forEach(f => addMemory(f));
-          const memories = getRelevantMemories(userText);
-          const memoryText = memories.length ? '【长期记忆】\n' + memories.map(m => '• ' + m.fact).join('\n') + '\n\n' : '';
-
-          // 本地数据：仅专业角色时检索
-          let refText = '';
-          if (isProfessional) {
-            const { rules, issues } = await retrieveLocalData(userText);
-            refText = buildReferenceText(rules, issues);
-          }
-
-          const finalMessage = rolePrompt + memoryText + refText + '用户问题：' + userText;
-          inputEl.value = finalMessage;
-          await origSend();
-          inputEl.value = '';
-        };
       })();
 
       console.log('%c✅ 智能助手增强已启动 | 角色切换 · 长期记忆 · 本地RAG · 一键对规 · 技能按钮 · 联网搜索(需配置) · 反馈收集', 'color:#059669;font-weight:bold;');

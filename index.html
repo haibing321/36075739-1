@@ -13734,20 +13734,22 @@
                 }
                 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
                 let cleanHtml = htmlContent || '';
-                // 手机端：强制生成极简、无复杂样式的 HTML
+                // 手机端：极简 HTML，零样式，确保 mobile Word 兼容
                 if (isMobile) {
-                    const textOnly = cleanHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-                    const paragraphs = textOnly.split(/\n{2,}/);
-                    let simpleBody = '';
-                    for (let p of paragraphs) {
-                        p = p.trim();
-                        if (p) simpleBody += '<p style="margin:0 0 8pt 0;line-height:1.5;font-size:12pt;">' + _exportEsc(p) + '</p>';
+                    // 先保留换行结构，再剥 HTML
+                    var textOnly = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<p[^>]*>/gi, '\n').replace(/<\/p>/gi, '').replace(/<[^>]+>/g, '');
+                    var lines = textOnly.split(/\n+/);
+                    var simpleBody = '';
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (line) simpleBody += '<p>' + _exportEsc(line) + '</p>';
                     }
-                    if (cleanHtml.includes('<table')) {
-                        const tableMatch = cleanHtml.match(/<table[\s\S]*?<\/table>/gi);
+                    // 保留表格
+                    if (cleanHtml.indexOf('<table') !== -1) {
+                        var tableMatch = cleanHtml.match(/<table[\s\S]*?<\/table>/gi);
                         if (tableMatch) simpleBody += tableMatch.join('');
                     }
-                    cleanHtml = simpleBody || '（无正文内容）';
+                    cleanHtml = simpleBody || '<p>（无内容）</p>';
                 } else {
                     // 电脑端：规范 HTML 化
                     if (!/<[ph][>\s]|<h[1-6]/.test(cleanHtml)) {
@@ -13767,10 +13769,16 @@
                     }
                 }
                 // 最终统一包裹文档
-                const fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + _exportEsc(fileName) + '</title>\n<style>\n' +
-                    'body{margin:20pt;padding:0;background:#fff;color:#000;font-family:"Times New Roman",SimSun,"宋体",serif;font-size:12pt;line-height:1.5;}\n' +
-                    'table{border-collapse:collapse;width:100%;margin:8pt 0;}td,th{border:1px solid #aaa;padding:4pt 6pt;vertical-align:top;}\n' +
-                    'h3{font-size:16pt;margin:12pt 0 6pt;}p{margin:0 0 8pt 0;}\n</style>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
+                var fullHtml;
+                if (isMobile) {
+                    // 手机端：零 CSS，最小 HTML，确保 mobile Word 兼容
+                    fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + _exportEsc(fileName) + '</title>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
+                } else {
+                    fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + _exportEsc(fileName) + '</title>\n<style>\n' +
+                        'body{margin:20pt;padding:0;background:#fff;color:#000;font-family:"Times New Roman",SimSun,"宋体",serif;font-size:12pt;line-height:1.5;}\n' +
+                        'table{border-collapse:collapse;width:100%;margin:8pt 0;}td,th{border:1px solid #aaa;padding:4pt 6pt;vertical-align:top;}\n' +
+                        'h3{font-size:16pt;margin:12pt 0 6pt;}p{margin:0 0 8pt 0;}\n</style>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
+                }
                 const blob = window.htmlDocx.asBlob(fullHtml);
                 if (typeof downloadBlob === 'function') {
                     downloadBlob(blob, fileName + '.docx');

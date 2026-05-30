@@ -3042,6 +3042,7 @@
                 <span id="wr-report-modal-title" style="font-weight:700;font-size:0.97rem;color:var(--primary);flex:1;margin-right:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">报告详情</span>
                 <div style="display:flex;gap:6px;flex-shrink:0;">
                     <button onclick="wrCopyReport()" style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">📋 复制</button>
+                    <button onclick="wrModifyReportFromView()" style="padding:6px 12px;border:1px solid #bfdbfe;border-radius:var(--radius-sm);background:#eff6ff;color:#1d4ed8;font-size:0.82rem;cursor:pointer;">✏️ 修改</button>
                     <button onclick="wrDownloadReport()" style="padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📥 下载TXT</button>
                     <button onclick="wrDownloadDocxFromTemplate()" style="padding:6px 12px;background:#2b6cb0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📄 导出DOCX(模板)</button>
                     <button onclick="document.getElementById('wr-report-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);padding:0 4px;">✕</button>
@@ -8345,17 +8346,23 @@
                 }
                 // 加载多对话历史
                 dsLoadConversations();
-                // 每次打开默认显示新对话
-                dsCurrentConvId = dsGenerateId();
-                dsHistory = [];
-                dsConversations.unshift({
-                    id: dsCurrentConvId,
-                    title: '新对话',
-                    messages: [],
-                    timestamp: Date.now(),
-                    pinned: false
-                });
-                dsSaveConversations();
+                // 默认显示新对话（但复用已有的空对话，避免重复创建）
+                const existingEmpty = dsConversations.find(c => !c.messages || c.messages.length === 0);
+                if (existingEmpty) {
+                    dsCurrentConvId = existingEmpty.id;
+                    dsHistory = [];
+                } else {
+                    dsCurrentConvId = dsGenerateId();
+                    dsHistory = [];
+                    dsConversations.unshift({
+                        id: dsCurrentConvId,
+                        title: '新对话',
+                        messages: [],
+                        timestamp: Date.now(),
+                        pinned: false
+                    });
+                    dsSaveConversations();
+                }
                 localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
                 dsRenderAll();
                 dsScrollBottom();
@@ -9270,6 +9277,11 @@
 
                 try {
                     _acAbortController = new AbortController();
+                    // 前端工程师角色需要更大 token 配额，避免代码截断
+                    const roleSelect = document.getElementById('expertRole');
+                    const isFrontendRole = roleSelect && roleSelect.value === 'frontend';
+                    const isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
+                    const maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
                     const resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: {
@@ -9281,7 +9293,7 @@
                             messages: messages,
                             stream: true,
                             temperature: 0.7,
-                            max_tokens: 2048
+                            max_tokens: maxTokens
                         }),
                         signal: _acAbortController.signal
                     });
@@ -13704,14 +13716,40 @@
                         document.head.appendChild(script);
                     });
                 }
-                const fullHtml = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>' + fileName + '</title></head>\n<body>\n' + htmlContent + '\n</body>\n</html>';
+                // 将内容转为规范 HTML：每段用 <p> 包裹，标题用 <h3>，保留换行结构
+                let cleanHtml = htmlContent || '';
+                // 如果内容不含 <p> 或 <h 标签，说明是纯文本/Markdown，需转换
+                if (!/<[ph][>\s]|<h[1-6]/.test(cleanHtml)) {
+                    // 去除已有的 HTML 标记（如 <br>），按双换行分段
+                    cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+                    const blocks = cleanHtml.split(/\n\n+/);
+                    cleanHtml = blocks.map(function(b) {
+                        b = b.trim(); if (!b) return '';
+                        // 标题检测：以 #、数字序号开头，或全为中文且较短
+                        if (/^#{1,3}\s/.test(b)) return '<h3>' + b.replace(/^#{1,3}\s+/, '') + '</h3>';
+                        if (/^[一二三四五六七八九十]、|^第[一二三四五六七八九十]章|^\d+[\.\、]/.test(b) && b.length < 80) return '<h3>' + b + '</h3>';
+                        // 表格检测
+                        if (/\|.*\|/.test(b)) {
+                            const rows = b.split('\n').filter(function(r){ return r.trim() && !/^[\|\s\-:]+$/.test(r.trim()); });
+                            if (rows.length) return '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;width:100%;margin:8px 0;">' +
+                                rows.map(function(r){ return '<tr>' + r.split('|').filter(function(c){ return c.trim(); }).map(function(c){ return '<td style="padding:4px 8px;">' + c.trim() + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+                        }
+                        return '<p style="text-indent:2em;margin:4px 0;line-height:1.8;">' + b.replace(/\n/g, '<br>') + '</p>';
+                    }).filter(Boolean).join('\n');
+                }
+                const fullHtml = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>' + fileName + '</title><style>body{font-family:SimSun,serif;font-size:16pt;line-height:1.8;color:#333;}h3{font-size:18pt;font-weight:bold;margin:12px 0 6px;}p{margin:4px 0;text-indent:2em;}table{border-collapse:collapse;width:100%;margin:8px 0;}td{padding:4px 8px;border:1px solid #999;}</style></head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
                 const blob = window.htmlDocx.asBlob(fullHtml);
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName + '.docx';
-                a.click();
-                URL.revokeObjectURL(url);
+                // 使用安全下载（兼容手机端）
+                if (typeof downloadBlob === 'function') {
+                    downloadBlob(blob, fileName + '.docx');
+                } else {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName + '.docx';
+                    a.click();
+                    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+                }
                 if (typeof Toast !== 'undefined') Toast.success('DOCX 已生成');
             }
 
@@ -13746,6 +13784,7 @@
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
                             <button onclick="wrViewReport(${r.id})" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.75rem;cursor:pointer;">查看</button>
+                            <button onclick="wrModifyHistoryReport(${r.id})" style="padding:4px 10px;border:1px solid #bfdbfe;border-radius:var(--radius-sm);background:#eff6ff;color:#1d4ed8;font-size:0.75rem;cursor:pointer;">✏️ 修改</button>
                             <button onclick="wrDeleteReport(${r.id})" style="padding:4px 10px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.75rem;cursor:pointer;">删除</button>
                         </div>
                     </div>`).join('');
@@ -13773,6 +13812,15 @@
                 catch(e) { alert('复制失败，请手动选中内容复制。'); }
             };
 
+            // 从查看弹窗进入修改
+            window.wrModifyReportFromView = function() {
+                const modal = document.getElementById('wr-report-modal');
+                const r = modal._currentReport;
+                if (!r || !r.id) return;
+                modal.style.display = 'none';
+                wrModifyHistoryReport(r.id);
+            };
+
             window.wrDownloadReport = function() {
                 const modal = document.getElementById('wr-report-modal');
                 const r = modal._currentReport;
@@ -13789,6 +13837,43 @@
                 const modal = document.getElementById('wr-report-modal');
                 if (modal._currentReport && modal._currentReport.id === id) modal.style.display = 'none';
                 wrRenderHistory();
+            };
+
+            // 修改历史报告
+            window.wrModifyHistoryReport = async function(id) {
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                const r = reports.find(x => x.id === id);
+                if (!r) { alert('报告未找到'); return; }
+                // 弹窗输入修改要求
+                const modal = document.createElement('div');
+                modal.id = 'wr-modify-history-modal';
+                modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10100;display:flex;align-items:center;justify-content:center;';
+                modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
+                    + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+                    + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✏️ 修改报告：' + wrEsc((r.title||'未命名报告').slice(0,20)) + '</span>'
+                    + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>'
+                    + '</div>'
+                    + '<div style="font-size:0.8rem;color:var(--text-secondary);">请输入修改要求，AI 将基于原报告进行调整。</div>'
+                    + '<textarea id="wr-modify-instruction" placeholder="例如：增加安全检查项点、补充数据分析段落、调整报告结构..." style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;resize:vertical;font-family:inherit;"></textarea>'
+                    + '<div style="display:flex;gap:10px;">'
+                    + '<button id="wr-modify-confirm-btn" style="flex:1;padding:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 开始修改</button>'
+                    + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.9rem;cursor:pointer;">取消</button>'
+                    + '</div></div>';
+                document.body.appendChild(modal);
+                document.getElementById('wr-modify-confirm-btn').onclick = async function() {
+                    var instruction = document.getElementById('wr-modify-instruction').value.trim();
+                    modal.remove();
+                    if (!instruction) { alert('请输入修改要求'); return; }
+                    // 将原报告内容和修改要求写入输入框
+                    var input = document.getElementById('wr-query-input');
+                    var oldVal = input ? input.value : '';
+                    var fullPrompt = '【原报告】\n' + (r.content || '') + '\n\n【修改要求】\n' + instruction + '\n\n请基于原报告内容，按修改要求进行调整。保持原有结构和大部分文字，仅修改要求的部分。';
+                    if (input) input.value = fullPrompt;
+                    window._wrSkipLocalSearch = true; // 跳过本地资料检索
+                    await wrGenerate();
+                    if (input) input.value = oldVal;
+                    window._wrSkipLocalSearch = false;
+                };
             };
 
             window.wrClearAllReports = async function() {

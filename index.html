@@ -3988,11 +3988,10 @@
                 
                 const url = URL.createObjectURL(blob);
                 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-                const isZip = filename.endsWith('.zip');
+                const isComplex = filename.endsWith('.zip') || filename.endsWith('.docx');
                 
-                if (isMobile && isZip) {
-                    // === 手机端 + ZIP：await 后手势已丢失，直接显示下载按钮 ===
-                    // window.open() 对 blob URL 永远返回 window 对象但不会下载，跳过
+                if (isMobile && isComplex) {
+                    // === 手机端 + ZIP/DOCX：await 后手势已丢失，直接显示下载按钮 ===
                     showMobileDownloadBtn(url, filename);
                 } else {
                     // === 桌面端 / 手机端同步文件（JSON等）：标准 a.click() ===
@@ -9358,6 +9357,13 @@
                     const cursors = chatBox.querySelectorAll('.ds-cursor');
                     cursors.forEach(c => c.remove());
                     dsSaveHistory();
+                    // 流式结束后注入反馈按钮（替换 MutationObserver 缺失的触发时机）
+                    setTimeout(function(){
+                        var lastBubble = chatBox.querySelector('.ds-bubble-assistant:last-of-type');
+                        if (lastBubble && !lastBubble.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
+                            window._addFeedbackButtons(lastBubble, lastBubble.innerText);
+                        }
+                    }, 50);
 
                 } catch(err) {
                     if (err.name === 'AbortError') {
@@ -9366,6 +9372,12 @@
                         if (chatBox2) {
                             const cursors2 = chatBox2.querySelectorAll('.ds-cursor');
                             cursors2.forEach(c => c.remove());
+                            setTimeout(function(){
+                                var lastBubble = chatBox2.querySelector('.ds-bubble-assistant:last-of-type');
+                                if (lastBubble && !lastBubble.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
+                                    window._addFeedbackButtons(lastBubble, lastBubble.innerText);
+                                }
+                            }, 50);
                         }
                         dsSaveHistory();
                     } else {
@@ -13707,6 +13719,10 @@
             };
 
             async function exportDocxFromHtml(htmlContent, fileName) {
+                if (!htmlContent || htmlContent.trim() === '') {
+                    alert('报告内容为空，无法导出');
+                    return;
+                }
                 if (typeof window.htmlDocx === 'undefined') {
                     await new Promise((resolve, reject) => {
                         const script = document.createElement('script');
@@ -13716,30 +13732,46 @@
                         document.head.appendChild(script);
                     });
                 }
-                // 将内容转为规范 HTML：每段用 <p> 包裹，标题用 <h3>，保留换行结构
+                const isMobile = /Mobi|Android/i.test(navigator.userAgent);
                 let cleanHtml = htmlContent || '';
-                // 如果内容不含 <p> 或 <h 标签，说明是纯文本/Markdown，需转换
-                if (!/<[ph][>\s]|<h[1-6]/.test(cleanHtml)) {
-                    // 去除已有的 HTML 标记（如 <br>），按双换行分段
-                    cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
-                    const blocks = cleanHtml.split(/\n\n+/);
-                    cleanHtml = blocks.map(function(b) {
-                        b = b.trim(); if (!b) return '';
-                        // 标题检测：以 #、数字序号开头，或全为中文且较短
-                        if (/^#{1,3}\s/.test(b)) return '<h3>' + b.replace(/^#{1,3}\s+/, '') + '</h3>';
-                        if (/^[一二三四五六七八九十]、|^第[一二三四五六七八九十]章|^\d+[\.\、]/.test(b) && b.length < 80) return '<h3>' + b + '</h3>';
-                        // 表格检测
-                        if (/\|.*\|/.test(b)) {
-                            const rows = b.split('\n').filter(function(r){ return r.trim() && !/^[\|\s\-:]+$/.test(r.trim()); });
-                            if (rows.length) return '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;width:100%;margin:8px 0;">' +
-                                rows.map(function(r){ return '<tr>' + r.split('|').filter(function(c){ return c.trim(); }).map(function(c){ return '<td style="padding:4px 8px;">' + c.trim() + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
-                        }
-                        return '<p style="text-indent:2em;margin:4px 0;line-height:1.8;">' + b.replace(/\n/g, '<br>') + '</p>';
-                    }).filter(Boolean).join('\n');
+                // 手机端：强制生成极简、无复杂样式的 HTML
+                if (isMobile) {
+                    const textOnly = cleanHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const paragraphs = textOnly.split(/\n{2,}/);
+                    let simpleBody = '';
+                    for (let p of paragraphs) {
+                        p = p.trim();
+                        if (p) simpleBody += '<p style="margin:0 0 8pt 0;line-height:1.5;font-size:12pt;">' + _exportEsc(p) + '</p>';
+                    }
+                    if (cleanHtml.includes('<table')) {
+                        const tableMatch = cleanHtml.match(/<table[\s\S]*?<\/table>/gi);
+                        if (tableMatch) simpleBody += tableMatch.join('');
+                    }
+                    cleanHtml = simpleBody || '（无正文内容）';
+                } else {
+                    // 电脑端：规范 HTML 化
+                    if (!/<[ph][>\s]|<h[1-6]/.test(cleanHtml)) {
+                        cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+                        const blocks = cleanHtml.split(/\n\n+/);
+                        cleanHtml = blocks.map(function(b) {
+                            b = b.trim(); if (!b) return '';
+                            if (/^#{1,3}\s/.test(b)) return '<h3>' + b.replace(/^#{1,3}\s+/, '') + '</h3>';
+                            if (/^[一二三四五六七八九十]、|^第[一二三四五六七八九十]章|^\d+[\.\、]/.test(b) && b.length < 80) return '<h3>' + b + '</h3>';
+                            if (/\|.*\|/.test(b)) {
+                                const rows = b.split('\n').filter(function(r){ return r.trim() && !/^[\|\s\-:]+$/.test(r.trim()); });
+                                if (rows.length) return '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;width:100%;margin:8px 0;">' +
+                                    rows.map(function(r){ return '<tr>' + r.split('|').filter(function(c){ return c.trim(); }).map(function(c){ return '<td style="padding:4px 8px;">' + c.trim() + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+                            }
+                            return '<p style="margin:0 0 8pt 0;line-height:1.5;">' + b.replace(/\n/g, '<br>') + '</p>';
+                        }).filter(Boolean).join('\n');
+                    }
                 }
-                const fullHtml = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>' + fileName + '</title><style>body{font-family:SimSun,serif;font-size:16pt;line-height:1.8;color:#333;}h3{font-size:18pt;font-weight:bold;margin:12px 0 6px;}p{margin:4px 0;text-indent:2em;}table{border-collapse:collapse;width:100%;margin:8px 0;}td{padding:4px 8px;border:1px solid #999;}</style></head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
+                // 最终统一包裹文档
+                const fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + _exportEsc(fileName) + '</title>\n<style>\n' +
+                    'body{margin:20pt;padding:0;background:#fff;color:#000;font-family:"Times New Roman",SimSun,"宋体",serif;font-size:12pt;line-height:1.5;}\n' +
+                    'table{border-collapse:collapse;width:100%;margin:8pt 0;}td,th{border:1px solid #aaa;padding:4pt 6pt;vertical-align:top;}\n' +
+                    'h3{font-size:16pt;margin:12pt 0 6pt;}p{margin:0 0 8pt 0;}\n</style>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
                 const blob = window.htmlDocx.asBlob(fullHtml);
-                // 使用安全下载（兼容手机端）
                 if (typeof downloadBlob === 'function') {
                     downloadBlob(blob, fileName + '.docx');
                 } else {
@@ -13751,7 +13783,9 @@
                     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
                 }
                 if (typeof Toast !== 'undefined') Toast.success('DOCX 已生成');
+                else alert('DOCX 已生成，请根据提示保存文件');
             }
+            function _exportEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
             window.wrRenderHistory = async function() {
                 const reports = await wrDbGetAll(WR_RPT_STORE);
@@ -15506,6 +15540,7 @@ ${details || '(无)'}
         fbDiv.querySelector('.feedback-good').onclick = function(){ saveFeedback('good', assistantContent); };
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };
       }
+      window._addFeedbackButtons = addFeedbackButtons;
 
       function saveFeedback(type, content) {
         var logs = JSON.parse(localStorage.getItem('feedback_logs') || '[]');

@@ -2591,11 +2591,8 @@
                                     🎥 录像
                                     <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                                 </label>
-                                <!-- 语音输入转文字（Web Speech API） -->
-                                <button class="btn btn-success" id="voice-input-btn" onclick="toggleVoiceInput()">🎙️ 语音输入</button>
-                                <span id="voice-status" style="color:var(--text-secondary); line-height:2;"></span>
                             </div>
-                            <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（工作内容或问题框）</div>
+                            <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（可使用输入法自带的语音输入 🎤）</div>
                             <!-- 多媒体预览区 -->
                             <div id="media-preview" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
                             <!-- 关闭按钮 -->
@@ -3791,13 +3788,18 @@
                     if (imported.length === 0) throw new Error('JSON 文件无有效数据');
                     // 规范化字段（兼容不同命名）
                     const normalized = imported.map(function(item){
-                        return {
+                        var norm = {
                             '性质': item['性质'] || item.xingzhi || '',
                             datetime: item.datetime || new Date().toLocaleString('zh-CN'),
                             category: item.category || '其他',
                             content: item.content || item['问题描述'] || item['问题'] || '',
                             regulation: item.regulation || item['规章依据'] || item['违反规章'] || item['法规依据'] || ''
                         };
+                        // 如果 regulation 为空，尝试从 content 中提取完整引用句子
+                        if (!norm.regulation && norm.content) {
+                            norm.regulation = extractFullViolationSentence(norm.content);
+                        }
+                        return norm;
                     });
                     const existingCount = dataCache.length;
                     let finalData = normalized;
@@ -3824,7 +3826,13 @@
                         const row = jsonData[i]; if (!row || row.length === 0) { skipCount++; continue; }
                         const content = cols.content !== -1 ? String(row[cols.content] || '').trim() : ''; if (!content) { skipCount++; continue; }
                         let xz = '空白'; if (cols.xingzhi !== -1 && row[cols.xingzhi] !== undefined && row[cols.xingzhi] !== null) { xz = String(row[cols.xingzhi]).trim(); if (xz === '') xz = '空白'; }
-                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content, regulation: cols.regulation !== -1 ? String(row[cols.regulation] || '').trim() : '' });
+                        // 先取 Excel 中的 regulation 列
+                        let regulation = cols.regulation !== -1 ? String(row[cols.regulation] || '').trim() : '';
+                        // 如果 regulation 为空，尝试从 content 中提取完整引用句子
+                        if (!regulation && content) {
+                            regulation = extractFullViolationSentence(content);
+                        }
+                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content, regulation: regulation });
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     const existingCount = dataCache.length; let finalData = newData;
@@ -5911,31 +5919,52 @@
             let isEditMode = false; // 标记是否为编辑模式
             let currentEditDate = null; // 记录编辑时的原始日期
 
-            function loadDiaries() { try { const data = localStorage.getItem(STORAGE_KEY); if (data) diaries = JSON.parse(data); } catch (e) { diaries = []; } }
+            function loadDiaries() { try { const data = localStorage.getItem(STORAGE_KEY); if (data) { diaries = JSON.parse(data); diaries.forEach(d => { if (!d.regulations) d.regulations = []; if (d.issues && d.issues.length > d.regulations.length) { while (d.regulations.length < d.issues.length) d.regulations.push(''); } }); } } catch (e) { diaries = []; } }
             function saveDiaries() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries)); } catch (e) { alert('保存失败：' + e.message); } }
 
-            function renderIssueFields(issues = []) {
+            function renderIssueFields(issues = [], regulations = []) {
                 const container = document.getElementById('diary-issues-container');
                 container.innerHTML = '';
                 issueCount = issues.length > 0 ? issues.length : 1;
                 for (let i = 0; i < issueCount; i++) {
-                    addIssueFieldToDOM(issues[i] || '', i);
+                    addIssueFieldToDOM(issues[i] || '', i, (regulations && regulations[i]) || '');
                 }
                 updateAddIssueButton();
             }
-            function addIssueFieldToDOM(value = '', index) {
+            function addIssueFieldToDOM(value = '', index, regulation = '') {
                 const container = document.getElementById('diary-issues-container');
                 const div = document.createElement('div');
                 div.className = 'diary-issue-row';
                 div.id = `diary-issue-row-${index}`;
                 div.innerHTML = `
-                    <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="${index + 1}" oninput="autoResize(this)">${escapeHtml(value)}</textarea>
-                    ${index > 0 ? '<button class="btn-remove-issue" onclick="removeIssueField(' + index + ')">×</button>' : ''}
+                    <div style="display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;">
+                        <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="检查发现问题 ${index+1}" oninput="autoResize(this)">${escapeHtml(value)}</textarea>
+                        <button class="btn btn-small btn-secondary" onclick="copyIssueWithRegulation(${index}, this)" style="white-space:nowrap; padding:4px 10px; flex-shrink:0;" title="复制问题及规章依据">📋 复制</button>
+                        ${index > 0 ? '<button class="btn-remove-issue" onclick="removeIssueField(' + index + ')">×</button>' : ''}
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:flex-start; margin-top:4px;">
+                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="完整引用句子（可点击对规检索）" rows="2" oninput="autoResize(this)" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit; background:#f8fafc;">${escapeHtml(regulation)}</textarea>
+                        <button class="btn btn-small btn-info" onclick="openRuleSearchForIssue(${index})" style="white-space:nowrap; padding:4px 10px; flex-shrink:0;">⚖️ 对规</button>
+                    </div>
                 `;
                 container.appendChild(div);
                 const textarea = document.getElementById(`diary-issue-${index}`);
-                requestAnimationFrame(() => autoResize(textarea));
+                const regTextarea = document.getElementById(`diary-regulation-${index}`);
+                requestAnimationFrame(() => {
+                    autoResize(textarea);
+                    if (regTextarea) autoResize(regTextarea);
+                });
             }
+            window.copyIssueWithRegulation = function(issueIdx, btnEl) {
+                const issueTextarea = document.getElementById(`diary-issue-${issueIdx}`);
+                const regTextarea = document.getElementById(`diary-regulation-${issueIdx}`);
+                const problemText = issueTextarea ? issueTextarea.value.trim() : '';
+                const regulationText = regTextarea ? regTextarea.value.trim() : '';
+                let copyContent = problemText;
+                if (regulationText) copyContent += (copyContent ? '\n' : '') + regulationText;
+                if (!copyContent) { alert('没有可复制的内容'); return; }
+                _doCopy(copyContent, btnEl, '已复制 ✓');
+            };
             window.addIssueField = function() {
                 if (issueCount >= MAX_ISSUES) { alert(`最多添加 ${MAX_ISSUES} 个问题`); return; }
                 addIssueFieldToDOM('', issueCount);
@@ -5949,13 +5978,15 @@
                 issueCount = rows.length;
                 rows.forEach((row, idx) => {
                     row.id = `diary-issue-row-${idx}`;
-                    const textarea = row.querySelector('textarea');
-                    textarea.id = `diary-issue-${idx}`;
-                    textarea.placeholder = `${idx + 1}`;
+                    const textareas = row.querySelectorAll('textarea');
+                    if (textareas[0]) { textareas[0].id = `diary-issue-${idx}`; textareas[0].placeholder = `检查发现问题 ${idx+1}`; }
+                    if (textareas[1]) { textareas[1].id = `diary-regulation-${idx}`; }
                     const removeBtn = row.querySelector('.btn-remove-issue');
                     if (removeBtn) removeBtn.setAttribute('onclick', `removeIssueField(${idx})`);
                     if (idx === 0 && removeBtn) removeBtn.style.display = 'none';
-                    requestAnimationFrame(() => autoResize(textarea));
+                    const duiguiBtn = row.querySelector('.btn-info');
+                    if (duiguiBtn) duiguiBtn.setAttribute('onclick', `openRuleSearchForIssue(${idx})`);
+                    requestAnimationFrame(() => { if (textareas[0]) autoResize(textareas[0]); if (textareas[1]) autoResize(textareas[1]); });
                 });
                 updateAddIssueButton();
             };
@@ -5964,20 +5995,194 @@
                 if (issueCount >= MAX_ISSUES) { btn.disabled = true; btn.textContent = `已达到最大问题数量(${MAX_ISSUES}个)`; }
                 else { btn.disabled = false; btn.textContent = `+ 添加问题 (还可添加 ${MAX_ISSUES - issueCount} 个)`; }
             }
-            function collectIssues() {
+            function collectIssuesAndRegulations() {
                 const issues = [];
+                const regulations = [];
                 for (let i = 0; i < issueCount; i++) {
-                    const textarea = document.getElementById(`diary-issue-${i}`);
-                    if (textarea) { const val = textarea.value.trim(); if (val) issues.push(val); }
+                    const issueTextarea = document.getElementById(`diary-issue-${i}`);
+                    const regTextarea = document.getElementById(`diary-regulation-${i}`);
+                    if (issueTextarea) { const val = issueTextarea.value.trim(); issues.push(val || ''); }
+                    else { issues.push(''); }
+                    if (regTextarea) { regulations.push(regTextarea.value.trim()); }
+                    else { regulations.push(''); }
                 }
-                return issues;
+                return { issues, regulations };
             }
+            function collectIssues() { return collectIssuesAndRegulations().issues; }
+
+            // ---- 对规检索：从检查信息中搜索匹配的规章依据 ----
+            // 从文本中智能提取完整违规引用句子（"不符合/违反...《xxx》...。"）
+            function extractFullViolationSentence(text) {
+                if (!text) return '';
+                // 匹配 "不符合/违反" 开头，包含《》，到句号结束（排除句子内还有《》的情况）
+                var regex = /(?:不符合|违反)[^。]*《[^》]+》[^。]*。(?![^。]*《)/;
+                var match = text.match(regex);
+                if (match) return match[0].trim();
+                // 降级：匹配包含《》的整个句子（到句号）
+                var fallback = text.match(/[^。]*《[^》]+》[^。]*。/);
+                if (fallback) return fallback[0].trim();
+                // 再降级：返回前200字符
+                return text.slice(0, 200).trim();
+            }
+
+            async function searchRegulationFromIssues(problemText) {
+                if (!problemText.trim()) return [];
+                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
+                if (!issues.length) return [];
+
+                let keywords = [];
+                if (typeof window.acExtractKeywords === 'function') {
+                    keywords = window.acExtractKeywords(problemText, null);
+                } else {
+                    keywords = problemText.split(/[\s,，。！？、；：""''《》]+/).filter(function(w) { return w.length >= 2; });
+                }
+                if (!keywords.length) return [];
+
+                const matched = issues.filter(function(item) {
+                    var content = (item.content || '').toLowerCase();
+                    var category = (item.category || '').toLowerCase();
+                    var xingzhi = (item['性质'] || '').toLowerCase();
+                    var text = content + ' ' + category + ' ' + xingzhi;
+                    return keywords.some(function(kw) { return text.includes(kw.toLowerCase()); });
+                });
+
+                // 提取完整的违规引用句子
+                const sentenceMap = new Map(); // key: 句子全文, value: { count, examples }
+                matched.forEach(function(item) {
+                    // 优先使用已存储的 regulation（若完整）
+                    let sentence = item.regulation ? item.regulation.trim() : '';
+                    if (!sentence) {
+                        sentence = extractFullViolationSentence(item.content || '');
+                    }
+                    if (!sentence) return;
+
+                    if (!sentenceMap.has(sentence)) {
+                        sentenceMap.set(sentence, {
+                            count: 1,
+                            examples: [{
+                                nature: item['性质'] || '',
+                                category: item.category || '',
+                                snippet: (item.content || '').slice(0, 100)
+                            }]
+                        });
+                    } else {
+                        const info = sentenceMap.get(sentence);
+                        info.count++;
+                        if (info.examples.length < 3) {
+                            info.examples.push({
+                                nature: item['性质'] || '',
+                                category: item.category || '',
+                                snippet: (item.content || '').slice(0, 100)
+                            });
+                        }
+                    }
+                });
+
+                const results = Array.from(sentenceMap.entries()).map(function(entry) {
+                    return { sentence: entry[0], count: entry[1].count, examples: entry[1].examples };
+                });
+                results.sort(function(a, b) { return b.count - a.count; });
+                return results;
+            }
+
+            window.openRuleSearchForIssue = async function(issueIndex) {
+                var issueTextarea = document.getElementById('diary-issue-' + issueIndex);
+                if (!issueTextarea) return;
+                var problemText = issueTextarea.value.trim();
+                if (!problemText) { alert('请先输入检查发现问题内容'); return; }
+
+                var btn = typeof event !== 'undefined' && event && event.target ? event.target : null;
+                var originalText = btn ? btn.innerText : '对规';
+                if (btn) { btn.innerText = '⏳ 检索中...'; btn.disabled = true; }
+
+                try {
+                    var candidates = await searchRegulationFromIssues(problemText);
+                    if (candidates.length === 0) { alert('未找到匹配的历史案例完整引用句子'); return; }
+
+                    var modalHtml = '<div style="max-width:500px;width:90%;background:#fff;border-radius:12px;padding:16px;max-height:70vh;overflow-y:auto;">';
+                    modalHtml += '<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><strong style="font-size:1rem;">📜 请选择完整引用句子</strong><button onclick="this.closest(\'.custom-modal\').remove()" style="background:none;border:none;font-size:1.2rem;">✕</button></div>';
+                    modalHtml += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">以下完整引用句子来自匹配的历史案例（共' + candidates.length + '条）</div>';
+                    modalHtml += '<div style="display:flex;flex-direction:column;gap:10px;">';
+                    candidates.forEach(function(cand, idx) {
+                        // 截取预览（前120字）
+                        var preview = cand.sentence.length > 120 ? cand.sentence.slice(0, 120) + '…' : cand.sentence;
+                        modalHtml += '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">';
+                        modalHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+                        modalHtml += '<div style="flex:1;cursor:pointer;min-width:0;" onclick="selectRegulationAndClose(' + issueIndex + ',' + idx + ')">';
+                        modalHtml += '<div style="font-weight:500;margin-bottom:4px;">📋 ' + escapeHtml(preview) + '</div>';
+                        modalHtml += '<div style="font-size:0.7rem;color:#64748b;">📊 引用 ' + cand.count + ' 次</div>';
+                        modalHtml += '</div>';
+                        modalHtml += '<button class="btn btn-small btn-secondary" style="margin-left:10px;padding:2px 8px;flex-shrink:0;" onclick="copyRegulationAndClose(' + issueIndex + ',' + idx + ', event)">📋 复制</button>';
+                        modalHtml += '</div>';
+                        if (cand.examples.length) {
+                            modalHtml += '<div style="font-size:0.7rem;color:#475569;margin-top:4px;">案例：' + escapeHtml(cand.examples[0].snippet) + '</div>';
+                        }
+                        modalHtml += '</div>';
+                    });
+                    modalHtml += '</div>';
+                    modalHtml += '<div style="margin-top:16px;text-align:center;"><button onclick="this.closest(\'.custom-modal\').remove()" class="btn btn-secondary">取消</button></div>';
+                    modalHtml += '</div>';
+
+                    var modalDiv = document.createElement('div');
+                    modalDiv.className = 'custom-modal';
+                    modalDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
+                    modalDiv.innerHTML = modalHtml;
+                    document.body.appendChild(modalDiv);
+
+                    window._tempRegulationCandidates = candidates;
+                    window._tempRegulationIssueIndex = issueIndex;
+
+                    window.selectRegulationAndClose = function(idx, candIdx) {
+                        var c = window._tempRegulationCandidates;
+                        if (c && c[candIdx]) {
+                            var tgt = document.getElementById('diary-regulation-' + idx);
+                            if (tgt) { tgt.value = c[candIdx].sentence; autoResize(tgt); }
+                        }
+                        var m = document.querySelector('.custom-modal');
+                        if (m) m.remove();
+                        delete window._tempRegulationCandidates;
+                        delete window._tempRegulationIssueIndex;
+                        delete window.selectRegulationAndClose;
+                        delete window.copyRegulationAndClose;
+                    };
+                    window.copyRegulationAndClose = function(issueIdx, candIdx, event) {
+                        event.stopPropagation();
+                        var c = window._tempRegulationCandidates;
+                        if (!c || !c[candIdx]) return;
+                        var regulationSentence = c[candIdx].sentence;
+                        var issueTextarea = document.getElementById('diary-issue-' + issueIdx);
+                        var problemText = issueTextarea ? issueTextarea.value.trim() : '';
+                        var copyContent = problemText;
+                        if (regulationSentence) copyContent += (copyContent ? '\n' : '') + regulationSentence;
+                        var btn = event && event.target ? event.target : null;
+                        var afterCopy = function() {
+                            var tgt = document.getElementById('diary-regulation-' + issueIdx);
+                            if (tgt) { tgt.value = regulationSentence; autoResize(tgt); }
+                            var m = document.querySelector('.custom-modal');
+                            if (m) m.remove();
+                            delete window._tempRegulationCandidates;
+                            delete window._tempRegulationIssueIndex;
+                            delete window.selectRegulationAndClose;
+                            delete window.copyRegulationAndClose;
+                        };
+                        _doCopy(copyContent, btn, '已复制 ✓');
+                        // 自复式反馈后关闭弹窗
+                        setTimeout(afterCopy, 200);
+                    };
+                } catch (err) {
+                    console.error('对规检索失败', err);
+                    alert('检索失败：' + err.message);
+                } finally {
+                    if (btn) { btn.innerText = originalText; btn.disabled = false; }
+                }
+            };
+
             window.saveDiary = async function(btnEl) {
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();
                 if (!date) { alert('请选择日期'); return; }
-                if (!work && collectIssues().length === 0) { alert('请输入工作内容或问题'); return; }
-                const issues = collectIssues();
+                if (!work && collectIssues().filter(i => i).length === 0) { alert('请输入工作内容或问题'); return; }
+                const { issues, regulations } = collectIssuesAndRegulations();
 
                 // 保存媒体文件到 IndexedDB（新文件存入，旧文件复用 ID）
                 const mediaIds = [];
@@ -6000,10 +6205,10 @@
 
                 // 已有记录则覆盖（用户已在输入前加载历史内容并追加）
                 if (existingIdx !== -1) {
-                    diaries[existingIdx] = { date, work, issues, mediaIds };
+                    diaries[existingIdx] = { date, work, issues, regulations, mediaIds };
                 } else {
                     // 没有重叠，直接添加
-                    diaries.push({ date, work, issues, mediaIds });
+                    diaries.push({ date, work, issues, regulations, mediaIds });
                 }
 
                 diaries.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -6065,7 +6270,7 @@
                 document.getElementById('diary-date').value = diary.date;
                 document.getElementById('diary-work').value = diary.work;
                 autoResize(document.getElementById('diary-work'));
-                renderIssueFields(diary.issues || []);
+                renderIssueFields(diary.issues || [], diary.regulations || []);
                 await loadDiaryMedia(diary);
             };
             window.deleteDiary = function(date) {
@@ -6127,13 +6332,17 @@
             window.copyIssue = function(text, btnEl) { _doCopy(text, btnEl, '已复制 ✓'); };
             window.copyAllToday = function(btnEl) {
                 const work = document.getElementById('diary-work').value.trim();
-                const issues = collectIssues();
-                if (!work && issues.length === 0) { alert('没有可复制的内容'); return; }
+                const { issues, regulations } = collectIssuesAndRegulations();
+                const hasContent = work || issues.some(i => i);
+                if (!hasContent) { alert('没有可复制的内容'); return; }
                 let text = '';
-                if (work) text += `【工作内容】\n${work}\n`;
-                if (issues.length > 0) {
-                    issues.forEach((issue, idx) => { text += `【问题${idx+1}】\n${issue}\n`; });
-                }
+                if (work) text += work;
+                issues.forEach((issue, idx) => {
+                    if (!issue) return;
+                    if (text) text += '\n';
+                    text += issue;
+                    if (regulations[idx]) text += '\n' + regulations[idx];
+                });
                 _doCopy(text, btnEl, '已复制 ✓');
             };
             window.deleteIssue = function(date, issueIndex) {
@@ -6141,6 +6350,7 @@
                 if (!diary) return;
                 if (!confirm('确定要删除该问题吗？')) return;
                 diary.issues.splice(issueIndex, 1);
+                if (diary.regulations) diary.regulations.splice(issueIndex, 1);
                 saveDiaries();
                 if (diaryFilterMode === 'history') {
                     renderCalendar();
@@ -6175,12 +6385,12 @@
 
                     html += '<div class="diary-card">';
                     html += '<div class="diary-card-header"><div class="diary-card-date">' + dateStr + '</div><div class="diary-card-actions"><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button><button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div></div>';
-                    html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\')">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
+                    html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
 
                     if (diary.issues && diary.issues.length > 0) {
                         html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
                         diary.issues.forEach((issue, idx) => {
-                            html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ')">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
+                            html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
                         });
                         html += '</div>';
                     }
@@ -6195,17 +6405,20 @@
             let _selectedDate = null;
 
             // 复制日记中的工作内容
-            window.copyDiaryWork = function(date) {
+            window.copyDiaryWork = function(date, btnEl) {
                 const diary = diaries.find(d => d.date === date);
-                if (diary) _doCopy(diary.work, null, '已复制 ✓');
+                if (diary) _doCopy(diary.work, btnEl, '已复制 ✓');
             };
 
             // 复制日记中的单个问题
-            window.copyDiaryIssue = function(date, index) {
+            window.copyDiaryIssue = function(date, index, btnEl) {
                 const diary = diaries.find(d => d.date === date);
-                if (diary && diary.issues && diary.issues[index]) {
-                    _doCopy(diary.issues[index], null, '已复制 ✓');
-                }
+                if (!diary || !diary.issues || !diary.issues[index]) return;
+                const problem = diary.issues[index];
+                const regulation = (diary.regulations && diary.regulations[index]) ? diary.regulations[index] : '';
+                let copyContent = problem;
+                if (regulation) copyContent += '\n' + regulation;
+                _doCopy(copyContent, btnEl, '已复制 ✓');
             };
 
             // 渲染日历
@@ -6311,12 +6524,17 @@
                 html += '<div><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button> <button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div>';
                 html += '</div>';
 
-                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\')">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
+                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
 
                 if (diary.issues && diary.issues.length > 0) {
                     html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
                     diary.issues.forEach((issue, idx) => {
-                        html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ')">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
+                        const regulation = (diary.regulations && diary.regulations[idx]) ? diary.regulations[idx] : '';
+                        html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue);
+                        if (regulation) {
+                            html += '<div style="margin-top:6px; font-size:0.8rem; color:#3b82f6; border-left:2px solid #3b82f6; padding-left:8px;"><strong>📜 完整引用句子：</strong>' + escapeHtml(regulation) + '</div>';
+                        }
+                        html += '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
                     });
                     html += '</div>';
                 }
@@ -6351,7 +6569,7 @@
                         document.getElementById('diary-date').value = todayStr;
                         document.getElementById('diary-work').value = existing.work;
                         autoResize(document.getElementById('diary-work'));
-                        renderIssueFields(existing.issues || []);
+                        renderIssueFields(existing.issues || [], existing.regulations || []);
                         // 加载已有媒体
                         await loadDiaryMedia(existing);
                     }
@@ -6387,8 +6605,6 @@
             let _lastFocusedTextarea = null; // 最近聚焦的文本框
             let _mediaCaptureTimes = [];   // 拍摄时间戳
             let _existingMediaIds = [];    // 已有媒体对应的 IndexedDB ID（用于编辑时复用）
-            let _recognition = null;       // 语音识别对象（Web Speech API）
-            let _isListening = false;      // 是否正在识别
 
             // 格式化时间为 "YYYY-MM-DD HH:MM" 或更紧凑格式
             function formatTime(d) {
@@ -6589,125 +6805,6 @@
                 document.getElementById('btn-multimedia-toggle').textContent = '📸 多媒体录入';
             }
             window.closeMultimediaPanel = closeMultimediaPanel;
-
-            // ---- 语音输入转文字（移动端兼容增强版）----
-            function isMobile() {
-                return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-            }
-            function checkSpeechSupport() {
-                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!SpeechRecognition) {
-                    return { supported: false, reason: '您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari 并确保页面通过 HTTPS 访问。' };
-                }
-                // file:// 协议检测：手机端浏览器强制要求 HTTPS 才能使用 Web Speech API
-                if (location.protocol === 'file:') {
-                    if (isMobile()) {
-                        return { supported: false, reason: '手机端浏览器要求 HTTPS 才能使用语音输入。\n\n请通过以下方式使用：\n1. 使用内网服务器（http://IP:端口）访问\n2. 部署到 HTTPS 服务器\n3. 在电脑端 Chrome/Edge 中打开此文件' };
-                    }
-                    // 桌面端 file:// 可能可以工作（Chrome/Edge 安全策略较宽松），给警告但允许尝试
-                    return { supported: true, needHttpsWarning: true, reason: '当前为本地文件（file://），桌面端浏览器通常支持，但手机上必须使用 HTTPS。' };
-                }
-                if (location.protocol !== 'https:' && location.hostname !== 'localhost' && !location.hostname.match(/^(\d+\.){3}\d+$/)) {
-                    return { supported: true, needHttpsWarning: true, reason: '当前非 HTTPS 环境，语音功能可能需要手动授权。' };
-                }
-                return { supported: true, needHttpsWarning: false };
-            }
-
-            function initSpeechRecognition() {
-                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!SpeechRecognition) return null;
-                var recognition = new SpeechRecognition();
-                recognition.continuous = false;       // 手机端单次识别更稳定
-                recognition.interimResults = false;   // 只返回最终结果
-                recognition.lang = 'zh-CN';
-                recognition.maxAlternatives = 1;
-                return recognition;
-            }
-
-            function startVoiceInput() {
-                var support = checkSpeechSupport();
-                if (!support.supported) { alert(support.reason); return; }
-                if (support.needHttpsWarning) {
-                    if (!confirm('当前未使用 HTTPS，语音功能可能无法正常使用。\n点击确定仍尝试启动，取消则关闭。')) return;
-                }
-                if (_recognition) { try { _recognition.abort(); } catch(e) {} _recognition = null; }
-                _recognition = initSpeechRecognition();
-                if (!_recognition) { alert('无法创建语音识别实例，请刷新页面重试'); return; }
-
-                _recognition.onstart = function() {
-                    _isListening = true;
-                    var btn = document.getElementById('voice-input-btn');
-                    if (btn) { btn.textContent = '⏹️ 停止'; btn.classList.remove('btn-success'); btn.classList.add('btn-danger'); }
-                    var status = document.getElementById('voice-status');
-                    if (status) status.textContent = '🎙️ 请说话...';
-                };
-
-                _recognition.onresult = function(event) {
-                    var idx = event.results.length - 1;
-                    var transcript = event.results[idx][0].transcript;
-                    if (transcript) {
-                        _recognition._hadResult = true;
-                        var active = getActiveTextarea();
-                        if (active) insertTextAtCursor(active, transcript);
-                        var status = document.getElementById('voice-status');
-                        if (status) status.textContent = '✅ 已识别: ' + transcript;
-                        setTimeout(function(){ if (status) status.textContent = ''; }, 2000);
-                    }
-                };
-
-                _recognition.onerror = function(event) {
-                    var msg = '';
-                    var extraTip = '';
-                    switch(event.error) {
-                        case 'not-allowed':
-                            if (isMobile() && location.protocol === 'file:') {
-                                msg = '手机端 file:// 协议不支持语音输入。请通过 http://IP:端口 或 HTTPS 访问页面。';
-                                extraTip = '';
-                            } else if (isMobile()) {
-                                msg = '请允许麦克风权限。在浏览器设置中开启麦克风访问，或检查系统隐私设置。';
-                            } else {
-                                msg = '请允许麦克风权限。点击浏览器地址栏左侧的锁图标，开启麦克风权限。';
-                            }
-                            break;
-                        case 'no-speech':   msg = '未检测到语音，请确保麦克风正常工作，靠近麦克风说话。'; break;
-                        case 'audio-capture': msg = '无法获取麦克风，请检查硬件连接或是否有其他应用占用麦克风。'; break;
-                        case 'network':     msg = '网络错误，语音识别需要联网。请检查网络后重试。'; break;
-                        case 'aborted':     return; // 用户手动停止，不报错
-                        default: msg = '识别失败：' + event.error;
-                    }
-                    var status = document.getElementById('voice-status');
-                    if (status) status.textContent = '❌ ' + msg;
-                    stopVoiceInput();
-                    alert('语音识别失败\n\n' + msg + (extraTip ? '\n\n💡 ' + extraTip : '') + '\n\n您可手动输入文本。');
-                };
-
-                _recognition.onend = function() {
-                    // 手机端 SpeechRecognition.start() 必须在用户手势中调用
-                    // onend 是异步回调，restart 会触发 not-allowed，因此统一不自动重启
-                    _isListening = false;
-                    var btn = document.getElementById('voice-input-btn');
-                    if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
-                    var status = document.getElementById('voice-status');
-                    if (status && !_recognition._hadResult) status.textContent = '';
-                    _recognition = null;
-                };
-
-                try { _recognition.start(); }
-                catch(e) { alert('启动语音失败：' + e.message); stopVoiceInput(); }
-            }
-
-            function stopVoiceInput() {
-                if (_recognition) { _isListening = false; try { _recognition.stop(); } catch(e) {} _recognition = null; }
-                var btn = document.getElementById('voice-input-btn');
-                if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
-                var status = document.getElementById('voice-status');
-                if (status) status.textContent = '';
-            }
-
-            window.toggleVoiceInput = function() {
-                if (_isListening) stopVoiceInput();
-                else startVoiceInput();
-            };
 
             // 多媒体文件存储到 IndexedDB
             function saveMediaToDB(file, captureTime) {

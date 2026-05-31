@@ -2227,6 +2227,33 @@
             transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
+        /* 修复 API 配置模态框手机端滚动问题 */
+        #api-config-modal .modal-content {
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #api-config-modal .modal-body {
+            overflow-y: auto !important;
+            flex: 1;
+        }
+        @media (max-width: 600px) {
+            #api-config-modal .modal-content {
+                max-height: 94vh;
+                width: 95vw;
+                margin: 0 auto;
+                border-radius: 16px;
+            }
+            #api-config-modal .modal-body {
+                max-height: 65vh;
+            }
+            #api-config-modal .modal-footer button {
+                flex: 1 0 auto;
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+        }
+
     </style>
     <!-- 屏蔽 Kimi 浏览器扩展悬浮按钮 -->
     <style id="_block_kimi_fab">
@@ -2667,16 +2694,16 @@
 
                     <!-- API 配置模态框 -->
                     <div id="api-config-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11200;align-items:center;justify-content:center;">
-                        <div style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);max-height:85vh;overflow-y:auto;">
-                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                        <div class="modal-content" style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);max-height:85vh;overflow-y:auto;display:flex;flex-direction:column;">
+                            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0;">
                                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔧 大模型 API 配置</span>
                                 <button onclick="document.getElementById('api-config-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>
                             </div>
-                            <div style="display:flex;flex-direction:column;gap:16px;">
+                            <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 2px 0 0;">
+                                <div style="display:flex;flex-direction:column;gap:16px;">
                                 <div><label style="font-weight:600;display:block;margin-bottom:6px;">API 地址 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-apiurl" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="https://api.deepseek.com/chat/completions" value="https://api.deepseek.com/chat/completions"><div style="font-size:0.7rem;color:#718096;margin-top:4px;">支持 OpenAI 格式（DeepSeek、OpenAI、通义千问等）</div></div>
                                 <div><label style="font-weight:600;display:block;margin-bottom:6px;">模型名称 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-model" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="deepseek-chat" value="deepseek-chat"></div>
                                 <div><label style="font-weight:600;display:block;margin-bottom:6px;">API Key <span style="color:#e53e3e;">*</span></label><input type="password" id="modal-apikey" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="sk-..."><div style="font-size:0.7rem;color:#718096;margin-top:4px;">请前往模型平台获取（如 platform.deepseek.com）</div></div>
-                                <!-- 如何注册 API -->
                                 <details style="background:#f8fafc;border-radius:8px;padding:8px 12px;border:1px solid #e2e8f0;">
                                     <summary style="font-weight:600;cursor:pointer;color:var(--primary);">📘 如何注册并获取 API Key？</summary>
                                     <div style="margin-top:10px;font-size:0.8rem;line-height:1.6;color:var(--text);">
@@ -2697,8 +2724,9 @@
                                     </div>
                                 </details>
                                 <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:0.75rem;color:#166534;">💡 保存后立即启用本地智能助手，清除配置则返回豆包网页版。</div>
+                                </div>
                             </div>
-                            <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;">
+                            <div class="modal-footer" style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">
                                 <button onclick="document.getElementById('api-config-modal').style.display='none'" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;">取消</button>
                                 <button id="modal-reset-default" style="padding:8px 16px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:0.85rem;cursor:pointer;">🔄 恢复默认</button>
                                 <button id="modal-clear-key" style="padding:8px 16px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:0.85rem;cursor:pointer;">🗑️ 清除</button>
@@ -6360,7 +6388,7 @@
             let _mediaCaptureTimes = [];   // 拍摄时间戳
             let _existingMediaIds = [];    // 已有媒体对应的 IndexedDB ID（用于编辑时复用）
             let _recognition = null;       // 语音识别对象（Web Speech API）
-            let _isVoiceListening = false; // 是否正在识别
+            let _isListening = false;      // 是否正在识别
 
             // 格式化时间为 "YYYY-MM-DD HH:MM" 或更紧凑格式
             function formatTime(d) {
@@ -6562,48 +6590,38 @@
             }
             window.closeMultimediaPanel = closeMultimediaPanel;
 
-            // ---- Web Speech API 语音输入转文字 ----
+            // ---- Web Speech API 语音输入转文字（移动端优化） ----
             function initSpeechRecognition() {
-                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                    alert('您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari。');
-                    return null;
-                }
                 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) { alert('您的浏览器不支持语音识别'); return null; }
                 var recognition = new SpeechRecognition();
-                recognition.continuous = true;
-                recognition.interimResults = true;
+                recognition.continuous = false;      // 移动端：单次识别，说完自动停
+                recognition.interimResults = false;  // 只返回最终结果，减少延迟
                 recognition.lang = 'zh-CN';
                 recognition.maxAlternatives = 1;
                 return recognition;
             }
 
             function startVoiceInput() {
-                if (_recognition) stopVoiceInput();
+                if (_recognition) { try { _recognition.abort(); } catch(e) {} _recognition = null; }
                 _recognition = initSpeechRecognition();
                 if (!_recognition) return;
                 _recognition.onstart = function() {
-                    _isVoiceListening = true;
+                    _isListening = true;
                     var btn = document.getElementById('voice-input-btn');
-                    if (btn) { btn.textContent = '⏹️ 停止语音'; btn.classList.remove('btn-success'); btn.classList.add('btn-danger'); }
+                    if (btn) { btn.textContent = '⏹️ 停止'; btn.classList.remove('btn-success'); btn.classList.add('btn-danger'); }
                     var status = document.getElementById('voice-status');
-                    if (status) status.textContent = '🎙️ 正在聆听...';
+                    if (status) status.textContent = '🎙️ 请说话...';
                 };
                 _recognition.onresult = function(event) {
-                    var finalTranscript = '';
-                    for (var i = event.resultIndex; i < event.results.length; i++) {
-                        var transcript = event.results[i][0].transcript;
-                        if (event.results[i].isFinal) finalTranscript += transcript;
-                        else {
-                            var status = document.getElementById('voice-status');
-                            if (status) status.textContent = '🎙️ ' + transcript;
-                        }
-                    }
-                    if (finalTranscript) {
+                    var last = event.results.length - 1;
+                    var transcript = event.results[last][0].transcript;
+                    if (transcript) {
                         var active = getActiveTextarea();
-                        if (active) insertTextAtCursor(active, finalTranscript);
+                        if (active) insertTextAtCursor(active, transcript);
                         var status = document.getElementById('voice-status');
-                        if (status) status.textContent = '✅ 已输入文字';
-                        setTimeout(function(){ if (status && _isVoiceListening) status.textContent = '🎙️ 继续聆听...'; }, 1500);
+                        if (status) status.textContent = '✅ 已识别';
+                        setTimeout(function(){ if (status && !_isListening) status.textContent = ''; }, 2000);
                     }
                 };
                 _recognition.onerror = function(event) {
@@ -6613,23 +6631,27 @@
                     stopVoiceInput();
                 };
                 _recognition.onend = function() {
-                    if (_isVoiceListening) { startVoiceInput(); }
-                    else {
-                        var btn = document.getElementById('voice-input-btn');
-                        if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
-                        var status = document.getElementById('voice-status');
-                        if (status) status.textContent = '';
-                    }
+                    if (_isListening) _isListening = false;
+                    var btn = document.getElementById('voice-input-btn');
+                    if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
+                    var status = document.getElementById('voice-status');
+                    if (status && status.textContent !== '✅ 已识别') status.textContent = '';
+                    _recognition = null;
                 };
                 _recognition.start();
             }
 
             function stopVoiceInput() {
-                if (_recognition) { _isVoiceListening = false; _recognition.stop(); _recognition = null; }
+                if (_recognition) { try { _recognition.stop(); } catch(e) {} _recognition = null; }
+                _isListening = false;
+                var btn = document.getElementById('voice-input-btn');
+                if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
+                var status = document.getElementById('voice-status');
+                if (status) status.textContent = '';
             }
 
             window.toggleVoiceInput = function() {
-                if (_isVoiceListening) stopVoiceInput();
+                if (_isListening) stopVoiceInput();
                 else startVoiceInput();
             };
 

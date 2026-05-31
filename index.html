@@ -9531,7 +9531,7 @@
 
                 dsHistory.push({ role: 'user', content: finalText, displayText: displayText });
                 dsRenderAll();
-                dsSaveHistory();
+                // 【性能优化】不在此时写 localStorage，等流式结束后统一保存
 
                 // 弹出数据源选择（若已记住则跳过）
                 var _dataSrc = null;
@@ -9541,7 +9541,11 @@
                 } else {
                     _dataSrc = _sessionDataSource;
                 }
-                const systemPrompt = await dsBuildSystemPrompt(finalText, _dataSrc);
+                // 【性能优化】所有数据源都关闭时，跳过 dsBuildSystemPrompt 的全遍历评分
+                const hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
+                const systemPrompt = hasAnySource
+                    ? await dsBuildSystemPrompt(finalText, _dataSrc)
+                    : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
 
                 const messages = [
                     { role: 'system', content: systemPrompt },
@@ -9606,7 +9610,7 @@
                             } catch(e) { errMsg += '：' + errText.slice(0, 200); }
                         }
                         dsHistory[assistantIdx].content = '❌ ' + errMsg;
-                        dsRenderAll(); dsSaveHistory();
+                        dsRenderAll(); dsSaveHistory(); dsRenderHistoryList();
                         return;
                     }
 
@@ -9614,6 +9618,7 @@
                     const reader = resp.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
+                    let _renderTick = 0; // 渲染节流计数器
 
                     while (true) {
                         const { done, value } = await reader.read();
@@ -9630,25 +9635,30 @@
                                     const delta = json.choices?.[0]?.delta?.content || '';
                                     if (delta) {
                                         dsHistory[assistantIdx].content += delta;
-                                        // 实时更新最后一条消息
-                                        const chatBox = document.getElementById('ds-chat-box');
-                                        const bubbles = chatBox.querySelectorAll('.ds-bubble-assistant');
-                                        const lastBubble = bubbles[bubbles.length - 1];
-                                        if (lastBubble) lastBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content) + '<span class="ds-cursor">▌</span>';
-                                        dsScrollBottom();
+                                        // 【性能优化】节流渲染：每3个chunk刷新一次DOM
+                                        _renderTick++;
+                                        if (_renderTick % 3 === 0) {
+                                            const chatBox = document.getElementById('ds-chat-box');
+                                            const bubbles = chatBox.querySelectorAll('.ds-bubble-assistant');
+                                            const lastBubble = bubbles[bubbles.length - 1];
+                                            if (lastBubble) lastBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content) + '<span class="ds-cursor">▌</span>';
+                                            dsScrollBottom();
+                                        }
                                     }
                                 } catch(e) { /* 跳过解析失败的行 */ }
                             }
                         }
                     }
-                    // 移除光标
-                    const chatBox = document.getElementById('ds-chat-box');
-                    const cursors = chatBox.querySelectorAll('.ds-cursor');
-                    cursors.forEach(c => c.remove());
+                    // 流结束：强制最后一次渲染
+                    var _finalChatBox = document.getElementById('ds-chat-box');
+                    var _finalBubbles = _finalChatBox.querySelectorAll('.ds-bubble-assistant');
+                    var _finalBubble = _finalBubbles[_finalBubbles.length - 1];
+                    if (_finalBubble) _finalBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content);
                     dsSaveHistory();
-                    // 流式结束后注入反馈按钮（替换 MutationObserver 缺失的触发时机）
+                    dsRenderHistoryList();
+                    // 流式结束后注入反馈按钮
                     setTimeout(function(){
-                        var lastBubble = chatBox.querySelector('.ds-bubble-assistant:last-of-type');
+                        var lastBubble = _finalChatBox.querySelector('.ds-bubble-assistant:last-of-type');
                         if (lastBubble && !lastBubble.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
                             window._addFeedbackButtons(lastBubble, lastBubble.innerText);
                         }
@@ -9669,10 +9679,12 @@
                             }, 50);
                         }
                         dsSaveHistory();
+                        dsRenderHistoryList();
                     } else {
                         dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
                         dsRenderAll();
                         dsSaveHistory();
+                        dsRenderHistoryList();
                     }
                 } finally {
                     _acAbortController = null;
@@ -9804,10 +9816,7 @@
 
             function dsSaveHistory() {
                 try {
-                    // 兼容旧版本存储
                     localStorage.setItem(DS_CHAT_STORAGE, JSON.stringify(dsHistory.slice(-50)));
-                    
-                    // 更新当前对话
                     if (dsCurrentConvId) {
                         const currentConv = dsConversations.find(c => c.id === dsCurrentConvId);
                         if (currentConv) {
@@ -9815,7 +9824,7 @@
                             currentConv.title = dsGetConvTitle(currentConv.messages);
                             currentConv.timestamp = Date.now();
                             dsSaveConversations();
-                            dsRenderHistoryList();
+                            // 【性能优化】sidebar 重建移至流结束后单独触发
                         }
                     }
                 } catch(e) {}

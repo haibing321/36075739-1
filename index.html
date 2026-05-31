@@ -6590,22 +6590,39 @@
             }
             window.closeMultimediaPanel = closeMultimediaPanel;
 
-            // ---- Web Speech API 语音输入转文字（移动端优化） ----
+            // ---- 语音输入转文字（移动端兼容增强版）----
+            function checkSpeechSupport() {
+                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    return { supported: false, reason: '您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari 并确保页面通过 HTTPS 访问。' };
+                }
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost' && !location.hostname.match(/^(\d+\.){3}\d+$/)) {
+                    return { supported: true, needHttpsWarning: true, reason: '当前非 HTTPS 环境，语音功能可能需要手动授权。' };
+                }
+                return { supported: true, needHttpsWarning: false };
+            }
+
             function initSpeechRecognition() {
                 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!SpeechRecognition) { alert('您的浏览器不支持语音识别'); return null; }
+                if (!SpeechRecognition) return null;
                 var recognition = new SpeechRecognition();
-                recognition.continuous = false;      // 移动端：单次识别，说完自动停
-                recognition.interimResults = false;  // 只返回最终结果，减少延迟
+                recognition.continuous = false;       // 手机端单次识别更稳定
+                recognition.interimResults = false;   // 只返回最终结果
                 recognition.lang = 'zh-CN';
                 recognition.maxAlternatives = 1;
                 return recognition;
             }
 
             function startVoiceInput() {
+                var support = checkSpeechSupport();
+                if (!support.supported) { alert(support.reason); return; }
+                if (support.needHttpsWarning) {
+                    if (!confirm('当前未使用 HTTPS，语音功能可能无法正常使用。\n点击确定仍尝试启动，取消则关闭。')) return;
+                }
                 if (_recognition) { try { _recognition.abort(); } catch(e) {} _recognition = null; }
                 _recognition = initSpeechRecognition();
-                if (!_recognition) return;
+                if (!_recognition) { alert('无法创建语音识别实例，请刷新页面重试'); return; }
+
                 _recognition.onstart = function() {
                     _isListening = true;
                     var btn = document.getElementById('voice-input-btn');
@@ -6613,37 +6630,51 @@
                     var status = document.getElementById('voice-status');
                     if (status) status.textContent = '🎙️ 请说话...';
                 };
+
                 _recognition.onresult = function(event) {
-                    var last = event.results.length - 1;
-                    var transcript = event.results[last][0].transcript;
+                    var idx = event.results.length - 1;
+                    var transcript = event.results[idx][0].transcript;
                     if (transcript) {
                         var active = getActiveTextarea();
                         if (active) insertTextAtCursor(active, transcript);
                         var status = document.getElementById('voice-status');
-                        if (status) status.textContent = '✅ 已识别';
+                        if (status) status.textContent = '✅ 已识别: ' + transcript;
                         setTimeout(function(){ if (status && !_isListening) status.textContent = ''; }, 2000);
                     }
                 };
+
                 _recognition.onerror = function(event) {
-                    var msg = event.error === 'not-allowed' ? '请允许麦克风权限' : event.error === 'no-speech' ? '未检测到语音' : '识别失败：'+event.error;
+                    var msg = '';
+                    switch(event.error) {
+                        case 'not-allowed': msg = '请允许麦克风权限，并在系统设置中开启。'; break;
+                        case 'no-speech':   msg = '未检测到语音，请确保麦克风工作。'; break;
+                        case 'audio-capture': msg = '无法获取麦克风，请检查硬件。'; break;
+                        case 'network':     msg = '网络错误，请检查网络后重试。'; break;
+                        default: msg = '识别失败：' + event.error;
+                    }
                     var status = document.getElementById('voice-status');
                     if (status) status.textContent = '❌ ' + msg;
                     stopVoiceInput();
+                    alert('语音识别错误：' + msg + '\n您可手动输入文本。');
                 };
+
                 _recognition.onend = function() {
-                    if (_isListening) _isListening = false;
-                    var btn = document.getElementById('voice-input-btn');
-                    if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
-                    var status = document.getElementById('voice-status');
-                    if (status && status.textContent !== '✅ 已识别') status.textContent = '';
-                    _recognition = null;
+                    if (_isListening) { startVoiceInput(); }
+                    else {
+                        var btn = document.getElementById('voice-input-btn');
+                        if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
+                        var status = document.getElementById('voice-status');
+                        if (status) status.textContent = '';
+                        _recognition = null;
+                    }
                 };
-                _recognition.start();
+
+                try { _recognition.start(); }
+                catch(e) { alert('启动语音失败：' + e.message); stopVoiceInput(); }
             }
 
             function stopVoiceInput() {
-                if (_recognition) { try { _recognition.stop(); } catch(e) {} _recognition = null; }
-                _isListening = false;
+                if (_recognition) { _isListening = false; try { _recognition.stop(); } catch(e) {} _recognition = null; }
                 var btn = document.getElementById('voice-input-btn');
                 if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
                 var status = document.getElementById('voice-status');

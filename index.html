@@ -2564,9 +2564,9 @@
                                     🎥 录像
                                     <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                                 </label>
-                                <!-- 语音录音（MediaRecorder API） -->
-                                <button class="btn btn-success" id="audio-record-btn" onclick="toggleAudioRecording()">🎤 开始录音</button>
-                                <span id="audio-record-status" style="color:var(--text-secondary); line-height:2;"></span>
+                                <!-- 语音输入转文字（Web Speech API） -->
+                                <button class="btn btn-success" id="voice-input-btn" onclick="toggleVoiceInput()">🎙️ 语音输入</button>
+                                <span id="voice-status" style="color:var(--text-secondary); line-height:2;"></span>
                             </div>
                             <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（工作内容或问题框）</div>
                             <!-- 多媒体预览区 -->
@@ -2652,61 +2652,67 @@
                 </div>
                 <div class="card-body" style="display:flex;flex-direction:column;gap:0;position:relative;min-height:0;">
 
-                    <!-- API 配置区（已配置成功后自动隐藏） -->
-                    <div id="ds-apikey-section" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
-                        <div style="font-size:0.85rem;font-weight:600;color:var(--primary);margin-bottom:4px;">🔧 大模型 API 配置（支持任意 OpenAI 格式 API）</div>
-                        <div id="ds-apikey-bar" style="display:flex;flex-direction:column;gap:8px;">
-                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                <input type="text" id="ds-apiurl-input" placeholder="API 地址（如：https://api.deepseek.com/chat/completions）" autocomplete="off"
-                                    style="flex:2;min-width:200px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
-                                <input type="text" id="ds-model-input" placeholder="模型名称（如：deepseek-chat）" autocomplete="off"
-                                    style="flex:1;min-width:120px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
-                            </div>
-                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                                <input type="password" id="ds-apikey-input" placeholder="API Key（sk-...）" autocomplete="off"
-                                    style="flex:1;min-width:140px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
-                                <button onclick="dsSetApiKey()" class="btn btn-primary btn-small">💾 保存配置</button>
-                                <button onclick="dsClearApiKey()" class="btn btn-secondary btn-small">🗑️ 清除</button>
-                                <button onclick="dsResetDefaultApi()" class="btn btn-info btn-small" style="font-size:0.78rem;">🔄 恢复默认</button>
-                                <span id="ds-apikey-status" style="font-size:0.82rem;color:var(--success);display:none;">✅ 已配置</span>
-                            </div>
+                    <!-- 操作栏：API 配置 + 备份/导入 + 状态 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+                        <div style="display:flex;gap:8px;">
+                            <button id="ds-api-config-btn" style="padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">⚙️ API 配置</button>
+                            <button id="global-backup-btn" style="padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;">📦 备份</button>
+                            <button id="global-restore-btn" style="padding:6px 14px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;">📂 导入</button>
                         </div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);padding:6px 10px;background:#f8fafc;border-radius:6px;">
-                            💡 支持任意兼容 OpenAI API 格式的大模型，如：DeepSeek、OpenAI、Claude、通义千问、文心一言等。默认使用 DeepSeek。
+                        <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;">
+                            <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
+                            <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
                         </div>
                     </div>
-                    <!-- API 已配置时显示的提示条 -->
-                    <div id="ds-apikey-done" style="display:none;flex-direction:column;gap:6px;margin-bottom:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:var(--radius-sm);font-size:0.82rem;color:#166534;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;">
-                            <span>✅ API 已配置</span>
-                            <div style="display:flex;gap:8px;">
-                                <button onclick="dsToggleApiConfig()" class="btn btn-secondary btn-small" style="padding:4px 12px;font-size:0.78rem;">⚙️ 修改配置</button>
+
+                    <!-- API 配置模态框 -->
+                    <div id="api-config-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11200;align-items:center;justify-content:center;">
+                        <div style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);max-height:85vh;overflow-y:auto;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                                <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔧 大模型 API 配置</span>
+                                <button onclick="document.getElementById('api-config-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:16px;">
+                                <div><label style="font-weight:600;display:block;margin-bottom:6px;">API 地址 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-apiurl" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="https://api.deepseek.com/chat/completions" value="https://api.deepseek.com/chat/completions"><div style="font-size:0.7rem;color:#718096;margin-top:4px;">支持 OpenAI 格式（DeepSeek、OpenAI、通义千问等）</div></div>
+                                <div><label style="font-weight:600;display:block;margin-bottom:6px;">模型名称 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-model" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="deepseek-chat" value="deepseek-chat"></div>
+                                <div><label style="font-weight:600;display:block;margin-bottom:6px;">API Key <span style="color:#e53e3e;">*</span></label><input type="password" id="modal-apikey" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="sk-..."><div style="font-size:0.7rem;color:#718096;margin-top:4px;">请前往模型平台获取（如 platform.deepseek.com）</div></div>
+                                <!-- 如何注册 API -->
+                                <details style="background:#f8fafc;border-radius:8px;padding:8px 12px;border:1px solid #e2e8f0;">
+                                    <summary style="font-weight:600;cursor:pointer;color:var(--primary);">📘 如何注册并获取 API Key？</summary>
+                                    <div style="margin-top:10px;font-size:0.8rem;line-height:1.6;color:var(--text);">
+                                        <p><strong>推荐使用 DeepSeek（性价比高，国内可用）：</strong></p>
+                                        <ol style="margin-left:20px;padding-left:0;">
+                                            <li>访问 <a href="https://platform.deepseek.com/" target="_blank" style="color:var(--info);">https://platform.deepseek.com/</a> 注册账号。</li>
+                                            <li>登录后进入「API Keys」页面，点击「创建 API Key」。</li>
+                                            <li>复制生成的 Key（格式：sk-xxxxxxxx），粘贴到上方输入框。</li>
+                                            <li>API 地址和模型名称保持默认，点击「保存」即可。</li>
+                                        </ol>
+                                        <p><strong>其他兼容平台：</strong></p>
+                                        <ul style="margin-left:20px;">
+                                            <li>OpenAI: <code>https://api.openai.com/v1/chat/completions</code>，模型 <code>gpt-3.5-turbo</code></li>
+                                            <li>通义千问: <code>https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions</code>，模型 <code>qwen-turbo</code></li>
+                                            <li>智谱: <code>https://open.bigmodel.cn/api/paas/v4/chat/completions</code>，模型 <code>glm-4</code></li>
+                                        </ul>
+                                        <p style="margin-top:8px;">💡 配置保存后立即生效。如需切回豆包网页版，点击「清除配置」。</p>
+                                    </div>
+                                </details>
+                                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:0.75rem;color:#166534;">💡 保存后立即启用本地智能助手，清除配置则返回豆包网页版。</div>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;">
+                                <button onclick="document.getElementById('api-config-modal').style.display='none'" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;">取消</button>
+                                <button id="modal-reset-default" style="padding:8px 16px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:0.85rem;cursor:pointer;">🔄 恢复默认</button>
+                                <button id="modal-clear-key" style="padding:8px 16px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:0.85rem;cursor:pointer;">🗑️ 清除</button>
+                                <button id="modal-save-config" style="padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">💾 保存</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 联动数据选择框（全局共享，放在子模块切换按钮上方） -->
-                    <div id="ds-linked-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:linear-gradient(135deg,#f0f7ff,#e8f4fd);border-radius:10px;border:1px solid #bfdbfe;flex-wrap:wrap;">
-                        <span style="font-size:0.82rem;font-weight:600;color:var(--primary);white-space:nowrap;display:flex;align-items:center;gap:4px;">🔗 联动数据：</span>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
-                            <input type="checkbox" id="ds-ctx-rules" checked onchange="dsUpdateCtxInfo()"> 规章
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
-                            <input type="checkbox" id="ds-ctx-issue" checked onchange="dsUpdateCtxInfo()"> 检查台账
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
-                            <input type="checkbox" id="ds-ctx-handbook" onchange="dsUpdateCtxInfo()"> 手册
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
-                            <input type="checkbox" id="ds-ctx-wr-all" onchange="dsUpdateCtxInfo()"> 智能写作
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
-                            <input type="checkbox" id="ds-ctx-phone" onchange="dsUpdateCtxInfo()"> 车站电话
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.82rem;white-space:nowrap;">
-                            <input type="checkbox" id="ds-ctx-diary" onchange="dsUpdateCtxInfo()"> 工作日志
-                        </label>
-                        <span id="ds-ctx-info" style="font-size:0.75rem;color:var(--text-secondary);margin-left:auto;white-space:nowrap;"></span>
+                    <!-- 豆包网页版嵌入（API未配置时显示） -->
+                    <div id="doubao-webview" style="display:flex;flex-direction:column;min-height:500px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
+                        <iframe src="https://www.doubao.com/chat/" style="width:100%;height:70vh;border:none;" title="豆包网页版"></iframe>
+                        <div style="text-align:center;padding:8px;font-size:0.75rem;color:var(--text-secondary);background:#f8fafc;">
+                            ⚠️ 豆包网页版为第三方服务。如需使用本地智能助手，请<button id="quick-config-btn" style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:2px 10px;margin:0 4px;cursor:pointer;font-size:0.75rem;">点击配置 API Key</button>。
+                        </div>
                     </div>
 
                     <!-- 子模块切换按钮 -->
@@ -2829,6 +2835,7 @@
                           <div style="flex:1"></div>
                           <div id="skillButtons" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
                           <button id="statsBtn" style="background: #e2e8f0; border: none; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer;">📊 统计</button>
+                          <button id="ds-reset-datasource" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer; color: #15803d;">🔄 数据源</button>
                         </div>
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
                         <!-- 输入区 -->
@@ -2848,6 +2855,29 @@
                             </div>
                         </div>
                         <!-- 已附加文件标签（已移除，改为直接显示在输入框中） -->
+                    </div>
+                    <!-- 数据源选择弹窗 -->
+                    <div id="ds-datasource-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11100;align-items:center;justify-content:center;">
+                        <div style="background:#fff;border-radius:14px;padding:20px;width:min(400px,95vw);max-height:85vh;overflow-y:auto;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                                <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔗 选择本次使用的数据源</span>
+                                <button onclick="var m=document.getElementById('ds-datasource-modal');m.style.display='none';m.querySelector('#ds-dialog-confirm')._reject&&m.querySelector('#ds-dialog-confirm')._reject();" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-rules" value="rules" checked> 📋 规章制度</label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-issue" value="issue" checked> 📊 检查台账</label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-handbook" value="handbook"> 📖 检查手册</label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-wr-all" value="wr_all"> ✍️ 智能写作资料</label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-phone" value="phone"> 📞 车站电话</label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-diary" value="diary"> 📝 工作日志</label>
+                                <hr style="margin:4px 0;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-remember" checked> ✅ 记住此次选择</label>
+                            </div>
+                            <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
+                                <button onclick="var m=document.getElementById('ds-datasource-modal');m.style.display='none';m.querySelector('#ds-dialog-confirm')._reject&&m.querySelector('#ds-dialog-confirm')._reject();" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;">取消</button>
+                                <button id="ds-dialog-confirm" style="padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">确认使用</button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- === 智能写作子模块 === -->
@@ -3591,6 +3621,7 @@
                         if (searchFields.includes('性质')) text += xingzhi + ' ';
                         if (searchFields.includes('category')) text += (item.category || '') + ' ';
                         if (searchFields.includes('content')) text += (item.content || '') + ' ';
+                        if (item.regulation) text += (item.regulation || '') + ' ';
                         text = text.toLowerCase();
 
                         let match = 0;
@@ -3676,7 +3707,17 @@
                     const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
                     content = content.replace(reg, '<span class="highlight">$1</span>');
                 });
-                return '<div class="result-card ' + levelClass + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '其他') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span></div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div></div></div>';
+                // 规章依据单独展示
+                var regulationHtml = '';
+                if (item.regulation) {
+                    var regText = item.regulation.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    keywords.forEach(function(k){
+                        var re = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                        regText = regText.replace(re, '<span class="highlight">$1</span>');
+                    });
+                    regulationHtml = '<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #3b82f6;font-size:0.85rem;border-radius:0 4px 4px 0;"><strong>📜 规章依据：</strong>' + regText + '</div>';
+                }
+                return '<div class="result-card ' + levelClass + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '其他') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span></div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div>' + regulationHtml + '</div></div>';
             }
 
             window.issueCopyContent = function(btn) {
@@ -3720,11 +3761,21 @@
                     const imported = JSON.parse(text);
                     if (!Array.isArray(imported)) throw new Error('JSON 数据必须是数组');
                     if (imported.length === 0) throw new Error('JSON 文件无有效数据');
+                    // 规范化字段（兼容不同命名）
+                    const normalized = imported.map(function(item){
+                        return {
+                            '性质': item['性质'] || item.xingzhi || '',
+                            datetime: item.datetime || new Date().toLocaleString('zh-CN'),
+                            category: item.category || '其他',
+                            content: item.content || item['问题描述'] || item['问题'] || '',
+                            regulation: item.regulation || item['规章依据'] || item['违反规章'] || item['法规依据'] || ''
+                        };
+                    });
                     const existingCount = dataCache.length;
-                    let finalData = imported;
+                    let finalData = normalized;
                     if (existingCount > 0) {
                         const action = confirm(`当前已有 ${existingCount} 条记录。\n点击"确定"覆盖，点击"取消"追加`);
-                        if (!action) finalData = [...dataCache, ...imported];
+                        if (!action) finalData = [...dataCache, ...normalized];
                     }
                     await saveData(finalData); await updateStorage();
                     alert(`成功导入 ${imported.length} 条JSON记录`);
@@ -3738,14 +3789,14 @@
                     if (jsonData.length < 2) throw new Error('Excel文件数据不足');
                     const headers = jsonData[0].map(h => String(h).trim());
                     const findCol = (names) => { for (let i = 0; i < headers.length; i++) { const header = headers[i].toLowerCase().replace(/\s/g, ''); for (let name of names) { if (header === name.toLowerCase() || header.includes(name.toLowerCase())) return i; } } return -1; };
-                    const cols = { xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']), datetime: findCol(['时间', '日期', 'datetime', 'date']), category: findCol(['类别', '专业', 'category', '项目']), content: findCol(['内容', '描述', 'content', '问题', '问题描述']) };
+                    const cols = { xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']), datetime: findCol(['时间', '日期', 'datetime', 'date']), category: findCol(['类别', '专业', 'category', '项目']), content: findCol(['内容', '描述', 'content', '问题', '问题描述']), regulation: findCol(['规章依据', '违反规章', '法规依据', '条款', 'regulation']) };
                     if (cols.content === -1) throw new Error('未找到"内容"列');
                     const newData = []; let skipCount = 0;
                     for (let i = 1; i < jsonData.length; i++) {
                         const row = jsonData[i]; if (!row || row.length === 0) { skipCount++; continue; }
                         const content = cols.content !== -1 ? String(row[cols.content] || '').trim() : ''; if (!content) { skipCount++; continue; }
                         let xz = '空白'; if (cols.xingzhi !== -1 && row[cols.xingzhi] !== undefined && row[cols.xingzhi] !== null) { xz = String(row[cols.xingzhi]).trim(); if (xz === '') xz = '空白'; }
-                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content });
+                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content, regulation: cols.regulation !== -1 ? String(row[cols.regulation] || '').trim() : '' });
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     const existingCount = dataCache.length; let finalData = newData;
@@ -3771,7 +3822,8 @@
                     '性质': getXingzhi(item),
                     'datetime': item.datetime,
                     'category': item.category,
-                    'content': item.content
+                    'content': item.content,
+                    'regulation': item.regulation || ''
                 }));
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -3783,9 +3835,9 @@
             };
 
             window.issueDownloadTemplate = function() {
-                const template = [{ '性质': 'A类', '时间': '2025-12-29 17:09', '类别': '消防安全', '问题描述': '示例：A类问题描述...' }, { '性质': 'B类', '时间': '2025-12-29 16:32', '类别': '规章制度', '问题描述': '示例：B类问题描述...' }, { '性质': 'C类', '时间': '2025-12-29 10:00', '类别': '设备管理', '问题描述': '示例：C类问题描述...' }, { '性质': '红线', '时间': '2025-12-29 09:00', '类别': '安全红线', '问题描述': '示例：红线问题描述...' }, { '性质': '空白', '时间': '2025-12-29 08:00', '类别': '待分类', '问题描述': '示例：空白性质问题描述...' }];
+                const template = [{ '性质': 'A类', '时间': '2025-12-29 17:09', '类别': '消防安全', '问题描述': '示例：A类问题描述...', '规章依据': '《消防法》第XX条' }, { '性质': 'B类', '时间': '2025-12-29 16:32', '类别': '规章制度', '问题描述': '示例：B类问题描述...', '规章依据': '《铁路安全管理条例》第XX条' }, { '性质': 'C类', '时间': '2025-12-29 10:00', '类别': '设备管理', '问题描述': '示例：C类问题描述...' }, { '性质': '红线', '时间': '2025-12-29 09:00', '类别': '安全红线', '问题描述': '示例：红线问题描述...', '规章依据': '《安全红线管理办法》第XX条' }, { '性质': '空白', '时间': '2025-12-29 08:00', '类别': '待分类', '问题描述': '示例：空白性质问题描述...' }];
                 const ws = XLSX.utils.json_to_sheet(template), wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, '导入模板'); ws['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 100 }];
+                XLSX.utils.book_append_sheet(wb, ws, '导入模板'); ws['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 100 }, { wch: 60 }];
                 XLSX.writeFile(wb, '问题库导入模板.xlsx');
             };
 
@@ -6307,10 +6359,8 @@
             let _lastFocusedTextarea = null; // 最近聚焦的文本框
             let _mediaCaptureTimes = [];   // 拍摄时间戳
             let _existingMediaIds = [];    // 已有媒体对应的 IndexedDB ID（用于编辑时复用）
-            let _mediaRecorder = null;     // MediaRecorder 实例（录音）
-            let _audioChunks = [];         // 录音数据块
-            let _audioStream = null;       // 麦克风流
-            let _isRecording = false;      // 是否正在录音
+            let _recognition = null;       // 语音识别对象（Web Speech API）
+            let _isVoiceListening = false; // 是否正在识别
 
             // 格式化时间为 "YYYY-MM-DD HH:MM" 或更紧凑格式
             function formatTime(d) {
@@ -6512,85 +6562,76 @@
             }
             window.closeMultimediaPanel = closeMultimediaPanel;
 
-            // ---- MediaRecorder 录音 ----
-            function toggleAudioRecording() {
-                if (_isRecording) { stopAudioRecording(); }
-                else { startAudioRecording(); }
+            // ---- Web Speech API 语音输入转文字 ----
+            function initSpeechRecognition() {
+                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                    alert('您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari。');
+                    return null;
+                }
+                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                var recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'zh-CN';
+                recognition.maxAlternatives = 1;
+                return recognition;
             }
-            window.toggleAudioRecording = toggleAudioRecording;
 
-            async function startAudioRecording() {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    _audioStream = stream;
-                    _audioChunks = [];
-                    const mimeType = 'audio/webm;codecs=opus';
-                    _mediaRecorder = new MediaRecorder(stream, {
-                        mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : ''
-                    });
-                    _mediaRecorder.ondataavailable = e => {
-                        if (e.data.size > 0) _audioChunks.push(e.data);
-                    };
-                    _mediaRecorder.onstop = () => {
-                        const blob = new Blob(_audioChunks, { type: 'audio/webm' });
-                        _audioChunks = [];
-                        if (_audioStream) {
-                            _audioStream.getTracks().forEach(t => t.stop());
-                            _audioStream = null;
+            function startVoiceInput() {
+                if (_recognition) stopVoiceInput();
+                _recognition = initSpeechRecognition();
+                if (!_recognition) return;
+                _recognition.onstart = function() {
+                    _isVoiceListening = true;
+                    var btn = document.getElementById('voice-input-btn');
+                    if (btn) { btn.textContent = '⏹️ 停止语音'; btn.classList.remove('btn-success'); btn.classList.add('btn-danger'); }
+                    var status = document.getElementById('voice-status');
+                    if (status) status.textContent = '🎙️ 正在聆听...';
+                };
+                _recognition.onresult = function(event) {
+                    var finalTranscript = '';
+                    for (var i = event.resultIndex; i < event.results.length; i++) {
+                        var transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) finalTranscript += transcript;
+                        else {
+                            var status = document.getElementById('voice-status');
+                            if (status) status.textContent = '🎙️ ' + transcript;
                         }
-                        handleAudioCapture(blob);
-                    };
-                    _mediaRecorder.start();
-                    _isRecording = true;
-                    const btn = document.getElementById('audio-record-btn');
-                    btn.textContent = '⏹ 停止录音';
-                    btn.className = 'btn btn-danger';
-                    document.getElementById('audio-record-status').textContent = '🎙️ 录音中...';
-                } catch (err) {
-                    alert('无法访问麦克风: ' + err.message);
-                }
+                    }
+                    if (finalTranscript) {
+                        var active = getActiveTextarea();
+                        if (active) insertTextAtCursor(active, finalTranscript);
+                        var status = document.getElementById('voice-status');
+                        if (status) status.textContent = '✅ 已输入文字';
+                        setTimeout(function(){ if (status && _isVoiceListening) status.textContent = '🎙️ 继续聆听...'; }, 1500);
+                    }
+                };
+                _recognition.onerror = function(event) {
+                    var msg = event.error === 'not-allowed' ? '请允许麦克风权限' : event.error === 'no-speech' ? '未检测到语音' : '识别失败：'+event.error;
+                    var status = document.getElementById('voice-status');
+                    if (status) status.textContent = '❌ ' + msg;
+                    stopVoiceInput();
+                };
+                _recognition.onend = function() {
+                    if (_isVoiceListening) { startVoiceInput(); }
+                    else {
+                        var btn = document.getElementById('voice-input-btn');
+                        if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
+                        var status = document.getElementById('voice-status');
+                        if (status) status.textContent = '';
+                    }
+                };
+                _recognition.start();
             }
 
-            function stopAudioRecording() {
-                if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
-                    _mediaRecorder.stop();
-                }
-                _isRecording = false;
-                const btn = document.getElementById('audio-record-btn');
-                btn.textContent = '🎤 开始录音';
-                btn.className = 'btn btn-success';
-                document.getElementById('audio-record-status').textContent = '';
+            function stopVoiceInput() {
+                if (_recognition) { _isVoiceListening = false; _recognition.stop(); _recognition = null; }
             }
 
-            // 处理录音完成的音频文件
-            function handleAudioCapture(blob) {
-                const now = new Date();
-                const captureTimeStr = formatTime(now);
-                const file = new File([blob], '录音_' + now.getTime() + '.webm', { type: 'audio/webm' });
-                _mediaFiles.push(file);
-                _mediaCaptureTimes.push(captureTimeStr);
-                // 预览
-                const blobUrl = URL.createObjectURL(blob);
-                _mediaPreviews.push(blobUrl);
-                const previewDiv = document.getElementById('media-preview');
-                const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'position:relative;display:inline-block;vertical-align:top;';
-                const el = document.createElement('audio');
-                el.src = blobUrl;
-                el.controls = true;
-                el.preload = 'auto';
-                el.style.cssText = 'width:220px;height:40px;border-radius:6px;margin:2px 0;';
-                wrapper.appendChild(el);
-                const badge = document.createElement('div');
-                badge.textContent = captureTimeStr;
-                badge.style.cssText = 'position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;pointer-events:none;';
-                wrapper.appendChild(badge);
-                previewDiv.appendChild(wrapper);
-                // 插入标签
-                const idx = _mediaFiles.length;
-                const tag = '[🎤录音' + idx + ']';
-                insertTextAtCursor(getActiveTextarea(), tag);
-            }
+            window.toggleVoiceInput = function() {
+                if (_isVoiceListening) stopVoiceInput();
+                else startVoiceInput();
+            };
 
             // 多媒体文件存储到 IndexedDB
             function saveMediaToDB(file, captureTime) {
@@ -8329,20 +8370,7 @@
                 dsApiUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
                 dsModel  = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
                 
-                // 设置输入框默认值
-                document.getElementById('ds-apiurl-input').value = dsApiUrl;
-                document.getElementById('ds-model-input').value = dsModel;
-                
-                if (dsApiKey) {
-                    document.getElementById('ds-apikey-status').style.display = '';
-                    document.getElementById('ds-apikey-input').value = '';
-                    document.getElementById('ds-apikey-input').placeholder = '已保存（如需修改请重新输入）';
-                    // 已配置：隐藏输入区，显示完成提示
-                    document.getElementById('ds-apikey-section').style.display = 'none';
-                    document.getElementById('ds-apikey-done').style.display = 'flex';
-                    // 更新配置摘要
-                    dsUpdateApiConfigSummary();
-                }
+                updateApiStatusBadge();
                 // 加载多对话历史
                 dsLoadConversations();
                 // 默认显示新对话（但复用已有的空对话，避免重复创建）
@@ -8366,7 +8394,6 @@
                 dsRenderAll();
                 dsScrollBottom();
                 dsRenderHistoryList();
-                dsUpdateCtxInfo();
                 // 初始化侧边栏隐藏位置（适配手机端vw宽度）
                 (function() {
                     var sb = document.getElementById('ds-sidebar');
@@ -8376,11 +8403,8 @@
                 document.getElementById('ds-user-input').addEventListener('keydown', function(e) {
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dsSendMsg(); }
                 });
-                // 联动选框变化时更新提示
-                ['ds-ctx-rules','ds-ctx-issue','ds-ctx-handbook','ds-ctx-wr-all','ds-ctx-phone','ds-ctx-diary'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.addEventListener('change', () => dsUpdateCtxInfo());
-                });
+                // 根据 API Key 状态切换豆包网页版/本地模块
+                toggleDoubaoMode();
             }
 
             // ---- 多对话管理 ----
@@ -8703,115 +8727,155 @@
                 dsNewChat(false);
             }
 
-            // ---- API 配置管理 ----
-            window.dsSetApiKey = function() {
-                const keyVal = document.getElementById('ds-apikey-input').value.trim();
-                const urlVal = document.getElementById('ds-apiurl-input').value.trim();
-                const modelVal = document.getElementById('ds-model-input').value.trim();
-                
-                if (!keyVal) { alert('请输入 API Key'); return; }
-                if (keyVal === DS_PLACEHOLDER_KEY) { alert('请替换为真实的 API Key'); return; }
-                if (!urlVal) { alert('请输入 API 地址'); return; }
-                if (!modelVal) { alert('请输入模型名称'); return; }
-                
-                dsApiKey = keyVal;
-                dsApiUrl = urlVal;
-                dsModel = modelVal;
-                
-                localStorage.setItem(DS_API_KEY_STORAGE, keyVal);
-                localStorage.setItem(DS_API_URL_STORAGE, urlVal);
-                localStorage.setItem(DS_MODEL_STORAGE, modelVal);
-                
-                document.getElementById('ds-apikey-status').style.display = '';
-                document.getElementById('ds-apikey-input').value = '';
-                document.getElementById('ds-apikey-input').placeholder = '已保存（如需修改请重新输入）';
-                // 已配置：隐藏输入区，显示完成提示
-                document.getElementById('ds-apikey-section').style.display = 'none';
-                document.getElementById('ds-apikey-done').style.display = 'flex';
-                // 更新配置摘要
-                dsUpdateApiConfigSummary();
-                alert('API 配置已保存！\n\n地址：' + urlVal + '\n模型：' + modelVal);
-            };
+            // ---- 豆包网页版 / 本地模块切换 ----
+            function toggleDoubaoMode() {
+                var hasApiKey = !!dsApiKey && dsApiKey !== DS_PLACEHOLDER_KEY;
+                var webview = document.getElementById('doubao-webview');
+                var subTabs = document.getElementById('ds-sub-tabs');
+                var subCheck = document.getElementById('ds-sub-check');
+                var subChat = document.getElementById('ds-sub-chat');
+                var subWriter = document.getElementById('ds-sub-writer');
+                var agentToolbar = document.getElementById('agent-toolbar');
+                if (webview) webview.style.display = hasApiKey ? 'none' : 'flex';
+                if (subTabs) subTabs.style.display = hasApiKey ? 'flex' : 'none';
+                if (agentToolbar) agentToolbar.style.display = hasApiKey ? 'flex' : 'none';
+                if (hasApiKey) {
+                    if (subChat) subChat.style.display = 'flex';
+                    if (subCheck) subCheck.style.display = 'none';
+                    if (subWriter) subWriter.style.display = 'none';
+                } else {
+                    if (subChat) subChat.style.display = 'none';
+                    if (subCheck) subCheck.style.display = 'none';
+                    if (subWriter) subWriter.style.display = 'none';
+                }
+            }
 
-            window.dsClearApiKey = function() {
-                dsApiKey = '';
-                dsApiUrl = DS_DEFAULT_API_URL;
-                dsModel = DS_DEFAULT_MODEL;
+            // ---------- API 配置模态框及状态 ----------
+            function updateApiStatusBadge() {
+                var hasKey = dsApiKey && dsApiKey !== DS_PLACEHOLDER_KEY;
+                var icon = document.getElementById('ds-api-status-icon');
+                var text = document.getElementById('ds-api-status-text');
+                if (icon && text) {
+                    if (hasKey) {
+                        icon.innerHTML = '✅'; icon.style.color = '#10b981';
+                        text.innerHTML = '已配置（' + (dsModel || DS_DEFAULT_MODEL) + '）';
+                    } else {
+                        icon.innerHTML = '⚪'; icon.style.color = '#94a3b8';
+                        text.innerHTML = '未配置 API';
+                    }
+                }
+            }
+
+            function showApiConfigModal() {
+                document.getElementById('modal-apiurl').value = dsApiUrl;
+                document.getElementById('modal-model').value = dsModel;
+                document.getElementById('modal-apikey').value = '';
+                document.getElementById('api-config-modal').style.display = 'flex';
+            }
+
+            function saveApiConfigFromModal() {
+                var url = document.getElementById('modal-apiurl').value.trim();
+                var model = document.getElementById('modal-model').value.trim();
+                var key = document.getElementById('modal-apikey').value.trim();
+                if (!url) { alert('请输入 API 地址'); return; }
+                if (!model) { alert('请输入模型名称'); return; }
+                if (!key) { if (!dsApiKey) { alert('请输入 API Key'); return; } }
+                else { dsApiKey = key; localStorage.setItem(DS_API_KEY_STORAGE, key); }
+                dsApiUrl = url; dsModel = model;
+                localStorage.setItem(DS_API_URL_STORAGE, url);
+                localStorage.setItem(DS_MODEL_STORAGE, model);
+                updateApiStatusBadge();
+                document.getElementById('api-config-modal').style.display = 'none';
+                if (typeof toggleDoubaoMode === 'function') toggleDoubaoMode();
+            }
+
+            function clearApiConfig() {
+                dsApiKey = ''; dsApiUrl = DS_DEFAULT_API_URL; dsModel = DS_DEFAULT_MODEL;
                 localStorage.removeItem(DS_API_KEY_STORAGE);
                 localStorage.removeItem(DS_API_URL_STORAGE);
                 localStorage.removeItem(DS_MODEL_STORAGE);
-                document.getElementById('ds-apikey-status').style.display = 'none';
-                document.getElementById('ds-apikey-input').value = '';
-                document.getElementById('ds-apikey-input').placeholder = '请输入 API Key（sk-...）';
-                document.getElementById('ds-apiurl-input').value = DS_DEFAULT_API_URL;
-                document.getElementById('ds-model-input').value = DS_DEFAULT_MODEL;
-                // 未配置：显示输入区，隐藏完成提示
-                document.getElementById('ds-apikey-section').style.display = 'flex';
-                document.getElementById('ds-apikey-done').style.display = 'none';
-                alert('API 配置已清除');
-            };
-            
-            // 更新配置摘要显示（已简化，不再显示详情）
-            function dsUpdateApiConfigSummary() {
-                // 简化后不需要更新详情，只显示"已配置"状态
+                document.getElementById('modal-apiurl').value = DS_DEFAULT_API_URL;
+                document.getElementById('modal-model').value = DS_DEFAULT_MODEL;
+                document.getElementById('modal-apikey').value = '';
+                updateApiStatusBadge();
+                document.getElementById('api-config-modal').style.display = 'none';
+                if (typeof toggleDoubaoMode === 'function') toggleDoubaoMode();
             }
-            
-            // 切换显示/隐藏API配置区
-            window.dsToggleApiConfig = function() {
-                const section = document.getElementById('ds-apikey-section');
-                const done = document.getElementById('ds-apikey-done');
-                if (section.style.display === 'none') {
-                    section.style.display = 'flex';
-                    done.style.display = 'none';
-                    // 加载当前配置到输入框
-                    document.getElementById('ds-apiurl-input').value = dsApiUrl;
-                    document.getElementById('ds-model-input').value = dsModel;
-                    document.getElementById('ds-apikey-input').value = '';
-                    document.getElementById('ds-apikey-input').placeholder = '请输入新的 API Key（留空则保持原配置）';
-                }
-            };
-            
-            // 恢复默认API配置
-            window.dsResetDefaultApi = function() {
-                document.getElementById('ds-apiurl-input').value = DS_DEFAULT_API_URL;
-                document.getElementById('ds-model-input').value = DS_DEFAULT_MODEL;
-                alert('已恢复默认配置（DeepSeek），请点击「保存配置」按钮保存');
-            };
 
-            // ---- 联动数据统计 ----
-            async function dsUpdateCtxInfo() {
-                const useRules    = document.getElementById('ds-ctx-rules') ? document.getElementById('ds-ctx-rules').checked : false;
-                const useIssue    = document.getElementById('ds-ctx-issue') ? document.getElementById('ds-ctx-issue').checked : false;
-                const useHandbook = document.getElementById('ds-ctx-handbook') ? document.getElementById('ds-ctx-handbook').checked : false;
-                const useWrAll    = document.getElementById('ds-ctx-wr-all') ? document.getElementById('ds-ctx-wr-all').checked : false;
-                const usePhone    = document.getElementById('ds-ctx-phone') ? document.getElementById('ds-ctx-phone').checked : false;
-                const useDiary    = document.getElementById('ds-ctx-diary') ? document.getElementById('ds-ctx-diary').checked : false;
-                let counts = [];
-                if (useRules)    { const d = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];    counts.push('规章' + d.length + '条'); }
-                if (useIssue)    { const d = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];    counts.push('检查' + d.length + '条'); }
-                if (useHandbook) { const d = (typeof window.getHandbookData === 'function') ? window.getHandbookData() : []; counts.push('手册' + d.length + '条'); }
-                if (useWrAll)    {
-                    let wrCounts = [];
-                    const mats = (typeof window._wrGetAllMaterials === 'function') ? await window._wrGetAllMaterials() : [];
-                    const rpts = (typeof window._wrGetAllReports === 'function') ? await window._wrGetAllReports() : [];
-                    if (mats && mats.length > 0) wrCounts.push('资料' + mats.length + '份');
-                    if (rpts && rpts.length > 0) wrCounts.push('报告' + rpts.length + '篇');
-                    if (wrCounts.length > 0) counts.push('写作(' + wrCounts.join('，') + ')');
-                }
-                if (usePhone)    { const d = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : []; counts.push('电话' + d.length + '条'); }
-                if (useDiary)    { const d = (typeof window.getDiaryData === 'function') ? window.getDiaryData() : []; counts.push('日志' + d.length + '条'); }
-                const infoEl = document.getElementById('ds-ctx-info');
-                if (infoEl) infoEl.textContent = counts.length ? '（' + counts.join('，') + '）' : '';
+            function resetDefaultApiConfig() {
+                document.getElementById('modal-apiurl').value = DS_DEFAULT_API_URL;
+                document.getElementById('modal-model').value = DS_DEFAULT_MODEL;
             }
+
+            function bindApiModalEvents() {
+                var cfgBtn = document.getElementById('ds-api-config-btn');
+                if (cfgBtn) cfgBtn.onclick = showApiConfigModal;
+                var saveBtn = document.getElementById('modal-save-config');
+                if (saveBtn) saveBtn.onclick = saveApiConfigFromModal;
+                var clearBtn = document.getElementById('modal-clear-key');
+                if (clearBtn) clearBtn.onclick = clearApiConfig;
+                var resetBtn = document.getElementById('modal-reset-default');
+                if (resetBtn) resetBtn.onclick = resetDefaultApiConfig;
+                var quickBtn = document.getElementById('quick-config-btn');
+                if (quickBtn) quickBtn.onclick = showApiConfigModal;
+            }
+            bindApiModalEvents();
+
+            // ---- 数据源选择模块 ----
+            var _sessionDataSource = null;
+            function showDataSourceSelector() {
+                return new Promise(function(resolve) {
+                    if (_sessionDataSource && _sessionDataSource.remember) {
+                        resolve(_sessionDataSource);
+                        return;
+                    }
+                    var modal = document.getElementById('ds-datasource-modal');
+                    if (!modal) { resolve({ rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false }); return; }
+                    var defCfg = _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
+                    document.getElementById('ds-dialog-rules').checked = defCfg.rules;
+                    document.getElementById('ds-dialog-issue').checked = defCfg.issue;
+                    document.getElementById('ds-dialog-handbook').checked = defCfg.handbook;
+                    document.getElementById('ds-dialog-wr-all').checked = defCfg.wrAll;
+                    document.getElementById('ds-dialog-phone').checked = defCfg.phone;
+                    document.getElementById('ds-dialog-diary').checked = defCfg.diary;
+                    document.getElementById('ds-dialog-remember').checked = defCfg.remember;
+                    modal.style.display = 'flex';
+                    var confirmBtn = document.getElementById('ds-dialog-confirm');
+                    var reject = null;
+                    confirmBtn._reject = function() { if (reject) { reject(); reject = null; } };
+                    var handleConfirm = function() {
+                        var config = {
+                            rules: document.getElementById('ds-dialog-rules').checked,
+                            issue: document.getElementById('ds-dialog-issue').checked,
+                            handbook: document.getElementById('ds-dialog-handbook').checked,
+                            wrAll: document.getElementById('ds-dialog-wr-all').checked,
+                            phone: document.getElementById('ds-dialog-phone').checked,
+                            diary: document.getElementById('ds-dialog-diary').checked,
+                            remember: document.getElementById('ds-dialog-remember').checked
+                        };
+                        if (config.remember) _sessionDataSource = config;
+                        modal.style.display = 'none';
+                        confirmBtn.removeEventListener('click', handleConfirm);
+                        resolve(config);
+                    };
+                    reject = function() { modal.style.display = 'none'; resolve(null); };
+                    confirmBtn.addEventListener('click', handleConfirm, { once: true });
+                });
+            }
+
+            // 重置数据源按钮
+            setTimeout(function() {
+                var resetBtn = document.getElementById('ds-reset-datasource');
+                if (resetBtn) resetBtn.onclick = function() { _sessionDataSource = null; alert('已清除数据源记忆，下次操作将重新选择'); };
+            }, 300);
+
+            // ---- dsUpdateCtxInfo 已删除（由弹窗替代） ----
 
             // ---- 构建系统提示词（含业务数据） ----
-            async function dsBuildSystemPrompt(userQuery) {
-                const useRules    = document.getElementById('ds-ctx-rules') ? document.getElementById('ds-ctx-rules').checked : false;
-                const useIssue    = document.getElementById('ds-ctx-issue') ? document.getElementById('ds-ctx-issue').checked : false;
-                const useHandbook = document.getElementById('ds-ctx-handbook') ? document.getElementById('ds-ctx-handbook').checked : false;
-                const useWrAll    = document.getElementById('ds-ctx-wr-all') ? document.getElementById('ds-ctx-wr-all').checked : false;
-                const usePhone    = document.getElementById('ds-ctx-phone') ? document.getElementById('ds-ctx-phone').checked : false;
-                const useDiary    = document.getElementById('ds-ctx-diary') ? document.getElementById('ds-ctx-diary').checked : false;
+            async function dsBuildSystemPrompt(userQuery, dataSource) {
+                if (!dataSource) dataSource = { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false };
+                var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
+                var useWrAll = dataSource.wrAll, usePhone = dataSource.phone, useDiary = dataSource.diary;
 
                 let sysParts = [
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
@@ -8819,139 +8883,143 @@
                     '若业务数据中未找到相关内容，如实告知，不得捏造。'
                 ];
 
-                // 关键词提取（用于过滤相关数据）
-                const kws = extractKeywords(userQuery);
+                // 关键词提取（复用专业词库增强版） + 专业推断
+                const kws = smartExtractKeywords(userQuery, 5, false);
+                const inferredTrade = window.patchInferTrade ? window.patchInferTrade(userQuery) : null;
 
-                // 规章制度
+                // 规章制度：专业优先 + 关键词评分 → top 5
                 if (useRules && typeof window.getRulesData === 'function') {
-                    const rules = window.getRulesData();
+                    let rules = window.getRulesData();
                     if (rules.length > 0) {
-                        // 只取前20条，避免超出token限制
-                        const slice = rules.slice(0, 20);
-                        let txt = '【规章制度数据（共' + rules.length + '条）】\n';
-                        slice.forEach((r, i) => {
-                            const preview = (r.content || '').replace(/<[^>]+>/g, '').slice(0, 300);
+                        const ruleKeywords = smartExtractKeywords(userQuery, 2, true);
+                        let scored = rules.map(function(rule){
+                            var text = ((rule.title||'') + ' ' + (rule.content||'')).toLowerCase();
+                            var score = ruleKeywords.reduce(function(s,kw){ return s + (text.indexOf(kw.toLowerCase())!==-1 ? 1 : 0); }, 0);
+                            if (inferredTrade && rule.trade === inferredTrade) score += 5;
+                            return { rule: rule, score: score };
+                        });
+                        scored.sort(function(a,b){ return b.score - a.score; });
+                        var topRules = scored.slice(0, 5).map(function(x){ return x.rule; });
+                        var txt = '【规章制度数据（共' + rules.length + '条，仅展示最相关的5条）】\n';
+                        if (inferredTrade) txt += '推断专业：' + inferredTrade + ' | 关键词：' + ruleKeywords.join('、') + '\n';
+                        topRules.forEach(function(r, i){
+                            var preview = (r.content || '').replace(/<[^>]+>/g, '').slice(0, 300);
                             txt += (i+1) + '. [' + (r.trade||'未分类') + '] ' + (r.title||'无标题') + '：' + preview + (preview.length >= 300 ? '...' : '') + '\n';
                         });
-                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
+                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS);
                         sysParts.push(txt);
                     }
                 }
 
-                // 检查信息
+                // 检查信息：关键词评分 + 近期加权 → top 5
                 if (useIssue && typeof window.getIssueData === 'function') {
-                    const issues = window.getIssueData();
+                    let issues = window.getIssueData();
                     if (issues.length > 0) {
-                        // 只取前30条，避免超出token限制
-                        const slice = issues.slice(0, 30);
-                        let txt = '【检查信息数据（共' + issues.length + '条）】\n';
-                        slice.forEach((r, i) => {
+                        var issueKeywords = smartExtractKeywords(userQuery, 4, false);
+                        var scoredIssues = issues.map(function(item){
+                            var text = ((item.content||'') + ' ' + (item.category||'') + ' ' + (item['性质']||'')).toLowerCase();
+                            var score = issueKeywords.reduce(function(s,kw){ return s + (text.indexOf(kw.toLowerCase())!==-1 ? 1 : 0); }, 0);
+                            if (item.datetime) {
+                                var daysDiff = (Date.now() - new Date(item.datetime)) / (1000*3600*24);
+                                if (daysDiff < 30) score += 2;
+                            }
+                            return { item: item, score: score };
+                        });
+                        scoredIssues.sort(function(a,b){ return b.score - a.score; });
+                        var topIssues = scoredIssues.slice(0, 5).map(function(x){ return x.item; });
+                        var txt = '【检查信息数据（共' + issues.length + '条，仅展示最相关的5条）】\n';
+                        topIssues.forEach(function(r, i){
                             txt += (i+1) + '. [' + (r['性质']||'') + '][' + (r.category||'') + '] ' + (r.datetime||'') + '：' + (r.content||'').slice(0, 200) + '\n';
                         });
-                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
+                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS);
                         sysParts.push(txt);
                     }
                 }
 
-                // 检查手册
+                // 检查手册：关键词评分 → top 5
                 if (useHandbook && typeof window.getHandbookData === 'function') {
-                    const hb = window.getHandbookData();
+                    var hb = window.getHandbookData();
                     if (hb.length > 0) {
-                        // 只取前20条，避免超出token限制
-                        const slice = hb.slice(0, 20);
-                        let txt = '【检查手册数据（共' + hb.length + '条）】\n';
-                        slice.forEach((r, i) => {
-                            const path = [r.chapter, r.section, r.item, r.subitem].filter(Boolean).join(' > ');
+                        var topHb = rankAndSlice(hb, userQuery, function(r){ return (r.content||'') + ' ' + [r.chapter,r.section,r.item,r.subitem].filter(Boolean).join(' '); }, 5);
+                        var txt = '【检查手册数据（共' + hb.length + '条，仅展示最相关的5条）】\n';
+                        topHb.forEach(function(r, i){
+                            var path = [r.chapter, r.section, r.item, r.subitem].filter(Boolean).join(' > ');
                             txt += (i+1) + '. [' + path + ']：' + (r.content||'').slice(0, 200) + '\n';
                         });
-                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
+                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS);
                         sysParts.push(txt);
                     }
                 }
 
-                // 智能写作（联动智能写作资料库+历史报告）— 实际注入摘要
+                // 智能写作联动资料（保持原有逻辑，已是 top 5）
                 if (useWrAll) {
-                    // 写作资料
                     if (typeof window._wrGetAllMaterials === 'function') {
                         try {
-                            const mats = await window._wrGetAllMaterials();
+                            var mats = await window._wrGetAllMaterials();
                             if (mats && mats.length > 0) {
-                                // 用关键词过滤相关资料（最多5份）
-                                let relevant = mats;
+                                var relevant = mats;
                                 if (kws.length > 0) {
-                                    const scored = mats.map(m => {
-                                        const text = ((m.title||'') + ' ' + String(m.content||'').slice(0,400)).toLowerCase();
-                                        const score = kws.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
-                                        return { m, score };
-                                    }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
-                                    relevant = scored.length > 0 ? scored.map(x => x.m) : mats;
+                                    var scoredMats = mats.map(function(m){
+                                        var text = ((m.title||'') + ' ' + String(m.content||'').slice(0,400)).toLowerCase();
+                                        var score = kws.reduce(function(s,k){ return s + (text.indexOf(k.toLowerCase())!==-1 ? 1 : 0); }, 0);
+                                        return { m: m, score: score };
+                                    }).filter(function(x){ return x.score > 0; }).sort(function(a,b){ return b.score - a.score; });
+                                    relevant = scoredMats.length > 0 ? scoredMats.map(function(x){ return x.m; }) : mats;
                                 }
-                                const slice = relevant.slice(0, 5);
-                                let txt = '【智能写作资料库（共' + mats.length + '份，本次关联' + slice.length + '份）】\n';
-                                slice.forEach((m, i) => {
-                                    txt += (i+1) + '. [' + (m.matType||'其它') + ']《' + (m.title||m.fileName) + '》：\n'
-                                        + String(m.content||'').slice(0, 500) + (String(m.content||'').length > 500 ? '…' : '') + '\n';
+                                var wrSlice = relevant.slice(0, 5);
+                                var txt = '【智能写作资料库（共' + mats.length + '份，本次关联' + wrSlice.length + '份）】\n';
+                                wrSlice.forEach(function(m, i){
+                                    txt += (i+1) + '. [' + (m.matType||'其它') + ']《' + (m.title||m.fileName) + '》：\n' + String(m.content||'').slice(0, 500) + (String(m.content||'').length > 500 ? '…' : '') + '\n';
                                 });
                                 if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
                                 sysParts.push(txt);
                             }
-                        } catch(e) {
-                            sysParts.push('【说明】写作资料加载失败，请检查智能写作模块。');
-                        }
+                        } catch(e) { sysParts.push('【说明】写作资料加载失败。'); }
                     }
-
-                    // 历史报告
                     if (typeof window._wrGetAllReports === 'function') {
                         try {
-                            const rpts = await window._wrGetAllReports();
+                            var rpts = await window._wrGetAllReports();
                             if (rpts && rpts.length > 0) {
-                                const slice = rpts.sort((a,b) => b.date - a.date).slice(0, 3);
-                                let txt = '【历史报告（最近' + slice.length + '篇，共' + rpts.length + '篇）—仅供文风参考】\n';
-                                slice.forEach((r, i) => {
-                                    txt += (i+1) + '. 《' + (r.title||'未命名') + '》（' + new Date(r.date).toLocaleDateString('zh-CN') + '）：\n'
-                                        + String(r.content||'').slice(0, 300) + '…\n';
+                                var rptSlice = rpts.sort(function(a,b){ return b.date - a.date; }).slice(0, 3);
+                                var txt = '【历史报告（最近' + rptSlice.length + '篇，共' + rpts.length + '篇）—仅供文风参考】\n';
+                                rptSlice.forEach(function(r, i){
+                                    txt += (i+1) + '. 《' + (r.title||'未命名') + '》（' + new Date(r.date).toLocaleDateString('zh-CN') + '）：\n' + String(r.content||'').slice(0, 300) + '…\n';
                                 });
                                 if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
                                 sysParts.push(txt);
                             }
-                        } catch(e) {
-                            sysParts.push('【说明】历史报告加载失败，请检查智能写作模块。');
-                        }
+                        } catch(e) { sysParts.push('【说明】历史报告加载失败。'); }
                     }
-
-                    // 如果都没有数据
-                    if (!sysParts.some(p => p.includes('智能写作资料库') || p.includes('历史报告'))) {
-                        sysParts.push('【智能写作】暂无资料和历史报告，请先在智能写作模块导入资料或生成报告。');
+                    if (!sysParts.some(function(p){ return p.indexOf('智能写作资料库')!==-1 || p.indexOf('历史报告')!==-1; })) {
+                        sysParts.push('【智能写作】暂无资料和历史报告。');
                     }
                 }
 
-                // 车站电话
+                // 车站电话：关键词评分 → top 5
                 if (usePhone && typeof window.getPhoneData === 'function') {
-                    const phones = window.getPhoneData();
+                    var phones = window.getPhoneData();
                     if (phones.length > 0) {
-                        // 只取前20条，避免超出token限制
-                        const slice = phones.slice(0, 20);
-                        let txt = '【车站电话数据（共' + phones.length + '条）】\n';
-                        slice.forEach((r, i) => {
+                        var topPhones = rankAndSlice(phones, userQuery, function(r){ return (r.单位||'')+' '+(r.站名||'')+' '+(r.线名||''); }, 5);
+                        var txt = '【车站电话数据（共' + phones.length + '条，仅展示最相关的5条）】\n';
+                        topPhones.forEach(function(r, i){
                             txt += (i+1) + '. ' + (r.单位||'') + ' - ' + (r.站名||'') + '（' + (r.线名||'') + '）：路电 ' + (r.路电||'无') + ' / 市电 ' + (r.市电||'无') + '\n';
                         });
-                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
+                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS);
                         sysParts.push(txt);
                     }
                 }
 
-                // 工作日志
+                // 工作日志：关键词评分 → top 5
                 if (useDiary && typeof window.getDiaryData === 'function') {
-                    const diaries = window.getDiaryData();
+                    var diaries = window.getDiaryData();
                     if (diaries.length > 0) {
-                        // 只取最近10条，避免超出token限制
-                        const slice = diaries.slice(0, 10);
-                        let txt = '【工作日志数据（共' + diaries.length + '条，显示最近10条）】\n';
-                        slice.forEach((r, i) => {
-                            const issues = (r.issues || []).filter(Boolean).join('；');
+                        var topDiaries = rankAndSlice(diaries, userQuery, function(r){ return (r.work||'')+' '+((r.issues||[]).join(' ')); }, 5);
+                        var txt = '【工作日志数据（共' + diaries.length + '条，仅展示最相关的5条）】\n';
+                        topDiaries.forEach(function(r, i){
+                            var issues = (r.issues || []).filter(Boolean).join('；');
                             txt += (i+1) + '. [' + (r.date||'') + '] ' + (r.work||'无工作内容').slice(0, 50) + '：' + (issues||'无问题记录').slice(0, 100) + '\n';
                         });
-                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
+                        if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS);
                         sysParts.push(txt);
                     }
                 }
@@ -8960,6 +9028,46 @@
             }
 
             // 简单关键词提取
+            // 智能助手专用的关键词提取（可指定最大数量，复用专业词库）
+            function smartExtractKeywords(text, maxKeywords, forRule) {
+                maxKeywords = maxKeywords || 5;
+                if (!text) return [];
+                var candidates = [];
+                if (typeof window.acExtractKeywords === 'function') {
+                    var trade = window.patchInferTrade ? window.patchInferTrade(text) : null;
+                    candidates = window.acExtractKeywords(text, trade);
+                } else {
+                    candidates = text.split(/[\s,，。！？；：""''、]+/).filter(function(w){ return w.length >= 2; });
+                }
+                if (forRule) {
+                    var limited = candidates.slice(0, 2);
+                    if (limited.length < 2) {
+                        var chineseMatches = text.match(/[\u4e00-\u9fa5]{3,}/g);
+                        if (chineseMatches) {
+                            var extra = chineseMatches.sort(function(a,b){ return b.length - a.length; })[0];
+                            if (extra && limited.indexOf(extra) === -1) limited.push(extra);
+                        }
+                    }
+                    return limited;
+                }
+                return candidates.slice(0, maxKeywords);
+            }
+
+            // 公共评分排序函数：对数据项做关键词匹配 → 排序 → 取 topN
+            function rankAndSlice(items, query, getTextFunc, topN) {
+                topN = topN || 5;
+                var keywords = smartExtractKeywords(query, 5, false);
+                if (!keywords.length) return items.slice(0, topN);
+                var scored = items.map(function(item){
+                    var text = getTextFunc(item).toLowerCase();
+                    var score = 0;
+                    keywords.forEach(function(kw){ if (text.indexOf(kw.toLowerCase()) !== -1) score += 1; });
+                    return { item: item, score: score };
+                });
+                scored.sort(function(a,b){ return b.score - a.score; });
+                return scored.slice(0, topN).map(function(x){ return x.item; });
+            }
+
             function extractKeywords(text) {
                 return text.replace(/[，。？！、；：""''【】\s]/g, ' ')
                     .split(' ')
@@ -9252,7 +9360,15 @@
                 dsRenderAll();
                 dsSaveHistory();
 
-                const systemPrompt = await dsBuildSystemPrompt(finalText);
+                // 弹出数据源选择（若已记住则跳过）
+                var _dataSrc = null;
+                if (!_sessionDataSource || !_sessionDataSource.remember) {
+                    _dataSrc = await showDataSourceSelector();
+                    if (!_dataSrc) return; // 用户取消
+                } else {
+                    _dataSrc = _sessionDataSource;
+                }
+                const systemPrompt = await dsBuildSystemPrompt(finalText, _dataSrc);
 
                 const messages = [
                     { role: 'system', content: systemPrompt },
@@ -10666,6 +10782,37 @@
                 });
             }
 
+            // 支持自定义规则库的 BM25 召回（专业优先检索用）
+            function localBM25RecallWithRules(query, topK, ruleSubset) {
+                if (!ruleSubset || ruleSubset.length === 0) return [];
+                topK = topK || 6;
+                var kwSet = new Set();
+                var qLower = query.toLowerCase();
+                for (var i = 0; i < qLower.length - 1; i++) {
+                    if (/[\u4e00-\u9fa5]/.test(qLower[i])) {
+                        for (var len = 2; len <= Math.min(4, qLower.length - i); len++) {
+                            kwSet.add(qLower.slice(i, i + len));
+                        }
+                    }
+                }
+                var kws = Array.from(kwSet);
+                if (!kws.length) return ruleSubset.slice(0, topK).map(function(r){ return { title: r.title||'', trade: r.trade||'', snippet: (r.content||'').replace(/<[^>]+>/g,'').slice(0,220), fullText: (r.content||'').replace(/<[^>]+>/g,''), score: 0, ruleRef: r, ruleIdx: -1 }; });
+                var scored = [];
+                for (var j = 0; j < ruleSubset.length; j++) {
+                    var r = ruleSubset[j];
+                    var text = ((r.title || '') + ' ' + (r.content || '').replace(/<[^>]+>/g, '')).slice(0, 1000).toLowerCase();
+                    var s = 0;
+                    kws.forEach(function(k){ if (text.indexOf(k) !== -1) s++; });
+                    if (s > 0) scored.push({ i: j, s: s });
+                }
+                var scores = scored.sort(function(a,b){ return b.s - a.s; }).slice(0, topK);
+                return scores.map(function(x){
+                    var rr = ruleSubset[x.i];
+                    var rawText = (rr.content || '').replace(/<[^>]+>/g, '');
+                    return { title: rr.title||'', trade: rr.trade||'', snippet: rawText.slice(0,220)+(rawText.length>220?'…':''), fullText: rawText, score: x.s, ruleRef: rr, ruleIdx: -1 };
+                });
+            }
+
             // ============================================================
             // 同义词映射表（可通过 importSynonyms 扩展）
             // ============================================================
@@ -11001,12 +11148,9 @@
                 if (!query) { alert('请输入检查问题描述'); return; }
                 const apiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
                 if (!apiKey) {
-                    const ok = confirm('未配置 DeepSeek API Key，是否跳转到上方配置区？\n点击确定跳转，点击取消则改用本地匹配。');
-                    if (ok) {
-                        document.getElementById('ds-apikey-section').style.display = 'flex';
-                        document.getElementById('ds-apikey-done').style.display = 'none';
-                        document.getElementById('ds-apikey-input').focus();
-                    } else window.autoCheckLocal();
+                    const ok = confirm('未配置 DeepSeek API Key，是否打开 API 配置？\n点击确定打开配置弹窗，点击取消则改用本地匹配。');
+                    if (ok) showApiConfigModal();
+                    else window.autoCheckLocal();
                     return;
                 }
 
@@ -11086,8 +11230,38 @@
 
                     container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在从规章库召回候选条款…</div>';
                     await new Promise(r => setTimeout(r, 0));
-                    ruleCandidates  = localBM25Recall(expandedQuery, 6);
-                    console.log('[AI对规] 规章库召回', ruleCandidates.length, '条');
+
+                    // ----- 专业优先检索 -----
+                    var allRules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                    ruleCandidates = [];
+                    var inferredTrade = patchInferTrade(query);
+
+                    if (inferredTrade && allRules.length > 0) {
+                        // 1. 过滤出同专业规章
+                        var sameTradeRules = allRules.filter(function(r){ return r.trade === inferredTrade; });
+                        console.log('[专业优先] 推断专业: ' + inferredTrade + ', 同专业规章数: ' + sameTradeRules.length);
+
+                        if (sameTradeRules.length > 0) {
+                            var sameTradeCandidates = localBM25RecallWithRules(expandedQuery, 6, sameTradeRules);
+                            ruleCandidates.push.apply(ruleCandidates, sameTradeCandidates);
+                            console.log('[专业优先] 同专业召回 ' + sameTradeCandidates.length + ' 条');
+                        }
+
+                        // 2. 如果同专业召回不足 6 条，再从其他专业补充
+                        if (ruleCandidates.length < 6) {
+                            var otherRules = allRules.filter(function(r){ return r.trade !== inferredTrade; });
+                            if (otherRules.length > 0) {
+                                var otherCandidates = localBM25RecallWithRules(expandedQuery, 6 - ruleCandidates.length, otherRules);
+                                ruleCandidates.push.apply(ruleCandidates, otherCandidates);
+                                console.log('[补充召回] 其他专业补充 ' + otherCandidates.length + ' 条');
+                            }
+                        }
+                    } else {
+                        // 未推断出专业，走原逻辑
+                        ruleCandidates = localBM25Recall(expandedQuery, 6);
+                    }
+
+                    console.log('[AI对规] 最终规章库召回', ruleCandidates.length, '条');
 
                     container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在从历史案例召回候选条款…</div>';
                     await new Promise(r => setTimeout(r, 0));
@@ -11713,6 +11887,13 @@
                 a.click();
                 URL.revokeObjectURL(url);
             };
+
+            // 暴露给全局，供智能助手使用
+            window.acExtractKeywords = acExtractKeywords;
+            window.patchInferTrade = patchInferTrade;
+            window.PATCH_TERM_LIBRARY = PATCH_TERM_LIBRARY;
+            window.PATCH_TRADE_KEYWORDS = PATCH_TRADE_KEYWORDS;
+            window.VIOLATION_ACTION_WORDS = VIOLATION_ACTION_WORDS;
 
             // ========== 自动对规子模块 END ==========
         })();
@@ -15632,6 +15813,138 @@ ${details || '(无)'}
       console.log('%c✅ 智能助手增强已启动 | 角色切换 · 长期记忆 · 本地RAG · 一键对规 · 技能按钮 · 联网搜索(需配置) · 反馈收集', 'color:#059669;font-weight:bold;');
     })();
     </script>
+
+<script>
+// ========== 全局数据备份与恢复 ==========
+(function() {
+    function readIndexedDB(dbName, storeName, version) {
+        return new Promise(function(resolve, reject) {
+            var req = indexedDB.open(dbName, version || 1);
+            req.onerror = function(){ reject(req.error); };
+            req.onsuccess = function(){
+                var db = req.result;
+                if (!db.objectStoreNames.contains(storeName)) { db.close(); return resolve([]); }
+                var tx = db.transaction(storeName, 'readonly');
+                var store = tx.objectStore(storeName);
+                var getAll = store.getAll();
+                getAll.onsuccess = function(){ resolve(getAll.result); };
+                getAll.onerror = function(){ reject(getAll.error); };
+                tx.oncomplete = function(){ db.close(); };
+            };
+        });
+    }
+
+    function writeIndexedDB(dbName, storeName, version, data) {
+        return new Promise(function(resolve, reject) {
+            var req = indexedDB.open(dbName, version || 1);
+            req.onupgradeneeded = function(e){
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(storeName)) {
+                    db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                }
+            };
+            req.onsuccess = function(){
+                var db = req.result;
+                var tx = db.transaction(storeName, 'readwrite');
+                var store = tx.objectStore(storeName);
+                store.clear().onsuccess = function(){
+                    data.forEach(function(item){
+                        var copy = {}; for (var k in item) copy[k] = item[k];
+                        store.add(copy);
+                    });
+                };
+                tx.oncomplete = function(){ db.close(); resolve(); };
+                tx.onerror = function(){ db.close(); reject(tx.error); };
+            };
+            req.onerror = function(){ reject(req.error); };
+        });
+    }
+
+    function getLocal(key, def) {
+        try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch(e) { return def; }
+    }
+
+    function _toast(msg, isErr) {
+        try { if (typeof Toast !== 'undefined') { isErr ? Toast.error(msg) : Toast.success(msg); return; } } catch(e) {}
+        alert(msg);
+    }
+
+    window.oneClickBackup = async function() {
+        if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请刷新后重试', true); return; }
+        _toast('正在收集数据…');
+        var backup = { version: 2, exportDate: new Date().toISOString(), modules: {} };
+        try {
+            backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 1);
+            backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3);
+            backup.modules.diary = getLocal('railway_work_diary_v2', []);
+            backup.modules.phone = getLocal('railway_phone_db_v1', []);
+            backup.modules.handbook = getLocal('handbook_fourlevel_v1', []);
+            backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2);
+            backup.modules.writingReports = await readIndexedDB('railway_writer_db', 'writing_reports', 2);
+            backup.modules.dsConversations = getLocal('ds_conversations_v1', []);
+            backup.modules.dsChatHistory = getLocal('ds_chat_history_v1', []);
+            backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
+            backup.modules.memos = getLocal('railway_memo_v1', []);
+
+            var zip = new JSZip();
+            zip.file('full_backup.json', JSON.stringify(backup, null, 2));
+            var blob = await zip.generateAsync({ type: 'blob' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.zip';
+            a.click();
+            setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+            _toast('备份完成');
+        } catch(e) { _toast('备份失败：' + e.message, true); }
+    };
+
+    window.oneClickRestore = function() {
+        if (typeof JSZip === 'undefined') { _toast('JSZip 未加载', true); return; }
+        var input = document.createElement('input');
+        input.type = 'file'; input.accept = '.zip';
+        input.onchange = async function(e){
+            var file = e.target.files[0]; if (!file) return;
+            try {
+                var zip = await JSZip.loadAsync(file);
+                var backupFile = zip.file('full_backup.json');
+                if (!backupFile) throw new Error('缺少 full_backup.json');
+                var backup = JSON.parse(await backupFile.async('string'));
+                if (backup.version !== 2) throw new Error('版本不兼容');
+                if (!confirm('⚠️ 将覆盖现有数据，确定继续？')) return;
+
+                _toast('正在恢复数据…');
+                var bm = backup.modules;
+                if (bm.issues) await writeIndexedDB('RailwayIssueDB_v2', 'issues', 1, bm.issues);
+                if (bm.rules) await writeIndexedDB('RailwayRuleDB', 'ruleCollection', 3, bm.rules);
+                if (bm.diary) localStorage.setItem('railway_work_diary_v2', JSON.stringify(bm.diary));
+                if (bm.phone) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
+                if (bm.handbook) localStorage.setItem('handbook_fourlevel_v1', JSON.stringify(bm.handbook));
+                if (bm.writingMaterials) await writeIndexedDB('railway_writer_db', 'writing_materials', 2, bm.writingMaterials);
+                if (bm.writingReports) await writeIndexedDB('railway_writer_db', 'writing_reports', 2, bm.writingReports);
+                if (bm.dsConversations) localStorage.setItem('ds_conversations_v1', JSON.stringify(bm.dsConversations));
+                if (bm.dsChatHistory) localStorage.setItem('ds_chat_history_v1', JSON.stringify(bm.dsChatHistory));
+                if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
+                if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
+
+                _toast('恢复完成，即将刷新…');
+                setTimeout(function(){ location.reload(); }, 1500);
+            } catch(err) { _toast('恢复失败：' + err.message, true); }
+            input.remove();
+        };
+        input.click();
+    };
+
+    function bind() {
+        var b1 = document.getElementById('global-backup-btn');
+        var b2 = document.getElementById('global-restore-btn');
+        if (b1) b1.onclick = window.oneClickBackup;
+        if (b2) b2.onclick = window.oneClickRestore;
+    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', bind); }
+    else { bind(); }
+})();
+</script>
 </body>
 </html>
 ```

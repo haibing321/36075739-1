@@ -6591,10 +6591,21 @@
             window.closeMultimediaPanel = closeMultimediaPanel;
 
             // ---- 语音输入转文字（移动端兼容增强版）----
+            function isMobile() {
+                return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            }
             function checkSpeechSupport() {
                 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
                     return { supported: false, reason: '您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari 并确保页面通过 HTTPS 访问。' };
+                }
+                // file:// 协议检测：手机端浏览器强制要求 HTTPS 才能使用 Web Speech API
+                if (location.protocol === 'file:') {
+                    if (isMobile()) {
+                        return { supported: false, reason: '手机端浏览器要求 HTTPS 才能使用语音输入。\n\n请通过以下方式使用：\n1. 使用内网服务器（http://IP:端口）访问\n2. 部署到 HTTPS 服务器\n3. 在电脑端 Chrome/Edge 中打开此文件' };
+                    }
+                    // 桌面端 file:// 可能可以工作（Chrome/Edge 安全策略较宽松），给警告但允许尝试
+                    return { supported: true, needHttpsWarning: true, reason: '当前为本地文件（file://），桌面端浏览器通常支持，但手机上必须使用 HTTPS。' };
                 }
                 if (location.protocol !== 'https:' && location.hostname !== 'localhost' && !location.hostname.match(/^(\d+\.){3}\d+$/)) {
                     return { supported: true, needHttpsWarning: true, reason: '当前非 HTTPS 环境，语音功能可能需要手动授权。' };
@@ -6635,38 +6646,50 @@
                     var idx = event.results.length - 1;
                     var transcript = event.results[idx][0].transcript;
                     if (transcript) {
+                        _recognition._hadResult = true;
                         var active = getActiveTextarea();
                         if (active) insertTextAtCursor(active, transcript);
                         var status = document.getElementById('voice-status');
                         if (status) status.textContent = '✅ 已识别: ' + transcript;
-                        setTimeout(function(){ if (status && !_isListening) status.textContent = ''; }, 2000);
+                        setTimeout(function(){ if (status) status.textContent = ''; }, 2000);
                     }
                 };
 
                 _recognition.onerror = function(event) {
                     var msg = '';
+                    var extraTip = '';
                     switch(event.error) {
-                        case 'not-allowed': msg = '请允许麦克风权限，并在系统设置中开启。'; break;
-                        case 'no-speech':   msg = '未检测到语音，请确保麦克风工作。'; break;
-                        case 'audio-capture': msg = '无法获取麦克风，请检查硬件。'; break;
-                        case 'network':     msg = '网络错误，请检查网络后重试。'; break;
+                        case 'not-allowed':
+                            if (isMobile() && location.protocol === 'file:') {
+                                msg = '手机端 file:// 协议不支持语音输入。请通过 http://IP:端口 或 HTTPS 访问页面。';
+                                extraTip = '';
+                            } else if (isMobile()) {
+                                msg = '请允许麦克风权限。在浏览器设置中开启麦克风访问，或检查系统隐私设置。';
+                            } else {
+                                msg = '请允许麦克风权限。点击浏览器地址栏左侧的锁图标，开启麦克风权限。';
+                            }
+                            break;
+                        case 'no-speech':   msg = '未检测到语音，请确保麦克风正常工作，靠近麦克风说话。'; break;
+                        case 'audio-capture': msg = '无法获取麦克风，请检查硬件连接或是否有其他应用占用麦克风。'; break;
+                        case 'network':     msg = '网络错误，语音识别需要联网。请检查网络后重试。'; break;
+                        case 'aborted':     return; // 用户手动停止，不报错
                         default: msg = '识别失败：' + event.error;
                     }
                     var status = document.getElementById('voice-status');
                     if (status) status.textContent = '❌ ' + msg;
                     stopVoiceInput();
-                    alert('语音识别错误：' + msg + '\n您可手动输入文本。');
+                    alert('语音识别失败\n\n' + msg + (extraTip ? '\n\n💡 ' + extraTip : '') + '\n\n您可手动输入文本。');
                 };
 
                 _recognition.onend = function() {
-                    if (_isListening) { startVoiceInput(); }
-                    else {
-                        var btn = document.getElementById('voice-input-btn');
-                        if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
-                        var status = document.getElementById('voice-status');
-                        if (status) status.textContent = '';
-                        _recognition = null;
-                    }
+                    // 手机端 SpeechRecognition.start() 必须在用户手势中调用
+                    // onend 是异步回调，restart 会触发 not-allowed，因此统一不自动重启
+                    _isListening = false;
+                    var btn = document.getElementById('voice-input-btn');
+                    if (btn) { btn.textContent = '🎙️ 语音输入'; btn.classList.remove('btn-danger'); btn.classList.add('btn-success'); }
+                    var status = document.getElementById('voice-status');
+                    if (status && !_recognition._hadResult) status.textContent = '';
+                    _recognition = null;
                 };
 
                 try { _recognition.start(); }

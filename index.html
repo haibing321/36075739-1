@@ -2858,7 +2858,6 @@
                             <input type="checkbox" id="webSearchEnable"> 🌐 联网搜索
                           </label>
                           <div style="flex:1"></div>
-                          <div id="skillButtons" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
                           <button id="statsBtn" style="background: #e2e8f0; border: none; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer;">📊 统计</button>
                           <button id="ds-reset-datasource" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer; color: #15803d;">🔄 数据源</button>
                         </div>
@@ -5943,8 +5942,7 @@
                         ${index > 0 ? '<button class="btn-remove-issue" onclick="removeIssueField(' + index + ')">×</button>' : ''}
                     </div>
                     <div style="display:flex; gap:6px; align-items:flex-start; margin-top:4px;">
-                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="完整引用句子（可点击对规检索）" rows="2" oninput="autoResize(this)" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit; background:#f8fafc;">${escapeHtml(regulation)}</textarea>
-                        <button class="btn btn-small btn-info" onclick="openRuleSearchForIssue(${index})" style="white-space:nowrap; padding:4px 10px; flex-shrink:0;">⚖️ 对规</button>
+                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="规章依据" rows="2" oninput="autoResize(this)" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit; background:#f8fafc;">${escapeHtml(regulation)}</textarea>
                     </div>
                 `;
                 container.appendChild(div);
@@ -5984,8 +5982,6 @@
                     const removeBtn = row.querySelector('.btn-remove-issue');
                     if (removeBtn) removeBtn.setAttribute('onclick', `removeIssueField(${idx})`);
                     if (idx === 0 && removeBtn) removeBtn.style.display = 'none';
-                    const duiguiBtn = row.querySelector('.btn-info');
-                    if (duiguiBtn) duiguiBtn.setAttribute('onclick', `openRuleSearchForIssue(${idx})`);
                     requestAnimationFrame(() => { if (textareas[0]) autoResize(textareas[0]); if (textareas[1]) autoResize(textareas[1]); });
                 });
                 updateAddIssueButton();
@@ -6010,171 +6006,15 @@
             }
             function collectIssues() { return collectIssuesAndRegulations().issues; }
 
-            // ---- 对规检索：从检查信息中搜索匹配的规章依据 ----
-            // 从文本中智能提取完整违规引用句子（"不符合/违反...《xxx》...。"）
-            function extractFullViolationSentence(text) {
+            // 辅助函数：从文本中提取完整违规引用句子（全局可用）
+            window.extractFullViolationSentence = function(text) {
                 if (!text) return '';
-                // 匹配 "不符合/违反" 开头，包含《》，到句号结束（排除句子内还有《》的情况）
                 var regex = /(?:不符合|违反)[^。]*《[^》]+》[^。]*。(?![^。]*《)/;
                 var match = text.match(regex);
                 if (match) return match[0].trim();
-                // 降级：匹配包含《》的整个句子（到句号）
                 var fallback = text.match(/[^。]*《[^》]+》[^。]*。/);
                 if (fallback) return fallback[0].trim();
-                // 再降级：返回前200字符
                 return text.slice(0, 200).trim();
-            }
-
-            async function searchRegulationFromIssues(problemText) {
-                if (!problemText.trim()) return [];
-                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
-                if (!issues.length) return [];
-
-                let keywords = [];
-                if (typeof window.acExtractKeywords === 'function') {
-                    keywords = window.acExtractKeywords(problemText, null);
-                } else {
-                    keywords = problemText.split(/[\s,，。！？、；：""''《》]+/).filter(function(w) { return w.length >= 2; });
-                }
-                if (!keywords.length) return [];
-
-                const matched = issues.filter(function(item) {
-                    var content = (item.content || '').toLowerCase();
-                    var category = (item.category || '').toLowerCase();
-                    var xingzhi = (item['性质'] || '').toLowerCase();
-                    var text = content + ' ' + category + ' ' + xingzhi;
-                    return keywords.some(function(kw) { return text.includes(kw.toLowerCase()); });
-                });
-
-                // 提取完整的违规引用句子
-                const sentenceMap = new Map(); // key: 句子全文, value: { count, examples }
-                matched.forEach(function(item) {
-                    // 优先使用已存储的 regulation（若完整）
-                    let sentence = item.regulation ? item.regulation.trim() : '';
-                    if (!sentence) {
-                        sentence = extractFullViolationSentence(item.content || '');
-                    }
-                    if (!sentence) return;
-
-                    if (!sentenceMap.has(sentence)) {
-                        sentenceMap.set(sentence, {
-                            count: 1,
-                            examples: [{
-                                nature: item['性质'] || '',
-                                category: item.category || '',
-                                snippet: (item.content || '').slice(0, 100)
-                            }]
-                        });
-                    } else {
-                        const info = sentenceMap.get(sentence);
-                        info.count++;
-                        if (info.examples.length < 3) {
-                            info.examples.push({
-                                nature: item['性质'] || '',
-                                category: item.category || '',
-                                snippet: (item.content || '').slice(0, 100)
-                            });
-                        }
-                    }
-                });
-
-                const results = Array.from(sentenceMap.entries()).map(function(entry) {
-                    return { sentence: entry[0], count: entry[1].count, examples: entry[1].examples };
-                });
-                results.sort(function(a, b) { return b.count - a.count; });
-                return results;
-            }
-
-            window.openRuleSearchForIssue = async function(issueIndex) {
-                var issueTextarea = document.getElementById('diary-issue-' + issueIndex);
-                if (!issueTextarea) return;
-                var problemText = issueTextarea.value.trim();
-                if (!problemText) { alert('请先输入检查发现问题内容'); return; }
-
-                var btn = typeof event !== 'undefined' && event && event.target ? event.target : null;
-                var originalText = btn ? btn.innerText : '对规';
-                if (btn) { btn.innerText = '⏳ 检索中...'; btn.disabled = true; }
-
-                try {
-                    var candidates = await searchRegulationFromIssues(problemText);
-                    if (candidates.length === 0) { alert('未找到匹配的历史案例完整引用句子'); return; }
-
-                    var modalHtml = '<div style="max-width:500px;width:90%;background:#fff;border-radius:12px;padding:16px;max-height:70vh;overflow-y:auto;">';
-                    modalHtml += '<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><strong style="font-size:1rem;">📜 请选择完整引用句子</strong><button onclick="this.closest(\'.custom-modal\').remove()" style="background:none;border:none;font-size:1.2rem;">✕</button></div>';
-                    modalHtml += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">以下完整引用句子来自匹配的历史案例（共' + candidates.length + '条）</div>';
-                    modalHtml += '<div style="display:flex;flex-direction:column;gap:10px;">';
-                    candidates.forEach(function(cand, idx) {
-                        // 截取预览（前120字）
-                        var preview = cand.sentence.length > 120 ? cand.sentence.slice(0, 120) + '…' : cand.sentence;
-                        modalHtml += '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">';
-                        modalHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-                        modalHtml += '<div style="flex:1;cursor:pointer;min-width:0;" onclick="selectRegulationAndClose(' + issueIndex + ',' + idx + ')">';
-                        modalHtml += '<div style="font-weight:500;margin-bottom:4px;">📋 ' + escapeHtml(preview) + '</div>';
-                        modalHtml += '<div style="font-size:0.7rem;color:#64748b;">📊 引用 ' + cand.count + ' 次</div>';
-                        modalHtml += '</div>';
-                        modalHtml += '<button class="btn btn-small btn-secondary" style="margin-left:10px;padding:2px 8px;flex-shrink:0;" onclick="copyRegulationAndClose(' + issueIndex + ',' + idx + ', event)">📋 复制</button>';
-                        modalHtml += '</div>';
-                        if (cand.examples.length) {
-                            modalHtml += '<div style="font-size:0.7rem;color:#475569;margin-top:4px;">案例：' + escapeHtml(cand.examples[0].snippet) + '</div>';
-                        }
-                        modalHtml += '</div>';
-                    });
-                    modalHtml += '</div>';
-                    modalHtml += '<div style="margin-top:16px;text-align:center;"><button onclick="this.closest(\'.custom-modal\').remove()" class="btn btn-secondary">取消</button></div>';
-                    modalHtml += '</div>';
-
-                    var modalDiv = document.createElement('div');
-                    modalDiv.className = 'custom-modal';
-                    modalDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
-                    modalDiv.innerHTML = modalHtml;
-                    document.body.appendChild(modalDiv);
-
-                    window._tempRegulationCandidates = candidates;
-                    window._tempRegulationIssueIndex = issueIndex;
-
-                    window.selectRegulationAndClose = function(idx, candIdx) {
-                        var c = window._tempRegulationCandidates;
-                        if (c && c[candIdx]) {
-                            var tgt = document.getElementById('diary-regulation-' + idx);
-                            if (tgt) { tgt.value = c[candIdx].sentence; autoResize(tgt); }
-                        }
-                        var m = document.querySelector('.custom-modal');
-                        if (m) m.remove();
-                        delete window._tempRegulationCandidates;
-                        delete window._tempRegulationIssueIndex;
-                        delete window.selectRegulationAndClose;
-                        delete window.copyRegulationAndClose;
-                    };
-                    window.copyRegulationAndClose = function(issueIdx, candIdx, event) {
-                        event.stopPropagation();
-                        var c = window._tempRegulationCandidates;
-                        if (!c || !c[candIdx]) return;
-                        var regulationSentence = c[candIdx].sentence;
-                        var issueTextarea = document.getElementById('diary-issue-' + issueIdx);
-                        var problemText = issueTextarea ? issueTextarea.value.trim() : '';
-                        var copyContent = problemText;
-                        if (regulationSentence) copyContent += (copyContent ? '\n' : '') + regulationSentence;
-                        var btn = event && event.target ? event.target : null;
-                        var afterCopy = function() {
-                            var tgt = document.getElementById('diary-regulation-' + issueIdx);
-                            if (tgt) { tgt.value = regulationSentence; autoResize(tgt); }
-                            var m = document.querySelector('.custom-modal');
-                            if (m) m.remove();
-                            delete window._tempRegulationCandidates;
-                            delete window._tempRegulationIssueIndex;
-                            delete window.selectRegulationAndClose;
-                            delete window.copyRegulationAndClose;
-                        };
-                        _doCopy(copyContent, btn, '已复制 ✓');
-                        // 自复式反馈后关闭弹窗
-                        setTimeout(afterCopy, 200);
-                    };
-                } catch (err) {
-                    console.error('对规检索失败', err);
-                    alert('检索失败：' + err.message);
-                } finally {
-                    if (btn) { btn.innerText = originalText; btn.disabled = false; }
-                }
             };
 
             window.saveDiary = async function(btnEl) {
@@ -9036,10 +8876,26 @@
                 });
             }
 
-            // 重置数据源按钮
+            // 数据源按钮：点击弹出选择对话框，选择后用当前输入内容发送
             setTimeout(function() {
                 var resetBtn = document.getElementById('ds-reset-datasource');
-                if (resetBtn) resetBtn.onclick = function() { _sessionDataSource = null; alert('已清除数据源记忆，下次操作将重新选择'); };
+                if (resetBtn) resetBtn.onclick = async function() {
+                    var inputEl = document.getElementById('ds-user-input');
+                    var currentText = inputEl ? inputEl.value.trim() : '';
+                    var result = await showDataSourceSelector();
+                    if (!result) return;
+                    // 设置临时数据源，让 dsSendMsg 内部使用用户选择的配置
+                    window._tempDataSrc = result;
+                    try {
+                        if (currentText && inputEl) {
+                            inputEl.value = currentText;
+                            if (typeof window.dsSendMsg === 'function') await window.dsSendMsg();
+                        }
+                    } finally {
+                        window._tempDataSrc = null;
+                        if (!result.remember) _sessionDataSource = null;
+                    }
+                };
             }, 300);
 
             // ---- dsUpdateCtxInfo 已删除（由弹窗替代） ----
@@ -9064,6 +8920,12 @@
                 if (useRules && typeof window.getRulesData === 'function') {
                     let rules = window.getRulesData();
                     if (rules.length > 0) {
+                        // 【性能优化】超过300条时采样，避免主线程卡死（每次发送都遍历全量300ms+）
+                        if (rules.length > 300) {
+                            var _sampledR = [], _stepR = Math.floor(rules.length / 300);
+                            for (var _i = 0; _i < rules.length; _i += _stepR) _sampledR.push(rules[_i]);
+                            rules = _sampledR;
+                        }
                         const ruleKeywords = smartExtractKeywords(userQuery, 2, true);
                         let scored = rules.map(function(rule){
                             var text = ((rule.title||'') + ' ' + (rule.content||'')).toLowerCase();
@@ -9088,6 +8950,12 @@
                 if (useIssue && typeof window.getIssueData === 'function') {
                     let issues = window.getIssueData();
                     if (issues.length > 0) {
+                        // 【性能优化】超过300条时采样，避免主线程卡死
+                        if (issues.length > 300) {
+                            var _sampledI = [], _stepI = Math.floor(issues.length / 300);
+                            for (var _j = 0; _j < issues.length; _j += _stepI) _sampledI.push(issues[_j]);
+                            issues = _sampledI;
+                        }
                         var issueKeywords = smartExtractKeywords(userQuery, 4, false);
                         var scoredIssues = issues.map(function(item){
                             var text = ((item.content||'') + ' ' + (item.category||'') + ' ' + (item['性质']||'')).toLowerCase();
@@ -9533,19 +9401,17 @@
                 dsRenderAll();
                 // 【性能优化】不在此时写 localStorage，等流式结束后统一保存
 
-                // 弹出数据源选择（若已记住则跳过）
-                var _dataSrc = null;
-                if (!_sessionDataSource || !_sessionDataSource.remember) {
-                    _dataSrc = await showDataSourceSelector();
-                    if (!_dataSrc) return; // 用户取消
-                } else {
-                    _dataSrc = _sessionDataSource;
-                }
+                // 不再自动弹出数据源选择，使用会话记忆或默认全部关闭
+                // 支持临时数据源覆盖（数据源按钮选择不记住时使用）
+                var _tempSrc = window._tempDataSrc || null;
+                var _dataSrc = _tempSrc || _sessionDataSource || { rules: false, issue: false, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
                 // 【性能优化】所有数据源都关闭时，跳过 dsBuildSystemPrompt 的全遍历评分
                 const hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
                 const systemPrompt = hasAnySource
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)
                     : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                // 临时数据源（不记住）使用完后清除；会话数据源不记住时也清除
+                if (_tempSrc) { window._tempDataSrc = null; }
 
                 const messages = [
                     { role: 'system', content: systemPrompt },
@@ -9610,7 +9476,7 @@
                             } catch(e) { errMsg += '：' + errText.slice(0, 200); }
                         }
                         dsHistory[assistantIdx].content = '❌ ' + errMsg;
-                        dsRenderAll(); dsSaveHistory(); dsRenderHistoryList();
+                        dsRenderAll(); /* 仅渲染错误提示，不写 localStorage */
                         return;
                     }
 
@@ -9678,13 +9544,11 @@
                                 }
                             }, 50);
                         }
-                        dsSaveHistory();
-                        dsRenderHistoryList();
+                        /* 用户手动停止时不写 localStorage，流结束才保存 */
                     } else {
                         dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
                         dsRenderAll();
-                        dsSaveHistory();
-                        dsRenderHistoryList();
+                        /* 网络错误不写 localStorage */
                     }
                 } finally {
                     _acAbortController = null;
@@ -15388,21 +15252,6 @@ ${details || '(无)'}
         'frontend': '你是一位资深前端工程师。请根据用户需求编写干净的 HTML/CSS/JS 代码。要求：代码自包含，可直接运行；使用现代浏览器特性；输出完整 HTML 代码块。'
       };
 
-      // ---------- 2.1 角色数据源配置 ----------
-      const ROLE_DATA_SOURCES = {
-        'dianwu':   { rules: true,  issues: true  },
-        'gongwu':   { rules: true,  issues: false },
-        'gongdian': { rules: true,  issues: false },
-        'chewu':    { rules: true,  issues: true  },
-        'jiwu':     { rules: true,  issues: true  },
-        'cheliang': { rules: true,  issues: false },
-        'tongxin':  { rules: true,  issues: false },
-        'fangjian': { rules: true,  issues: false },
-        'huoyun':   { rules: true,  issues: true  },
-        'tongyong': { rules: true,  issues: true  },
-        'frontend': { rules: false, issues: false }
-      };
-
       // ---------- 3. 长期记忆管理 ----------
       const MEMORY_KEY = 'assistant_memory_v1';
       let userMemories = [];
@@ -15523,6 +15372,13 @@ ${details || '(无)'}
           bm25Issues = new LightBM25(issues.map(i => ({ content: (i.content + ' ' + (i.category||'') + ' ' + (i['性质']||'')), ...i })));
         }
         return bm25Issues;
+      }
+
+      // 【性能优化】页面空闲时预构建 BM25 索引，避免首次查询时 200-500ms 同步卡顿
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(function() { getBM25Rules(); getBM25Issues(); }, { timeout: 5000 });
+      } else {
+        setTimeout(function() { getBM25Rules(); getBM25Issues(); }, 3000);
       }
 
       // ---------- 5. 本地检索 RAG ----------
@@ -15743,17 +15599,9 @@ ${details || '(无)'}
         };
       }
 
-      // ---------- 9. 增强 dsSendMsg ----------
-      // 在覆盖前保存原始函数引用，供后续调用
+      // ---------- 9. 增强 dsSendMsg（简洁版：角色提示词 + 记忆 + 联网搜索）----------
       var originalDsSendMsg = window.dsSendMsg;
-      // 暴露辅助函数/变量到 window，让外部重写的 dsSendMsg 也能访问
       window.ROLE_PROMPTS = ROLE_PROMPTS;
-      window.ROLE_DATA_SOURCES = ROLE_DATA_SOURCES;
-      window.extractFacts = extractFacts;
-      window.addMemory = addMemory;
-      window.getRelevantMemories = getRelevantMemories;
-      window.retrieveLocalData = retrieveLocalData;
-      window.buildReferenceText = buildReferenceText;
       window._originalSendMsg = originalDsSendMsg;
 
       if (typeof originalDsSendMsg === 'function') {
@@ -15762,10 +15610,29 @@ ${details || '(无)'}
           let userText = inputEl ? inputEl.value.trim() : '';
           if (!userText) return;
 
-          // 获取角色
           const roleSelect = document.getElementById('expertRole');
           const selectedRole = roleSelect ? roleSelect.value : '';
-          const isProfessional = selectedRole !== '';
+          const isProfessional = selectedRole !== '' && selectedRole !== 'tongyong' && selectedRole !== 'frontend';
+          const writingMode = document.getElementById('writing-mode') && document.getElementById('writing-mode').checked;
+
+          // 写作模式路由
+          if (writingMode && typeof window.wrWrite === 'function') {
+            inputEl.value = '';
+            var wrInputEl = document.getElementById('wr-query-input');
+            if (wrInputEl) wrInputEl.value = userText;
+            var chatBox = document.getElementById('ds-chat-box');
+            if (chatBox) { chatBox.style.display = 'flex'; }
+            try { await window.wrWrite(); } catch(e) {}
+            var reportText = window._wrCurrentReportContent;
+            if (reportText && chatBox) {
+              var asstDiv = document.createElement('div');
+              asstDiv.className = 'ds-row-assistant';
+              asstDiv.innerHTML = '<div class="ds-bubble-assistant">' + (typeof wrStreamFormat === 'function' ? wrStreamFormat(reportText.slice(0, 800)) : reportText.slice(0, 800).replace(/\n/g, '<br>')) + '</div>';
+              chatBox.appendChild(asstDiv);
+            }
+            if (wrInputEl) wrInputEl.value = '';
+            return;
+          }
 
           // 1. 角色设定
           let rolePrompt = '';
@@ -15779,50 +15646,29 @@ ${details || '(无)'}
           const memories = getRelevantMemories(userText);
           const memoryText = memories.length ? '【长期记忆】\n' + memories.map(m => '• ' + m.fact).join('\n') + '\n\n' : '';
 
-          // 3. 智能本地数据检索（按技能触发）
-          const LOCAL_TAG = '__LOCAL_DATA__';
-          let finalUserText = userText;
-          let refText = '';
-
-          if (userText.startsWith(LOCAL_TAG)) {
-            finalUserText = userText.slice(LOCAL_TAG.length).trim();
-            if (isProfessional) {
-              const dataConfig = ROLE_DATA_SOURCES[selectedRole] || { rules: true, issues: false };
-              const searchTerms = window._currentSkillTerms || finalUserText;
-              const searchOptions = {
-                topNRules: dataConfig.rules ? 3 : 0,
-                topNIssues: dataConfig.issues ? 3 : 0
-              };
-              const { rules, issues } = await retrieveLocalData(searchTerms, searchOptions);
-              if (dataConfig.rules && dataConfig.issues) refText = buildReferenceText(rules, issues);
-              else if (dataConfig.rules) refText = buildReferenceText(rules, []);
-              else if (dataConfig.issues) refText = buildReferenceText([], issues);
-              window._currentSkillTerms = null;
-            }
-          }
-
-          // 4. 联网搜索（如启用）
+          // 3. 联网搜索（超时3秒，不阻塞发送）
           const webSearchCheck = document.getElementById('webSearchEnable');
           let webText = '';
           if (webSearchCheck && webSearchCheck.checked) {
             try {
               const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-              const SEARCH_API = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(finalUserText) + '&format=json&no_html=1&skip_disambig=1';
-              const resp = await fetch(CORS_PROXY + encodeURIComponent(SEARCH_API));
+              const SEARCH_API = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(userText) + '&format=json&no_html=1&skip_disambig=1';
+              const _wc = new AbortController();
+              const _wt = setTimeout(function(){ _wc.abort(); }, 3000);
+              const resp = await fetch(CORS_PROXY + encodeURIComponent(SEARCH_API), { signal: _wc.signal });
+              clearTimeout(_wt);
               const data = await resp.json();
               let results = [];
               if (data.AbstractText) results.push(data.AbstractText);
               if (data.RelatedTopics && data.RelatedTopics.length) {
                 data.RelatedTopics.forEach(function(t){ if (t.Text) results.push(t.Text); });
               }
-              if (results.length) {
-                webText = '【联网搜索结果】\n' + results.slice(0, 5).join('\n\n') + '\n\n';
-              }
-            } catch(e) { /* 搜索失败静默，不影响对话 */ }
+              if (results.length) webText = '【联网搜索结果】\n' + results.slice(0, 5).join('\n\n') + '\n\n';
+            } catch(e) { /* 超时或网络错误，静默跳过 */ }
           }
 
-          // 5. 组装最终消息
-          const finalMessage = rolePrompt + memoryText + webText + refText + '用户问题：' + finalUserText;
+          // 4. 组装并发送
+          const finalMessage = rolePrompt + memoryText + webText + '用户问题：' + userText;
           inputEl.value = finalMessage;
           await originalDsSendMsg();
           inputEl.value = '';
@@ -15832,49 +15678,7 @@ ${details || '(无)'}
         };
       }
 
-      // ---------- 10. 技能按钮动态生成 ----------
-      var skillsList = [
-        { name: '⚖️ 智能对规', isSpecial: true, action: 'enhancedAutoCheck' },
-        { name: '🔍 规章漏洞查找', prompt: '请逐条分析相关规章中可能存在的漏洞、冲突或模糊地带，并结合检查案例给出修订建议。', localSearchTerms: '规章 冲突 漏洞 修订 检查案例' },
-        { name: '⚠️ 风险研判', prompt: '请从发生频率、危害程度、管控现状三个维度对以下风险进行研判，给出分级结论和具体防控措施。', localSearchTerms: '风险 事故 故障 频率 管控 措施' },
-        { name: '📋 事故故障分析', prompt: '请运用"直接原因→间接原因→管理原因"模型对本次事故/故障进行深度分析，列出违反的规章条款及整改建议。', localSearchTerms: '事故 故障 原因 违反 规章 条款 整改' },
-        { name: '📊 检查信息分析', prompt: '请对近期检查台账数据进行多维度统计分析，指出问题集中的专业和环节，识别趋势性问题并提出专项检查建议。', localSearchTerms: '检查 问题 台账 统计 专业 趋势 建议' },
-        { name: '🚧 施工安全分析', prompt: '请分析该施工方案的安全风险点，并提出针对性的卡控措施和盯控重点。', localSearchTerms: '施工 方案 风险 卡控 措施 安全' },
-        { name: '🍂 季节性安全分析', prompt: '请结合当前季节特点，分析季节性安全风险，并提出专项检查项点和防范措施。', localSearchTerms: '防洪 防胀 防寒 防风 季节性 安全 检查' },
-        { name: '🚨 应急处置评估', prompt: '请对本次应急处置过程进行专业评估，指出存在的问题和改进方向。', localSearchTerms: '应急 处置 预案 评估 问题 改进' },
-        { name: '📐 标准对标分析', prompt: '请将以下现场作业情况与技术标准、作业指导书进行对比，找出偏差并给出整改建议。', localSearchTerms: '标准 对标 作业 偏差 整改' },
-        { name: '📝 培训考核生成', prompt: '请生成一套针对当前专业的培训考核试卷，包含选择题和判断题各5题。', localSearchTerms: '培训 考核 试卷 选择题 判断题' },
-        { name: '📅 检查方案生成', prompt: '请根据当前安全形势，生成一份周/月安全重点检查方案，包含检查项点、检查频次和责任人建议。', localSearchTerms: '检查 方案 计划 重点 频次' },
-        { name: '📖 铁路专业分析', prompt: '请从铁路专业角度对以下主题进行全面分析，结合规章和案例，提出专业意见。', localSearchTerms: '专业 分析 主题 规章 案例 意见' }
-      ];
-
-      function buildSkillButtons() {
-        var container = document.getElementById('skillButtons');
-        if (!container) return;
-        container.innerHTML = '';
-        skillsList.forEach(function(skill) {
-          var btn = document.createElement('span');
-          btn.textContent = skill.name;
-          btn.style.cssText = 'background:#eff6ff; border:1px solid #bfdbfe; border-radius:20px; padding:5px 12px; font-size:0.8rem; cursor:pointer; transition:background 0.2s;';
-          btn.onmouseenter = function(){ btn.style.background = '#dbeafe'; };
-          btn.onmouseleave = function(){ btn.style.background = '#eff6ff'; };
-          if (skill.isSpecial && skill.action === 'enhancedAutoCheck') {
-            btn.onclick = function(){ window.enhancedAutoCheck(); };
-          } else {
-            (function(s){ btn.onclick = function() {
-              var input = document.getElementById('ds-user-input');
-              if (input) {
-                window._currentSkillTerms = s.localSearchTerms || '';
-                input.value = '__LOCAL_DATA__' + (s.prompt || '') + '\n';
-                input.focus();
-              }
-            }; })(skill);
-          }
-          container.appendChild(btn);
-        });
-      }
-
-      // ---------- 11. 反馈收集 ----------
+      // ---------- 10. 反馈收集 ----------
       function addFeedbackButtons(messageDiv, assistantContent) {
         var fbDiv = document.createElement('div');
         fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px; flex-wrap:wrap;';
@@ -15974,25 +15778,9 @@ ${details || '(无)'}
         memoryEnabled = memoryCheck.checked;
         memoryCheck.addEventListener('change', function(e){ memoryEnabled = e.target.checked; });
       }
-      buildSkillButtons();
       observeAssistantBubbles();
 
-      // ---------- 角色联动：通用角色隐藏技能 ----------
-      (function() {
-        const roleSelect = document.getElementById('expertRole');
-        const skillContainer = document.getElementById('skillButtons');
-        if (!roleSelect || !skillContainer) return;
-
-        function updateSkillVisibility() {
-          // 前端工程师和未选角色时隐藏技能
-          skillContainer.style.display = (roleSelect.value && roleSelect.value !== 'frontend') ? 'flex' : 'none';
-        }
-
-        roleSelect.addEventListener('change', updateSkillVisibility);
-        updateSkillVisibility();
-      })();
-
-      console.log('%c✅ 智能助手增强已启动 | 角色切换 · 长期记忆 · 本地RAG · 一键对规 · 技能按钮 · 联网搜索(需配置) · 反馈收集', 'color:#059669;font-weight:bold;');
+      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 联网搜索 · 反馈收集', 'color:#059669;font-weight:bold;');
     })();
     </script>
 

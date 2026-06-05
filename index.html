@@ -2984,7 +2984,7 @@
                             <!-- 说明栏 -->
                             <div style="padding:8px 12px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;font-size:0.8rem;color:#92400e;line-height:1.6;">
                                 <strong>📌 资料类型：</strong>写作模版、历史报告、检查信息、故障报告、通报文电、其它<br>
-                                <strong>📎 导入格式：</strong>DOCX · Excel · JSON · TXT，导入时手动选择类别存放。
+                                <strong>📎 导入格式：</strong>DOCX · PDF · Excel · JSON · TXT，导入时手动选择类别存放。
                             </div>
                             <!-- 子类分类Tab（合并后） -->
                             <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;border-bottom:2px solid var(--border);padding-bottom:6px;">
@@ -3048,7 +3048,7 @@
                 <button onclick="wrImportWithType('dispatch')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📨 通报文电</button>
                 <button onclick="wrImportWithType('other')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📄 其它</button>
             </div>
-            <div style="font-size:0.78rem;color:var(--text-secondary);padding:6px 10px;background:#f8fafc;border-radius:6px;">💡 支持格式：DOCX · Excel（.xlsx/.xls）· JSON · TXT<br>故障统计可归入「故障报告」，会议纪要可归入「通报文电」</div>
+            <div style="font-size:0.78rem;color:var(--text-secondary);padding:6px 10px;background:#f8fafc;border-radius:6px;">💡 支持格式：DOCX · PDF · Excel（.xlsx/.xls）· JSON · TXT<br>故障统计可归入「故障报告」，会议纪要可归入「通报文电」</div>
         </div>
     </div>
 
@@ -12648,7 +12648,7 @@
                 // 创建文件选择input
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
-                fileInput.accept = '.docx,.xlsx,.xls,.json,.txt';
+                fileInput.accept = '.docx,.pdf,.xlsx,.xls,.json,.txt';
                 fileInput.multiple = true;
                 fileInput.style.display = 'none';
                 
@@ -12800,6 +12800,34 @@
                                         item.content = item.rawText;
                                     }
                                 }
+                            } else if (file.name.endsWith('.pdf')) {
+                                // 使用 pdf.js 提取 PDF 文字内容
+                                if (typeof pdfjsLib === 'undefined') {
+                                    console.warn('[导入] pdf.js 库未加载');
+                                    item.rawText = '[PDF文件 - 需要 pdf.js 库解析内容]';
+                                    item.content = '[PDF文件内容暂无法解析]';
+                                } else {
+                                    try {
+                                        const arrayBuffer = await file.arrayBuffer();
+                                        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                                        let fullText = '';
+                                        const maxPages = Math.min(pdf.numPages, 50);
+                                        for (let p = 1; p <= maxPages; p++) {
+                                            const page = await pdf.getPage(p);
+                                            const tc = await page.getTextContent();
+                                            fullText += tc.items.map(it => it.str).join(' ') + '\n';
+                                        }
+                                        item.content = fullText.trim();
+                                        item.rawText = fullText.trim().slice(0, 10000);
+                                    } catch(err) {
+                                        console.error('[导入] PDF解析失败:', err);
+                                        item.rawText = '[PDF解析失败]';
+                                        item.content = item.rawText;
+                                    }
+                                }
+                            } else if (file.name.endsWith('.doc') && !file.name.endsWith('.docx')) {
+                                item.content = '[暂不支持 .doc 格式（旧版Word二进制格式）。请将文件另存为 .docx 格式后重新导入。]';
+                                item.rawText = '[不支持的文档格式: .doc，请转换为 .docx]';
                             } else {
                                 // 其他类型，尝试读取为文本
                                 try {
@@ -15634,9 +15662,9 @@ ${details || '(无)'}
             return;
           }
 
-          // 1. 角色设定
+          // 1. 角色设定（isProfessional 仅用于检索过滤，不影响角色提示词注入）
           let rolePrompt = '';
-          if (isProfessional && ROLE_PROMPTS[selectedRole]) {
+          if (selectedRole && ROLE_PROMPTS[selectedRole]) {
             rolePrompt = '【角色设定】\n' + ROLE_PROMPTS[selectedRole] + '\n\n';
           }
 

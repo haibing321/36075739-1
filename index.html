@@ -15870,7 +15870,7 @@ ${details || '(无)'}
     window.oneClickBackup = async function() {
         if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请刷新后重试', true); return; }
         _toast('正在收集数据…');
-        var backup = { version: 2, exportDate: new Date().toISOString(), modules: {} };
+        var backup = { version: 3, exportDate: new Date().toISOString(), modules: {} };
         try {
             backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 1);
             backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3);
@@ -15883,6 +15883,21 @@ ${details || '(无)'}
             backup.modules.dsChatHistory = getLocal('ds_chat_history_v1', []);
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
+            backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1);
+            // 将 diaryMedia 中的 blob (ArrayBuffer) 转为 base64 才能序列化到 JSON
+            if (backup.modules.diaryMedia && backup.modules.diaryMedia.length > 0) {
+                backup.modules.diaryMedia = backup.modules.diaryMedia.map(function(rec) {
+                    var copy = { id: rec.id, type: rec.type || 'image/jpeg', captureTime: rec.captureTime || '' };
+                    if (rec.blob) {
+                        var bytes = new Uint8Array(rec.blob);
+                        var binary = '';
+                        for (var b = 0; b < bytes.length; b++) { binary += String.fromCharCode(bytes[b]); }
+                        copy.blobBase64 = btoa(binary);
+                        copy.blobSize = bytes.length;
+                    }
+                    return copy;
+                });
+            }
 
             var zip = new JSZip();
             zip.file('full_backup.json', JSON.stringify(backup, null, 2));
@@ -15908,7 +15923,7 @@ ${details || '(无)'}
                 var backupFile = zip.file('full_backup.json');
                 if (!backupFile) throw new Error('缺少 full_backup.json');
                 var backup = JSON.parse(await backupFile.async('string'));
-                if (backup.version !== 2) throw new Error('版本不兼容');
+                if (backup.version !== 2 && backup.version !== 3) throw new Error('版本不兼容（仅支持v2/v3）');
                 if (!confirm('⚠️ 将覆盖现有数据，确定继续？')) return;
 
                 _toast('正在恢复数据…');
@@ -15924,6 +15939,23 @@ ${details || '(无)'}
                 if (bm.dsChatHistory) localStorage.setItem('ds_chat_history_v1', JSON.stringify(bm.dsChatHistory));
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
+                if (bm.diaryMedia) {
+                    // 将 base64 还原为 ArrayBuffer（blob 字段），IndexedDB 才能正确存储
+                    bm.diaryMedia = bm.diaryMedia.map(function(rec) {
+                        if (rec.blobBase64) {
+                            var binary = atob(rec.blobBase64);
+                            var bytes = new Uint8Array(binary.length);
+                            for (var b = 0; b < binary.length; b++) { bytes[b] = binary.charCodeAt(b); }
+                            rec.blob = bytes.buffer;
+                            delete rec.blobBase64; // 清理临时字段
+                            delete rec.blobSize;
+                            // 确保 id 是数字（IndexedDB keyPath 要求）
+                            if (typeof rec.id === 'string') rec.id = parseInt(rec.id, 10);
+                        }
+                        return rec;
+                    });
+                    await writeIndexedDB('DiaryMediaDB', 'media', 1, bm.diaryMedia);
+                }
 
                 _toast('恢复完成，即将刷新…');
                 setTimeout(function(){ location.reload(); }, 1500);

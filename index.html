@@ -9594,7 +9594,7 @@
                         const showText = msg.displayText || msg.content;
                         html += '<div class="ds-row-user"><div class="ds-bubble-user">' + dsEsc(showText) + '</div></div>';
                     } else if (msg.role === 'assistant') {
-                        const content = msg.content || '<span class="ds-typing">思考中<span>.</span><span>.</span><span>.</span></span>';
+                        const content = msg.content || '<span class="ds-typing">思考中……</span>';
                         html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant">' + dsMarkdown(content) + '</div></div>';
                     } else {
                         html += '<div class="ds-row-system"><div class="ds-bubble-system">' + dsEsc(msg.content) + '</div></div>';
@@ -14841,9 +14841,6 @@ ${details || '(无)'}
                 }
                 .ds-cursor { animation:dsBlink 1s step-end infinite; }
                 @keyframes dsBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
-                .ds-typing span { animation:dsBlink 1.2s infinite; }
-                .ds-typing span:nth-child(2) { animation-delay:.2s; }
-                .ds-typing span:nth-child(3) { animation-delay:.4s; }
             `;
             document.head.appendChild(style);
         })();
@@ -15884,19 +15881,29 @@ ${details || '(无)'}
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
             backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1);
-            // 将 diaryMedia 中的 blob (ArrayBuffer) 转为 base64 才能序列化到 JSON
+            // 将 diaryMedia 中的 blob (ArrayBuffer) 异步转为 base64，避免手机端主线程卡死
             if (backup.modules.diaryMedia && backup.modules.diaryMedia.length > 0) {
-                backup.modules.diaryMedia = backup.modules.diaryMedia.map(function(rec) {
+                _toast('正在处理多媒体文件…');
+                var converted = [];
+                for (var i = 0; i < backup.modules.diaryMedia.length; i++) {
+                    var rec = backup.modules.diaryMedia[i];
                     var copy = { id: rec.id, type: rec.type || 'image/jpeg', captureTime: rec.captureTime || '' };
                     if (rec.blob) {
-                        var bytes = new Uint8Array(rec.blob);
-                        var binary = '';
-                        for (var b = 0; b < bytes.length; b++) { binary += String.fromCharCode(bytes[b]); }
-                        copy.blobBase64 = btoa(binary);
-                        copy.blobSize = bytes.length;
+                        // 使用 FileReader 异步编码，不阻塞主线程（华为/手机端不会卡死）
+                        copy.blobBase64 = await new Promise(function(resolve) {
+                            var blob = new Blob([rec.blob], { type: rec.type || 'application/octet-stream' });
+                            var reader = new FileReader();
+                            reader.onload = function() { resolve(reader.result.split(',')[1] || ''); };
+                            reader.onerror = function() { resolve(''); };
+                            reader.readAsDataURL(blob);
+                        });
+                        copy.blobSize = rec.blob.byteLength;
+                        // 每处理5个文件让出主线程，给 UI 刷新的机会
+                        if (i % 5 === 4) { await new Promise(function(r) { setTimeout(r, 10); }); }
                     }
-                    return copy;
-                });
+                    converted.push(copy);
+                }
+                backup.modules.diaryMedia = converted;
             }
 
             var zip = new JSZip();
@@ -15940,20 +15947,23 @@ ${details || '(无)'}
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
                 if (bm.diaryMedia) {
-                    // 将 base64 还原为 ArrayBuffer（blob 字段），IndexedDB 才能正确存储
-                    bm.diaryMedia = bm.diaryMedia.map(function(rec) {
+                    // 将 base64 异步还原为 ArrayBuffer，避免手机端卡死
+                    _toast('正在还原多媒体文件…');
+                    for (var i = 0; i < bm.diaryMedia.length; i++) {
+                        var rec = bm.diaryMedia[i];
                         if (rec.blobBase64) {
-                            var binary = atob(rec.blobBase64);
-                            var bytes = new Uint8Array(binary.length);
-                            for (var b = 0; b < binary.length; b++) { bytes[b] = binary.charCodeAt(b); }
-                            rec.blob = bytes.buffer;
-                            delete rec.blobBase64; // 清理临时字段
+                            rec.blob = await new Promise(function(resolve) {
+                                var binary = atob(rec.blobBase64);
+                                var bytes = new Uint8Array(binary.length);
+                                for (var b = 0; b < binary.length; b++) { bytes[b] = binary.charCodeAt(b); }
+                                resolve(bytes.buffer);
+                            });
+                            delete rec.blobBase64;
                             delete rec.blobSize;
-                            // 确保 id 是数字（IndexedDB keyPath 要求）
                             if (typeof rec.id === 'string') rec.id = parseInt(rec.id, 10);
+                            if (i % 5 === 4) { await new Promise(function(r) { setTimeout(r, 10); }); }
                         }
-                        return rec;
-                    });
+                    }
                     await writeIndexedDB('DiaryMediaDB', 'media', 1, bm.diaryMedia);
                 }
 

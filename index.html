@@ -15957,16 +15957,27 @@ ${details || '(无)'}
                     for (var i = 0; i < bm.diaryMedia.length; i++) {
                         var rec = bm.diaryMedia[i];
                         if (rec.blobBase64) {
+                            // 分块异步还原，避免手机端主线程闪退
                             rec.blob = await new Promise(function(resolve) {
                                 var binary = atob(rec.blobBase64);
                                 var bytes = new Uint8Array(binary.length);
-                                for (var b = 0; b < binary.length; b++) { bytes[b] = binary.charCodeAt(b); }
-                                resolve(bytes.buffer);
+                                var chunkSize = 65536; // 64KB 每块
+                                var offset = 0;
+                                function processChunk() {
+                                    var end = Math.min(offset + chunkSize, binary.length);
+                                    for (var b = offset; b < end; b++) { bytes[b] = binary.charCodeAt(b); }
+                                    offset = end;
+                                    if (offset < binary.length) {
+                                        setTimeout(processChunk, 0); // 让出主线程
+                                    } else {
+                                        resolve(bytes.buffer);
+                                    }
+                                }
+                                processChunk();
                             });
                             delete rec.blobBase64;
                             delete rec.blobSize;
                             if (typeof rec.id === 'string') rec.id = parseInt(rec.id, 10);
-                            if (i % 5 === 4) { await new Promise(function(r) { setTimeout(r, 10); }); }
                         }
                     }
                     await writeIndexedDB('DiaryMediaDB', 'media', 1, bm.diaryMedia);

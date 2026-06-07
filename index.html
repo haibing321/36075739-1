@@ -15882,22 +15882,27 @@ ${details || '(无)'}
             backup.modules.memos = getLocal('railway_memo_v1', []);
             backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1);
             // 将 diaryMedia 中的 blob (ArrayBuffer) 异步转为 base64，避免手机端主线程卡死
+            var mediaFileCount = 0, mediaTotalBytes = 0;
             if (backup.modules.diaryMedia && backup.modules.diaryMedia.length > 0) {
-                _toast('正在处理多媒体文件…');
+                _toast('正在处理多媒体文件(' + backup.modules.diaryMedia.length + '个)…');
                 var converted = [];
                 for (var i = 0; i < backup.modules.diaryMedia.length; i++) {
                     var rec = backup.modules.diaryMedia[i];
                     var copy = { id: rec.id, type: rec.type || 'image/jpeg', captureTime: rec.captureTime || '' };
                     if (rec.blob) {
+                        // 兼容不同浏览器返回格式（ArrayBuffer 或 Blob）
+                        var rawBlob = rec.blob instanceof Blob ? rec.blob : new Blob([rec.blob], { type: rec.type || 'application/octet-stream' });
+                        var rawSize = rec.blob.byteLength || rec.blob.size || rawBlob.size || 0;
                         // 使用 FileReader 异步编码，不阻塞主线程（华为/手机端不会卡死）
                         copy.blobBase64 = await new Promise(function(resolve) {
-                            var blob = new Blob([rec.blob], { type: rec.type || 'application/octet-stream' });
                             var reader = new FileReader();
                             reader.onload = function() { resolve(reader.result.split(',')[1] || ''); };
                             reader.onerror = function() { resolve(''); };
-                            reader.readAsDataURL(blob);
+                            reader.readAsDataURL(rawBlob);
                         });
-                        copy.blobSize = rec.blob.byteLength;
+                        copy.blobSize = rawSize;
+                        mediaFileCount++;
+                        mediaTotalBytes += rawSize;
                         // 每处理5个文件让出主线程，给 UI 刷新的机会
                         if (i % 5 === 4) { await new Promise(function(r) { setTimeout(r, 10); }); }
                     }
@@ -15915,7 +15920,7 @@ ${details || '(无)'}
             a.download = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.zip';
             a.click();
             setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
-            _toast('备份完成');
+            _toast('备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件(' + (mediaTotalBytes/1024/1024).toFixed(1) + 'MB原始)' : ''));
         } catch(e) { _toast('备份失败：' + e.message, true); }
     };
 

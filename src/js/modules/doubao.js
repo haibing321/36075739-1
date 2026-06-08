@@ -600,7 +600,8 @@
 
             // ---- dsUpdateCtxInfo 已删除（由弹窗替代） ----
 
-            // ---- 构建系统提示词（含业务数据） ----
+            // ---- 语义搜索增强（RAG Layer） ----
+            // ---- 构建系统提示词（含业务数据+语义搜索增强） ----
             async function dsBuildSystemPrompt(userQuery, dataSource) {
                 if (!dataSource) dataSource = { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false };
                 var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
@@ -762,6 +763,35 @@
                         });
                         if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS);
                         sysParts.push(txt);
+                    }
+                }
+
+                // === 语义搜索增强层 ===
+                // 当预建索引可用时，追加语义匹配结果
+                if (window.semanticSearch && window.semanticSearch.isReady()) {
+                    var _apiKey = await _getApiKey();
+                    var qEmb = null;
+                    try {
+                        qEmb = await window.semanticSearch.getQueryEmbedding(userQuery, _apiKey);
+                    } catch(e) { /* 回退 */ }
+                    
+                    if (qEmb) {
+                        try {
+                            var semResults = window.semanticSearch.search(qEmb, 5, { minScore: 0.2 });
+                            if (semResults && semResults.length > 0) {
+                                var semTxt = '【语义智能匹配（共' + semResults.length + '条高相关结果）】\n';
+                                // 带分数标注，帮助 LLM 判断相关性
+                                semTxt += '匹配度: █████ 高 | 基于语义理解找到以下相关内容，可能与关键词不完全重合但含义相关：\n';
+                                semResults.forEach(function(r, i) {
+                                    var scoreBar = r.score > 0.7 ? '高相关' : (r.score > 0.4 ? '中相关' : '低相关');
+                                    semTxt += (i+1) + '. [' + scoreBar + '] [' + (r.source || '') + '] ' + r.text.slice(0, 300) + (r.text.length > 300 ? '...' : '') + '\n';
+                                });
+                                if (semTxt.length > DS_MAX_CTX_CHARS) semTxt = semTxt.slice(0, DS_MAX_CTX_CHARS);
+                                sysParts.push(semTxt);
+                            }
+                        } catch(e) {
+                            console.warn('[语义增强] 搜索失败:', e);
+                        }
                     }
                 }
 
@@ -6660,24 +6690,57 @@ ${details || '(无)'}
         }
         options = options || { topNRules: 3, topNIssues: 3, recentMonth: false };
         let rules = [], issues = [];
-        try { const r = getBM25Rules(); if (r) rules = r.search(query, options.topNRules); } catch(e) {}
-        try {
-          const i = getBM25Issues();
-          if (i) {
-            let raw = i.search(query, options.topNIssues * 3); // 多搜一些，再按时间过滤
-            if (options.recentMonth) {
-              const oneMonthAgo = new Date();
-              oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-              raw = raw.filter(function(item) {
-                const t = item.datetime || item['时间'] || '';
-                if (!t) return false;
-                const d = new Date(t.replace(/\//g, '-'));
-                return d >= oneMonthAgo;
-              });
+        
+        // 优先尝试语义搜索
+        if (window.semanticSearch && window.semanticSearch.isReady()) {
+          try {
+            const apiKey = (typeof _getApiKey === 'function') ? await _getApiKey() : (localStorage.getItem('ds_api_key_v1') || '');
+            var qEmb = null;
+            try { qEmb = await window.semanticSearch.getQueryEmbedding(query, apiKey); } catch(e) {}
+            
+            if (qEmb) {
+              var semRules = window.semanticSearch.search(qEmb, options.topNRules, { filterSource: '规章制度', minScore: 0.15 });
+              var semIssues = window.semanticSearch.search(qEmb, options.topNIssues, { filterSource: '检查信息', minScore: 0.15 });
+              
+              if (semRules && semRules.length > 0) {
+                rules = semRules.map(function(r) {
+                  return { title: r.source, content: r.text, trade: r.field, _semantic: true, _score: r.score };
+                });
+              }
+              if (semIssues && semIssues.length > 0) {
+                issues = semIssues.map(function(r) {
+                  return { content: r.text, category: r.field, '性质': '语义匹配', _semantic: true, _score: r.score };
+                });
+              }
+              console.log('[RAG] 语义检索完成: ' + rules.length + ' 条规章, ' + issues.length + ' 条问题');
             }
-            issues = raw.slice(0, options.topNIssues);
-          }
-        } catch(e) {}
+          } catch(e) { console.warn('[RAG] 语义检索失败，回退BM25:', e); }
+        }
+        
+        // BM25 关键词检索作为补充
+        if (rules.length === 0) {
+          try { const r = getBM25Rules(); if (r) rules = r.search(query, options.topNRules); } catch(e) {}
+        }
+        if (issues.length === 0) {
+          try {
+            const i = getBM25Issues();
+            if (i) {
+              let raw = i.search(query, options.topNIssues * 3);
+              if (options.recentMonth) {
+                const oneMonthAgo = new Date();
+                oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                raw = raw.filter(function(item) {
+                  const t = item.datetime || item['时间'] || '';
+                  if (!t) return false;
+                  const d = new Date(t.replace(/\//g, '-'));
+                  return d >= oneMonthAgo;
+                });
+              }
+              issues = raw.slice(0, options.topNIssues);
+            }
+          } catch(e) {}
+        }
+        
         return { rules, issues };
       }
 

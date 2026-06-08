@@ -52,7 +52,14 @@
             async function _getApiKey() {
                 if (dsApiKey) return dsApiKey;
                 var raw = localStorage.getItem(DS_API_KEY_STORAGE) || '';
-                if (raw) { dsApiKey = raw; return raw; }
+                if (raw) {
+                    // 检测旧版加密格式（系统已移除加密，但用户可能留存旧数据）
+                    if (raw.charAt(0) === '{' && (raw.indexOf('"e"') !== -1 || raw.indexOf('"iv"') !== -1)) {
+                        console.warn('[doubao] 检测到旧版加密的 API Key，系统已不再支持加密。请重新在 API 配置中保存 Key。');
+                        return '';
+                    }
+                    dsApiKey = raw; return raw;
+                }
                 return '';
             }
 

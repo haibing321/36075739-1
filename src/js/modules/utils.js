@@ -93,7 +93,7 @@
 
         window.closeModal = function(id) { 
             document.getElementById(id).classList.remove('active'); 
-            if (id === 'rule-fullViewModal' && _imgLazyObserver) {
+            if (id === 'rule-fullViewModal' && typeof _imgLazyObserver !== 'undefined' && _imgLazyObserver) {
                 _imgLazyObserver.disconnect();
             }
         };

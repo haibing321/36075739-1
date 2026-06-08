@@ -169,8 +169,11 @@
          * @returns {Promise<number[]>}
          */
         getQueryEmbedding: async function(text, apiKey) {
-            // 使用 DeepSeek embedding endpoint（如果可用）
-            // 回退：使用简单的词频向量（不推荐，但保证可用）
+            // 仅 DeepSeek 提供 embedding 接口，其它厂商直接走回退
+            var configuredUrl = localStorage.getItem('ds_api_url_v1') || '';
+            if (configuredUrl.indexOf('deepseek.com') === -1) {
+                return this._fallbackEmbed(text);
+            }
             try {
                 const resp = await fetch('https://api.deepseek.com/v1/embeddings', {
                     method: 'POST',

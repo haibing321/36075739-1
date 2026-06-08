@@ -481,6 +481,28 @@
                 document.getElementById('api-config-modal').style.display = 'block';
             }
 
+            // API 地址变更时自动建议模型名称
+            function _autoDetectModel() {
+                var url = document.getElementById('modal-apiurl').value;
+                var modelInput = document.getElementById('modal-model');
+                // 只有用户清空了或还是默认值时才自动填写
+                if (modelInput.value && modelInput.value !== DS_DEFAULT_MODEL && modelInput.value !== 'glm-4' && modelInput.value !== 'qwen-turbo' && modelInput.value !== 'gpt-3.5-turbo') return;
+                var models = {
+                    'bigmodel.cn': 'glm-4',
+                    'aliyuncs.com': 'qwen-turbo',
+                    'deepseek.com': 'deepseek-chat',
+                    'openai.com': 'gpt-3.5-turbo'
+                };
+                for (var domain in models) {
+                    if (url.indexOf(domain) !== -1) {
+                        modelInput.value = models[domain];
+                        modelInput.style.borderColor = '#86efac';
+                        setTimeout(function() { modelInput.style.borderColor = ''; }, 1500);
+                        return;
+                    }
+                }
+            }
+
             async function saveApiConfigFromModal() {
                 var url = document.getElementById('modal-apiurl').value.trim();
                 var model = document.getElementById('modal-model').value.trim();
@@ -531,6 +553,9 @@
                 if (resetBtn) resetBtn.onclick = resetDefaultApiConfig;
                 var quickBtn = document.getElementById('quick-config-btn');
                 if (quickBtn) quickBtn.onclick = showApiConfigModal;
+                // API 地址变更时自动建议模型名称
+                var urlInput = document.getElementById('modal-apiurl');
+                if (urlInput) urlInput.onchange = _autoDetectModel;
             }
             bindApiModalEvents();
 
@@ -1189,13 +1214,13 @@
                     if (!resp.ok) {
                         const errText = await resp.text();
                         let errMsg = '请求失败（HTTP ' + resp.status + '）';
-                        // 常见错误码友好提示
                         const statusHints = {
-                            401: '⚠️ API Key 无效或未填写，请点击上方"保存"按钮确认已填入正确的 Key',
-                            402: '⚠️ DeepSeek 账户余额不足，请前往 platform.deepseek.com 充值后重试',
+                            401: '⚠️ API Key 无效或未填写，请确认已填入正确的 Key',
+                            402: '⚠️ 账户余额不足，请前往对应平台充值后重试',
                             403: '⚠️ API Key 无访问权限，请检查 Key 是否正确',
+                            404: '⚠️ 模型名称不存在或 API 地址错误，请检查模型名称是否与平台匹配',
                             429: '⚠️ 请求过于频繁，请稍后再试',
-                            500: '⚠️ DeepSeek 服务端异常，请稍后重试',
+                            500: '⚠️ 服务端异常，请稍后重试',
                         };
                         if (statusHints[resp.status]) {
                             errMsg = statusHints[resp.status];

@@ -30,38 +30,40 @@
         init: function() {
             if (this._initPromise) return this._initPromise;
             
-            this._initPromise = new Promise((resolve) => {
-                // 检查预建索引
+            this._initPromise = new Promise(function(resolve) {
+                // 检查是否已有索引（页面内二次调用）
                 if (window.__SEMANTIC_INDEX__ && window.__SEMANTIC_INDEX__.length > 0) {
                     this._index = window.__SEMANTIC_INDEX__;
                     this._ready = true;
-                    console.log('[语义搜索] 预建索引已加载: ' + this._index.length + ' 条');
+                    console.log('[语义搜索] 索引已就绪: ' + this._index.length + ' 条');
                     resolve(true);
                     return;
                 }
 
-                // 尝试异步加载
-                const script = document.createElement('script');
-                script.src = 'src/js/knowledge_base_data.js';
-                script.onload = () => {
-                    if (window.__SEMANTIC_INDEX__) {
-                        this._index = window.__SEMANTIC_INDEX__;
-                        this._ready = true;
-                        console.log('[语义搜索] 索引文件加载成功: ' + this._index.length + ' 条');
-                        resolve(true);
-                    } else {
-                        console.warn('[语义搜索] 索引文件为空，请先运行 build_knowledge_base.py');
+                // 等待 index_loader 完成异步加载
+                if (window.initSemanticIndex) {
+                    window.initSemanticIndex().then(function() {
+                        if (window.__SEMANTIC_INDEX__ && window.__SEMANTIC_INDEX__.length > 0) {
+                            this._index = window.__SEMANTIC_INDEX__;
+                            this._ready = true;
+                            console.log('[语义搜索] 索引加载完成: ' + this._index.length + ' 条');
+                            resolve(true);
+                        } else {
+                            console.warn('[语义搜索] 索引为空，语义搜索降级为关键词');
+                            this._ready = false;
+                            resolve(false);
+                        }
+                    }.bind(this)).catch(function(e) {
+                        console.warn('[语义搜索] 加载失败，降级为关键词匹配:', e);
                         this._ready = false;
                         resolve(false);
-                    }
-                };
-                script.onerror = () => {
-                    console.warn('[语义搜索] 索引文件未找到，将使用关键词匹配回退');
+                    }.bind(this));
+                } else {
+                    console.warn('[语义搜索] index_loader 未找到，语义搜索不可用');
                     this._ready = false;
                     resolve(false);
-                };
-                document.head.appendChild(script);
-            });
+                }
+            }.bind(this));
 
             return this._initPromise;
         },

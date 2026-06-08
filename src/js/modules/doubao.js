@@ -1301,7 +1301,16 @@
                         }
                         /* 用户手动停止时不写 localStorage，流结束才保存 */
                     } else {
-                        dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
+                        // 检测 CORS 错误，提示具体原因
+                        if (err.message && (err.message.indexOf('Failed to fetch') !== -1)) {
+                            dsHistory[assistantIdx].content = '❌ 网络错误：CORS 跨域限制\n\n'
+                                + '当前 API（' + dsApiUrl.split('/api/')[0] + '）不允许浏览器直接访问。\n\n'
+                                + '解决方案：\n'
+                                + '1. 切换使用 DeepSeek API（推荐，支持浏览器调用）\n'
+                                + '2. 或等待后续版本支持 CORS 代理';
+                        } else {
+                            dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
+                        }
                         dsRenderAll();
                         /* 网络错误不写 localStorage */
                     }
@@ -5370,7 +5379,7 @@
                         }
                     } else {
                         let msg = err.message || '未知错误';
-                        if (msg.includes('Failed to fetch')) msg = '网络请求失败，请检查服务器配置';
+                        if (msg.includes('Failed to fetch')) msg = 'CORS跨域限制：当前API不支持浏览器直接访问，建议切换DeepSeek';
                         if (streamBubbleContent) {
                             streamBubbleContent.style.background = '#fff5f5';
                             streamBubbleContent.style.color = '#e53e3e';

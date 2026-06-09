@@ -3,7 +3,7 @@
  * ===================================================
  * 包含两部分：
  *   Part A: 核心功能 IIFE（对话/对规/写作/历史记录/API配置/附件处理）
- *   Part B: 增强功能 IIFE（角色切换/长期记忆/联网搜索/统计面板/反馈收集）
+ *   Part B: 增强功能 IIFE（角色切换/长期记忆/统计面板/反馈收集）
  * 
  * 依赖：
  *   - 外部库: JSZip, pdf.js, mammoth.js, XLSX, pinyin
@@ -6803,75 +6803,6 @@ ${details || '(无)'}
         return ref;
       }
 
-      // ---------- 6. 联网搜索（DuckDuckGo + CORS代理，免配置）----------
-      window.setSearchEndpoint = function(url) {
-        console.log('内置搜索代理已启用，无需配置端点。如果你需要自定义，可传入 url 覆盖。');
-      };
-
-      window.runWebSearch = async function() {
-        var input = document.getElementById('ds-user-input');
-        var query = input ? input.value.trim() : '';
-        if (!query) {
-          var aiInput = document.getElementById('autoCheck-input');
-          if (aiInput) query = aiInput.value.trim();
-        }
-        if (!query) { alert('请输入搜索内容'); return; }
-
-        var searchUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query);
-        var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(searchUrl);
-
-        try {
-          var resp = await fetch(proxyUrl);
-          var html = await resp.text();
-          var results = [];
-          var re = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-          var m;
-          while ((m = re.exec(html)) !== null) {
-            var url = m[1].replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '').replace(/&rut=.*$/, '');
-            try { url = decodeURIComponent(url); } catch(e2) {}
-            var title = m[2].replace(/<[^>]*>/g, '').trim();
-            var snippet = m[3].replace(/<[^>]*>/g, '').trim();
-            if (title && snippet && url.indexOf('http') === 0) {
-              results.push({ title: title, url: url, snippet: snippet });
-              if (results.length >= 8) break;
-            }
-          }
-          if (!results.length) {
-            var re2 = /class="result__title"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-            while ((m = re2.exec(html)) !== null) {
-              results.push({ title: m[2].replace(/<[^>]*>/g, '').trim(), url: '#', snippet: '' });
-              if (results.length >= 8) break;
-            }
-          }
-
-        } catch(err) {
-          alert('搜索失败，请检查网络');
-          return;
-        }
-
-        if (results.length === 0) {
-          alert('未找到相关结果');
-          return;
-        }
-
-        var _esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : function(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-        let resultText = '🔍 网络搜索结果：\n\n';
-        results.forEach(function(item, idx) {
-          resultText += (idx+1) + '. [' + item.title + '](' + item.url + ')\n   ' + item.snippet + '\n\n';
-        });
-        resultText += '以上信息来自互联网，仅供参考。';
-
-        const chatBox = document.getElementById('ds-chat-box');
-        if (chatBox) {
-          const bubble = document.createElement('div');
-          bubble.className = 'ds-row-assistant';
-          bubble.innerHTML = '<div class="ds-bubble-assistant" style="white-space:pre-wrap;">' + _esc(resultText) + '</div>';
-          chatBox.appendChild(bubble);
-          chatBox.scrollTop = chatBox.scrollHeight;
-        }
-        if (input) input.value = '';
-      };
-
       // ---------- 7. 一键对规 ----------
       window.enhancedAutoCheck = async function(problemText) {
         if (!problemText) {
@@ -6977,7 +6908,7 @@ ${details || '(无)'}
         };
       }
 
-      // ---------- 9. 增强 dsSendMsg（简洁版：角色提示词 + 记忆 + 联网搜索）----------
+      // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
       var originalDsSendMsg = window.dsSendMsg;
       window.ROLE_PROMPTS = ROLE_PROMPTS;
       window._originalSendMsg = originalDsSendMsg;
@@ -7021,49 +6952,11 @@ ${details || '(无)'}
           // 2. 长期记忆
           const newFacts = extractFacts(userText);
           newFacts.forEach(f => addMemory(f));
-          const memories = getRelevantMemories(userText);
-          const memoryText = memories.length ? '【长期记忆】\n' + memories.map(m => '• ' + m.fact).join('\n') + '\n\n' : '';
+          var memories = getRelevantMemories(userText);
+          var memoryText = memories.length ? '【长期记忆】\n' + memories.map(function(m) { return '• ' + m.fact; }).join('\n') + '\n\n' : '';
 
-          // 3. 联网搜索（DuckDuckGo HTML + corsproxy.io，超时3秒）
-          const webSearchCheck = document.getElementById('webSearchEnable');
-          let webText = '';
-          if (webSearchCheck && webSearchCheck.checked) {
-            try {
-              var _wc = new AbortController();
-              var _wt = setTimeout(function(){ _wc.abort(); }, 3000);
-              var searchUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(userText);
-              var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(searchUrl);
-              var resp = await fetch(proxyUrl, { signal: _wc.signal });
-              clearTimeout(_wt);
-              var html = await resp.text();
-              var results = [];
-              // 解析 DuckDuckGo HTML 结果页，提取标题+摘要
-              var re = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-              var m;
-              while ((m = re.exec(html)) !== null) {
-                var url = m[1].replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '').replace(/&rut=.*$/, '');
-                try { url = decodeURIComponent(url); } catch(e2) {}
-                var title = m[2].replace(/<[^>]*>/g, '').trim();
-                var snippet = m[3].replace(/<[^>]*>/g, '').trim();
-                if (title && snippet && url.indexOf('http') === 0) {
-                  results.push(title + '\n' + snippet + '\n' + url);
-                  if (results.length >= 5) break;
-                }
-              }
-              if (!results.length) {
-                // 回退：用更简单的正则匹配
-                var re2 = /class="result__title"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-                while ((m = re2.exec(html)) !== null) {
-                  results.push(m[2].replace(/<[^>]*>/g, '').trim());
-                  if (results.length >= 5) break;
-                }
-              }
-              if (results.length) webText = '【联网搜索结果】\n' + results.join('\n\n') + '\n\n';
-            } catch(e) { /* 超时或网络错误，静默跳过 */ }
-          }
-
-          // 4. 组装并发送
-          const finalMessage = rolePrompt + memoryText + webText + '用户问题：' + userText;
+          // 3. 组装并发送
+          var finalMessage = rolePrompt + memoryText + '用户问题：' + userText;
           inputEl.value = finalMessage;
           await originalDsSendMsg();
           inputEl.value = '';
@@ -7175,5 +7068,5 @@ ${details || '(无)'}
       }
       observeAssistantBubbles();
 
-      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 联网搜索 · 反馈收集', 'color:#059669;font-weight:bold;');
+      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集', 'color:#059669;font-weight:bold;');
     })();

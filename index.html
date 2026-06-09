@@ -16,7 +16,7 @@
           content="default-src 'self';
                    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com 'unsafe-inline' 'unsafe-eval';
                    style-src 'self' 'unsafe-inline';
-                   connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com https://corsproxy.io;
+                   connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com;
                    img-src 'self' blob: data:;
                    frame-src https://www.doubao.com;
                    font-src 'self';
@@ -700,8 +700,6 @@
                           <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
                             <input type="checkbox" id="memoryEnable" checked> 🧠 长期记忆
                           </label>
-                          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
-                            <input type="checkbox" id="webSearchEnable"> 🌐 联网搜索
                           </label>
                           <div style="flex:1"></div>
                           <button id="statsBtn" style="background: #e2e8f0; border: none; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer;">📊 统计</button>

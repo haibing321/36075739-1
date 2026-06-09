@@ -260,7 +260,22 @@
      * CDN 加载失败的用户提示 Toast
      */
     function showCdnErrorToast(libName, url) {
-        // 防止短时间内重复弹出（同一库只提示一次，冷却期 30 秒）
+        // 忽略第三方 iframe 内的资源错误（如 doubao.com 的 CSP/策略违规）
+        if (url) {
+            var knownThirdParties = ['doubao.com', 'bytedance.com', 'bytedance.net', 'douyin.com', 'toutiao.com'];
+            for (var i = 0; i < knownThirdParties.length; i++) {
+                if (url.indexOf(knownThirdParties[i]) !== -1) return;
+            }
+        }
+        // 忽略空 URL 或提取失败的未知资源
+        if (!url || libName === '未知资源' || libName === '') return;
+
+        // Toast 已关闭 — 用户反馈频繁误报，仅保留控制台日志
+        // showCdnErrorToast 调用已被注释，如需恢复请取消下行注释:
+        // _showToast(libName, url);
+    }
+
+    function _showToast(libName, url) {
         var toastKey = '_cdn_toast_' + (libName || 'unknown');
         if (window[toastKey]) return;
         window[toastKey] = true;

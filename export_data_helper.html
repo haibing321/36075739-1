@@ -68,18 +68,33 @@ function statusDone(msg, type) {
 }
 
 function readDB(dbName, storeName, version) {
-  return new Promise(function(resolve, reject) {
-    var req = indexedDB.open(dbName, version || 1);
-    req.onerror = function() { resolve([]); }; // DB not found = empty
-    req.onsuccess = function() {
-      var db = req.result;
-      if (!db.objectStoreNames.contains(storeName)) { db.close(); return resolve([]); }
-      var tx = db.transaction(storeName, 'readonly');
-      var store = tx.objectStore(storeName);
-      var getAll = store.getAll();
-      getAll.onsuccess = function() { resolve(getAll.result || []); db.close(); };
-      getAll.onerror = function() { resolve([]); db.close(); };
-    };
+  return new Promise(function(resolve) {
+    try {
+      var req = indexedDB.open(dbName);
+      req.onerror = function(e) {
+        console.warn('readDB error for ' + dbName + ': ' + (e.target.error && e.target.error.message || 'unknown'));
+        resolve([]);
+      };
+      req.onblocked = function() {
+        log('  ⚠ ' + dbName + ' 被其他标签页阻塞，关闭其他标签页后重试', 'warn');
+        resolve([]);
+      };
+      req.onsuccess = function() {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.close();
+          resolve([]);
+          return;
+        }
+        var tx = db.transaction(storeName, 'readonly');
+        var store = tx.objectStore(storeName);
+        var getAll = store.getAll();
+        getAll.onsuccess = function() { resolve(getAll.result || []); db.close(); };
+        getAll.onerror = function() { resolve([]); db.close(); };
+      };
+    } catch(e) {
+      resolve([]);
+    }
   });
 }
 
@@ -109,7 +124,15 @@ async function startExport() {
 
   // ===== IndexedDB 数据源 =====
   var dbSources = [
-    { db: 'RailwayRuleDB',   store: 'ruleCollection', label: '规章制度', filename: '规章制度.json' },
+    { db: 'RailwayRuleDB',   store: 'ruleCollection', label: '规章制度', filename: '规章制度.json', 
+      transform: function(data) {
+        // 规章数据格式: [{id: 1, data: [rule, ...]}], 需要解包
+        if (data && data.length === 1 && data[0].data && Array.isArray(data[0].data)) {
+          return data[0].data;
+        }
+        return data;
+      }
+    },
     { db: 'RailwayIssueDB_v2', store: 'issues',       label: '检查信息', filename: '检查信息.json' },
     { db: 'DiaryMediaDB',    store: 'media',          label: '日志媒体', filename: '日志媒体.json' },
   ];
@@ -119,6 +142,7 @@ async function startExport() {
     status('正在导出 ' + src.label + '...');
     try {
       var data = await readDB(src.db, src.store);
+      if (src.transform) data = src.transform(data);
       if (data && data.length > 0) {
         downloadJSON(data, src.filename);
         log('✅ ' + src.label + ': ' + data.length + ' 条 → ' + src.filename, 'ok');

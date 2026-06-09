@@ -600,6 +600,10 @@
                             style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
                             ✍️ 智能写作
                         </button>
+                        <button id="ds-sub-btn-risk" onclick="dsSwitchSub('risk')"
+                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            📊 风险研判
+                        </button>
                     </div>
 
                     <!-- === 智能对规子模块 === -->
@@ -656,7 +660,6 @@
                                 <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;" onclick="importRailwayTerms()">📚 导入词库</button>
                                 <button class="btn btn-success" id="autoCheck-exportBtn" style="flex: 1;" onclick="exportRailwayTerms()">📤 导出词库</button>
                                 <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1;">🔄 重置</button>
-                                <button class="btn btn-danger" id="risk-analysis-btn" style="flex: 1;" onclick="window.runRiskAnalysis && window.runRiskAnalysis()">📊 风险研判</button>
                             </div>
                             <!-- 本地匹配后提示必须先AI对规 -->
                             <div id="autoCheck-ai-hint" style="display:none;margin-top:6px;padding:6px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:0.78rem;color:#1d4ed8;text-align:center;">
@@ -872,6 +875,25 @@
                             </div>
                         </div>
 
+                    </div>
+
+                    <!-- === 风险研判子模块 === -->
+                    <div id="ds-sub-risk" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
+                        <div style="background:linear-gradient(135deg,#fef2f2,#fff7ed);border-radius:12px;padding:16px;flex:1;display:flex;flex-direction:column;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                                <span style="font-size:1.2rem;">📊</span>
+                                <span style="font-weight:600;color:#dc2626;">智能风险研判</span>
+                                <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:#dc2626;">Beta</span>
+                            </div>
+                            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.6;">基于本地检查信息数据，AI自动分析风险趋势并生成预警措施报告。</p>
+                            <button onclick="window.runRiskAnalysis && window.runRiskAnalysis()"
+                                style="padding:14px 24px;background:#dc2626;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;transition:all 0.2s;"
+                                onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+                                📊 开始风险研判
+                            </button>
+                            <p style="font-size:0.75rem;color:#9ca3af;">自动汇总检查信息&规章制度 → AI分析 → 输出风险报告</p>
+                            <div id="risk-results" style="margin-top:16px;max-height:500px;min-height:200px;overflow-y:auto;"></div>
+                        </div>
                     </div>
                 </div>
             </div>

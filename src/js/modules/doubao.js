@@ -272,30 +272,36 @@
             // 子模块切换：智能对规 / 智能对话 / 智能写作
             let _dsCurrentSub = 'chat'; // 默认显示智能对话
             window.dsSwitchSub = function(tab) {
-                const btnCheck  = document.getElementById('ds-sub-btn-check');
-                const btnChat   = document.getElementById('ds-sub-btn-chat');
-                const btnWriter = document.getElementById('ds-sub-btn-writer');
-                const panelCheck  = document.getElementById('ds-sub-check');
-                const panelChat   = document.getElementById('ds-sub-chat');
-                const panelWriter = document.getElementById('ds-sub-writer');
+                var btnCheck  = document.getElementById('ds-sub-btn-check');
+                var btnChat   = document.getElementById('ds-sub-btn-chat');
+                var btnWriter = document.getElementById('ds-sub-btn-writer');
+                var btnRisk   = document.getElementById('ds-sub-btn-risk');
+                var panelCheck  = document.getElementById('ds-sub-check');
+                var panelChat   = document.getElementById('ds-sub-chat');
+                var panelWriter = document.getElementById('ds-sub-writer');
+                var panelRisk   = document.getElementById('ds-sub-risk');
                 if (!btnCheck || !btnChat || !panelCheck || !panelChat) return;
 
                 // 重置所有按钮样式
-                [btnCheck, btnChat, btnWriter].forEach(b => {
+                [btnCheck, btnChat, btnWriter, btnRisk].forEach(function(b) {
                     if (!b) return;
                     b.style.background = '#f8fafc'; b.style.color = 'var(--text)'; b.style.borderColor = 'var(--border)';
                 });
-                [panelCheck, panelChat, panelWriter].forEach(p => { if (p) p.style.display = 'none'; });
+                [panelCheck, panelChat, panelWriter, panelRisk].forEach(function(p) { if (p) p.style.display = 'none'; });
 
                 _dsCurrentSub = tab;
                 if (tab === 'check') {
                     btnCheck.style.background = '#3b82f6'; btnCheck.style.color = '#fff'; btnCheck.style.borderColor = '#3b82f6';
                     panelCheck.style.display = 'flex';
-                    return; // 直接返回，避免走旧逻辑
+                    return;
                 } else if (tab === 'writer') {
                     if (btnWriter) { btnWriter.style.background = '#3b82f6'; btnWriter.style.color = '#fff'; btnWriter.style.borderColor = '#3b82f6'; }
                     if (panelWriter) panelWriter.style.display = 'flex';
-                    wrInit(); // 初始化智能写作
+                    wrInit();
+                    return;
+                } else if (tab === 'risk') {
+                    if (btnRisk) { btnRisk.style.background = '#dc2626'; btnRisk.style.color = '#fff'; btnRisk.style.borderColor = '#dc2626'; }
+                    if (panelRisk) panelRisk.style.display = 'flex';
                     return;
                 } else {
                     // chat
@@ -6851,7 +6857,7 @@ ${details || '(无)'}
 
       // ---------- 风险研判：一键汇总本地数据 → AI分析 ----------
       window.runRiskAnalysis = async function() {
-        var container = document.getElementById('autoCheck-results');
+        var container = document.getElementById('risk-results') || document.getElementById('autoCheck-results');
         if (!container) return;
         container.style.display = 'block';
         container.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">'

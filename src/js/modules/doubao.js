@@ -6559,7 +6559,8 @@ ${details || '(无)'}
         'fangjian': '你现在作为一名房建安全监察专家进行工作，精通站台限界、雨棚、房屋等规章，请从房建专业视角分析问题。',
         'huoyun':   '你现在作为一名货运安全监察专家进行工作，精通装载加固、超限货物等规章，请从货运专业视角分析问题。',
         'tongyong': '你现在作为一名铁路综合安全监察专家，能够进行跨专业的综合分析、风险研判。',
-        'frontend': '你是一位资深前端工程师。请根据用户需求编写干净的 HTML/CSS/JS 代码。要求：代码自包含，可直接运行；使用现代浏览器特性；输出完整 HTML 代码块。'
+        'frontend': '你是一位资深前端工程师。请根据用户需求编写干净的 HTML/CSS/JS 代码。要求：代码自包含，可直接运行；使用现代浏览器特性；输出完整 HTML 代码块。',
+        'riskanalyst': '你是铁路安全风险分析专家。你的任务是：\n1. 基于检查数据和规章制度，识别当前最突出的安全风险领域\n2. 按时间趋势、专业分布、问题性质三个维度分析\n3. 针对高危领域给出具体的预警措施和整改建议\n4. 输出格式要求：先概述总体情况，再分点列出风险等级（高/中/低），最后给出3-5条可执行的预警措施。\n5. 引用数据时标注来源和时间范围，建议要具体可操作。',
       };
 
       // ---------- 3. 长期记忆管理 ----------
@@ -6846,6 +6847,85 @@ ${details || '(无)'}
             await originalWrGenerate();
           }
         };
+      }
+
+      // ---------- 风险研判：一键汇总本地数据 → AI分析 ----------
+      window.runRiskAnalysis = async function() {
+        var container = document.getElementById('autoCheck-results');
+        if (!container) return;
+        container.style.display = 'block';
+        container.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">'
+          + '<div class="spinner" style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:8px;"></div>'
+          + '<p>📊 正在汇总本地数据并分析风险…</p></div>';
+
+        try {
+          var apiKey = await (typeof _getApiKey === 'function' ? _getApiKey() : Promise.resolve(''));
+          if (!apiKey) { container.innerHTML = '<div style="color:#dc2626;padding:20px;">请先配置 API Key</div>'; return; }
+          var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+          var model   = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
+
+          var summary = await _buildRiskDataSummary();
+          var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n请输出完整报告（总体情况、风险分级、预警措施）。';
+
+          var resp = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+            body: JSON.stringify({
+              model: model,
+              messages: [
+                { role: 'system', content: '你是铁路安全风险分析专家。请基于检查数据输出结构化的风险研判报告：## 一、总体概况 ## 二、风险分级(高/中/低) ## 三、预警措施(3-5条)' },
+                { role: 'user', content: userMsg }
+              ],
+              temperature: 0.3, max_tokens: 3000, stream: false
+            })
+          });
+
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          var data = await resp.json();
+          var report = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '无响应';
+          var md = typeof dsMarkdown === 'function' ? dsMarkdown : function(t){ return '<pre>' + String(t||'').replace(/</g,'&lt;') + '</pre>'; };
+          container.innerHTML = '<div style="padding:12px;max-height:500px;overflow-y:auto;">' + md(report) + '</div>';
+        } catch(e) {
+          container.innerHTML = '<div style="color:#dc2626;padding:20px;">❌ ' + (e.message || '分析失败') + '</div>';
+        }
+      };
+
+      async function _buildRiskDataSummary() {
+        var parts = [];
+        var now = new Date();
+        try {
+          var db = await window.dbManager.getDB('RailwayIssueDB_v2');
+          var all = await new Promise(function(res) {
+            var tx = db.transaction('issues','readonly');
+            var s = tx.objectStore('issues');
+            s.getAll().onsuccess = function(e) { res(e.target.result || []); };
+          });
+          if (all.length) {
+            var recent = all.filter(function(d) {
+              try { return new Date(d.datetime||'') >= new Date(now.getTime()-90*86400000); } catch(e) { return false; }
+            });
+            var cats = {}; recent.forEach(function(d){ cats[d.category]=(cats[d.category]||0)+1; });
+            var nats = {}; recent.forEach(function(d){ nats[d['性质']]=(nats[d['性质']]||0)+1; });
+            parts.push('【检查信息】总计'+all.length+'条, 近3月'+recent.length+'条');
+            parts.push('专业TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+            parts.push('性质: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+            parts.push('样本: '+recent.slice(0,3).map(function(d){return (d.datetime||'')+' '+(d.category||'')+' '+(d.content||'').slice(0,60)}).join(' | '));
+          }
+        } catch(e) { parts.push('【检查信息】读取失败'); }
+
+        try {
+          var rdb = await window.dbManager.getDB('RailwayRuleDB');
+          var rd = await new Promise(function(res) {
+            var tx = rdb.transaction('ruleCollection','readonly');
+            tx.objectStore('ruleCollection').getAll().onsuccess = function(e) { res(e.target.result || []); };
+          });
+          if (rd.length && rd[0].data) {
+            var trades = {}; rd[0].data.forEach(function(r){ trades[r.trade]=(trades[r.trade]||0)+1; });
+            parts.push('【规章制度】总计'+rd[0].data.length+'条, 专业: '+Object.entries(trades).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+          }
+        } catch(e) {}
+
+        return parts.join('\n');
       }
 
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------

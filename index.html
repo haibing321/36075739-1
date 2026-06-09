@@ -656,6 +656,7 @@
                                 <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;" onclick="importRailwayTerms()">📚 导入词库</button>
                                 <button class="btn btn-success" id="autoCheck-exportBtn" style="flex: 1;" onclick="exportRailwayTerms()">📤 导出词库</button>
                                 <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1;">🔄 重置</button>
+                                <button class="btn btn-danger" id="risk-analysis-btn" style="flex: 1;" onclick="window.runRiskAnalysis && window.runRiskAnalysis()">📊 风险研判</button>
                             </div>
                             <!-- 本地匹配后提示必须先AI对规 -->
                             <div id="autoCheck-ai-hint" style="display:none;margin-top:6px;padding:6px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:0.78rem;color:#1d4ed8;text-align:center;">
@@ -696,6 +697,7 @@
                             <option value="huoyun">📦 货运安全监察</option>
                             <option value="tongyong">🛡️ 综合安全监察</option>
                             <option value="frontend">💻 前端工程师</option>
+                            <option value="riskanalyst">🔍 风险分析专家</option>
                           </select>
                           <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
                             <input type="checkbox" id="memoryEnable" checked> 🧠 长期记忆

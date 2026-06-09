@@ -892,7 +892,16 @@
                                 📊 开始风险研判
                             </button>
                             <p style="font-size:0.75rem;color:#9ca3af;">自动汇总检查信息&规章制度 → AI分析 → 输出风险报告</p>
-                            <div id="risk-results" style="margin-top:16px;max-height:500px;min-height:200px;overflow-y:auto;"></div>
+                            <div id="risk-results" style="flex:1;min-height:200px;overflow-y:auto;overflow-x:hidden;word-break:break-word;line-height:1.7;border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#fff;display:none;"></div>
+                            <!-- 跟进调整区 -->
+                            <div id="risk-refine" style="display:none;margin-top:10px;gap:8px;">
+                                <textarea id="risk-refine-input" rows="2" placeholder="进一步调整分析：例如"请重点关注施工安全问题"" 
+                                    style="flex:1;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;resize:none;line-height:1.5;"></textarea>
+                                <button onclick="window.refineRiskAnalysis && window.refineRiskAnalysis()"
+                                    style="padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                                    🔄 重新生成
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

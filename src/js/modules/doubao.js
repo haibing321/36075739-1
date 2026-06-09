@@ -6856,13 +6856,16 @@ ${details || '(无)'}
       }
 
       // ---------- 风险研判：一键汇总本地数据 → AI分析 ----------
-      window.runRiskAnalysis = async function() {
-        var container = document.getElementById('risk-results') || document.getElementById('autoCheck-results');
+      window._riskCtx = null; // 存储上下文供追问
+
+      window.runRiskAnalysis = async function(followUp) {
+        var container = document.getElementById('risk-results');
+        var refineArea = document.getElementById('risk-refine');
         if (!container) return;
         container.style.display = 'block';
         container.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">'
-          + '<div class="spinner" style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:8px;"></div>'
-          + '<p>📊 正在汇总本地数据并分析风险…</p></div>';
+          + '<div style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:8px;"></div>'
+          + '<p>📊 ' + (followUp ? '正在重新分析…' : '正在汇总本地数据并分析风险…') + '</p></div>';
 
         try {
           var apiKey = localStorage.getItem('ds_api_key_v1') || '';
@@ -6870,30 +6873,60 @@ ${details || '(无)'}
           var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
           var model   = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
 
-          var summary = await _buildRiskDataSummary();
-          var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n请输出完整报告（总体情况、风险分级、预警措施）。';
+          var messages = [];
+          if (!followUp) {
+            var summary = await _buildRiskDataSummary();
+            messages = [
+              { role: 'system', content: '你是铁路安全风险分析专家。请输出结构化报告：## 一、总体概况 ## 二、风险分级(高/中/低) ## 三、预警措施' },
+              { role: 'user', content: '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n请输出完整报告。' }
+            ];
+          } else {
+            messages = (window._riskCtx || []);
+            var refineInput = document.getElementById('risk-refine-input');
+            var refineText = refineInput ? refineInput.value.trim() : '';
+            if (!refineText) refineText = '请进一步分析';
+            messages.push({ role: 'user', content: refineText });
+            if (refineInput) refineInput.value = '';
+          }
 
           var resp = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-            body: JSON.stringify({
-              model: model,
-              messages: [
-                { role: 'system', content: '你是铁路安全风险分析专家。请基于检查数据输出结构化的风险研判报告：## 一、总体概况 ## 二、风险分级(高/中/低) ## 三、预警措施(3-5条)' },
-                { role: 'user', content: userMsg }
-              ],
-              temperature: 0.3, max_tokens: 3000, stream: false
-            })
+            body: JSON.stringify({ model: model, messages: messages, temperature: 0.3, max_tokens: 3000, stream: false })
           });
 
           if (!resp.ok) throw new Error('HTTP ' + resp.status);
           var data = await resp.json();
           var report = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '无响应';
-          var md = typeof dsMarkdown === 'function' ? dsMarkdown : function(t){ return '<pre>' + String(t||'').replace(/</g,'&lt;') + '</pre>'; };
-          container.innerHTML = '<div style="padding:12px;max-height:500px;overflow-y:auto;">' + md(report) + '</div>';
+
+          // 保存上下文供追问
+          window._riskCtx = messages;
+          window._riskCtx.push({ role: 'assistant', content: report });
+
+          // 渲染结果（简单markdown → HTML，保证换行）
+          var html = report
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/## (.*)/g, '<h3 style="margin:14px 0 8px;color:var(--primary);font-size:1.05rem;">## $1</h3>')
+            .replace(/### (.*)/g, '<h4 style="margin:10px 0 6px;color:#1e40af;">$1</h4>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n- /g, '\n<li>').replace(/\n\d+\. /g, '\n<li>')
+            .replace(/\n/g, '<br>')
+            .replace(/<li>/g, '<li style="margin:4px 0 4px 20px;">');
+
+          container.innerHTML = html;
+          container.scrollTop = 0;
+          
+          if (refineArea) {
+            refineArea.style.display = 'flex';
+            refineArea.style.flexDirection = 'column';
+          }
         } catch(e) {
           container.innerHTML = '<div style="color:#dc2626;padding:20px;">❌ ' + (e.message || '分析失败') + '</div>';
         }
+      };
+
+      window.refineRiskAnalysis = function() {
+        window.runRiskAnalysis(true);
       };
 
       async function _buildRiskDataSummary() {

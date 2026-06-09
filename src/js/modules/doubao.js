@@ -6468,23 +6468,14 @@
              */
             window.wrDebugMaterials = async function() {
                 try {
-                    console.log('[调试] 开始检查资料库状态...');
-                    
-                    // 检查数据库连接
-                    const db = await wrOpenDB();
-                    console.log('[调试] 数据库连接成功:', db.name, '版本:', db.version);
-                    console.log('[调试] 可用的存储对象:', Array.from(db.objectStoreNames));
-                    
-                    // 获取所有资料
-                    const all = await wrDbGetAll(WR_MAT_STORE);
-                    console.log('[调试] 资料库中共有资料:', all.length, '条');
+                    var db = await wrOpenDB();
+                    var all = await wrDbGetAll(WR_MAT_STORE);
                     
                     // 按类型统计
-                    const typeCount = {};
-                    all.forEach(m => {
+                    var typeCount = {};
+                    all.forEach(function(m) {
                         typeCount[m.matType] = (typeCount[m.matType] || 0) + 1;
                     });
-                    console.log('[调试] 按类型统计:', typeCount);
                     
                     // 显示详细信息
                     let details = all.slice(0, 5).map(m => 
@@ -6512,8 +6503,7 @@ ${details || '(无)'}
                     alert(msg);
                     
                 } catch(err) {
-                    console.error('[调试] 检查失败:', err);
-                    alert('调试检查失败: ' + (err.message || '未知错误') + '\n\n请按F12打开控制台查看详细错误信息。');
+                    alert('调试检查失败: ' + (err.message || '未知错误'))
                 }
             };
 

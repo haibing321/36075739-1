@@ -212,35 +212,7 @@
             return escaped.replace(/\n/g, '<br>');
         };
 
-                // ============================================================
-        // API Key 存储（明文 localStorage）
-        // ============================================================
-
-        /**
-         * 保存 API Key 到 localStorage（明文）
-         * @param {string} key - API Key
-         * @param {string} storageKey - localStorage 键名
-         */
-        window.saveEncryptedApiKey = function(key, storageKey) {
-            storageKey = storageKey || 'ds_api_key_v1';
-            localStorage.setItem(storageKey, key);
-            return true;
-        };
-
-        /**
-         * 从 localStorage 读取 API Key
-         * @param {string} storageKey - localStorage 键名
-         * @returns {string|null} API Key 或 null
-         */
-        window.getDecryptedApiKey = async function(storageKey) {
-            storageKey = storageKey || 'ds_api_key_v1';
-            return localStorage.getItem(storageKey) || null;
-        };
-
-        window.clearCryptoCache = function() {};
-        window.isEncryptedValue = function() { return false; };
-
-
+        
 
         // ============================================================
         // IndexedDB 连接管理器（单例模式 + Promise 缓存）

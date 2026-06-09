@@ -5,7 +5,7 @@
   B. 单个备份文件 data_export/**/full_backup.json（自动检测）
 
 用法：python build_knowledge_base.py
-输出：src/js/knowledge_base_data.js
+输出：src/js/knowledge_base_data.json（供 index_loader.js 异步加载）
 """
 import json, re, sys, hashlib
 from pathlib import Path
@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 # ===== 配置 =====
 DATA_DIR = Path("./data_export")
-OUTPUT_FILE = Path("src/js/knowledge_base_data.js")
+OUTPUT_FILE = Path("src/js/knowledge_base_data.json")
 CHUNK_SIZE = 300             # 减小切片（降低文本体积）
 CHUNK_OVERLAP = 40            # 减小重叠
 MAX_TOTAL_CHUNKS = 5000       # 总量上限（约 5-8MB，gzip后 1-2MB）
@@ -241,20 +241,10 @@ def main():
             "f": chunk["f"]
         })
     
-    output_js = (
-        "// 铁路安监系统 · 语义搜索知识库索引\n"
-        "// 自动生成: python build_knowledge_base.py\n"
-        f"// 日期: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-        f"// 总记录: {len(output_chunks)} | 维度: {embeddings.shape[1]}\n"
-        f"// 来源: 规章制度{stats.get('规章制度','?')} 检查信息{stats.get('检查信息','?')} "
-        f"检查手册{stats.get('检查手册','?')} 车站电话{stats.get('车站电话','?')} "
-        f"工作日志{stats.get('工作日志','?')} 写作资料{stats.get('写作资料','?')}\n"
-        f"\nwindow.__SEMANTIC_INDEX__ = {json.dumps(output_chunks, ensure_ascii=False)};\n"
-    )
-    
+    # 输出纯 JSON（由 index_loader.js 异步加载）
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        f.write(output_js)
+        json.dump(output_chunks, f, ensure_ascii=False)
     
     file_size_mb = OUTPUT_FILE.stat().st_size / (1024 * 1024)
     print(f"\n{'=' * 60}")

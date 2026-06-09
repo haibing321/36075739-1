@@ -8,7 +8,11 @@
  * ===================================================
  * src/
  *   css/
- *     main.css             - 全局样式 (变量、组件、响应式)
+ *     variables.css        - CSS 变量/主题
+ *     layout.css           - 布局
+ *     components.css       - 组件样式
+ *     modules.css          - 模块样式
+ *     responsive.css       - 响应式
  *   js/
  *     app.js               - 入口文件 (本文件)
  *     modules/
@@ -312,80 +316,6 @@ window.onclick = function(e) {
         removeKimiElements();
     });
     mo.observe(document.body, { childList: true, subtree: true });
-})();
-
-// ============================================================
-// 早期退出提示 (边缘滑出) - 必须最早执行
-// ============================================================
-(function() {
-    function initExitHint() {
-        var s = document.createElement('style');
-        s.id = '_early_exit_style';
-        s.textContent = [
-            '#_exit_bar{',
-            '  position:fixed;bottom:0;left:0;right:0;',
-            '  background:rgba(26,54,93,0.96);color:#fff;',
-            '  text-align:center;padding:18px;font-size:1.05rem;font-weight:700;',
-            '  z-index:99998;transform:translateY(100%);',
-            '  transition:transform .3s ease;',
-            '  box-shadow:0 -2px 12px rgba(0,0,0,.25);letter-spacing:.5px;',
-            '  display:flex;align-items:center;justify-content:center;gap:10px;',
-            '}',
-            '#_exit_bar.show{transform:translateY(0);}',
-            '#_exit_bar ._exit_icon{font-size:1.3rem;}'
-        ].join('');
-        document.head.appendChild(s);
-
-        var bar = document.createElement('div');
-        bar.id = '_exit_bar';
-        bar.innerHTML = '<span class="_exit_icon">👆</span><span>再次滑入退出</span>';
-        document.body.appendChild(bar);
-
-        var _exitReady = false, _exitTimer = null;
-        var _popEnabled = false;
-
-        function enableExitDetection() {
-            if (_popEnabled) return;
-            _popEnabled = true;
-            history.pushState(null, null, location.href);
-
-            window.addEventListener('popstate', function(e) {
-                if (!_popEnabled) return;
-                if (_exitReady) {
-                    _exitReady = false;
-                    return;
-                }
-                bar.classList.add('show');
-                _exitReady = true;
-                if (_exitTimer) clearTimeout(_exitTimer);
-                _exitTimer = setTimeout(function() {
-                    bar.classList.remove('show');
-                    _exitReady = false;
-                }, 3000);
-                history.pushState(null, null, location.href);
-            });
-        }
-
-        setTimeout(enableExitDetection, 500);
-
-        ['touchstart', 'click', 'keydown', 'focus'].forEach(function(evt) {
-            document.addEventListener(evt, enableExitDetection, { once: true, capture: true });
-        });
-
-        window._hideExitBar = function() {
-            if (bar.classList.contains('show')) {
-                bar.classList.remove('show');
-                _exitReady = false;
-                if (_exitTimer) clearTimeout(_exitTimer);
-            }
-        };
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initExitHint);
-    } else {
-        initExitHint();
-    }
 })();
 
 console.log('%c安监智能查询系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');

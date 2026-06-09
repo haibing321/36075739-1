@@ -1,3 +1,13 @@
+/*
+ * pinyin.js - 中文拼音转换库（浏览器 IIFE 打包版）
+ * 从 npm/pinyin@2.11.0 源码打包，包含:
+ *   - pinyin-phonetic-symbol.js (音标映射表)
+ *   - pinyin-util.js (combo/compact 工具)
+ *   - data-dict-zi-web.js (汉字→拼音字典)
+ *   - pinyin-core.js (核心转换逻辑)
+ * 导出: window.pinyin(text, options) + STYLE_* 常量
+ * 注意: 不含姓氏识别等高级特性，仅基础汉字转拼音
+ */
 (function(){"use strict";// 带声调字符。
 var PHONETIC_SYMBOL={
   "ā": "a1",

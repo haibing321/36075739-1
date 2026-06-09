@@ -300,7 +300,7 @@
                     wrInit();
                     return;
                 } else if (tab === 'risk') {
-                    if (btnRisk) { btnRisk.style.background = '#dc2626'; btnRisk.style.color = '#fff'; btnRisk.style.borderColor = '#dc2626'; }
+                    if (btnRisk) { btnRisk.style.background = '#3b82f6'; btnRisk.style.color = '#fff'; btnRisk.style.borderColor = '#3b82f6'; }
                     if (panelRisk) panelRisk.style.display = 'flex';
                     return;
                 } else {
@@ -6865,7 +6865,7 @@ ${details || '(无)'}
           + '<p>📊 正在汇总本地数据并分析风险…</p></div>';
 
         try {
-          var apiKey = await (typeof _getApiKey === 'function' ? _getApiKey() : Promise.resolve(''));
+          var apiKey = localStorage.getItem('ds_api_key_v1') || '';
           if (!apiKey) { container.innerHTML = '<div style="color:#dc2626;padding:20px;">请先配置 API Key</div>'; return; }
           var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
           var model   = localStorage.getItem('ds_model_v1') || 'deepseek-chat';

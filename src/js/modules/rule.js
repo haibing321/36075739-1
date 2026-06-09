@@ -1299,18 +1299,11 @@
                     return;
                 }
 
-                // 无关键词时显示数据概览，引导用户搜索
                 if (keywords.length === 0) {
-                    var tradeFilter = (trade !== '') ? '（已筛选「' + trade + '」）' : '';
-                    var filteredCount = (trade !== '') ? rules.filter(function(r) { return r.trade === trade; }).length : rules.length;
-                    resultsList.innerHTML = '<div class="empty-state" style="text-align:center;padding:24px;color:var(--text-secondary);">'
-                        + '<div style="font-size:2rem;margin-bottom:8px;">📋</div>'
-                        + '<p style="font-size:1.05rem;color:var(--text);">已导入 <strong style="color:var(--primary);">' + rules.length + '</strong> 条规章' + tradeFilter + '</p>'
-                        + '<p style="font-size:0.85rem;margin-top:4px;">' + (trade !== '' ? '当前专业下 ' + filteredCount + ' 条，' : '') + '请输入关键词搜索</p>'
-                        + '</div>';
-                    resultsList.style.display = 'block';
-                    if (header) header.style.display = 'flex';
-                    if (resultCount) resultCount.textContent = rules.length + ' 项';
+                    resultsList.style.display = 'none';
+                    resultsList.innerHTML = '';
+                    if (header) header.style.display = 'none';
+                    if (resultCount) resultCount.textContent = '0 项';
                     return;
                 }
 
@@ -1973,7 +1966,8 @@
                 refreshTradeSelect();
                 updateTotalBadge();
                 updateStorageInfo();
-                renderResults(); // 显示概览
+                document.getElementById('rule-resultsList').style.display = 'none';
+                document.querySelector('#panel-rule .results-header').style.display = 'none';
                 addKeywordInput();
 
                 document.getElementById('rule-searchBtn').addEventListener('click', renderResults);

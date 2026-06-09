@@ -141,7 +141,25 @@ document.addEventListener('DOMContentLoaded', function() {
         '    border:1px solid #ffc107;',
         '}',
         '.ds-cursor { animation:dsBlink 1s step-end infinite; }',
-        '@keyframes dsBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }'
+        '@keyframes dsBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }',
+        '.ds-typing {',
+        '    display:inline-flex;align-items:center;gap:6px;',
+        '    color:var(--text-secondary);font-size:0.85rem;',
+        '}',
+        '.ds-typing::before {',
+        '    content:"";display:inline-block;',
+        '    width:14px;height:14px;',
+        '    border:2px solid var(--border);',
+        '    border-top-color:var(--primary);',
+        '    border-radius:50%;',
+        '    animation:dsSpin 0.6s linear infinite;',
+        '    flex-shrink:0;',
+        '}',
+        '@keyframes dsSpin { to{transform:rotate(360deg)} }',
+        '.ds-typing .ds-dot { display:inline-block;animation:dsDotBounce 1.4s infinite; }',
+        '.ds-typing .ds-dot:nth-child(2) { animation-delay:.2s; }',
+        '.ds-typing .ds-dot:nth-child(3) { animation-delay:.4s; }',
+        '@keyframes dsDotBounce { 0%,80%,100%{opacity:0;transform:translateY(0)} 40%{opacity:1;transform:translateY(-3px)} }'
     ].join('');
     document.head.appendChild(style);
 })();

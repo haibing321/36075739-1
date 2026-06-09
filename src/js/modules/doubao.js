@@ -1365,7 +1365,7 @@
                         const showText = msg.displayText || msg.content;
                         html += '<div class="ds-row-user"><div class="ds-bubble-user">' + dsEsc(showText) + '</div></div>';
                     } else if (msg.role === 'assistant') {
-                        const content = msg.content || '<span class="ds-typing">思考中……</span>';
+                        const content = msg.content || '<span class="ds-typing">思考中<span class="ds-dot">.</span><span class="ds-dot">.</span><span class="ds-dot">.</span></span>';
                         html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant">' + dsMarkdown(content) + '</div></div>';
                     } else {
                         html += '<div class="ds-row-system"><div class="ds-bubble-system">' + dsEsc(msg.content) + '</div></div>';

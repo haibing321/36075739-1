@@ -28,7 +28,6 @@ Desktop.ini
 
 # Dev tools (local only)
 build_knowledge_base.py
-export_data_helper.html
 
 # Backup data (large files)
 data_export/

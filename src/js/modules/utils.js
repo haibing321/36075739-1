@@ -292,6 +292,14 @@
                         console.error('[dbManager] 打开失败:', name, req.error);
                         reject(req.error);
                     };
+                    req.onblocked = function() {
+                        console.warn('[dbManager] 升级被阻塞:', name, '- 请关闭其他标签页');
+                        // 关闭旧连接以解除阻塞
+                        if (_cache[name] && _cache[name].db) {
+                            try { _cache[name].db.close(); } catch(e) {}
+                            delete _cache[name];
+                        }
+                    };
                     req.onsuccess = function() {
                         var db = req.result;
                         // 监听版本变化/关闭事件，自动清缓存
@@ -309,7 +317,12 @@
                     };
                     if (info.fn) {
                         req.onupgradeneeded = function(e) {
-                            info.fn(db || e.target.result, e);
+                            try {
+                                info.fn(e.target.result, e);
+                            } catch(upgradeErr) {
+                                console.error('[dbManager] upgrade 失败:', name, upgradeErr);
+                                // 不 reject — 让 onerror 处理
+                            }
                         };
                     }
                 });

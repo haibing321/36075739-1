@@ -3768,24 +3768,30 @@
                         }
                     }
 
-                    const req = indexedDB.open(WR_DB_NAME, WR_DB_VER);
-                    req.onupgradeneeded = e => {
-                        const db = e.target.result;
-                        if (!db.objectStoreNames.contains(WR_TPL_STORE)) {
-                            const ts = db.createObjectStore(WR_TPL_STORE, { keyPath: 'id', autoIncrement: true });
-                            ts.createIndex('category', 'category', { unique: false });
-                        }
-                        if (!db.objectStoreNames.contains(WR_RPT_STORE)) {
-                            const rs = db.createObjectStore(WR_RPT_STORE, { keyPath: 'id', autoIncrement: true });
-                            rs.createIndex('date', 'date', { unique: false });
-                            rs.createIndex('category', 'category', { unique: false });
-                        }
-                        // 版本2：新增资料库 Store
-                        if (!db.objectStoreNames.contains(WR_MAT_STORE)) {
-                            const ms = db.createObjectStore(WR_MAT_STORE, { keyPath: 'id', autoIncrement: true });
-                            ms.createIndex('matType',  'matType',  { unique: false });
-                            ms.createIndex('fileName', 'fileName', { unique: false });
-                            ms.createIndex('importAt', 'importAt', { unique: false });
+                    var req = indexedDB.open(WR_DB_NAME, WR_DB_VER);
+                    req.onblocked = function() {
+                        console.warn('[writer] DB升级被阻塞');
+                    };
+                    req.onupgradeneeded = function(e) {
+                        var db = e.target.result;
+                        try {
+                            if (!db.objectStoreNames.contains(WR_TPL_STORE)) {
+                                var ts = db.createObjectStore(WR_TPL_STORE, { keyPath: 'id', autoIncrement: true });
+                                ts.createIndex('category', 'category', { unique: false });
+                            }
+                            if (!db.objectStoreNames.contains(WR_RPT_STORE)) {
+                                var rs = db.createObjectStore(WR_RPT_STORE, { keyPath: 'id', autoIncrement: true });
+                                rs.createIndex('date', 'date', { unique: false });
+                                rs.createIndex('category', 'category', { unique: false });
+                            }
+                            if (!db.objectStoreNames.contains(WR_MAT_STORE)) {
+                                var ms = db.createObjectStore(WR_MAT_STORE, { keyPath: 'id', autoIncrement: true });
+                                ms.createIndex('matType',  'matType',  { unique: false });
+                                ms.createIndex('fileName', 'fileName', { unique: false });
+                                ms.createIndex('importAt', 'importAt', { unique: false });
+                            }
+                        } catch(upErr) {
+                            console.error('[writer] upgrade失败:', upErr);
                         }
                     };
                     req.onsuccess = e => {

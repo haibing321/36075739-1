@@ -572,7 +572,13 @@
                     const data = await loadData();
                     if (data.length === 0) await issueLoadDemoData();
                     document.getElementById('issue-fileInput').addEventListener('change', issueHandleFile);
-                } catch (e) { alert('初始化失败: ' + e.message);}
+                } catch (e) {
+                    console.error('[issue] 初始化失败:', e.message);
+                    // IndexedDB 版本冲突通常是临时的，刷新可恢复
+                    if (e.message.indexOf('abort') !== -1 || e.message.indexOf('block') !== -1) {
+                        console.warn('[issue] 可能是浏览器IndexedDB冲突，请关闭其他标签页后刷新');
+                    }
+                }
             });
 
             // 暴露 issue 数据供其他模块调用（如智能助手联动）

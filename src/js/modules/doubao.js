@@ -6809,47 +6809,48 @@ ${details || '(无)'}
       };
 
       window.runWebSearch = async function() {
-        const input = document.getElementById('ds-user-input');
-        let query = input ? input.value.trim() : '';
+        var input = document.getElementById('ds-user-input');
+        var query = input ? input.value.trim() : '';
         if (!query) {
-          const aiInput = document.getElementById('autoCheck-input');
+          var aiInput = document.getElementById('autoCheck-input');
           if (aiInput) query = aiInput.value.trim();
         }
-        if (!query) {
-          if (typeof window.Toast !== 'undefined') window.Toast.warning('请输入搜索内容');
-          else alert('请输入搜索内容');
-          return;
-        }
+        if (!query) { alert('请输入搜索内容'); return; }
 
-        const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-        const SEARCH_API = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1&skip_disambig=1';
-        const url = CORS_PROXY + encodeURIComponent(SEARCH_API);
+        var searchUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query);
+        var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(searchUrl);
 
-        let results = [];
         try {
-          const response = await fetch(url);
-          const data = await response.json();
-          if (data.AbstractText) {
-            results.push({ title: data.Heading || '摘要', url: data.AbstractURL || '#', snippet: data.AbstractText });
-          }
-          if (data.RelatedTopics && data.RelatedTopics.length) {
-            for (var topic of data.RelatedTopics) {
-              if (topic.Text && topic.FirstURL) {
-                results.push({ title: topic.Text.split(' - ')[0] || '相关链接', url: topic.FirstURL, snippet: topic.Text });
-              }
+          var resp = await fetch(proxyUrl);
+          var html = await resp.text();
+          var results = [];
+          var re = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+          var m;
+          while ((m = re.exec(html)) !== null) {
+            var url = m[1].replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '').replace(/&rut=.*$/, '');
+            try { url = decodeURIComponent(url); } catch(e2) {}
+            var title = m[2].replace(/<[^>]*>/g, '').trim();
+            var snippet = m[3].replace(/<[^>]*>/g, '').trim();
+            if (title && snippet && url.indexOf('http') === 0) {
+              results.push({ title: title, url: url, snippet: snippet });
+              if (results.length >= 8) break;
             }
           }
-          results = results.slice(0, 8);
-        } catch (err) {
-          console.error('搜索失败', err);
-          if (typeof window.Toast !== 'undefined') window.Toast.error('搜索失败，请检查网络或稍后重试');
-          else alert('搜索失败，请检查网络');
+          if (!results.length) {
+            var re2 = /class="result__title"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+            while ((m = re2.exec(html)) !== null) {
+              results.push({ title: m[2].replace(/<[^>]*>/g, '').trim(), url: '#', snippet: '' });
+              if (results.length >= 8) break;
+            }
+          }
+
+        } catch(err) {
+          alert('搜索失败，请检查网络');
           return;
         }
 
         if (results.length === 0) {
-          if (typeof window.Toast !== 'undefined') window.Toast.info('未找到相关结果');
-          else alert('未找到相关结果');
+          alert('未找到相关结果');
           return;
         }
 
@@ -7023,24 +7024,41 @@ ${details || '(无)'}
           const memories = getRelevantMemories(userText);
           const memoryText = memories.length ? '【长期记忆】\n' + memories.map(m => '• ' + m.fact).join('\n') + '\n\n' : '';
 
-          // 3. 联网搜索（超时3秒，不阻塞发送）
+          // 3. 联网搜索（DuckDuckGo HTML + corsproxy.io，超时3秒）
           const webSearchCheck = document.getElementById('webSearchEnable');
           let webText = '';
           if (webSearchCheck && webSearchCheck.checked) {
             try {
-              const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-              const SEARCH_API = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(userText) + '&format=json&no_html=1&skip_disambig=1';
-              const _wc = new AbortController();
-              const _wt = setTimeout(function(){ _wc.abort(); }, 3000);
-              const resp = await fetch(CORS_PROXY + encodeURIComponent(SEARCH_API), { signal: _wc.signal });
+              var _wc = new AbortController();
+              var _wt = setTimeout(function(){ _wc.abort(); }, 3000);
+              var searchUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(userText);
+              var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(searchUrl);
+              var resp = await fetch(proxyUrl, { signal: _wc.signal });
               clearTimeout(_wt);
-              const data = await resp.json();
-              let results = [];
-              if (data.AbstractText) results.push(data.AbstractText);
-              if (data.RelatedTopics && data.RelatedTopics.length) {
-                data.RelatedTopics.forEach(function(t){ if (t.Text) results.push(t.Text); });
+              var html = await resp.text();
+              var results = [];
+              // 解析 DuckDuckGo HTML 结果页，提取标题+摘要
+              var re = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+              var m;
+              while ((m = re.exec(html)) !== null) {
+                var url = m[1].replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '').replace(/&rut=.*$/, '');
+                try { url = decodeURIComponent(url); } catch(e2) {}
+                var title = m[2].replace(/<[^>]*>/g, '').trim();
+                var snippet = m[3].replace(/<[^>]*>/g, '').trim();
+                if (title && snippet && url.indexOf('http') === 0) {
+                  results.push(title + '\n' + snippet + '\n' + url);
+                  if (results.length >= 5) break;
+                }
               }
-              if (results.length) webText = '【联网搜索结果】\n' + results.slice(0, 5).join('\n\n') + '\n\n';
+              if (!results.length) {
+                // 回退：用更简单的正则匹配
+                var re2 = /class="result__title"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+                while ((m = re2.exec(html)) !== null) {
+                  results.push(m[2].replace(/<[^>]*>/g, '').trim());
+                  if (results.length >= 5) break;
+                }
+              }
+              if (results.length) webText = '【联网搜索结果】\n' + results.join('\n\n') + '\n\n';
             } catch(e) { /* 超时或网络错误，静默跳过 */ }
           }
 

@@ -39,6 +39,7 @@
                     try {
                         handbookData = handbookData.concat(importedData);
                         updateStats();
+                        saveToStorage();
                         closeModal('handbook-importModal');
                     } catch(e) {
                         console.error('手册追加失败:', e);
@@ -51,6 +52,7 @@
                     try {
                         handbookData = importedData;
                         updateStats();
+                        saveToStorage();
                         closeModal('handbook-importModal');
                     } catch(e) {
                         console.error('手册覆盖失败:', e);
@@ -281,6 +283,26 @@
             }
 
             // ========== 大纲浏览模式 ==========
+
+            // 数据持久化
+            var STORAGE_KEY = 'handbook_fourlevel_v1';
+            function saveToStorage() {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(handbookData)); } catch(e) {}
+            }
+            function loadFromStorage() {
+                try {
+                    var stored = localStorage.getItem(STORAGE_KEY);
+                    if (stored) handbookData = JSON.parse(stored);
+                } catch(e) { handbookData = []; }
+            }
+
+            window.clearHandbookData = function() {
+                if (confirm('确定清空所有手册数据？')) {
+                    handbookData = [];
+                    updateStats();
+                    saveToStorage();
+                }
+            };
 
             // 切换浏览模式
             window.hbSwitchView = function(view) {

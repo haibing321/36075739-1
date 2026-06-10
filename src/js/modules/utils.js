@@ -259,6 +259,11 @@
              */
             function register(name, version, upgradeFn) {
                 _upgrades[name] = { version: version, fn: upgradeFn };
+                // 如已有缓存的低版本连接，清除让下次 getDB 升级
+                if (_cache[name] && (!_cache[name].version || _cache[name].version < version)) {
+                    if (_cache[name].db) { try { _cache[name].db.close(); } catch(e) {} }
+                    delete _cache[name];
+                }
             }
 
             /**

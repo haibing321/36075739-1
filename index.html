@@ -198,59 +198,18 @@
 
                     <!-- 浏览模式切换 -->
                     <div class="hb-view-toggle">
-                        <button class="active" id="hb-toggleSelect" onclick="hbSwitchView('select')">🏷️ 分级选择</button>
-                        <button id="hb-toggleOutline" onclick="hbSwitchView('outline')">📑 大纲浏览</button>
+                        <button id="hb-toggleOutline" class="active" onclick="hbSwitchView('outline')">📑 大纲浏览</button>
                         <button id="hb-toggleRules" onclick="hbSwitchView('rules')">📜 规章制度</button>
                     </div>
 
-                    <!-- 分级选择模式（原有） -->
-                    <div class="selector-panel" id="hb-selectPanel">
-                        <div class="selector-row">
-                            <div class="selector-item" id="system-selector">
-                                <label>选择系统专业</label>
-                                <select id="chapterSelect" onchange="onChapterChange()">
-                                    <option value="">-- 请选择系统专业 --</option>
-                                </select>
-                            </div>
-                            <div class="selector-item" id="category-selector" style="display: none;">
-                                <label>选择专业分类</label>
-                                <select id="sectionSelect" onchange="onSectionChange()">
-                                    <option value="">-- 请选择专业分类 --</option>
-                                </select>
-                            </div>
-                            <div class="selector-item" id="checkpoint-selector" style="display: none;">
-                                <label>选择检查项点</label>
-                                <select id="itemSelect" onchange="onItemChange()">
-                                    <option value="">-- 请选择检查项点 --</option>
-                                </select>
-                            </div>
-                            <div class="selector-item" id="subitem-selector" style="display: none;">
-                                <label>选择检查子项</label>
-                                <select id="subItemSelect" onchange="onSubItemChange()">
-                                    <option value="">-- 请选择检查子项 --</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 大纲浏览模式（新增） -->
-                    <div class="hb-outline-wrap" id="hb-outlineWrap">
+                    <!-- 大纲浏览 -->
+                    <div class="hb-outline-wrap active" id="hb-outlineWrap">
                         <div class="hb-outline-tree" id="hb-outlineTree">
                             <div class="hb-content-placeholder" style="padding:30px 10px;">请先导入DOCX文档</div>
                         </div>
                         <div class="hb-outline-content" id="hb-outlineContent">
                             <div class="hb-content-placeholder">← 点击左侧目录查看内容</div>
                         </div>
-                    </div>
-
-                    <div id="contentDisplay" class="content-card" style="display: none;">
-                        <div class="content-header">
-                            <span class="content-chapter" id="displayChapter"></span>
-                            <span class="content-section" id="displaySection"></span>
-                            <span class="content-item" id="displayItem"></span>
-                            <span class="content-item" id="displaySubItem" style="background:linear-gradient(135deg,#e67e22,#f39c12);"></span>
-                        </div>
-                        <div class="content-body" id="displayContent"></div>
                     </div>
 
                     <input type="file" id="handbook-jsonFile" accept=".json,.docx,.doc" multiple style="display:none;">

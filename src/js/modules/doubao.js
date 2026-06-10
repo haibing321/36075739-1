@@ -1184,20 +1184,13 @@
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + key
                         },
-                        body: JSON.stringify(function() {
-                            var body = {
-                                model: dsModel,
-                                messages: messages,
-                                stream: true,
-                                temperature: 0.7,
-                                max_tokens: maxTokens
-                            };
-                            var ws = document.getElementById('webSearchEnable');
-                            if (ws && ws.checked) {
-                                body.tools = [{ type: 'web_search', web_search: { enable: true } }];
-                            }
-                            return body;
-                        }()),
+                        body: JSON.stringify({
+                            model: dsModel,
+                            messages: messages,
+                            stream: true,
+                            temperature: 0.7,
+                            max_tokens: maxTokens
+                        }),
                         signal: _acAbortController.signal
                     });
 

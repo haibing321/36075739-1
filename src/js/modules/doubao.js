@@ -276,18 +276,20 @@
                 var btnChat   = document.getElementById('ds-sub-btn-chat');
                 var btnWriter = document.getElementById('ds-sub-btn-writer');
                 var btnRisk   = document.getElementById('ds-sub-btn-risk');
+                var btnDoubao = document.getElementById('ds-sub-btn-doubao');
                 var panelCheck  = document.getElementById('ds-sub-check');
                 var panelChat   = document.getElementById('ds-sub-chat');
                 var panelWriter = document.getElementById('ds-sub-writer');
                 var panelRisk   = document.getElementById('ds-sub-risk');
+                var panelDoubao = document.getElementById('ds-sub-doubao');
                 if (!btnCheck || !btnChat || !panelCheck || !panelChat) return;
 
                 // 重置所有按钮样式
-                [btnCheck, btnChat, btnWriter, btnRisk].forEach(function(b) {
+                [btnCheck, btnChat, btnWriter, btnRisk, btnDoubao].forEach(function(b) {
                     if (!b) return;
                     b.style.background = '#f8fafc'; b.style.color = 'var(--text)'; b.style.borderColor = 'var(--border)';
                 });
-                [panelCheck, panelChat, panelWriter, panelRisk].forEach(function(p) { if (p) p.style.display = 'none'; });
+                [panelCheck, panelChat, panelWriter, panelRisk, panelDoubao].forEach(function(p) { if (p) p.style.display = 'none'; });
 
                 _dsCurrentSub = tab;
                 if (tab === 'check') {
@@ -302,6 +304,10 @@
                 } else if (tab === 'risk') {
                     if (btnRisk) { btnRisk.style.background = '#3b82f6'; btnRisk.style.color = '#fff'; btnRisk.style.borderColor = '#3b82f6'; }
                     if (panelRisk) panelRisk.style.display = 'flex';
+                    return;
+                } else if (tab === 'doubao') {
+                    if (btnDoubao) { btnDoubao.style.background = '#3b82f6'; btnDoubao.style.color = '#fff'; btnDoubao.style.borderColor = '#3b82f6'; }
+                    if (panelDoubao) panelDoubao.style.display = 'flex';
                     return;
                 } else {
                     // chat

@@ -694,7 +694,7 @@
                             for (var _j = 0; _j < issues.length; _j += _stepI) _sampledI.push(issues[_j]);
                             issues = _sampledI;
                         }
-                        var issueKeywords = smartExtractKeywords(userQuery, 4, false);
+                        var issueKeywords = smartExtractKeywords(userQuery, 3, false);
                         var scoredIssues = issues.map(function(item){
                             var text = ((item.content||'') + ' ' + (item.category||'') + ' ' + (item['性质']||'')).toLowerCase();
                             var score = issueKeywords.reduce(function(s,kw){ return s + (text.indexOf(kw.toLowerCase())!==-1 ? 1 : 0); }, 0);
@@ -812,22 +812,10 @@
                 maxKeywords = maxKeywords || 5;
                 if (!text) return [];
                 var candidates = [];
-                if (typeof window.acExtractKeywords === 'function') {
-                    var trade = window.patchInferTrade ? window.patchInferTrade(text) : null;
-                    candidates = window.acExtractKeywords(text, trade);
+                if (typeof window.acExtractLibraryKeywords === 'function') {
+                    candidates = window.acExtractLibraryKeywords(text);
                 } else {
                     candidates = text.split(/[\s,，。！？；：""''、]+/).filter(function(w){ return w.length >= 2; });
-                }
-                if (forRule) {
-                    var limited = candidates.slice(0, 2);
-                    if (limited.length < 2) {
-                        var chineseMatches = text.match(/[\u4e00-\u9fa5]{3,}/g);
-                        if (chineseMatches) {
-                            var extra = chineseMatches.sort(function(a,b){ return b.length - a.length; })[0];
-                            if (extra && limited.indexOf(extra) === -1) limited.push(extra);
-                        }
-                    }
-                    return limited;
                 }
                 return candidates.slice(0, maxKeywords);
             }
@@ -835,7 +823,7 @@
             // 公共评分排序函数：对数据项做关键词匹配 → 排序 → 取 topN
             function rankAndSlice(items, query, getTextFunc, topN) {
                 topN = topN || 5;
-                var keywords = smartExtractKeywords(query, 5, false);
+                var keywords = smartExtractKeywords(query, 3, false);
                 if (!keywords.length) return items.slice(0, topN);
                 var scored = items.map(function(item){
                     var text = getTextFunc(item).toLowerCase();
@@ -1785,6 +1773,27 @@
                     }
                     return true;
                 }).slice(0, 50);
+            }
+
+            // ---- 纯词库关键词提取（仅专业术语，不含违规词和同义词）----
+            function acExtractLibraryKeywords(text) {
+                var lowerText = text.toLowerCase();
+                var scored = [];
+                PATCH_TERM_LIBRARY.forEach(function(item) {
+                    if (lowerText.includes(item.term.toLowerCase())) {
+                        if (isOrgName(item.term)) return;
+                        scored.push({ term: item.term, weight: item.term.length });
+                    }
+                });
+                scored.sort(function(a, b) { return b.weight - a.weight; });
+                // 去重：短词被长词包含则剔除
+                var all = scored.map(function(s) { return s.term; });
+                return all.filter(function(w, i) {
+                    if (w.length <= 3) {
+                        return !all.slice(0, i).some(function(lg) { return lg.length >= 4 && lg.includes(w); });
+                    }
+                    return true;
+                });
             }
 
             // ---- 纯关键词提取（不依赖词库建议，用于检索，严格过滤单位名称） ----
@@ -3687,6 +3696,7 @@
 
             // 暴露给全局，供智能助手使用
             window.acExtractKeywords = acExtractKeywords;
+            window.acExtractLibraryKeywords = acExtractLibraryKeywords;
             window.patchInferTrade = patchInferTrade;
             window.PATCH_TERM_LIBRARY = PATCH_TERM_LIBRARY;
             window.PATCH_TRADE_KEYWORDS = PATCH_TRADE_KEYWORDS;

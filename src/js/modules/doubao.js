@@ -573,7 +573,7 @@
             bindApiModalEvents();
 
             // ---- 数据源选择模块 ----
-            var _sessionDataSource = { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
+            var _sessionDataSource = null;
             function showDataSourceSelector() {
                 return new Promise(function(resolve) {
                     if (_sessionDataSource && _sessionDataSource.remember) {

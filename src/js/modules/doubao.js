@@ -6555,6 +6555,7 @@ ${details || '(无)'}
 
       // ---------- 2. 角色提示词 ----------
       const ROLE_PROMPTS = {
+        'default':  '你是一个全能的智能助手，请根据用户需求提供准确、有用的回答。你可以回答铁路安全专业问题，也可以回答任何其他领域的通用知识问题。',
         'dianwu':   '你现在作为一名电务安全监察专家进行工作，精通信号、联锁、CTC、轨道电路等规章，请从电务专业视角分析问题。',
         'gongwu':   '你现在作为一名工务安全监察专家进行工作，精通线路、桥隧、防洪等规章，请从工务专业视角分析问题。',
         'gongdian': '你现在作为一名供电安全监察专家进行工作，精通接触网、变电、电力等规章，请从供电专业视角分析问题。',
@@ -7002,10 +7003,11 @@ ${details || '(无)'}
             return;
           }
 
-          // 1. 角色设定（isProfessional 仅用于检索过滤，不影响角色提示词注入）
-          let rolePrompt = '';
-          if (selectedRole && ROLE_PROMPTS[selectedRole]) {
-            rolePrompt = '【角色设定】\n' + ROLE_PROMPTS[selectedRole] + '\n\n';
+          // 1. 角色设定
+          var rolePrompt = '';
+          var key = selectedRole || 'default';
+          if (ROLE_PROMPTS[key]) {
+            rolePrompt = '【角色设定】\n' + ROLE_PROMPTS[key] + '\n\n';
           }
 
           // 2. 长期记忆

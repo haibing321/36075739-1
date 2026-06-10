@@ -302,8 +302,10 @@
             }
 
             function updateStats() {
-                document.getElementById('handbook-total').textContent = handbookData.length;
-                document.getElementById('handbook-size').textContent = (JSON.stringify(handbookData).length / 1024).toFixed(1) + ' KB';
+                var t = document.getElementById('handbook-total');
+                var s = document.getElementById('handbook-size');
+                if (t) t.textContent = handbookData.length;
+                if (s) s.textContent = (JSON.stringify(handbookData).length / 1024).toFixed(1) + ' KB';
             }
 
             window.clearHandbookData = function() {
@@ -602,6 +604,7 @@
             }
 
             loadFromStorage();
+            updateStats();
 
             // 暴露 handbook 数据供其他模块调用（如智能助手联动）
             window.getHandbookData = function() { return handbookData; };

@@ -21,17 +21,33 @@
 // ========== 全局数据备份与恢复 ==========
 (function() {
     function readIndexedDB(dbName, storeName, version) {
-        return new Promise(function(resolve, reject) {
+        return new Promise(function(resolve) {
+            try {
+                // 优先用 dbManager 获取共享连接，避免版本冲突
+                if (window.dbManager && typeof window.dbManager.getDB === 'function') {
+                    window.dbManager.getDB(dbName).then(function(db) {
+                        if (!db.objectStoreNames.contains(storeName)) { return resolve([]); }
+                        var tx = db.transaction(storeName, 'readonly');
+                        var store = tx.objectStore(storeName);
+                        var getAll = store.getAll();
+                        getAll.onsuccess = function(){ resolve(getAll.result || []); };
+                        getAll.onerror = function(){ resolve([]); };
+                    }).catch(function(){ resolve([]); });
+                    return;
+                }
+            } catch(e) { /* fallback */ }
+            
+            // 回退：直接打开
             var req = indexedDB.open(dbName, version || 1);
-            req.onerror = function(){ reject(req.error); };
+            req.onerror = function(){ resolve([]); };
             req.onsuccess = function(){
                 var db = req.result;
                 if (!db.objectStoreNames.contains(storeName)) { db.close(); return resolve([]); }
                 var tx = db.transaction(storeName, 'readonly');
                 var store = tx.objectStore(storeName);
                 var getAll = store.getAll();
-                getAll.onsuccess = function(){ resolve(getAll.result); };
-                getAll.onerror = function(){ reject(getAll.error); };
+                getAll.onsuccess = function(){ resolve(getAll.result || []); };
+                getAll.onerror = function(){ resolve([]); };
                 tx.oncomplete = function(){ db.close(); };
             };
         });
@@ -226,17 +242,16 @@
         if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
         _toast('正在收集数据…');
         var backup = { version: 3, exportDate: new Date().toISOString(), modules: {} };
+        var errors = [];
         try {
-            backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 1);
-            if (!backup.modules.issues || backup.modules.issues.length === 0) console.warn('警告：检查信息模块无数据');
-            backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3);
-            if (!backup.modules.rules || backup.modules.rules.length === 0) console.warn('警告：规章制度模块无数据');
+            // 逐个模块独立 try/catch，一个失败不影响其他
+            try { backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 1); } catch(e) { errors.push('检查信息: '+e.message); backup.modules.issues = []; }
+            try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); backup.modules.rules = []; }
             backup.modules.diary = getLocal('railway_work_diary_v2', []);
             backup.modules.phone = getLocal('railway_phone_db_v1', []);
             backup.modules.handbook = getLocal('handbook_fourlevel_v1', []);
-            if (!backup.modules.handbook || backup.modules.handbook.length === 0) console.warn('警告：检查手册模块无数据');
-            backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2);
-            backup.modules.writingReports = await readIndexedDB('railway_writer_db', 'writing_reports', 2);
+            try { backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2); } catch(e) { errors.push('写作资料: '+e.message); backup.modules.writingMaterials = []; }
+            try { backup.modules.writingReports = await readIndexedDB('railway_writer_db', 'writing_reports', 2); } catch(e) { errors.push('写作报告: '+e.message); backup.modules.writingReports = []; }
             backup.modules.dsConversations = getLocal('ds_conversations_v1', []);
             backup.modules.dsChatHistory = getLocal('ds_chat_history_v1', []);
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
@@ -280,8 +295,9 @@
             // 使用兼容性下载函数（替代原来的简单 a.click()）
             downloadBlob(blob, fileName);
 
-            _toast('备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件(' + (mediaTotalBytes/1024/1024).toFixed(1) + 'MB原始)' : '') +
-                   '\n若未自动下载，请点击屏幕下方绿色按钮');
+            _toast('备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') + '\n' +
+                   (errors.length > 0 ? '⚠️ 部分模块失败: ' + errors.join(', ') + '\n' : '') +
+                   '若未自动下载，请点击屏幕下方绿色按钮');
         } catch(e) { _toast('备份失败：' + e.message, true); }
     };
 

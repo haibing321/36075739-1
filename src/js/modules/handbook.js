@@ -62,7 +62,12 @@
                 };
             }
 
-            document.getElementById("handbook-importBtn").addEventListener('change', async function(e) {
+            // 按钮点击 → 打开文件选择器
+            document.getElementById("handbook-importBtn").addEventListener('click', function() {
+                document.getElementById('handbook-jsonFile').click();
+            });
+
+            document.getElementById('handbook-jsonFile').addEventListener('change', async function(e) {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
 
@@ -294,6 +299,11 @@
                     var stored = localStorage.getItem(STORAGE_KEY);
                     if (stored) handbookData = JSON.parse(stored);
                 } catch(e) { handbookData = []; }
+            }
+
+            function updateStats() {
+                document.getElementById('handbook-total').textContent = handbookData.length;
+                document.getElementById('handbook-size').textContent = (JSON.stringify(handbookData).length / 1024).toFixed(1) + ' KB';
             }
 
             window.clearHandbookData = function() {

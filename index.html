@@ -196,7 +196,14 @@
                         </div>
                     </div>
 
-                    <!-- 分级选择 -->
+                    <!-- 浏览模式切换 -->
+                    <div class="hb-view-toggle">
+                        <button class="active" id="hb-toggleSelect" onclick="hbSwitchView('select')">🏷️ 分级选择</button>
+                        <button id="hb-toggleOutline" onclick="hbSwitchView('outline')">📑 大纲浏览</button>
+                        <button id="hb-toggleRules" onclick="hbSwitchView('rules')">📜 规章制度</button>
+                    </div>
+
+                    <!-- 分级选择模式（原有） -->
                     <div class="selector-panel" id="hb-selectPanel">
                         <div class="selector-row">
                             <div class="selector-item" id="system-selector">
@@ -223,6 +230,16 @@
                                     <option value="">-- 请选择检查子项 --</option>
                                 </select>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 大纲浏览模式（新增） -->
+                    <div class="hb-outline-wrap" id="hb-outlineWrap">
+                        <div class="hb-outline-tree" id="hb-outlineTree">
+                            <div class="hb-content-placeholder" style="padding:30px 10px;">请先导入DOCX文档</div>
+                        </div>
+                        <div class="hb-outline-content" id="hb-outlineContent">
+                            <div class="hb-content-placeholder">← 点击左侧目录查看内容</div>
                         </div>
                     </div>
 

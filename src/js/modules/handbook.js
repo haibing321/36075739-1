@@ -37,6 +37,9 @@
             // 本模块用的 HTML 转义
             function _esc(text) { if (!text) return ''; return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+            // 大纲浏览状态（提前声明，避免 TDZ）
+            let _hbCurrentView = 'select';
+
             function rebuildMaps() {
                 const chapterSet = new Set();
                 const sectionSetByChap = {};
@@ -90,6 +93,10 @@
                 });
                 contentMap = contentByKey;
                 updateStats();
+                // 如果大纲视图已激活，自动刷新树
+                if (_hbCurrentView === 'outline') {
+                    try { hbBuildOutlineTree(); } catch(e) { console.error('大纲树刷新失败:', e); }
+                }
             }
 
             function updateStats() {
@@ -386,6 +393,10 @@
                         hideFrom(2);
                         saveToStorage();
                         closeModal('handbook-importModal');
+                        try { hbSwitchView('outline'); } catch(e2) {
+                            console.error('大纲视图切换失败:', e2);
+                            try { hbSwitchView('select'); } catch(e3) {}
+                        }
                     } catch(e) {
                         console.error('手册追加失败:', e);
                         closeModal('handbook-importModal');
@@ -401,6 +412,10 @@
                         hideFrom(2);
                         saveToStorage();
                         closeModal('handbook-importModal');
+                        try { hbSwitchView('outline'); } catch(e2) {
+                            console.error('大纲视图切换失败:', e2);
+                            try { hbSwitchView('select'); } catch(e3) {}
+                        }
                     } catch(e) {
                         console.error('手册覆盖失败:', e);
                         closeModal('handbook-importModal');
@@ -637,6 +652,305 @@
             // ========== 大纲浏览模式 ==========
 
             // 切换浏览模式
+            window.hbSwitchView = function(view) {
+                _hbCurrentView = view;
+                document.getElementById('hb-toggleSelect').classList.toggle('active', view === 'select');
+                document.getElementById('hb-toggleOutline').classList.toggle('active', view === 'outline');
+                document.getElementById('hb-toggleRules').classList.toggle('active', view === 'rules');
+                document.getElementById('hb-selectPanel').style.display = view === 'select' ? '' : 'none';
+                const outlineWrap = document.getElementById('hb-outlineWrap');
+                outlineWrap.classList.toggle('active', view === 'outline' || view === 'rules');
+                // 切换时隐藏内容显示区和重置分级选择下拉框
+                contentDisplay.style.display = 'none';
+                if (view === 'select') {
+                    chapterSelect.value = '';
+                    hideFrom(2);
+                }
+                if (view === 'outline') {
+                    hbBuildOutlineTree();
+                }
+                if (view === 'rules') {
+                    hbBuildRulesTree();
+                }
+            };
+
+            // 构建大纲树
+            function hbBuildOutlineTree() {
+                const treeEl = document.getElementById('hb-outlineTree');
+                const contentEl = document.getElementById('hb-outlineContent');
+                if (handbookData.length === 0) {
+                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">暂无数据，请先导入DOCX文档</div>';
+                    contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看内容</div>';
+                    return;
+                }
+
+                // 构建树形结构
+                const tree = [];
+                const chapMap = {};   // chapter -> node index in tree
+                const secMap = {};    // chapter||section -> node index
+                const itemMap = {};   // chapter||section||item -> node index
+
+                handbookData.forEach(entry => {
+                    const c = entry.chapter || '', s = entry.section || '';
+                    const it = entry.item || '', sub = entry.subitem || '';
+                    const cont = entry.content || '';
+
+                    // 确保chapter节点存在
+                    if (c && chapMap[c] === undefined) {
+                        chapMap[c] = tree.length;
+                        tree.push({ level: 0, label: c, children: [], chapter: c, section: '', item: '', subitem: '' });
+                    }
+                    const chapIdx = chapMap[c];
+                    if (!s) {
+                        // 无section，内容挂在chapter下
+                        if (cont) tree[chapIdx].children.push({ level: 3, label: it || '内容', children: [], chapter: c, section: s, item: it, subitem: sub, content: cont });
+                        return;
+                    }
+
+                    const k1 = c + '||' + s;
+                    if (secMap[k1] === undefined) {
+                        secMap[k1] = tree[chapIdx].children.length;
+                        tree[chapIdx].children.push({ level: 1, label: s, children: [], chapter: c, section: s, item: '', subitem: '' });
+                    }
+                    const secIdx = secMap[k1];
+                    const secNode = tree[chapIdx].children[secIdx];
+
+                    if (!it) return;
+
+                    const k2 = k1 + '||' + it;
+                    if (itemMap[k2] === undefined) {
+                        itemMap[k2] = secNode.children.length;
+                        secNode.children.push({ level: 2, label: it, children: [], chapter: c, section: s, item: it, subitem: '' });
+                    }
+                    const itemIdx = itemMap[k2];
+                    const itemNode = secNode.children[itemIdx];
+
+                    if (sub) {
+                        itemNode.children.push({ level: 3, label: sub, children: [], chapter: c, section: s, item: it, subitem: sub, content: cont });
+                    } else if (cont) {
+                        itemNode.content = itemNode.content ? itemNode.content + '\n' + cont : cont;
+                    }
+                });
+
+                // 渲染树
+                function countLeaves(node) {
+                    if (node.children.length === 0) return 1;
+                    return node.children.reduce((sum, c) => sum + countLeaves(c), 0);
+                }
+
+                function renderNode(node) {
+                    const hasChildren = node.children.length > 0;
+                    const leafCount = countLeaves(node);
+                    let html = '<div class="hb-tree-node hb-tree-level-' + node.level + '">';
+
+                    html += '<div class="hb-tree-header" data-chapter="' + _esc(node.chapter) + '" data-section="' + _esc(node.section) + '" data-item="' + _esc(node.item) + '" data-subitem="' + _esc(node.subitem) + '">';
+                    html += '<span class="hb-tree-arrow ' + (hasChildren ? '' : 'hidden') + '">▶</span>';
+                    html += '<span class="hb-tree-label" title="' + _esc(node.label) + '">' + _esc(node.label) + '</span>';
+                    if (hasChildren) html += '<span class="hb-tree-count">' + leafCount + '</span>';
+                    html += '</div>';
+
+                    if (hasChildren) {
+                        html += '<div class="hb-tree-children">';
+                        node.children.forEach(child => { html += renderNode(child); });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    return html;
+                }
+
+                let treeHtml = '';
+                tree.forEach(node => { treeHtml += renderNode(node); });
+                treeEl.innerHTML = treeHtml || '<div class="hb-content-placeholder">暂无数据</div>';
+                contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看内容</div>';
+
+                // 绑定点击事件
+                treeEl.querySelectorAll('.hb-tree-header').forEach(header => {
+                    header.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const node = this.closest('.hb-tree-node');
+
+                        // 折叠/展开
+                        const arrow = this.querySelector('.hb-tree-arrow');
+                        const children = node.querySelector('.hb-tree-children');
+                        if (children) {
+                            const isExpanded = children.classList.contains('expanded');
+                            children.classList.toggle('expanded');
+                            if (arrow) arrow.classList.toggle('expanded');
+                        }
+
+                        // 显示内容
+                        const chapter = this.dataset.chapter;
+                        const section = this.dataset.section;
+                        const item = this.dataset.item;
+                        const subitem = this.dataset.subitem;
+
+                        // 高亮选中
+                        treeEl.querySelectorAll('.hb-tree-header.selected').forEach(h => h.classList.remove('selected'));
+                        this.classList.add('selected');
+
+                        // 查找该节点对应的所有内容
+                        let contents = [];
+                        if (subitem) {
+                            contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item && d.subitem === subitem);
+                        } else if (item) {
+                            contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item);
+                        } else if (section) {
+                            contents = handbookData.filter(d => d.chapter === chapter && d.section === section);
+                        } else if (chapter) {
+                            contents = handbookData.filter(d => d.chapter === chapter);
+                        }
+
+                        // 渲染内容
+                        let pathHtml = '';
+                        if (chapter) pathHtml += '<span class="path-chapter">' + _esc(chapter) + '</span>';
+                        if (section) pathHtml += '<span class="path-section">' + _esc(section) + '</span>';
+                        if (item) pathHtml += '<span class="path-item">' + _esc(item) + '</span>';
+                        if (subitem) pathHtml += '<span class="path-subitem">' + _esc(subitem) + '</span>';
+
+                        let bodyHtml = '';
+                        contents.forEach(d => {
+                            if (d.subitem && d.content) {
+                                bodyHtml += '<div style="margin-bottom:12px;"><strong style="color:var(--primary);">' + _esc(d.subitem) + '</strong>\n' + _esc(d.content).replace(/\n/g, '<br>') + '</div>';
+                            } else if (d.content) {
+                                bodyHtml += '<div style="margin-bottom:8px;">' + _esc(d.content).replace(/\n/g, '<br>') + '</div>';
+                            }
+                        });
+
+                        if (!bodyHtml) bodyHtml = '<span style="color:#94a3b8;">（无详细内容，请展开子项查看）</span>';
+
+                        contentEl.innerHTML = '<div class="hb-content-path">' + pathHtml + '</div><div class="hb-content-text">' + bodyHtml + '</div>';
+
+                        // 手机端：点击后自动滚动到内容区
+                        if (window.innerWidth <= 600) {
+                            contentEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    });
+                });
+
+                // 默认全部折叠
+
+            }
+
+            // 构建规章制度树（直接读取规章制度模块数据，不导入到检查手册）
+            function hbBuildRulesTree() {
+                const treeEl = document.getElementById('hb-outlineTree');
+                const contentEl = document.getElementById('hb-outlineContent');
+
+                // 从规章制度模块获取实时数据
+                const rulesData = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
+                if (!rulesData || rulesData.length === 0) {
+                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">规章制度模块中暂无数据，请先在规章制度模块导入文件</div>';
+                    contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看内容</div>';
+                    return;
+                }
+
+                // 构建树形结构：按 trade 分组，每个 trade 下面是 title 列表
+                const tree = [];
+                const tradeMap = {}; // trade -> node index in tree
+
+                rulesData.forEach((rule, idx) => {
+                    const trade = rule.trade || '未分类';
+                    const title = rule.title || '无标题';
+
+                    if (tradeMap[trade] === undefined) {
+                        tradeMap[trade] = tree.length;
+                        tree.push({ level: 0, label: trade, children: [], trade: trade, ruleIdx: -1 });
+                    }
+                    const tradeIdx = tradeMap[trade];
+                    tree[tradeIdx].children.push({ level: 1, label: title, children: [], trade: trade, ruleIdx: idx, title: title });
+                });
+
+                // 渲染树
+                function countLeaves(node) {
+                    if (node.children.length === 0) return 1;
+                    return node.children.reduce((sum, c) => sum + countLeaves(c), 0);
+                }
+
+                function renderNode(node) {
+                    const hasChildren = node.children.length > 0;
+                    const leafCount = countLeaves(node);
+                    let html = '<div class="hb-tree-node hb-tree-level-' + node.level + '">';
+                    html += '<div class="hb-tree-header" data-trade="' + _esc(node.trade) + '" data-rule-idx="' + node.ruleIdx + '" data-title="' + _esc(node.title || '') + '">';
+                    html += '<span class="hb-tree-arrow ' + (hasChildren ? '' : 'hidden') + '">▶</span>';
+                    html += '<span class="hb-tree-label" title="' + _esc(node.label) + '">' + _esc(node.label) + '</span>';
+                    if (hasChildren) html += '<span class="hb-tree-count">' + leafCount + '</span>';
+                    html += '</div>';
+
+                    if (hasChildren) {
+                        html += '<div class="hb-tree-children">';
+                        node.children.forEach(child => { html += renderNode(child); });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    return html;
+                }
+
+                let treeHtml = '';
+                tree.forEach(node => { treeHtml += renderNode(node); });
+                treeEl.innerHTML = treeHtml || '<div class="hb-content-placeholder">暂无数据</div>';
+                contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看全文</div>';
+
+                // 绑定点击事件
+                treeEl.querySelectorAll('.hb-tree-header').forEach(header => {
+                    header.addEventListener('click', function(e) {
+                        e.stopPropagation();
+
+                        // 折叠/展开
+                        const arrow = this.querySelector('.hb-tree-arrow');
+                        const children = this.parentElement.querySelector('.hb-tree-children');
+                        if (children) {
+                            children.classList.toggle('expanded');
+                            if (arrow) arrow.classList.toggle('expanded');
+                        }
+
+                        // 高亮选中
+                        treeEl.querySelectorAll('.hb-tree-header.selected').forEach(h => h.classList.remove('selected'));
+                        this.classList.add('selected');
+
+                        const ruleIdx = parseInt(this.dataset.ruleIdx);
+                        const trade = this.dataset.trade;
+                        const title = this.dataset.title;
+
+                        // 叶子节点（具体规章）→ 全文查看
+                        if (!isNaN(ruleIdx) && ruleIdx >= 0 && typeof window.ruleViewFullText === 'function') {
+                            // 显示路径
+                            let pathHtml = '<span class="path-chapter">📖 规章制度</span>';
+                            pathHtml += '<span class="path-section">' + _esc(trade) + '</span>';
+                            if (title) pathHtml += '<span class="path-item">' + _esc(title) + '</span>';
+                            contentEl.innerHTML = '<div class="hb-content-path">' + pathHtml + '</div>' +
+                                '<div class="hb-content-text" style="text-align:center;padding:20px;">' +
+                                '<button class="btn btn-info" onclick="ruleViewFullText(' + ruleIdx + ')">📄 查看全文</button>' +
+                                '</div>';
+                        } else {
+                            // 分支节点（trade）→ 显示该专业下所有规章概要
+                            let pathHtml = '<span class="path-chapter">📖 规章制度</span>';
+                            pathHtml += '<span class="path-section">' + _esc(trade) + '</span>';
+
+                            const latestData = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
+                            const tradeRules = latestData.filter(r => (r.trade || '未分类') === trade);
+
+                            let bodyHtml = '';
+                            tradeRules.forEach((r, i) => {
+                                const origIdx = latestData.indexOf(r);
+                                bodyHtml += '<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">';
+                                bodyHtml += '<span style="flex:1;color:var(--info);cursor:pointer;text-decoration:underline;" onclick="ruleViewFullText(' + origIdx + ')">' + _esc(r.title || '无标题') + '</span>';
+                                bodyHtml += '<span style="color:#94a3b8;font-size:0.85em;">' + (r.content || '').length + '字</span>';
+                                bodyHtml += '<button class="btn btn-info btn-small" onclick="ruleViewFullText(' + origIdx + ')">📄 查看</button>';
+                                bodyHtml += '</div>';
+                            });
+
+                            if (!bodyHtml) bodyHtml = '<span style="color:#94a3b8;">（无内容）</span>';
+                            contentEl.innerHTML = '<div class="hb-content-path">' + pathHtml + '</div><div class="hb-content-text">' + bodyHtml + '</div>';
+                        }
+
+                        // 手机端：点击后自动滚动到内容区
+                        if (window.innerWidth <= 600) {
+                            contentEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    });
+                });
+            }
+
             loadFromStorage();
 
             // 暴露 handbook 数据供其他模块调用（如智能助手联动）

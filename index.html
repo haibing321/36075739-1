@@ -848,7 +848,49 @@
                                 <span style="font-weight:600;color:var(--primary);">智能风险研判</span>
                                 <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:var(--info);">Beta</span>
                             </div>
-                            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.6;">基于本地检查信息数据，AI自动分析风险趋势并生成预警措施报告。</p>
+                            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">基于本地检查信息数据，AI自动分析风险趋势并生成预警措施报告。</p>
+                            
+                            <!-- 风险研判条件配置 -->
+                            <div id="risk-config" style="background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #dbeafe;">
+                                <div style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:10px;">📋 研判条件</div>
+                                
+                                <!-- 第一行：时间范围 + 专业 -->
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                                    <select id="risk-date-range" style="flex:1;min-width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;background:#fff;">
+                                        <option value="90">近3个月</option>
+                                        <option value="180">近6个月</option>
+                                        <option value="365">近12个月</option>
+                                        <option value="0">全部时间</option>
+                                    </select>
+                                    <select id="risk-trade" style="flex:1;min-width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;background:#fff;">
+                                        <option value="">全部专业</option>
+                                        <option value="工务">工务</option><option value="电务">电务</option><option value="供电">供电</option>
+                                        <option value="车务">车务</option><option value="机务">机务</option><option value="车辆">车辆</option>
+                                        <option value="通信">通信</option><option value="房建">房建</option><option value="货运">货运</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- 第二行：研判重点 -->
+                                <div style="margin-bottom:8px;">
+                                    <input type="text" id="risk-focus" placeholder="研判重点，如：施工安全、季节性风险、人员违章…"
+                                        style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;box-sizing:border-box;">
+                                </div>
+                                
+                                <!-- 第三行：输出格式 -->
+                                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                    <span style="font-size:0.75rem;color:#64748b;white-space:nowrap;">输出格式：</span>
+                                    <label style="font-size:0.75rem;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                                        <input type="radio" name="risk-format" value="full" checked> 完整报告
+                                    </label>
+                                    <label style="font-size:0.75rem;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                                        <input type="radio" name="risk-format" value="brief"> 简要摘要
+                                    </label>
+                                    <label style="font-size:0.75rem;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                                        <input type="radio" name="risk-format" value="actions"> 仅整改措施
+                                    </label>
+                                </div>
+                            </div>
+
                             <button onclick="window.runRiskAnalysis && window.runRiskAnalysis()"
                                 style="padding:14px 24px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;transition:all 0.2s;"
                                 onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='var(--primary)'">

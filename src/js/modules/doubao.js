@@ -6892,10 +6892,25 @@ ${details || '(无)'}
 
           var messages = [];
           if (!followUp) {
-            var summary = await _buildRiskDataSummary();
+            // 读取研判条件
+            var dateRange = parseInt(document.getElementById('risk-date-range')?.value || '90');
+            var trade = document.getElementById('risk-trade')?.value || '';
+            var focus = document.getElementById('risk-focus')?.value.trim() || '';
+            var formatEl = document.querySelector('input[name="risk-format"]:checked');
+            var format = formatEl ? formatEl.value : 'full';
+            var formatDesc = { full: '完整报告：总体概况 + 风险分级 + 预警措施', brief: '简要摘要：只输出关键风险点和数量统计', actions: '整改措施清单：仅列出3-5条可执行的整改措施' }[format] || '完整报告';
+
+            var summary = await _buildRiskDataSummary(dateRange, trade);
+            var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
+            userMsg += '研判要求：\n';
+            userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
+            if (trade) userMsg += '- 限定专业：' + trade + '\n';
+            userMsg += '- 输出格式：' + formatDesc + '\n';
+            userMsg += '\n请开始分析。';
+
             messages = [
-              { role: 'system', content: '你是铁路安全风险分析专家。请输出结构化报告：## 一、总体概况 ## 二、风险分级(高/中/低) ## 三、预警措施' },
-              { role: 'user', content: '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n请输出完整报告。' }
+              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。' },
+              { role: 'user', content: userMsg }
             ];
           } else {
             messages = (window._riskCtx || []);
@@ -6946,9 +6961,10 @@ ${details || '(无)'}
         window.runRiskAnalysis(true);
       };
 
-      async function _buildRiskDataSummary() {
+      async function _buildRiskDataSummary(dateRangeDays, tradeFilter) {
         var parts = [];
         var now = new Date();
+        var cutoffDate = dateRangeDays > 0 ? new Date(now.getTime() - dateRangeDays * 86400000) : null;
         try {
           var db = await window.dbManager.getDB('RailwayIssueDB_v2');
           var all = await new Promise(function(res) {
@@ -6957,15 +6973,24 @@ ${details || '(无)'}
             s.getAll().onsuccess = function(e) { res(e.target.result || []); };
           });
           if (all.length) {
-            var recent = all.filter(function(d) {
-              try { return new Date(d.datetime||'') >= new Date(now.getTime()-90*86400000); } catch(e) { return false; }
-            });
-            var cats = {}; recent.forEach(function(d){ cats[d.category]=(cats[d.category]||0)+1; });
-            var nats = {}; recent.forEach(function(d){ nats[d['性质']]=(nats[d['性质']]||0)+1; });
-            parts.push('【检查信息】总计'+all.length+'条, 近3月'+recent.length+'条');
+            var filtered = all;
+            if (cutoffDate) {
+              filtered = all.filter(function(d) {
+                try { return new Date(d.datetime||'') >= cutoffDate; } catch(e) { return false; }
+              });
+            }
+            if (tradeFilter) {
+              filtered = filtered.filter(function(d) { return d.category === tradeFilter; });
+            }
+            var cats = {}; filtered.forEach(function(d){ cats[d.category]=(cats[d.category]||0)+1; });
+            var nats = {}; filtered.forEach(function(d){ nats[d['性质']]=(nats[d['性质']]||0)+1; });
+            var dateLabel = cutoffDate
+              ? (dateRangeDays <= 90 ? '近'+Math.round(dateRangeDays/30)+'月' : dateRangeDays <= 365 ? '近'+Math.round(dateRangeDays/30)+'月' : '全部')
+              : '全部时间';
+            parts.push('【检查信息】总计'+all.length+'条, 本次筛选'+filtered.length+'条('+dateLabel+(tradeFilter?'/'+tradeFilter:'')+')');
             parts.push('专业TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
             parts.push('性质: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
-            parts.push('样本: '+recent.slice(0,3).map(function(d){return (d.datetime||'')+' '+(d.category||'')+' '+(d.content||'').slice(0,60)}).join(' | '));
+            parts.push('样本: '+filtered.slice(0,5).map(function(d){return (d.datetime||'')+' '+(d.category||'')+' '+(d.content||'').slice(0,60)}).join(' | '));
           }
         } catch(e) { parts.push('【检查信息】读取失败'); }
 

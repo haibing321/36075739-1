@@ -469,7 +469,8 @@
                             datetime: item.datetime || new Date().toLocaleString('zh-CN'),
                             category: item.category || '其他',
                             content: item.content || item['问题描述'] || item['问题'] || '',
-                            regulation: item.regulation || item['规章依据'] || item['违反规章'] || item['法规依据'] || ''
+                            regulation: item.regulation || item['规章依据'] || item['违反规章'] || item['法规依据'] || '',
+                            unit: item.unit || item['单位'] || item.danwei || ''
                         };
                         // 如果 regulation 为空，尝试从 content 中提取完整引用句子
                         if (!norm.regulation && norm.content) {
@@ -495,7 +496,7 @@
                     if (jsonData.length < 2) throw new Error('Excel文件数据不足');
                     const headers = jsonData[0].map(h => String(h).trim());
                     const findCol = (names) => { for (let i = 0; i < headers.length; i++) { const header = headers[i].toLowerCase().replace(/\s/g, ''); for (let name of names) { if (header === name.toLowerCase() || header.includes(name.toLowerCase())) return i; } } return -1; };
-                    const cols = { xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']), datetime: findCol(['时间', '日期', 'datetime', 'date']), category: findCol(['类别', '专业', 'category', '项目']), content: findCol(['内容', '描述', 'content', '问题', '问题描述']), regulation: findCol(['规章依据', '违反规章', '法规依据', '条款', 'regulation']) };
+                    const cols = { xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']), datetime: findCol(['时间', '日期', 'datetime', 'date']), category: findCol(['类别', '专业', 'category', '项目']), content: findCol(['内容', '描述', 'content', '问题', '问题描述']), regulation: findCol(['规章依据', '违反规章', '法规依据', '条款', 'regulation']), unit: findCol(['单位', '单位名称', 'unit', '部门']) };
                     if (cols.content === -1) throw new Error('未找到"内容"列');
                     const newData = []; let skipCount = 0;
                     for (let i = 1; i < jsonData.length; i++) {
@@ -508,7 +509,7 @@
                         if (!regulation && content) {
                             regulation = extractFullViolationSentence(content);
                         }
-                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content, regulation: regulation });
+                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content, regulation: regulation, unit: cols.unit !== -1 ? String(row[cols.unit] || '').trim() : '' });
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     const existingCount = dataCache.length; let finalData = newData;
@@ -547,9 +548,9 @@
             };
 
             window.issueDownloadTemplate = function() {
-                const template = [{ '性质': 'A类', '时间': '2025-12-29 17:09', '类别': '消防安全', '问题描述': '示例：A类问题描述...', '规章依据': '《消防法》第XX条' }, { '性质': 'B类', '时间': '2025-12-29 16:32', '类别': '规章制度', '问题描述': '示例：B类问题描述...', '规章依据': '《铁路安全管理条例》第XX条' }, { '性质': 'C类', '时间': '2025-12-29 10:00', '类别': '设备管理', '问题描述': '示例：C类问题描述...' }, { '性质': '红线', '时间': '2025-12-29 09:00', '类别': '安全红线', '问题描述': '示例：红线问题描述...', '规章依据': '《安全红线管理办法》第XX条' }, { '性质': '空白', '时间': '2025-12-29 08:00', '类别': '待分类', '问题描述': '示例：空白性质问题描述...' }];
+                const template = [{ '性质': 'A类', '时间': '2025-12-29 17:09', '类别': '消防安全', '问题描述': '示例：A类问题描述...', '单位': 'XX站段', '规章依据': '《消防法》第XX条' }, { '性质': 'B类', '时间': '2025-12-29 16:32', '类别': '规章制度', '问题描述': '示例：B类问题描述...', '单位': 'XX站段', '规章依据': '《铁路安全管理条例》第XX条' }, { '性质': 'C类', '时间': '2025-12-29 10:00', '类别': '设备管理', '问题描述': '示例：C类问题描述...', '单位': 'XX站段' }, { '性质': '红线', '时间': '2025-12-29 09:00', '类别': '安全红线', '问题描述': '示例：红线问题描述...', '单位': 'XX站段', '规章依据': '《安全红线管理办法》第XX条' }, { '性质': '空白', '时间': '2025-12-29 08:00', '类别': '待分类', '问题描述': '示例：空白性质问题描述...', '单位': 'XX站段' }];
                 const ws = XLSX.utils.json_to_sheet(template), wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, '导入模板'); ws['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 100 }, { wch: 60 }];
+                XLSX.utils.book_append_sheet(wb, ws, '导入模板'); ws['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 100 }, { wch: 12 }, { wch: 60 }];
                 XLSX.writeFile(wb, '问题库导入模板.xlsx');
             };
 

@@ -7010,15 +7010,17 @@ ${details || '(无)'}
           }
         } catch(e) { parts.push('【检查信息】读取失败'); }
 
+        // 读取检查手册数据供 AI 参考
         try {
-          var rdb = await window.dbManager.getDB('RailwayRuleDB');
-          var rd = await new Promise(function(res) {
-            var tx = rdb.transaction('ruleCollection','readonly');
-            tx.objectStore('ruleCollection').getAll().onsuccess = function(e) { res(e.target.result || []); };
-          });
-          if (rd.length && rd[0].data) {
-            var trades = {}; rd[0].data.forEach(function(r){ trades[r.trade]=(trades[r.trade]||0)+1; });
-            parts.push('【规章制度】总计'+rd[0].data.length+'条, 专业: '+Object.entries(trades).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+          var hbData = typeof window.getHandbookData === 'function' ? window.getHandbookData() : [];
+          if (hbData.length) {
+            // 抽样：手册条目可能很多，展示前10条格式
+            var sampled = hbData.length > 10 ? hbData.slice(0, 10) : hbData;
+            parts.push('【检查手册】总计'+hbData.length+'条，展示前10条目录：');
+            sampled.forEach(function(r, i) {
+              var path = [r.chapter, r.section, r.item, r.subitem].filter(Boolean).join(' > ');
+              parts.push((i+1)+'. ['+path+']');
+            });
           }
         } catch(e) {}
 

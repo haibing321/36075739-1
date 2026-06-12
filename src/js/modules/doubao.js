@@ -6893,18 +6893,22 @@ ${details || '(无)'}
           var messages = [];
           if (!followUp) {
             // 读取研判条件
-            var dateRange = parseInt(document.getElementById('risk-date-range')?.value || '90');
+            var dateStart = document.getElementById('risk-date-start')?.value || '';
+            var dateEnd = document.getElementById('risk-date-end')?.value || '';
             var trade = document.getElementById('risk-trade')?.value || '';
+            var unit = document.getElementById('risk-unit')?.value.trim() || '';
             var focus = document.getElementById('risk-focus')?.value.trim() || '';
             var formatEl = document.querySelector('input[name="risk-format"]:checked');
             var format = formatEl ? formatEl.value : 'full';
             var formatDesc = { full: '完整报告：总体概况 + 风险分级 + 预警措施', brief: '简要摘要：只输出关键风险点和数量统计', actions: '整改措施清单：仅列出3-5条可执行的整改措施' }[format] || '完整报告';
 
-            var summary = await _buildRiskDataSummary(dateRange, trade);
+            var summary = await _buildRiskDataSummary(dateStart, dateEnd, trade, unit);
             var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
             userMsg += '研判要求：\n';
-            userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
+            if (dateStart || dateEnd) userMsg += '- 时间范围：' + (dateStart||'不限') + ' 至 ' + (dateEnd||'不限') + '\n';
             if (trade) userMsg += '- 限定专业：' + trade + '\n';
+            if (unit) userMsg += '- 限定单位：' + unit + '\n';
+            userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
             userMsg += '- 输出格式：' + formatDesc + '\n';
             userMsg += '\n请开始分析。';
 
@@ -6961,10 +6965,11 @@ ${details || '(无)'}
         window.runRiskAnalysis(true);
       };
 
-      async function _buildRiskDataSummary(dateRangeDays, tradeFilter) {
+      async function _buildRiskDataSummary(dateStart, dateEnd, tradeFilter, unitFilter) {
         var parts = [];
         var now = new Date();
-        var cutoffDate = dateRangeDays > 0 ? new Date(now.getTime() - dateRangeDays * 86400000) : null;
+        var startDate = dateStart ? new Date(dateStart) : null;
+        var endDate = dateEnd ? new Date(dateEnd + 'T23:59:59') : null;
         try {
           var db = await window.dbManager.getDB('RailwayIssueDB_v2');
           var all = await new Promise(function(res) {
@@ -6974,14 +6979,25 @@ ${details || '(无)'}
           });
           if (all.length) {
             var filtered = all;
-            if (cutoffDate) {
-              filtered = all.filter(function(d) {
-                try { return new Date(d.datetime||'') >= cutoffDate; } catch(e) { return false; }
+            if (startDate) {
+              filtered = filtered.filter(function(d) {
+                try { return new Date(d.datetime||'') >= startDate; } catch(e) { return false; }
+              });
+            }
+            if (endDate) {
+              filtered = filtered.filter(function(d) {
+                try { return new Date(d.datetime||'') <= endDate; } catch(e) { return false; }
               });
             }
             if (tradeFilter) {
               filtered = filtered.filter(function(d) { return d.category === tradeFilter; });
             }
+            if (unitFilter) {
+              filtered = filtered.filter(function(d) {
+                return (d.unit||'').indexOf(unitFilter) !== -1 || (d.department||'').indexOf(unitFilter) !== -1;
+              });
+            }
+            var dateLabel = [dateStart ? '从'+dateStart : '', dateEnd ? '至'+dateEnd : ''].filter(Boolean).join(' ') || '全部时间';
             var cats = {}; filtered.forEach(function(d){ cats[d.category]=(cats[d.category]||0)+1; });
             var nats = {}; filtered.forEach(function(d){ nats[d['性质']]=(nats[d['性质']]||0)+1; });
             var dateLabel = cutoffDate

@@ -4340,7 +4340,7 @@
             };
 
             // ====== 智能写作核心功能 ======
-            window.wrWrite = function() {
+            window.wrWrite = async function() {
                 const query = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!query.trim()) {
                     alert('请先在上方"写作需求"中输入您要撰写的内容。');
@@ -4353,7 +4353,9 @@
                 }
 
                 // 一步展示：模板 + 资料库（合并）
-                Promise.all([wrDbGetAll(WR_MAT_STORE), wrDbGetAll(WR_RPT_STORE)]).then(([mats, reports]) => {
+                var mats = [], reports = [];
+                try { mats = await wrDbGetAll(WR_MAT_STORE); } catch(e) { console.warn('资料库读取失败:', e); }
+                try { reports = await wrDbGetAll(WR_RPT_STORE); } catch(e) { console.warn('报告库读取失败:', e); }
                     var templates = mats.filter(m => m.matType === 'template');
                     const otherMats = mats.filter(m => m.matType !== 'template');
                     
@@ -4383,11 +4385,8 @@
                     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;display:flex;align-items:center;justify-content:center;';
                     modal.innerHTML = modalHtml;
                     document.body.appendChild(modal);
-                }).catch(function(err) {
-                    console.error('打开资料库失败:', err);
-                    alert('资料库加载失败，请刷新后重试。');
-                });
             };
+
 
             window.wrConfirmSelection = function() {
                 const templateSelect = document.getElementById('wr-step-template');

@@ -4375,6 +4375,7 @@
                 // 先立即显示对话框，再异步加载数据更新
                 showDialog([], []);
                 wrDbGetAll(WR_MAT_STORE).then(function(mats) {
+                    window._wrAllMats = mats; // 缓存供wrConfirmSelection使用
                     var templates = mats.filter(function(m) { return m.matType === 'template'; });
                     var otherMats = mats.filter(function(m) { return m.matType !== 'template'; });
                     // 更新已显示的对话框（仅更新select和列表内容）
@@ -4390,27 +4391,21 @@
                     }
                 }).catch(function(e) {
                     console.warn('资料库异步加载失败:', e);
+                    window._wrAllMats = [];
                 });
             };
 
             window.wrConfirmSelection = function() {
-                const templateSelect = document.getElementById('wr-step-template');
-                const selectedTemplateId = templateSelect ? templateSelect.value : '';
-                const selectedMatIds = Array.from(document.querySelectorAll('.wr-step-mat:checked')).map(cb => parseInt(cb.value));
+                var templateSelect = document.getElementById('wr-step-template');
+                var selectedTemplateId = templateSelect ? templateSelect.value : '';
+                var selectedMatIds = Array.from(document.querySelectorAll('.wr-step-mat:checked')).map(function(cb){ return parseInt(cb.value); });
                 
-                if (selectedTemplateId) {
-                    wrDbGetAll(WR_MAT_STORE).then(mats => {
-                        window._wrSelectedTemplate = mats.find(m => m.id == selectedTemplateId) || null;
-                        window._wrSelectedMaterialIds = selectedMatIds;
-                        document.querySelector('.wr-step-modal').remove();
-                        wrGenerate();
-                    });
-                } else {
-                    window._wrSelectedTemplate = null;
-                    window._wrSelectedMaterialIds = selectedMatIds;
-                    document.querySelector('.wr-step-modal').remove();
-                    wrGenerate();
-                }
+                // 使用缓存的资料数据，不再重复读DB
+                var mats = window._wrAllMats || [];
+                window._wrSelectedTemplate = selectedTemplateId ? (mats.find(function(m){ return m.id == selectedTemplateId; }) || null) : null;
+                window._wrSelectedMaterialIds = selectedMatIds;
+                document.querySelector('.wr-step-modal').remove();
+                wrGenerate();
             };
 
             // ---- 统一导入入口（弹出类型选择弹窗）----

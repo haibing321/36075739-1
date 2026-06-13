@@ -4404,8 +4404,13 @@
                 var mats = window._wrAllMats || [];
                 window._wrSelectedTemplate = selectedTemplateId ? (mats.find(function(m){ return m.id == selectedTemplateId; }) || null) : null;
                 window._wrSelectedMaterialIds = selectedMatIds;
-                document.querySelector('.wr-step-modal').remove();
-                wrGenerate();
+                var modal = document.querySelector('.wr-step-modal');
+                if (modal) modal.remove();
+                // 跳转到写作面板并触发生成
+                if (typeof dsSwitchSub === 'function') dsSwitchSub('writer');
+                if (typeof wrInit === 'function') wrInit();
+                // 延时确保面板渲染后再调用 wrGenerate
+                setTimeout(function() { wrGenerate(); }, 100);
             };
 
             // ---- 统一导入入口（弹出类型选择弹窗）----

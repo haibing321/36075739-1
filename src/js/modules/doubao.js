@@ -4340,7 +4340,7 @@
             };
 
             // ====== 智能写作核心功能 ======
-            window.wrWrite = async function() {
+            window.wrWrite = function() {
                 const query = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!query.trim()) {
                     alert('请先在上方"写作需求"中输入您要撰写的内容。');
@@ -4352,41 +4352,46 @@
                     return;
                 }
 
-                // 一步展示：模板 + 资料库（合并）
-                var mats = [], reports = [];
-                try { mats = await wrDbGetAll(WR_MAT_STORE); } catch(e) { console.warn('资料库读取失败:', e); }
-                try { reports = await wrDbGetAll(WR_RPT_STORE); } catch(e) { console.warn('报告库读取失败:', e); }
-                    var templates = mats.filter(m => m.matType === 'template');
-                    const otherMats = mats.filter(m => m.matType !== 'template');
-                    
-                    let modalHtml = `
-                    <div style="background:#fff;border-radius:14px;padding:20px;width:min(560px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;">
-                            <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✍️ 选择模板和参考资料</span>
-                            <button onclick="this.closest('.wr-step-modal').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;">✕</button>
-                        </div>
-                        <div style="font-size:0.8rem;color:var(--text-secondary);">模板为可选，资料可多选（故障报告、检查信息等）</div>
-                        <div><label style="font-weight:600;">📄 写作模板</label>
-                        <select id="wr-step-template" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
-                            <option value="">-- 不使用模板 --</option>
-                            ${templates.map(t => `<option value="${t.id}">${wrEsc(t.title)}</option>`).join('')}
-                        </select></div>
-                        <div><label style="font-weight:600;">📚 参考资料（多选）</label>
-                        <div style="max-height:40vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;">
-                            ${otherMats.length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>' : otherMats.map(m => `<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="${m.id}"> ${wrEsc(m.title || m.fileName)} <span style="font-size:0.7rem;color:gray;">(${WR_MAT_TYPES[m.matType]?.label || m.matType})</span></label>`).join('')}
-                        </div></div>
-                        <div style="display:flex;gap:8px;justify-content:flex-end;">
-                            <button onclick="wrConfirmSelection()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;">确认并生成</button>
-                            <button onclick="this.closest('.wr-step-modal').remove()" style="padding:8px 16px;">取消</button>
-                        </div>
-                    </div>`;
-                    const modal = document.createElement('div');
+                // 展示对话框（无论DB是否可用）
+                var showDialog = function(templates, otherMats) {
+                    var modalHtml = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(560px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
+                        + '<div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✍️ 选择模板和参考资料</span><button onclick="this.closest(\'.wr-step-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;">✕</button></div>'
+                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">模板为可选，资料可多选（故障报告、检查信息等）</div>'
+                        + '<div><label style="font-weight:600;">📄 写作模板</label><select id="wr-step-template" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">'
+                        + '<option value="">-- 不使用模板 --</option>'
+                        + (templates||[]).map(function(t){ return '<option value="'+t.id+'">'+wrEsc(t.title)+'</option>'; }).join('')
+                        + '</select></div>'
+                        + '<div><label style="font-weight:600;">📚 参考资料（多选）</label><div style="max-height:40vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;">'
+                        + ((otherMats||[]).length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>' : (otherMats||[]).map(function(m){ return '<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="'+m.id+'"> '+wrEsc(m.title||m.fileName)+' <span style="font-size:0.7rem;color:gray;">('+((WR_MAT_TYPES[m.matType]&&WR_MAT_TYPES[m.matType].label)||m.matType)+')</span></label>'; }).join(''))
+                        + '</div></div>'
+                        + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="wrConfirmSelection()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;">确认并生成</button><button onclick="this.closest(\'.wr-step-modal\').remove()" style="padding:8px 16px;">取消</button></div></div>';
+                    var modal = document.createElement('div');
                     modal.className = 'wr-step-modal';
                     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;display:flex;align-items:center;justify-content:center;';
                     modal.innerHTML = modalHtml;
                     document.body.appendChild(modal);
-            };
+                };
 
+                // 先立即显示对话框，再异步加载数据更新
+                showDialog([], []);
+                wrDbGetAll(WR_MAT_STORE).then(function(mats) {
+                    var templates = mats.filter(function(m) { return m.matType === 'template'; });
+                    var otherMats = mats.filter(function(m) { return m.matType !== 'template'; });
+                    // 更新已显示的对话框（仅更新select和列表内容）
+                    var tplSelect = document.getElementById('wr-step-template');
+                    if (tplSelect) {
+                        tplSelect.innerHTML = '<option value="">-- 不使用模板 --</option>'
+                            + templates.map(function(t){ return '<option value="'+t.id+'">'+wrEsc(t.title)+'</option>'; }).join('');
+                    }
+                    var matDiv = document.querySelector('.wr-step-modal > div > div:nth-child(4) > div');
+                    if (matDiv) {
+                        matDiv.innerHTML = otherMats.length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>'
+                            : otherMats.map(function(m){ return '<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="'+m.id+'"> '+wrEsc(m.title||m.fileName)+'</label>'; }).join('');
+                    }
+                }).catch(function(e) {
+                    console.warn('资料库异步加载失败:', e);
+                });
+            };
 
             window.wrConfirmSelection = function() {
                 const templateSelect = document.getElementById('wr-step-template');

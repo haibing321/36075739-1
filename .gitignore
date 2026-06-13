@@ -26,8 +26,23 @@ Desktop.ini
 *.tmp
 *.temp
 
-# Dev tools (local only)
+# Dev tools & scripts (local only)
 build_knowledge_base.py
+*.py
+export_data_helper.html
+GITHUB_PAGES_DEPLOY.md
+REFACTORING_REPORT.md
 
 # Backup data (large files)
 data_export/
+
+# Deprecated modules (removed)
+src/js/modules/data-dict-zi-web.js
+src/js/modules/index_loader.js
+src/js/modules/knowledge_search.js
+src/js/modules/pinyin-core.js
+src/js/modules/pinyin-phonetic-symbol.js
+src/js/modules/pinyin-util.js
+
+# Empty directories
+src/assets/

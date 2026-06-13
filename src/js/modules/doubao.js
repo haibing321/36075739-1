@@ -2957,7 +2957,7 @@
                 const input = document.getElementById('autoCheck-input');
                 const query = input.value.trim();
                 if (!query) { alert('请输入检查问题描述'); return; }
-                const apiKey = await _getApiKey();
+                var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 if (!apiKey) {
                     const ok = confirm('未配置 DeepSeek API Key，是否打开 API 配置？\n点击确定打开配置弹窗，点击取消则改用本地匹配。');
                     if (ok) showApiConfigModal();
@@ -3001,7 +3001,7 @@
                 const input = document.getElementById('autoCheck-input');
                 const query = input.value.trim();
                 if (!query) { alert('请输入检查问题描述'); return; }
-                const apiKey = await _getApiKey();
+                var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 const apiUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
                 const model  = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
 
@@ -5224,7 +5224,7 @@
             window.wrGenerate = async function() {
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!q.trim()) { alert('请输入写作需求'); return; }
-                const apiKey = await _getApiKey();
+                var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
                 const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-chat';
                 if (!apiKey) { alert('请先在智能助手模块中配置 API Key。'); return; }

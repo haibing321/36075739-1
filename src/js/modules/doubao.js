@@ -6614,16 +6614,16 @@ ${details || '(无)'}
         // 去重：完全相同的记忆不重复存储
         if (userMemories.some(function(m) { return m.fact === fact; })) return;
         userMemories.push({ fact: fact, timestamp: Date.now() });
-        // 只保留最近20条记忆
-        if (userMemories.length > 20) userMemories = userMemories.slice(-20);
+        // 只保留最近66条记忆
+        if (userMemories.length > 66) userMemories = userMemories.slice(-66);
         saveMemories();
-        saveMemories();
+      }
       }
 
       function getRelevantMemories(query) {
         if (!memoryEnabled) return [];
         // 无条件返回最近记忆，按时间倒序取最新10条
-        return userMemories.slice(-10).reverse();
+        return userMemories.slice(-66).reverse();
       }
 
       // ---------- 4. 轻量级 BM25 检索器 ----------

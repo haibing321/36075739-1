@@ -6604,30 +6604,26 @@ ${details || '(无)'}
       function saveMemories() { localStorage.setItem(MEMORY_KEY, JSON.stringify(userMemories)); }
 
       function extractFacts(text) {
-        const facts = [];
-        const patterns = [
-          /(?:我是|我叫)([^，。！？\n]{1,30})/,
-          /我负责([^，。！？\n]{1,30})/,
-          /我的专业是([^，。！？\n]{1,30})/,
-          /(?:记住|记下)[：:]\s*(.{5,50})/
-        ];
-        for (let p of patterns) {
-          const m = text.match(p);
-          if (m && m[1]) facts.push(m[1].trim());
-        }
-        return facts;
+        // 无条件自动记忆：截取用户输入前100字作为记忆
+        var cleaned = text.replace(/\s+/g, ' ').trim();
+        return cleaned ? [cleaned.slice(0, 100)] : [];
       }
 
       function addMemory(fact) {
-        if (!fact || userMemories.some(m => m.fact === fact)) return;
-        userMemories.push({ fact, timestamp: Date.now() });
+        if (!fact) return;
+        // 去重：完全相同的记忆不重复存储
+        if (userMemories.some(function(m) { return m.fact === fact; })) return;
+        userMemories.push({ fact: fact, timestamp: Date.now() });
+        // 只保留最近20条记忆
+        if (userMemories.length > 20) userMemories = userMemories.slice(-20);
+        saveMemories();
         saveMemories();
       }
 
       function getRelevantMemories(query) {
         if (!memoryEnabled) return [];
-        const lower = query.toLowerCase();
-        return userMemories.filter(m => lower.includes(m.fact.toLowerCase())).slice(0, 5);
+        // 无条件返回最近记忆，按时间倒序取最新10条
+        return userMemories.slice(-10).reverse();
       }
 
       // ---------- 4. 轻量级 BM25 检索器 ----------

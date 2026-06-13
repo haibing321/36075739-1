@@ -6618,11 +6618,104 @@ ${details || '(无)'}
         if (userMemories.length > 66) userMemories = userMemories.slice(-66);
         saveMemories();
       }
+      }
 
       function getRelevantMemories(query) {
         if (!memoryEnabled) return [];
         // 无条件返回最近记忆，按时间倒序取最新10条
         return userMemories.slice(-66).reverse();
+      }
+
+      // ---------- 4. 轻量级 BM25 检索器 ----------
+      class LightBM25 {
+        constructor(docs, k1 = 1.2, b = 0.75) {
+          this.docs = docs;
+          this.k1 = k1;
+          this.b = b;
+          this.avgLen = 0;
+          this.idf = new Map();
+          if (docs.length) this._build();
+        }
+        _build() {
+          const docCount = this.docs.length;
+          this.avgLen = this.docs.reduce((sum, d) => sum + (d.content || '').length, 0) / docCount;
+          const termDocs = new Map();
+          this.docs.forEach((doc, idx) => {
+            const tokens = this._tokenize(doc.content || '');
+            const uniq = new Set(tokens);
+            for (let t of uniq) {
+              if (!termDocs.has(t)) termDocs.set(t, []);
+              termDocs.get(t).push(idx);
+            }
+          });
+          for (let [term, docsArr] of termDocs.entries()) {
+            const freq = docsArr.length;
+            this.idf.set(term, Math.log((docCount - freq + 0.5) / (freq + 0.5) + 1));
+          }
+        }
+        _tokenize(str) {
+          if (!str) return [];
+          const tokens = [];
+          const s = str.toLowerCase();
+          for (let i = 0; i < s.length; i++) {
+            if (/[\u4e00-\u9fa5]/.test(s[i])) {
+              if (i+1 < s.length) tokens.push(s.slice(i, i+2));
+              if (i+2 < s.length && /[\u4e00-\u9fa5]/.test(s[i+2])) tokens.push(s.slice(i, i+3));
+            } else if (/[a-z0-9]/.test(s[i])) {
+              let j = i;
+              while (j < s.length && /[a-z0-9]/.test(s[j])) j++;
+              tokens.push(s.slice(i, j));
+              i = j - 1;
+            }
+          }
+          return tokens;
+        }
+        _score(query, doc) {
+          const qTokens = this._tokenize(query);
+          if (!qTokens.length) return 0;
+          const docTokens = this._tokenize(doc.content || '');
+          const tfMap = new Map();
+          for (let t of docTokens) tfMap.set(t, (tfMap.get(t) || 0) + 1);
+          let score = 0;
+          for (let t of qTokens) {
+            const tf = tfMap.get(t) || 0;
+            if (tf === 0) continue;
+            const idf = this.idf.get(t) || 0;
+            const lenNorm = doc.content.length / this.avgLen;
+            score += idf * (tf * (this.k1 + 1)) / (tf + this.k1 * (1 - this.b + this.b * lenNorm));
+          }
+          return score;
+        }
+        search(query, topN = 5) {
+          if (!this.docs.length) return [];
+          const scores = this.docs.map(doc => ({ doc, score: this._score(query, doc) }));
+          return scores.filter(s => s.score > 0).sort((a,b) => b.score - a.score).slice(0, topN).map(s => s.doc);
+        }
+      }
+
+      let bm25Rules = null, bm25Issues = null;
+      function getBM25Rules() {
+        if (!hasGetRules) return null;
+        const rules = window.getRulesData();
+        if (!bm25Rules) {
+          bm25Rules = new LightBM25(rules.map(r => ({ content: (r.title + ' ' + r.content), ...r })));
+        }
+        return bm25Rules;
+      }
+      function getBM25Issues() {
+        if (!hasGetIssue) return null;
+        const issues = window.getIssueData();
+        if (!bm25Issues) {
+          bm25Issues = new LightBM25(issues.map(i => ({ content: (i.content + ' ' + (i.category||'') + ' ' + (i['性质']||'')), ...i })));
+        }
+        return bm25Issues;
+      }
+
+      // 【性能优化】页面空闲时预构建 BM25 索引，避免首次查询时 200-500ms 同步卡顿
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(function() { getBM25Rules(); getBM25Issues(); }, { timeout: 5000 });
+      } else {
+        setTimeout(function() { getBM25Rules(); getBM25Issues(); }, 3000);
       }
 
       // ---------- 5. 本地检索 RAG ----------

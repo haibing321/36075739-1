@@ -4354,7 +4354,7 @@
 
                 // 一步展示：模板 + 资料库（合并）
                 Promise.all([wrDbGetAll(WR_MAT_STORE), wrDbGetAll(WR_RPT_STORE)]).then(([mats, reports]) => {
-                    const templates = mats.filter(m => m.matType === 'template');
+                    var templates = mats.filter(m => m.matType === 'template');
                     const otherMats = mats.filter(m => m.matType !== 'template');
                     
                     let modalHtml = `
@@ -4383,6 +4383,9 @@
                     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;display:flex;align-items:center;justify-content:center;';
                     modal.innerHTML = modalHtml;
                     document.body.appendChild(modal);
+                }).catch(function(err) {
+                    console.error('打开资料库失败:', err);
+                    alert('资料库加载失败，请刷新后重试。');
                 });
             };
 

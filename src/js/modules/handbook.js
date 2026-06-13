@@ -608,4 +608,16 @@
 
             // 暴露 handbook 数据供其他模块调用（如智能助手联动）
             window.getHandbookData = function() { return handbookData; };
+
+            window.exportHandbook = function() {
+                if (handbookData.length === 0) { alert('没有数据可导出'); return; }
+                var dataStr = JSON.stringify(handbookData, null, 2);
+                var blob = new Blob([dataStr], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = '安全检查手册_' + new Date().toISOString().slice(0,10) + '.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
         })();

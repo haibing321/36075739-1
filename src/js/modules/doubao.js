@@ -6876,6 +6876,46 @@ ${details || '(无)'}
 
       // ---------- 风险研判：一键汇总本地数据 → AI分析 ----------
       window._riskCtx = null; // 存储上下文供追问
+      var RISK_CONFIG_KEY = 'risk_config_v1';
+      var RISK_REPORT_KEY = 'risk_report_v1';
+
+      function saveRiskConfig() {
+        var conf = {
+          dateStart: document.getElementById('risk-date-start')?.value || '',
+          dateEnd: document.getElementById('risk-date-end')?.value || '',
+          trade: document.getElementById('risk-trade')?.value || '',
+          unit: document.getElementById('risk-unit')?.value || '',
+          focus: document.getElementById('risk-focus')?.value || '',
+          format: (document.querySelector('input[name="risk-format"]:checked') || {}).value || 'full'
+        };
+        localStorage.setItem(RISK_CONFIG_KEY, JSON.stringify(conf));
+      }
+
+      function loadRiskConfig() {
+        try {
+          var conf = JSON.parse(localStorage.getItem(RISK_CONFIG_KEY) || '{}');
+          var el;
+          if (conf.dateStart && (el = document.getElementById('risk-date-start'))) el.value = conf.dateStart;
+          if (conf.dateEnd && (el = document.getElementById('risk-date-end'))) el.value = conf.dateEnd;
+          if (conf.trade && (el = document.getElementById('risk-trade'))) el.value = conf.trade;
+          if (conf.unit && (el = document.getElementById('risk-unit'))) el.value = conf.unit;
+          if (conf.focus && (el = document.getElementById('risk-focus'))) el.value = conf.focus;
+          if (conf.format) {
+            var radio = document.querySelector('input[name="risk-format"][value="' + conf.format + '"]');
+            if (radio) radio.checked = true;
+          }
+        } catch(e) {}
+        // 恢复上次分析报告
+        try {
+          var report = localStorage.getItem(RISK_REPORT_KEY);
+          if (report) {
+            var container = document.getElementById('risk-results');
+            var refineArea = document.getElementById('risk-refine');
+            if (container) { container.innerHTML = report; container.style.display = 'block'; }
+            if (refineArea) { refineArea.style.display = 'flex'; refineArea.style.flexDirection = 'column'; }
+          }
+        } catch(e) {}
+      }
 
       window.runRiskAnalysis = async function(followUp) {
         var container = document.getElementById('risk-results');
@@ -6953,7 +6993,10 @@ ${details || '(无)'}
 
           container.innerHTML = html;
           container.scrollTop = 0;
-          
+          // 保存配置和报告到 localStorage
+          saveRiskConfig();
+          localStorage.setItem(RISK_REPORT_KEY, html);
+
           if (refineArea) {
             refineArea.style.display = 'flex';
             refineArea.style.flexDirection = 'column';
@@ -7183,6 +7226,7 @@ ${details || '(无)'}
 
       // ---------- 13. 初始化 ----------
       loadMemories();
+      loadRiskConfig(); // 恢复上次风险研判配置和报告
       var memoryCheck = document.getElementById('memoryEnable');
       if (memoryCheck) {
         memoryEnabled = memoryCheck.checked;

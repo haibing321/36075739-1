@@ -6618,7 +6618,6 @@ ${details || '(无)'}
         if (userMemories.length > 66) userMemories = userMemories.slice(-66);
         saveMemories();
       }
-      }
 
       function getRelevantMemories(query) {
         if (!memoryEnabled) return [];

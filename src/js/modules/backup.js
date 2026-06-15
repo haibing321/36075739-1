@@ -56,15 +56,29 @@
     function writeIndexedDB(dbName, storeName, version, data, clearFirst) {
         if (clearFirst === undefined) clearFirst = true;
         return new Promise(function(resolve, reject) {
-            var req = indexedDB.open(dbName, version || 1);
-            req.onupgradeneeded = function(e){
-                var db = e.target.result;
-                if (!db.objectStoreNames.contains(storeName)) {
-                    db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
-                }
-            };
-            req.onsuccess = function(){
-                var db = req.result;
+            // 优先用 dbManager 共享连接，避免版本冲突
+            var p;
+            if (window.dbManager && typeof window.dbManager.getDB === 'function') {
+                p = window.dbManager.getDB(dbName).then(function(db) {
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.close(); throw new Error('存储 ' + storeName + ' 不存在');
+                    }
+                    return db;
+                });
+            } else {
+                p = new Promise(function(res, rej) {
+                    var req = indexedDB.open(dbName, version || 1);
+                    req.onupgradeneeded = function(e) {
+                        var db = e.target.result;
+                        if (!db.objectStoreNames.contains(storeName)) {
+                            db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                        }
+                    };
+                    req.onsuccess = function() { res(req.result); };
+                    req.onerror = function() { rej(req.error); };
+                });
+            }
+            p.then(function(db) {
                 var tx = db.transaction(storeName, 'readwrite');
                 var store = tx.objectStore(storeName);
                 if (clearFirst) {
@@ -100,8 +114,7 @@
                         reject(tx.error);
                     }
                 };
-            };
-            req.onerror = function(){ reject(req.error); };
+            }).catch(function(err) { reject(err); });
         });
     }
 

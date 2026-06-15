@@ -6959,7 +6959,6 @@ ${details || '(无)'}
       // ---------- 风险研判：一键汇总本地数据 → AI分析 ----------
       window._riskCtx = null; // 存储上下文供追问
       var RISK_CONFIG_KEY = 'risk_config_v1';
-      var RISK_REPORT_KEY = 'risk_report_v1';
 
       function saveRiskConfig() {
         var conf = {
@@ -6985,16 +6984,6 @@ ${details || '(无)'}
           if (conf.format) {
             var radio = document.querySelector('input[name="risk-format"][value="' + conf.format + '"]');
             if (radio) radio.checked = true;
-          }
-        } catch(e) {}
-        // 恢复上次分析报告
-        try {
-          var report = localStorage.getItem(RISK_REPORT_KEY);
-          if (report) {
-            var container = document.getElementById('risk-results');
-            var refineArea = document.getElementById('risk-refine');
-            if (container) { container.innerHTML = report; container.style.display = 'block'; }
-            if (refineArea) { refineArea.style.display = 'flex'; refineArea.style.flexDirection = 'column'; }
           }
         } catch(e) {}
       }
@@ -7075,9 +7064,9 @@ ${details || '(无)'}
 
           container.innerHTML = html;
           container.scrollTop = 0;
-          // 保存配置和报告到 localStorage
+          // 保存配置，并将报告存入智能写作资料库
           saveRiskConfig();
-          localStorage.setItem(RISK_REPORT_KEY, html);
+          saveRiskReportToWriter(null, html);
 
           if (refineArea) {
             refineArea.style.display = 'flex';

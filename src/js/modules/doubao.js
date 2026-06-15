@@ -6988,6 +6988,8 @@ ${details || '(无)'}
             var radio = document.querySelector('input[name="risk-format"][value="' + conf.format + '"]');
             if (radio) radio.checked = true;
           }
+          // 恢复配置后触一次预览，拉取实际DB数据
+          updateRiskPreview();
         } catch(e) {}
       }
 
@@ -7026,8 +7028,13 @@ ${details || '(无)'}
         }
       }
 
-      // 实时更新数据预览计数
+      // 实时更新数据预览计数 + 动态填充专业/单位选项
+      var _riskPreviewTimer = null;
       function updateRiskPreview() {
+        if (_riskPreviewTimer) { clearTimeout(_riskPreviewTimer); _riskPreviewTimer = null; }
+        _riskPreviewTimer = setTimeout(_doRiskPreview, 300); // 防抖300ms
+      }
+      function _doRiskPreview() {
         var preview = document.getElementById('risk-data-preview');
         if (!preview) return;
         var dateStart = document.getElementById('risk-date-start')?.value || '';
@@ -7035,13 +7042,6 @@ ${details || '(无)'}
         var trade = document.getElementById('risk-trade')?.value || '';
         var unit = document.getElementById('risk-unit')?.value.trim() || '';
 
-        if (!dateStart && !dateEnd && !trade && !unit) {
-          preview.style.display = 'none';
-          return;
-        }
-        preview.style.display = 'flex';
-
-        // 异步查询 IndexedDB
         try {
           var dbReq = indexedDB.open('RailwayIssueDB_v2', 1);
           dbReq.onsuccess = function() {
@@ -7051,6 +7051,47 @@ ${details || '(无)'}
             var s = tx.objectStore('issues');
             s.getAll().onsuccess = function(e) {
               var all = e.target.result || [];
+              var cats = new Set();
+              var units = new Set();
+              for (var i = 0; i < all.length; i++) {
+                var d = all[i];
+                if (d.category) cats.add(d.category);
+                if (d.unit) units.add(d.unit);
+                if (d.department) units.add(d.department);
+              }
+
+              // 更新专业下拉（除手动选的项外替换为实际数据）
+              var tplSelect = document.getElementById('risk-trade');
+              if (tplSelect && cats.size > 0) {
+                var curVal = tplSelect.value;
+                tplSelect.innerHTML = '<option value="">全部专业</option>';
+                Array.from(cats).sort().forEach(function(c) {
+                  tplSelect.innerHTML += '<option value="'+c+'">'+c+'</option>';
+                });
+                if (curVal) tplSelect.value = curVal;
+              }
+
+              // 更新单位数据列表
+              var unitInput = document.getElementById('risk-unit');
+              if (unitInput && units.size > 0) {
+                var datalistId = 'risk-unit-list';
+                var dl = document.getElementById(datalistId);
+                if (!dl) {
+                  dl = document.createElement('datalist');
+                  dl.id = datalistId;
+                  document.body.appendChild(dl);
+                }
+                dl.innerHTML = '';
+                Array.from(units).sort().forEach(function(u) {
+                  dl.innerHTML += '<option value="'+u.replace(/"/g,'&quot;')+'">';
+                });
+                if (!unitInput.getAttribute('list')) {
+                  unitInput.setAttribute('list', datalistId);
+                  unitInput.placeholder = '输入单位名称（可下拉选择）';
+                }
+              }
+
+              // 更新计数
               var totalEl = document.getElementById('risk-preview-total');
               var filteredEl = document.getElementById('risk-preview-filtered');
               if (totalEl) totalEl.textContent = all.length + ' 条';
@@ -7076,6 +7117,9 @@ ${details || '(无)'}
                 });
               }
               if (filteredEl) filteredEl.textContent = filtered.length + ' 条';
+              if (dateStart || dateEnd || trade || unit) {
+                preview.style.display = 'flex';
+              }
               db.close();
             };
           };

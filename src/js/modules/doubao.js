@@ -7040,7 +7040,7 @@ ${details || '(无)'}
         var unit = document.getElementById('risk-unit')?.value.trim() || '';
 
         try {
-          var dbReq = indexedDB.open('RailwayIssueDB_v2', 1);
+          var dbReq = indexedDB.open('RailwayIssueDB_v2', 2);
           dbReq.onsuccess = function() {
             var db = dbReq.result;
             if (!db.objectStoreNames.contains('issues')) { db.close(); return; }
@@ -7210,7 +7210,7 @@ ${details || '(无)'}
           } catch(e) {
             console.warn('[风险] dbManager 失败，尝试直接打开:', e.message);
             db = await new Promise(function(res, rej) {
-              var r = indexedDB.open('RailwayIssueDB_v2', 1);
+              var r = indexedDB.open('RailwayIssueDB_v2', 2);
               r.onerror = function(){ rej(r.error); };
               r.onsuccess = function(){ res(r.result); };
             });
@@ -7244,13 +7244,12 @@ ${details || '(无)'}
             var dateLabel = [dateStart ? '从'+dateStart : '', dateEnd ? '至'+dateEnd : ''].filter(Boolean).join(' ') || '全部时间';
             var cats = {}; filtered.forEach(function(d){ cats[d.category]=(cats[d.category]||0)+1; });
             var nats = {}; filtered.forEach(function(d){ nats[d['性质']]=(nats[d['性质']]||0)+1; });
-            var dateLabel = cutoffDate
-              ? (dateRangeDays <= 90 ? '近'+Math.round(dateRangeDays/30)+'月' : dateRangeDays <= 365 ? '近'+Math.round(dateRangeDays/30)+'月' : '全部')
-              : '全部时间';
+            var units = {}; filtered.forEach(function(d){ if(d.unit) units[d.unit]=(units[d.unit]||0)+1; });
             parts.push('【检查信息】总计'+all.length+'条, 本次筛选'+filtered.length+'条('+dateLabel+(unitFilter?'/单位:'+unitFilter:'')+')');
-            parts.push('专业TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
-            parts.push('性质: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
-            parts.push('样本: '+filtered.slice(0,5).map(function(d){return (d.datetime||'')+' '+(d.category||'')+' '+(d.content||'').slice(0,60)}).join(' | '));
+            parts.push('类别TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+            parts.push('性质分布: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+            if (Object.keys(units).length > 0) parts.push('涉及单位: '+Object.entries(units).sort(function(a,b){return b[1]-a[1]}).slice(0,10).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+            parts.push('样本: '+filtered.slice(0,5).map(function(d){return (d.datetime||'')+' ['+(d['性质']||'')+'] '+(d.category||'')+' '+(d.content||'').slice(0,60)+(d.unit?' @'+d.unit:'')}).join(' | '));
           }
         } catch(e) { parts.push('【检查信息】读取失败'); console.error('风险研判: 检查信息读取异常', e); }
 

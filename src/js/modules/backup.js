@@ -264,7 +264,7 @@
         var errors = [];
         try {
             // 逐个模块独立 try/catch，一个失败不影响其他
-            try { backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 1); } catch(e) { errors.push('检查信息: '+e.message); backup.modules.issues = []; }
+            try { backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 2); } catch(e) { errors.push('检查信息: '+e.message); backup.modules.issues = []; }
             try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); backup.modules.rules = []; }
             backup.modules.diary = getLocal('railway_work_diary_v2', []);
             backup.modules.phone = getLocal('railway_phone_db_v1', []);
@@ -337,7 +337,7 @@
                 _toast('正在恢复数据…');
                 var bm = backup.modules;
                 if (bm.issues && Array.isArray(bm.issues) && bm.issues.length) {
-                    await writeIndexedDB('RailwayIssueDB_v2', 'issues', 1, bm.issues);
+                    await writeIndexedDB('RailwayIssueDB_v2', 'issues', 2, bm.issues);
                     console.log('已恢复 ' + bm.issues.length + ' 条检查信息');
                 } else {
                     console.warn('备份中无检查信息数据');

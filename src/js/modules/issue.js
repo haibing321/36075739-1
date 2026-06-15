@@ -1,22 +1,23 @@
         // ========== Issue System ==========
         (function() {
-            const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 1;
+            const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 2;
             let db = null, dataCache = [], keywordNum = 0, MAX_KEYWORDS = 4;
             let showLowMatch = false, currentResults = [], currentKeywords = [];
             const MATCH_THRESHOLD = 75;
             const searchMode = 'OR';
-            const searchFields = ['性质', 'category', 'content'];
+            const searchFields = ['性质', 'category', 'content', 'regulation', 'unit'];
             let currentPage = 1, pageSize = 20, totalPages = 1, allFilteredResults = [];
 
             async function initDB() {
                 // 首次注册 schema 到 dbManager（仅注册一次）
                 if (!window._issueDBRegistered) {
-                    window.dbManager.register('RailwayIssueDB_v2', 1, function(database, e) {
+                    window.dbManager.register('RailwayIssueDB_v2', 2, function(database, e) {
                         if (!database.objectStoreNames.contains(STORE_NAME)) {
                             const store = database.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
                             store.createIndex('性质', '性质', { unique: false });
                             store.createIndex('datetime', 'datetime', { unique: false });
                             store.createIndex('category', 'category', { unique: false });
+                            store.createIndex('unit', 'unit', { unique: false });
                         }
                     });
                     window._issueDBRegistered = true;
@@ -113,6 +114,45 @@
                         else bar3.className = 'storage-fill';
                     }
                 } catch (e) {}
+                issueRefreshCategorySelect();
+            }
+
+            function extractTradeFromUnit(unitName) {
+                if (!unitName) return '';
+                var name = String(unitName).trim();
+                // 铁路单位常见专业关键词（按长度降序，优先匹配更具体的）
+                var tradeKeys = ['高铁基础设施','综合维修','基础设施','客运','货运','车务','机务','工务','电务','供电','车辆','通信','信号','房建','给水','供电'];
+                for (var i = 0; i < tradeKeys.length; i++) {
+                    if (name.indexOf(tradeKeys[i]) !== -1) return tradeKeys[i];
+                }
+                // 无匹配时返回单位名本身
+                return name;
+            }
+
+            function issueRefreshCategorySelect() {
+                var select = document.getElementById('issue-categorySelect');
+                if (!select) return;
+                var currentValue = select.value;
+                // 从 dataCache 的 单位 字段提取专业
+                var trades = new Set();
+                dataCache.forEach(function(item) {
+                    if (item.unit) {
+                        var trade = extractTradeFromUnit(item.unit);
+                        if (trade) trades.add(trade);
+                    }
+                });
+                var sorted = Array.from(trades).sort(function(a, b) { return a.localeCompare(b, 'zh'); });
+                select.innerHTML = '<option value="">全部专业</option>';
+                sorted.forEach(function(trade) {
+                    var opt = document.createElement('option');
+                    opt.value = trade;
+                    opt.textContent = trade;
+                    select.appendChild(opt);
+                });
+                // 恢复之前选中的值（如果还存在）
+                if (currentValue && sorted.indexOf(currentValue) !== -1) {
+                    select.value = currentValue;
+                }
             }
 
             window.issueAddKeyword = function() {
@@ -178,6 +218,8 @@
                 document.getElementById('issue-lowMatchResults').innerHTML = '';
                 document.getElementById('issue-statsBar').style.display = 'none';
                 showLowMatch = false;
+                var catSelect = document.getElementById('issue-categorySelect');
+                if (catSelect) catSelect.value = '';
             };
 
             function getXingzhi(item) {
@@ -209,8 +251,9 @@
                         keys: [
                             { name: '性质', weight: 0.3 },
                             { name: 'category', weight: 0.2 },
-                            { name: 'content', weight: 0.4 },
-                            { name: 'regulation', weight: 0.1 }
+                            { name: 'content', weight: 0.3 },
+                            { name: 'regulation', weight: 0.1 },
+                            { name: 'unit', weight: 0.1 }
                         ],
                         threshold: 0.35,           // 低阈值=更宽松的模糊匹配（适合中文）
                         includeScore: true,
@@ -301,7 +344,13 @@
                 if (keywords.length === 0) { alert('请输入至少一个关键词'); return; }
 
                 document.getElementById('issue-results').innerHTML = '<div class="loading"><div class="spinner"></div><p>正在搜索...</p></div>';
-                const data = dataCache.length > 0 ? dataCache : await loadData();
+                var data = dataCache.length > 0 ? dataCache : await loadData();
+
+                // 按选中专业过滤（从单位名称匹配）
+                var tradeFilter = document.getElementById('issue-categorySelect')?.value || '';
+                if (tradeFilter) {
+                    data = data.filter(function(d) { return extractTradeFromUnit(d.unit) === tradeFilter; });
+                }
 
                 setTimeout(() => {
                     // ===== 优先使用 Fuse.js 模糊搜索 =====
@@ -418,7 +467,7 @@
                     });
                     regulationHtml = '<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #3b82f6;font-size:0.85rem;border-radius:0 4px 4px 0;"><strong>📜 规章依据：</strong>' + regText + '</div>';
                 }
-                return '<div class="result-card ' + levelClass + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '其他') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span></div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div>' + regulationHtml + '</div></div>';
+                return '<div class="result-card ' + levelClass + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div>' + regulationHtml + '</div></div>';
             }
 
             window.issueCopyContent = function(btn) {
@@ -462,15 +511,15 @@
                     const imported = JSON.parse(text);
                     if (!Array.isArray(imported)) throw new Error('JSON 数据必须是数组');
                     if (imported.length === 0) throw new Error('JSON 文件无有效数据');
-                    // 规范化字段（兼容不同命名）
+                    // 规范化字段（兼容不同命名）—— 6列标准: 性质 | 时间 | 类别 | 问题描述 | 规章依据 | 单位
                     const normalized = imported.map(function(item){
                         var norm = {
-                            '性质': item['性质'] || item.xingzhi || '',
-                            datetime: item.datetime || new Date().toLocaleString('zh-CN'),
-                            category: item.category || '其他',
-                            content: item.content || item['问题描述'] || item['问题'] || '',
-                            regulation: item.regulation || item['规章依据'] || item['违反规章'] || item['法规依据'] || '',
-                            unit: item.unit || item['单位'] || item.danwei || ''
+                            '性质': item['性质'] || item.xingzhi || item['问题库性质'] || item['等级'] || item['级别'] || item.level || '',
+                            datetime: item.datetime || item['时间'] || item['日期'] || item.date || new Date().toLocaleString('zh-CN'),
+                            category: item.category || item['类别'] || item['专业'] || item['项目'] || '待分类',
+                            content: item.content || item['问题描述'] || item['问题'] || item['描述'] || '',
+                            regulation: item.regulation || item['规章依据'] || item['违反规章'] || item['法规依据'] || item['条款'] || '',
+                            unit: item.unit || item['单位'] || item['责任单位'] || item.danwei || item['部门'] || item.department || ''
                         };
                         // 如果 regulation 为空，尝试从 content 中提取完整引用句子
                         if (!norm.regulation && norm.content) {
@@ -496,7 +545,14 @@
                     if (jsonData.length < 2) throw new Error('Excel文件数据不足');
                     const headers = jsonData[0].map(h => String(h).trim());
                     const findCol = (names) => { for (let i = 0; i < headers.length; i++) { const header = headers[i].toLowerCase().replace(/\s/g, ''); for (let name of names) { if (header === name.toLowerCase() || header.includes(name.toLowerCase())) return i; } } return -1; };
-                    const cols = { xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']), datetime: findCol(['时间', '日期', 'datetime', 'date']), category: findCol(['类别', '专业', 'category', '项目']), content: findCol(['内容', '描述', 'content', '问题', '问题描述']), regulation: findCol(['规章依据', '违反规章', '法规依据', '条款', 'regulation']), unit: findCol(['单位', '单位名称', 'unit', '部门']) };
+                    const cols = {
+                        xingzhi: findCol(['性质', '问题库性质', '等级', '级别', 'level']),
+                        datetime: findCol(['时间', '日期', 'datetime', 'date']),
+                        category: findCol(['类别', '专业', 'category', '项目']),
+                        content: findCol(['问题描述', '内容', '描述', 'content', '问题']),
+                        regulation: findCol(['规章依据', '违反规章', '法规依据', '条款', 'regulation']),
+                        unit: findCol(['单位', '责任单位', '单位名称', 'unit', '部门', 'department'])
+                    };
                     if (cols.content === -1) throw new Error('未找到"内容"列');
                     const newData = []; let skipCount = 0;
                     for (let i = 1; i < jsonData.length; i++) {
@@ -509,7 +565,15 @@
                         if (!regulation && content) {
                             regulation = extractFullViolationSentence(content);
                         }
-                        newData.push({ id: Date.now() + i, '性质': xz, datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'), category: cols.category !== -1 ? String(row[cols.category] || '其他').trim() : '其他', content: content, regulation: regulation, unit: cols.unit !== -1 ? String(row[cols.unit] || '').trim() : '' });
+                        newData.push({
+                            id: Date.now() + i,
+                            '性质': xz,
+                            datetime: cols.datetime !== -1 ? formatExcelDate(row[cols.datetime]) : new Date().toLocaleString('zh-CN'),
+                            category: cols.category !== -1 ? String(row[cols.category] || '待分类').trim() : '待分类',
+                            content: content,
+                            regulation: regulation,
+                            unit: cols.unit !== -1 ? String(row[cols.unit] || '').trim() : ''
+                        });
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     const existingCount = dataCache.length; let finalData = newData;
@@ -533,10 +597,11 @@
                 if (dataCache.length === 0) { alert('没有数据可导出'); return; }
                 const exportData = dataCache.map(item => ({
                     '性质': getXingzhi(item),
-                    'datetime': item.datetime,
-                    'category': item.category,
-                    'content': item.content,
-                    'regulation': item.regulation || ''
+                    '时间': item.datetime || '',
+                    '类别': item.category || '待分类',
+                    '问题描述': item.content || '',
+                    '规章依据': item.regulation || '',
+                    '单位': item.unit || ''
                 }));
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -555,7 +620,13 @@
             };
 
             async function issueLoadDemoData() {
-                const demo = [{ id: 1, '性质': 'A类', datetime: '2025-12-29 17:09', category: '消防安全', content: '兰州高铁基础设施段动车所信号工区遗漏机械室门口的七氟丙烷消防柜柜门无法打开。' }, { id: 2, '性质': 'B类', datetime: '2025-12-29 16:32', category: '规章制度', content: '检查兰州高铁基础设施段注浆施工，4号道口南侧汽车吊吊装作业时支腿下未放垫木。' }, { id: 3, '性质': 'C类', datetime: '2025-12-29 10:00', category: '设备管理', content: '检查发现设备标识不清，台账记录不完整。' }, { id: 4, '性质': '红线', datetime: '2025-12-29 09:00', category: '安全红线', content: '触碰安全红线：未设置防护上道作业。' }, { id: 5, '性质': '空白', datetime: '2025-12-29 08:00', category: '待分类', content: '问题描述暂未完成性质判定。' }];
+                const demo = [
+                    { id: 1, '性质': 'A类', datetime: '2025-12-29 17:09', category: '消防安全', content: '兰州高铁基础设施段动车所信号工区遗漏机械室门口的七氟丙烷消防柜柜门无法打开。', regulation: '《消防法》第16条', unit: '兰州高铁基础设施段' },
+                    { id: 2, '性质': 'B类', datetime: '2025-12-29 16:32', category: '规章制度', content: '检查兰州高铁基础设施段注浆施工，4号道口南侧汽车吊吊装作业时支腿下未放垫木。', regulation: '《铁路安全管理条例》第XX条', unit: '兰州高铁基础设施段' },
+                    { id: 3, '性质': 'C类', datetime: '2025-12-29 10:00', category: '设备管理', content: '检查发现设备标识不清，台账记录不完整。', unit: 'XX电务段' },
+                    { id: 4, '性质': '红线', datetime: '2025-12-29 09:00', category: '安全红线', content: '触碰安全红线：未设置防护上道作业。', regulation: '《安全红线管理办法》第XX条', unit: 'XX工务段' },
+                    { id: 5, '性质': '空白', datetime: '2025-12-29 08:00', category: '待分类', content: '问题描述暂未完成性质判定。', unit: 'XX站段' }
+                ];
                 await saveData(demo); await updateStorage();
             }
 

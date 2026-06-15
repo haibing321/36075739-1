@@ -297,6 +297,7 @@
 .tag-xz-kongbai { background: linear-gradient(135deg, #718096, #a0aec0); }
 .tag-category { background: #edf2f7; color: var(--text); border: 1px solid var(--border); }
 .tag-time { background: #f7fafc; color: var(--text-secondary); border: 1px solid var(--border); font-size: 0.75rem; }
+.tag-unit { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-size: 0.75rem; }
 
 .result-content {
     background: #f7fafc;

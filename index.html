@@ -226,7 +226,7 @@
                         <div class="card-title-icon">📊</div>
                         检查信息查询
                     </div>
-                    <div class="card-subtitle">关键词检索 · 批量导入与导出分析</div>
+                    <div class="card-subtitle">六维检索 · 性质/时间/类别/描述/依据/单位</div>
                 </div>
                 <div class="card-body">
                     <div class="stats-bar">
@@ -250,6 +250,13 @@
                     </div>
                     <input type="file" id="issue-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
                     
+                    <div class="form-group" style="margin-top:12px;">
+                        <label class="form-label">选择专业</label>
+                        <select id="issue-categorySelect" class="form-select">
+                            <option value="">全部专业</option>
+                        </select>
+                    </div>
+
                     <div class="search-box">
                         <div id="issue-keywordContainer" class="keyword-list"></div>
                         <button class="btn-add" id="issue-btnAdd" onclick="issueAddKeyword()">+ 添加关键词 (最多4个)</button>

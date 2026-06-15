@@ -372,14 +372,14 @@ window._updateModelList = function() {
     var url = (urlEl.value || '').trim();
     // 常用 API 地址 → 默认模型映射
     var map = {
-        'https://api.deepseek.com/chat/completions': 'deepseek-chat',
-        'https://api.openai.com/v1/chat/completions': 'gpt-4o-mini',
-        'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions': 'qwen-turbo',
-        'https://open.bigmodel.cn/api/paas/v4/chat/completions': 'glm-4-flash',
-        'https://api.moonshot.cn/v1/chat/completions': 'moonshot-v1-8k',
-        'https://api.lingyiwanwu.com/v1/chat/completions': 'yi-medium',
-        'https://api.baichuan-ai.com/v1/chat/completions': 'Baichuan3-Turbo',
-        'https://api.minimax.chat/v1/text/chatcompletion_v2': 'abab6.5s-chat'
+        'https://api.deepseek.com/chat/completions': 'deepseek-v4-flash',
+        'https://api.openai.com/v1/chat/completions': 'gpt-5-mini',
+        'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions': 'qwen3-turbo',
+        'https://open.bigmodel.cn/api/paas/v4/chat/completions': 'GLM-5-Flash',
+        'https://api.moonshot.cn/v1/chat/completions': 'kimi-k2-turbo',
+        'https://api.baichuan-ai.com/v1/chat/completions': 'Baichuan4-Turbo',
+        'https://api.minimax.chat/v1/text/chatcompletion_v2': 'abab7',
+        'https://api.stepfun.com/v1/chat/completions': 'step-2-16k'
     };
     if (map[url]) modelEl.value = map[url];
 };

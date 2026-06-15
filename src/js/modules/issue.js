@@ -115,6 +115,7 @@
                     }
                 } catch (e) {}
                 issueRefreshCategorySelect();
+                issueRefreshUnitSelect();
             }
 
             function extractTradeFromUnit(unitName) {
@@ -154,6 +155,115 @@
                     select.value = currentValue;
                 }
             }
+
+            function issueRefreshUnitSelect() {
+                var select = document.getElementById('issue-unitSelect');
+                if (!select) return;
+                var currentValue = select.value;
+                var units = new Set();
+                dataCache.forEach(function(item) {
+                    if (item.unit) units.add(String(item.unit).trim());
+                });
+                var sorted = Array.from(units).sort(function(a, b) { return a.localeCompare(b, 'zh'); });
+                select.innerHTML = '<option value="">全部单位</option>';
+                sorted.forEach(function(u) {
+                    var opt = document.createElement('option');
+                    opt.value = u;
+                    opt.textContent = u.length > 25 ? u.slice(0, 23) + '…' : u;
+                    select.appendChild(opt);
+                });
+                if (currentValue && sorted.indexOf(currentValue) !== -1) {
+                    select.value = currentValue;
+                }
+            }
+
+            window.issueShowStats = function() {
+                var panel = document.getElementById('issue-statsPanel');
+                var content = document.getElementById('issue-statsContent');
+                if (!panel || !content) return;
+                if (panel.style.display === 'block') { panel.style.display = 'none'; return; }
+                var data = dataCache;
+                if (!data.length) { alert('暂无数据'); return; }
+
+                // 性质分布
+                var nats = {}; data.forEach(function(d) { var v = getXingzhi(d) || '空白'; nats[v] = (nats[v]||0)+1; });
+                // 类别分布
+                var cats = {}; data.forEach(function(d) { var v = d.category || '待分类'; cats[v] = (cats[v]||0)+1; });
+                // 单位排行 TOP10
+                var units = {}; data.forEach(function(d) { if (d.unit) { var u = String(d.unit).trim(); units[u] = (units[u]||0)+1; } });
+                var topUnits = Object.entries(units).sort(function(a,b){return b[1]-a[1]}).slice(0,10);
+                // 时间范围
+                var times = data.map(function(d){return d.datetime||''}).filter(Boolean).sort();
+                var timeRange = times.length ? times[0] + ' ~ ' + times[times.length-1] : '无数据';
+
+                var html = '';
+
+                // 总览卡片
+                html += '<div style="flex:1;min-width:200px;background:#f8fafc;border-radius:10px;padding:14px;">';
+                html += '<div style="font-weight:600;font-size:0.82rem;color:var(--text);margin-bottom:8px;">总览</div>';
+                html += '<div style="font-size:1.6rem;font-weight:700;color:var(--primary);">' + data.length + '</div>';
+                html += '<div style="font-size:0.72rem;color:#888;">条检查信息</div>';
+                html += '<div style="margin-top:8px;font-size:0.72rem;color:#666;">时间跨度<br>' + timeRange + '</div>';
+                html += '</div>';
+
+                // 性质分布
+                html += '<div style="flex:1.5;min-width:280px;background:#f8fafc;border-radius:10px;padding:14px;">';
+                html += '<div style="font-weight:600;font-size:0.82rem;color:var(--text);margin-bottom:8px;">性质分布</div>';
+                var natOrder = ['A类','B类','C类','红线','空白'];
+                var maxNat = Math.max(1, Math.max.apply(null, Object.values(nats)));
+                natOrder.forEach(function(k) {
+                    var v = nats[k] || 0;
+                    var pct = Math.round(v / data.length * 100);
+                    var barW = Math.round(v / maxNat * 100);
+                    var colors = { 'A类':'#dc2626','B类':'#f59e0b','C类':'#3b82f6','红线':'#742a2a','空白':'#6b7280' };
+                    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:0.75rem;">';
+                    html += '<span style="width:36px;text-align:right;color:'+(colors[k]||'#888')+';font-weight:600;">'+k+'</span>';
+                    html += '<span style="flex:1;background:#e5e7eb;border-radius:4px;height:16px;overflow:hidden;">';
+                    html += '<span style="display:block;width:'+barW+'%;height:100%;background:'+(colors[k]||'#888')+';border-radius:4px;"></span></span>';
+                    html += '<span style="width:50px;text-align:right;color:#666;">'+v+'条('+pct+'%)</span></div>';
+                });
+                html += '</div>';
+
+                // 类别分布
+                html += '<div style="flex:1.5;min-width:280px;background:#f8fafc;border-radius:10px;padding:14px;">';
+                html += '<div style="font-weight:600;font-size:0.82rem;color:var(--text);margin-bottom:8px;">类别分布</div>';
+                var sortedCats = Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,8);
+                var maxCat = Math.max(1, sortedCats.length ? sortedCats[0][1] : 1);
+                sortedCats.forEach(function(e) {
+                    var name = e[0], v = e[1];
+                    var pct = Math.round(v / data.length * 100);
+                    var barW = Math.round(v / maxCat * 100);
+                    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:0.75rem;">';
+                    html += '<span style="width:60px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+name+'</span>';
+                    html += '<span style="flex:1;background:#e5e7eb;border-radius:4px;height:16px;overflow:hidden;">';
+                    html += '<span style="display:block;width:'+barW+'%;height:100%;background:#8b5cf6;border-radius:4px;"></span></span>';
+                    html += '<span style="width:50px;text-align:right;color:#666;">'+v+'条('+pct+'%)</span></div>';
+                });
+                html += '</div>';
+
+                // 单位排行
+                if (topUnits.length) {
+                    html += '<div style="flex:2;min-width:300px;background:#f8fafc;border-radius:10px;padding:14px;">';
+                    html += '<div style="font-weight:600;font-size:0.82rem;color:var(--text);margin-bottom:8px;">单位违规 TOP' + Math.min(10,topUnits.length) + '</div>';
+                    var maxU = topUnits[0][1];
+                    topUnits.forEach(function(e, i) {
+                        var name = e[0], v = e[1];
+                        var barW = Math.round(v / maxU * 100);
+                        var barColor = i < 3 ? (i===0?'#dc2626':i===1?'#f59e0b':'#3b82f6') : '#8b5cf6';
+                        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:0.73rem;">';
+                        html += '<span style="width:18px;text-align:center;font-weight:700;color:'+barColor+';">'+(i+1)+'</span>';
+                        html += '<span style="width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+name+'</span>';
+                        html += '<span style="flex:1;background:#e5e7eb;border-radius:3px;height:14px;overflow:hidden;">';
+                        html += '<span style="display:block;width:'+barW+'%;height:100%;background:'+barColor+';border-radius:3px;"></span></span>';
+                        html += '<span style="width:32px;text-align:right;font-weight:600;color:#666;">'+v+'</span></div>';
+                    });
+                    html += '</div>';
+                }
+
+                content.innerHTML = html;
+                panel.style.display = 'block';
+                panel.scrollIntoView({ behavior: 'smooth' });
+            };
 
             window.issueAddKeyword = function() {
                 if (keywordNum >= MAX_KEYWORDS) return;
@@ -220,6 +330,12 @@
                 showLowMatch = false;
                 var catSelect = document.getElementById('issue-categorySelect');
                 if (catSelect) catSelect.value = '';
+                var unitSelect = document.getElementById('issue-unitSelect');
+                if (unitSelect) unitSelect.value = '';
+                var ds = document.getElementById('issue-date-start');
+                if (ds) ds.value = '';
+                var de = document.getElementById('issue-date-end');
+                if (de) de.value = '';
             };
 
             function getXingzhi(item) {
@@ -350,6 +466,20 @@
                 var tradeFilter = document.getElementById('issue-categorySelect')?.value || '';
                 if (tradeFilter) {
                     data = data.filter(function(d) { return extractTradeFromUnit(d.unit) === tradeFilter; });
+                }
+                // 按选中单位过滤
+                var unitFilter = document.getElementById('issue-unitSelect')?.value || '';
+                if (unitFilter) {
+                    data = data.filter(function(d) { return (d.unit || '') === unitFilter; });
+                }
+                // 按日期范围过滤
+                var dateStart = document.getElementById('issue-date-start')?.value || '';
+                var dateEnd = document.getElementById('issue-date-end')?.value || '';
+                if (dateStart) {
+                    data = data.filter(function(d) { try { return new Date(d.datetime || '') >= new Date(dateStart); } catch(e) { return true; } });
+                }
+                if (dateEnd) {
+                    data = data.filter(function(d) { try { return new Date(d.datetime || '') <= new Date(dateEnd + 'T23:59:59'); } catch(e) { return true; } });
                 }
 
                 setTimeout(() => {

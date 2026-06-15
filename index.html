@@ -245,16 +245,33 @@
                             <button class="btn btn-success" onclick="issueImportFile()">📥 导入</button>
                             <button class="btn btn-primary" onclick="issueExportJSON()">📤 导出</button>
                             <button class="btn btn-info" onclick="issueDownloadTemplate()">📄 模板</button>
+                            <button class="btn btn-stats" onclick="issueShowStats()" style="background:#8b5cf6;color:#fff;border:none;">📊 统计</button>
                             <button class="btn btn-warning" onclick="issueShowClear()">🗑️ 清空</button>
                         </div>
                     </div>
                     <input type="file" id="issue-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
                     
-                    <div class="form-group" style="margin-top:12px;">
-                        <label class="form-label">选择专业</label>
-                        <select id="issue-categorySelect" class="form-select">
-                            <option value="">全部专业</option>
-                        </select>
+                    <div class="form-group" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                        <div style="flex:1;min-width:130px;">
+                            <label class="form-label">选择专业</label>
+                            <select id="issue-categorySelect" class="form-select">
+                                <option value="">全部专业</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:130px;">
+                            <label class="form-label">选择单位</label>
+                            <select id="issue-unitSelect" class="form-select">
+                                <option value="">全部单位</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:100px;">
+                            <label class="form-label">开始日期</label>
+                            <input type="date" id="issue-date-start" style="width:100%;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                        </div>
+                        <div style="flex:1;min-width:100px;">
+                            <label class="form-label">结束日期</label>
+                            <input type="date" id="issue-date-end" style="width:100%;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                        </div>
                     </div>
 
                     <div class="search-box">
@@ -276,6 +293,14 @@
                     
                     <div id="issue-results"></div>
                     <div id="issue-lowMatchResults" style="display:none;"></div>
+                    <!-- 统计分析面板 -->
+                    <div id="issue-statsPanel" style="display:none;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-top:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                            <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">📊 数据统计分析</span>
+                            <button onclick="document.getElementById('issue-statsPanel').style.display='none'" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#888;">✕</button>
+                        </div>
+                        <div id="issue-statsContent" style="display:flex;flex-wrap:wrap;gap:16px;"></div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -336,4 +336,9 @@ window.onclick = function(e) {
     mo.observe(document.body, { childList: true, subtree: true });
 })();
 
+window.toggleSettingsPanel = function() {
+    var p = document.getElementById('settings-panel');
+    if (p) p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'block' : 'none';
+};
+
 console.log('%c安监智能查询系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');

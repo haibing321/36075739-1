@@ -166,6 +166,7 @@
                 <button class="nav-btn" onclick="switchTab('diary')" id="tab-diary"><span>📝</span> 工作日志</button>
                 <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone"><span>📞</span> 车站电话</button>
                 <button class="nav-btn" onclick="switchTab('doubao')" id="tab-doubao"><span>🤖</span> 智能助手</button>
+                <button class="nav-btn" onclick="toggleSettingsPanel()" id="tab-settings" style="margin-left:auto;"><span>⚙️</span> 设置</button>
             </nav>
         </div>
     </header>
@@ -481,17 +482,31 @@
                 </div>
                 <div class="card-body" style="display:flex;flex-direction:column;gap:0;position:relative;min-height:0;">
 
-                    <!-- 操作栏：API 配置 + 备份/导入 + 状态 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-                        <div style="display:flex;gap:8px;">
-                            <button id="ds-api-config-btn" style="padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">⚙️ API 配置</button>
-                            <button id="global-backup-btn" style="padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;">📦 备份</button>
-                            <button id="global-restore-btn" style="padding:6px 14px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;">📂 导入</button>
+                    <!-- 设置面板（浮层） -->
+                    <div id="settings-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11000;">
+                        <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="toggleSettingsPanel()"></div>
+                        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:min(340px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.15);">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                                <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
+                                <button onclick="toggleSettingsPanel()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" style="padding:10px 14px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔧 API 配置</button>
+                                <button onclick="toggleSettingsPanel();document.getElementById('global-backup-btn').click();" style="padding:10px 14px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📦 一键备份</button>
+                                <button onclick="toggleSettingsPanel();document.getElementById('global-restore-btn').click();" style="padding:10px 14px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📂 一键导入</button>
+                            </div>
+                            <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
+                                <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
+                                <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
+                            </div>
                         </div>
-                        <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;">
-                            <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
-                            <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
-                        </div>
+                    </div>
+
+                    <!-- 隐藏的操作按钮（被设置面板调用） -->
+                    <div style="display:none;">
+                        <button id="ds-api-config-btn" style="padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">⚙️ API 配置</button>
+                        <button id="global-backup-btn" style="padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;">📦 备份</button>
+                        <button id="global-restore-btn" style="padding:6px 14px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;">📂 导入</button>
                     </div>
 
                     <!-- API 配置模态框 -->

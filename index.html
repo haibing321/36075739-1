@@ -654,10 +654,10 @@
                             <option value="frontend">💻 前端工程师</option>
                             <option value="riskanalyst">🔍 风险分析专家</option>
                           </select>
-                          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem;">
-                            <input type="checkbox" id="memoryEnable" checked> 🧠 长期记忆
+                          <label style="display:none;">
+                            <input type="checkbox" id="memoryEnableOld" checked>
                           </label>
-                          </label>
+                          <button id="ds-reset-datasource" style="display:none;"></button>
                           <div style="flex:1"></div>
                           <button id="statsBtn" style="background: #e2e8f0; border: none; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer;">📊 统计</button>
                           <button id="ds-reset-datasource" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer; color: #15803d;">🔄 数据源</button>
@@ -1275,6 +1275,14 @@
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" style="padding:10px 14px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔧 API 配置</button>
+                <button onclick="toggleSettingsPanel();document.getElementById('ds-reset-datasource').click();" style="padding:10px 14px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔄 数据源配置</button>
+                <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;cursor:pointer;">
+                    <span style="font-size:0.88rem;">🧠 长期记忆</span>
+                    <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
+                </label>
+                <button onclick="toggleSettingsPanel();importRailwayTerms();" style="padding:10px 14px;background:#0891b2;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📚 导入词库</button>
+                <button onclick="toggleSettingsPanel();exportRailwayTerms();" style="padding:10px 14px;background:#0e7490;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📤 导出词库</button>
+                <div style="border-top:1px solid #e5e7eb;"></div>
                 <button onclick="toggleSettingsPanel();document.getElementById('global-backup-btn').click();" style="padding:10px 14px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📦 一键备份</button>
                 <button onclick="toggleSettingsPanel();document.getElementById('global-restore-btn').click();" style="padding:10px 14px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📂 一键导入</button>
             </div>

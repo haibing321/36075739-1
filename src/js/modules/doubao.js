@@ -7083,16 +7083,31 @@ ${details || '(无)'}
 
       async function _buildRiskDataSummary(dateStart, dateEnd, tradeFilter, unitFilter) {
         var parts = [];
-        var now = new Date();
         var startDate = dateStart ? new Date(dateStart) : null;
         var endDate = dateEnd ? new Date(dateEnd + 'T23:59:59') : null;
+        var all = [];
         try {
-          var db = await window.dbManager.getDB('RailwayIssueDB_v2');
-          var all = await new Promise(function(res) {
+          // 优先用 dbManager，失败则直接打开
+          var db;
+          try {
+            db = await window.dbManager.getDB('RailwayIssueDB_v2');
+          } catch(e) {
+            console.warn('[风险] dbManager 失败，尝试直接打开:', e.message);
+            db = await new Promise(function(res, rej) {
+              var r = indexedDB.open('RailwayIssueDB_v2', 1);
+              r.onerror = function(){ rej(r.error); };
+              r.onsuccess = function(){ res(r.result); };
+            });
+          }
+          all = await new Promise(function(res) {
             var tx = db.transaction('issues','readonly');
             var s = tx.objectStore('issues');
             s.getAll().onsuccess = function(e) { res(e.target.result || []); };
           });
+          // 非 dbManager 连接用完关闭
+          if (!window.dbManager || typeof window.dbManager.getDB !== 'function') {
+            try { db.close(); } catch(e) {}
+          }
           if (all.length) {
             var filtered = all;
             if (startDate) {

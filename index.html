@@ -799,7 +799,14 @@
                                     <input type="text" id="risk-unit" placeholder="单位名称" 
                                         style="flex:1;min-width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">
                                 </div>
-                                
+                                <!-- 数据预览：实时显示匹配条数 -->
+                                <div id="risk-data-preview" style="display:none;align-items:center;gap:8px;padding:6px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:0.75rem;color:#166534;margin-bottom:8px;">
+                                    <span>📊 匹配数据：</span>
+                                    <span id="risk-preview-total">—</span>
+                                    <span style="color:#9ca3af;">|</span>
+                                    <span>筛选后：</span>
+                                    <span id="risk-preview-filtered">—</span>
+                                </div>
                                 <!-- 第三行：研判重点 -->
                                 <div style="margin-bottom:8px;">
                                     <input type="text" id="risk-focus" placeholder="研判重点，如：施工安全、季节性风险、人员违章…"

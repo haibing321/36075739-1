@@ -7026,6 +7026,62 @@ ${details || '(无)'}
         }
       }
 
+      // 实时更新数据预览计数
+      function updateRiskPreview() {
+        var preview = document.getElementById('risk-data-preview');
+        if (!preview) return;
+        var dateStart = document.getElementById('risk-date-start')?.value || '';
+        var dateEnd = document.getElementById('risk-date-end')?.value || '';
+        var trade = document.getElementById('risk-trade')?.value || '';
+        var unit = document.getElementById('risk-unit')?.value.trim() || '';
+
+        if (!dateStart && !dateEnd && !trade && !unit) {
+          preview.style.display = 'none';
+          return;
+        }
+        preview.style.display = 'flex';
+
+        // 异步查询 IndexedDB
+        try {
+          var dbReq = indexedDB.open('RailwayIssueDB_v2', 1);
+          dbReq.onsuccess = function() {
+            var db = dbReq.result;
+            if (!db.objectStoreNames.contains('issues')) { db.close(); return; }
+            var tx = db.transaction('issues', 'readonly');
+            var s = tx.objectStore('issues');
+            s.getAll().onsuccess = function(e) {
+              var all = e.target.result || [];
+              var totalEl = document.getElementById('risk-preview-total');
+              var filteredEl = document.getElementById('risk-preview-filtered');
+              if (totalEl) totalEl.textContent = all.length + ' 条';
+              var filtered = all;
+              if (dateStart) {
+                var sd = new Date(dateStart);
+                filtered = filtered.filter(function(d) {
+                  try { return new Date(d.datetime || '') >= sd; } catch(e) { return false; }
+                });
+              }
+              if (dateEnd) {
+                var ed = new Date(dateEnd + 'T23:59:59');
+                filtered = filtered.filter(function(d) {
+                  try { return new Date(d.datetime || '') <= ed; } catch(e) { return false; }
+                });
+              }
+              if (trade) {
+                filtered = filtered.filter(function(d) { return d.category === trade; });
+              }
+              if (unit) {
+                filtered = filtered.filter(function(d) {
+                  return (d.unit || '').indexOf(unit) !== -1 || (d.department || '').indexOf(unit) !== -1;
+                });
+              }
+              if (filteredEl) filteredEl.textContent = filtered.length + ' 条';
+              db.close();
+            };
+          };
+        } catch(e) {}
+      }
+
       window.runRiskAnalysis = async function(followUp) {
         var container = document.getElementById('risk-results');
         var refineArea = document.getElementById('risk-refine');
@@ -7351,6 +7407,11 @@ ${details || '(无)'}
       // ---------- 13. 初始化 ----------
       loadMemories();
       loadRiskConfig(); // 恢复上次风险研判配置和报告
+      // 绑定风险研判筛选条件实时预览
+      ['risk-date-start','risk-date-end','risk-trade','risk-unit'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) { el.addEventListener('change', updateRiskPreview); el.addEventListener('input', updateRiskPreview); }
+      });
       var memoryCheck = document.getElementById('memoryEnable');
       if (memoryCheck) {
         memoryEnabled = memoryCheck.checked;

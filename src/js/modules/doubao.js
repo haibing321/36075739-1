@@ -6967,7 +6967,6 @@ ${details || '(无)'}
         var conf = {
           dateStart: document.getElementById('risk-date-start')?.value || '',
           dateEnd: document.getElementById('risk-date-end')?.value || '',
-          trade: document.getElementById('risk-trade')?.value || '',
           unit: document.getElementById('risk-unit')?.value || '',
           focus: document.getElementById('risk-focus')?.value || '',
           format: (document.querySelector('input[name="risk-format"]:checked') || {}).value || 'full'
@@ -6981,7 +6980,6 @@ ${details || '(无)'}
           var el;
           if (conf.dateStart && (el = document.getElementById('risk-date-start'))) el.value = conf.dateStart;
           if (conf.dateEnd && (el = document.getElementById('risk-date-end'))) el.value = conf.dateEnd;
-          if (conf.trade && (el = document.getElementById('risk-trade'))) el.value = conf.trade;
           if (conf.unit && (el = document.getElementById('risk-unit'))) el.value = conf.unit;
           if (conf.focus && (el = document.getElementById('risk-focus'))) el.value = conf.focus;
           if (conf.format) {
@@ -7039,7 +7037,6 @@ ${details || '(无)'}
         if (!preview) return;
         var dateStart = document.getElementById('risk-date-start')?.value || '';
         var dateEnd = document.getElementById('risk-date-end')?.value || '';
-        var trade = document.getElementById('risk-trade')?.value || '';
         var unit = document.getElementById('risk-unit')?.value.trim() || '';
 
         try {
@@ -7051,24 +7048,11 @@ ${details || '(无)'}
             var s = tx.objectStore('issues');
             s.getAll().onsuccess = function(e) {
               var all = e.target.result || [];
-              var cats = new Set();
               var units = new Set();
               for (var i = 0; i < all.length; i++) {
                 var d = all[i];
-                if (d.category) cats.add(d.category);
                 if (d.unit) units.add(d.unit);
                 if (d.department) units.add(d.department);
-              }
-
-              // 更新专业下拉（除手动选的项外替换为实际数据）
-              var tplSelect = document.getElementById('risk-trade');
-              if (tplSelect && cats.size > 0) {
-                var curVal = tplSelect.value;
-                tplSelect.innerHTML = '<option value="">全部专业</option>';
-                Array.from(cats).sort().forEach(function(c) {
-                  tplSelect.innerHTML += '<option value="'+c+'">'+c+'</option>';
-                });
-                if (curVal) tplSelect.value = curVal;
               }
 
               // 更新单位数据列表
@@ -7087,7 +7071,6 @@ ${details || '(无)'}
                 });
                 if (!unitInput.getAttribute('list')) {
                   unitInput.setAttribute('list', datalistId);
-                  unitInput.placeholder = '输入单位名称（可下拉选择）';
                 }
               }
 
@@ -7108,16 +7091,13 @@ ${details || '(无)'}
                   try { return new Date(d.datetime || '') <= ed; } catch(e) { return false; }
                 });
               }
-              if (trade) {
-                filtered = filtered.filter(function(d) { return d.category === trade; });
-              }
               if (unit) {
                 filtered = filtered.filter(function(d) {
                   return (d.unit || '').indexOf(unit) !== -1 || (d.department || '').indexOf(unit) !== -1;
                 });
               }
               if (filteredEl) filteredEl.textContent = filtered.length + ' 条';
-              if (dateStart || dateEnd || trade || unit) {
+              if (dateStart || dateEnd || unit) {
                 preview.style.display = 'flex';
               }
               db.close();
@@ -7146,19 +7126,17 @@ ${details || '(无)'}
             // 读取研判条件
             var dateStart = document.getElementById('risk-date-start')?.value || '';
             var dateEnd = document.getElementById('risk-date-end')?.value || '';
-            var trade = document.getElementById('risk-trade')?.value || '';
             var unit = document.getElementById('risk-unit')?.value.trim() || '';
             var focus = document.getElementById('risk-focus')?.value.trim() || '';
             var formatEl = document.querySelector('input[name="risk-format"]:checked');
             var format = formatEl ? formatEl.value : 'full';
             var formatDesc = { full: '完整报告：总体概况 + 风险分级 + 预警措施', brief: '简要摘要：只输出关键风险点和数量统计', actions: '整改措施清单：仅列出3-5条可执行的整改措施' }[format] || '完整报告';
 
-            var summary = await _buildRiskDataSummary(dateStart, dateEnd, trade, unit);
+            var summary = await _buildRiskDataSummary(dateStart, dateEnd, unit);
             var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
             userMsg += '研判要求：\n';
             if (dateStart || dateEnd) userMsg += '- 时间范围：' + (dateStart||'不限') + ' 至 ' + (dateEnd||'不限') + '\n';
-            if (trade) userMsg += '- 限定专业：' + trade + '\n';
-            if (unit) userMsg += '- 限定单位：' + unit + '\n';
+            if (unit) userMsg += '- 限定责任单位：' + unit + '\n';
             userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
             userMsg += '- 输出格式：' + formatDesc + '\n';
             userMsg += '\n请开始分析。';
@@ -7219,7 +7197,7 @@ ${details || '(无)'}
         window.runRiskAnalysis(true);
       };
 
-      async function _buildRiskDataSummary(dateStart, dateEnd, tradeFilter, unitFilter) {
+      async function _buildRiskDataSummary(dateStart, dateEnd, unitFilter) {
         var parts = [];
         var startDate = dateStart ? new Date(dateStart) : null;
         var endDate = dateEnd ? new Date(dateEnd + 'T23:59:59') : null;
@@ -7258,9 +7236,6 @@ ${details || '(无)'}
                 try { return new Date(d.datetime||'') <= endDate; } catch(e) { return false; }
               });
             }
-            if (tradeFilter) {
-              filtered = filtered.filter(function(d) { return d.category === tradeFilter; });
-            }
             if (unitFilter) {
               filtered = filtered.filter(function(d) {
                 return (d.unit||'').indexOf(unitFilter) !== -1 || (d.department||'').indexOf(unitFilter) !== -1;
@@ -7272,7 +7247,7 @@ ${details || '(无)'}
             var dateLabel = cutoffDate
               ? (dateRangeDays <= 90 ? '近'+Math.round(dateRangeDays/30)+'月' : dateRangeDays <= 365 ? '近'+Math.round(dateRangeDays/30)+'月' : '全部')
               : '全部时间';
-            parts.push('【检查信息】总计'+all.length+'条, 本次筛选'+filtered.length+'条('+dateLabel+(tradeFilter?'/'+tradeFilter:'')+')');
+            parts.push('【检查信息】总计'+all.length+'条, 本次筛选'+filtered.length+'条('+dateLabel+(unitFilter?'/单位:'+unitFilter:'')+')');
             parts.push('专业TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
             parts.push('性质: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
             parts.push('样本: '+filtered.slice(0,5).map(function(d){return (d.datetime||'')+' '+(d.category||'')+' '+(d.content||'').slice(0,60)}).join(' | '));
@@ -7452,7 +7427,7 @@ ${details || '(无)'}
       loadMemories();
       loadRiskConfig(); // 恢复上次风险研判配置和报告
       // 绑定风险研判筛选条件实时预览
-      ['risk-date-start','risk-date-end','risk-trade','risk-unit'].forEach(function(id) {
+      ['risk-date-start','risk-date-end','risk-unit'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) { el.addEventListener('change', updateRiskPreview); el.addEventListener('input', updateRiskPreview); }
       });

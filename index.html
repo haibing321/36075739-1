@@ -787,17 +787,11 @@
                                     <input type="date" id="risk-date-end" style="flex:1;min-width:100px;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.78rem;">
                                 </div>
                                 
-                                <!-- 第二行：专业 + 单位 -->
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                                    <select id="risk-trade" style="flex:1;min-width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;background:#fff;">
-                                        <option value="">全部专业</option>
-                                        <option value="工务">工务</option><option value="电务">电务</option><option value="供电">供电</option>
-                                        <option value="客运">客运</option>
-                                        <option value="车务">车务</option><option value="机务">机务</option><option value="车辆">车辆</option>
-                                        <option value="通信">通信</option><option value="房建">房建</option><option value="货运">货运</option>
-                                    </select>
-                                    <input type="text" id="risk-unit" placeholder="单位名称" 
-                                        style="flex:1;min-width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">
+                                <!-- 第二行：责任单位 -->
+                                <div style="margin-bottom:8px;">
+                                    <span style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:4px;">责任单位：</span>
+                                    <input type="text" id="risk-unit" placeholder="输入责任单位名称筛选（如：兰州电务段、北京车辆段）" 
+                                        style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;box-sizing:border-box;">
                                 </div>
                                 <!-- 数据预览：实时显示匹配条数 -->
                                 <div id="risk-data-preview" style="display:none;align-items:center;gap:8px;padding:6px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:0.75rem;color:#166534;margin-bottom:8px;">

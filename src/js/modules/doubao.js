@@ -7124,7 +7124,7 @@ ${details || '(无)'}
             parts.push('性质: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
             parts.push('样本: '+filtered.slice(0,5).map(function(d){return (d.datetime||'')+' '+(d.category||'')+' '+(d.content||'').slice(0,60)}).join(' | '));
           }
-        } catch(e) { parts.push('【检查信息】读取失败'); }
+        } catch(e) { parts.push('【检查信息】读取失败'); console.error('风险研判: 检查信息读取异常', e); }
 
         // 读取检查手册数据供 AI 参考
         try {

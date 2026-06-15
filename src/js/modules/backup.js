@@ -58,6 +58,7 @@
         return new Promise(function(resolve, reject) {
             // 优先用 dbManager 共享连接，避免版本冲突
             var p;
+            var isOwnDB = false;
             if (window.dbManager && typeof window.dbManager.getDB === 'function') {
                 p = window.dbManager.getDB(dbName).then(function(db) {
                     if (!db.objectStoreNames.contains(storeName)) {
@@ -66,6 +67,7 @@
                     return db;
                 });
             } else {
+                isOwnDB = true;
                 p = new Promise(function(res, rej) {
                     var req = indexedDB.open(dbName, version || 1);
                     req.onupgradeneeded = function(e) {
@@ -107,7 +109,11 @@
                     };
                 }
                 if (data.length === 0) resolve();
-                tx.oncomplete = function() { db.close(); };
+                tx.oncomplete = function() {
+                    // 只有自己打开的连接才关闭，dbManager 共享连接不关
+                    if (isOwnDB) { try { db.close(); } catch(e) {} }
+                    resolve();
+                };
                 tx.onerror = function() {
                     if (!hasError) {
                         console.error('事务错误 ' + dbName + '.' + storeName + ':', tx.error);

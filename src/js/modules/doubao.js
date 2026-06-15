@@ -6988,6 +6988,41 @@ ${details || '(无)'}
         } catch(e) {}
       }
 
+      async function saveRiskReportToWriter(title, html) {
+        try {
+          var now = new Date();
+          var plainText = html.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
+          var report = {
+            title: title || ('风险研判 ' + now.toLocaleString('zh-CN').replace(/\//g, '-')),
+            category: '风险研判',
+            content: plainText.slice(0, 500),
+            rawHtml: html,
+            date: now.toISOString(),
+            createdAt: now.getTime()
+          };
+          var dbReq = indexedDB.open('railway_writer_db', 2);
+          await new Promise(function(resolve, reject) {
+            dbReq.onupgradeneeded = function(e) {
+              var db = e.target.result;
+              if (!db.objectStoreNames.contains('writing_reports')) {
+                db.createObjectStore('writing_reports', { keyPath: 'id', autoIncrement: true });
+              }
+            };
+            dbReq.onsuccess = function() {
+              var db = dbReq.result;
+              var tx = db.transaction('writing_reports', 'readwrite');
+              tx.objectStore('writing_reports').add(report);
+              tx.oncomplete = function() { db.close(); resolve(); };
+              tx.onerror = function() { reject(tx.error); };
+            };
+            dbReq.onerror = function() { reject(dbReq.error); };
+          });
+          console.log('风险报告已存入写作历史');
+        } catch(e) {
+          console.warn('保存风险报告到写作历史失败:', e);
+        }
+      }
+
       window.runRiskAnalysis = async function(followUp) {
         var container = document.getElementById('risk-results');
         var refineArea = document.getElementById('risk-refine');

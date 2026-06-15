@@ -493,10 +493,11 @@
             function showApiConfigModal() {
                 document.getElementById('modal-apiurl').value = dsApiUrl;
                 document.getElementById('modal-model').value = dsModel;
-                // 显示当前已保存的 key（脱敏显示前8位），方便确认或修改
+                // 已有 Key 时用星号掩码显示，避免泄露
                 var currentKey = dsApiKey || '';
-                document.getElementById('modal-apikey').value = currentKey;
-                document.getElementById('modal-apikey').type = currentKey ? 'text' : 'password';
+                document.getElementById('modal-apikey').value = currentKey ? '****************' : '';
+                document.getElementById('modal-apikey').type = 'password';
+                document.getElementById('modal-apikey').placeholder = currentKey ? '已配置（如需修改请重新输入）' : 'sk-...';
                 document.getElementById('api-config-modal').style.display = 'block';
             }
 
@@ -526,6 +527,8 @@
                 var url = document.getElementById('modal-apiurl').value.trim();
                 var model = document.getElementById('modal-model').value.trim();
                 var key = document.getElementById('modal-apikey').value.trim();
+                // 星号掩码表示用户未修改，保留原 Key
+                if (key === '****************') key = dsApiKey;
                 if (!url) { alert('请输入 API 地址'); return; }
                 if (!model) { alert('请输入模型名称'); return; }
                 if (key) {

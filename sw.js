@@ -4,7 +4,7 @@
  */
 
 var CACHE_PREFIX = 'aj-v';
-var CACHE_VERSION = '9';
+var CACHE_VERSION = '10';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========

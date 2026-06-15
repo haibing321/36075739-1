@@ -364,4 +364,24 @@ window.showAboutPanel = function() {
     if (p) p.style.display = 'flex';
 };
 
+// API 配置：根据选中的 API 地址自动推荐模型
+window._updateModelList = function() {
+    var urlEl = document.getElementById('modal-apiurl');
+    var modelEl = document.getElementById('modal-model');
+    if (!urlEl || !modelEl) return;
+    var url = (urlEl.value || '').trim();
+    // 常用 API 地址 → 默认模型映射
+    var map = {
+        'https://api.deepseek.com/chat/completions': 'deepseek-chat',
+        'https://api.openai.com/v1/chat/completions': 'gpt-4o-mini',
+        'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions': 'qwen-turbo',
+        'https://open.bigmodel.cn/api/paas/v4/chat/completions': 'glm-4-flash',
+        'https://api.moonshot.cn/v1/chat/completions': 'moonshot-v1-8k',
+        'https://api.lingyiwanwu.com/v1/chat/completions': 'yi-medium',
+        'https://api.baichuan-ai.com/v1/chat/completions': 'Baichuan3-Turbo',
+        'https://api.minimax.chat/v1/text/chatcompletion_v2': 'abab6.5s-chat'
+    };
+    if (map[url]) modelEl.value = map[url];
+};
+
 console.log('%c安监智能查询系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');

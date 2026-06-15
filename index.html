@@ -1268,7 +1268,7 @@
     <!-- 设置面板（全局浮层，不依赖任何tab） -->
     <div id="settings-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11000;">
         <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="toggleSettingsPanel()"></div>
-        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:min(340px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.15);">
+        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:min(360px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
                 <button onclick="toggleSettingsPanel()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>
@@ -1280,16 +1280,52 @@
                     <span style="font-size:0.88rem;">🧠 长期记忆</span>
                     <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
                 </label>
-                <button onclick="toggleSettingsPanel();importRailwayTerms();" style="padding:10px 14px;background:#0891b2;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📚 导入词库</button>
-                <button onclick="toggleSettingsPanel();exportRailwayTerms();" style="padding:10px 14px;background:#0e7490;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📤 导出词库</button>
+
+                <!-- 数据管理（可展开） -->
+                <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:0.88rem;cursor:pointer;">📦 数据管理 ▾</div>
+                <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
+                    <button onclick="document.getElementById('global-backup-btn').click();" style="padding:10px 14px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📦 一键备份</button>
+                    <button onclick="document.getElementById('global-restore-btn').click();" style="padding:10px 14px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📂 一键导入</button>
+                </div>
+
+                <!-- 术语库管理（可展开） -->
+                <div onclick="var s=document.getElementById('set-term-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#ecfeff;border:1px solid #67e8f9;border-radius:10px;font-size:0.88rem;cursor:pointer;">📚 术语库管理 ▾</div>
+                <div id="set-term-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
+                    <button onclick="importRailwayTerms();" style="padding:10px 14px;background:#0891b2;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📚 导入词库</button>
+                    <button onclick="exportRailwayTerms();" style="padding:10px 14px;background:#0e7490;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📤 导出词库</button>
+                </div>
+
                 <div style="border-top:1px solid #e5e7eb;"></div>
-                <button onclick="toggleSettingsPanel();document.getElementById('global-backup-btn').click();" style="padding:10px 14px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📦 一键备份</button>
-                <button onclick="toggleSettingsPanel();document.getElementById('global-restore-btn').click();" style="padding:10px 14px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">📂 一键导入</button>
+
+                <button onclick="clearAllCache()" style="padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;color:#991b1b;">🗑️ 清除缓存</button>
+                <button onclick="toggleSettingsPanel();showAboutPanel();" style="padding:10px 14px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">ℹ️ 关于系统</button>
             </div>
             <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
                 <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
                 <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
             </div>
+        </div>
+    </div>
+
+    <!-- 关于系统面板 -->
+    <div id="about-panel" style="display:none;position:fixed;inset:0;z-index:11100;">
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:14px;padding:22px;width:min(380px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.15);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">🚂 安监智能查询系统</span>
+                <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>
+            </div>
+            <div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7;">
+                <div style="margin-bottom:8px;">铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判。</div>
+                <div><b>主要功能：</b></div>
+                <div style="padding-left:8px;">📖 检查手册 · 四层级多专业项点定位</div>
+                <div style="padding-left:8px;">📊 检查信息 · 关键词检索与批量分析</div>
+                <div style="padding-left:8px;">📋 规章制度 · 专业筛选全文比对高亮</div>
+                <div style="padding-left:8px;">📝 工作日志 · 图文记录多媒体提醒</div>
+                <div style="padding-left:8px;">📞 车站电话 · 多单位通讯录快捷拨号</div>
+                <div style="padding-left:8px;">🤖 智能助手 · AI对规对话写作风险研判</div>
+            </div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:0.75rem;color:#9ca3af;">数据存储于浏览器 IndexedDB · 离线可用 · GitHub Pages 部署</div>
         </div>
     </div>
 

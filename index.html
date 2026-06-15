@@ -490,6 +490,10 @@
                                 <button onclick="document.getElementById('api-config-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>
                             </div>
                             <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 2px 0 0;">
+                                <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:0.78rem;color:#1e40af;line-height:1.6;">
+                                    <div style="font-weight:600;margin-bottom:4px;">💡 为什么需要配置 API？</div>
+                                    智能助手（AI对话、智能对规、智能写作、风险研判）需调用大语言模型处理。 配置后即可使用全部 AI 功能，不配置则只能使用豆包网页版。
+                                </div>
                                 <div style="display:flex;flex-direction:column;gap:16px;">
                                 <div><label style="font-weight:600;display:block;margin-bottom:6px;">API 地址 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-apiurl" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="https://api.deepseek.com/chat/completions" value="https://api.deepseek.com/chat/completions"><div style="font-size:0.7rem;color:#718096;margin-top:4px;">支持 OpenAI 格式（DeepSeek、OpenAI、通义千问等）</div></div>
                                 <div><label style="font-weight:600;display:block;margin-bottom:6px;">模型名称 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-model" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="deepseek-chat" value="deepseek-chat"><div style="font-size:0.7rem;color:#718096;margin-top:4px;">DeepSeek: deepseek-chat | 智谱: glm-4 | OpenAI: gpt-3.5-turbo | 通义: qwen-turbo</div></div>

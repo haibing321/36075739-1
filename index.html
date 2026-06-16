@@ -714,14 +714,14 @@
                             <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;border-bottom:2px solid var(--border);padding-bottom:6px;">
                                 <span style="font-size:0.8rem;color:var(--text-secondary);margin-right:2px;">分类：</span>
                                 <button onclick="wrMaterialFilter('all')" id="wr-mat-filter-all" class="wr-mat-tab wr-mat-tab-active" style="padding:5px 12px;border-radius:20px;border:1px solid var(--primary);background:var(--primary);color:#fff;font-size:0.78rem;cursor:pointer;white-space:nowrap;">全部</button>
-                                <button onclick="wrMaterialFilter('template')" id="wr-mat-filter-template" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">📝 写作模版</button>
-                                <button onclick="wrMatFilterHistory()" id="wr-mat-filter-history" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">📊 历史报告</button>
-                                <button onclick="wrMaterialFilter('inspect')" id="wr-mat-filter-inspect" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">🔍 检查信息</button>
+                                <button onclick="wrMaterialFilter('template')" id="wr-mat-filter-template" class="wr-mat-tab" class="btn-chip">📝 写作模版</button>
+                                <button onclick="wrMatFilterHistory()" id="wr-mat-filter-history" class="wr-mat-tab" class="btn-chip">📊 历史报告</button>
+                                <button onclick="wrMaterialFilter('inspect')" id="wr-mat-filter-inspect" class="wr-mat-tab" class="btn-chip">🔍 检查信息</button>
                                 <!-- 故障报告（整合故障统计） -->
-                                <button onclick="wrMaterialFilter('fault')" id="wr-mat-filter-fault" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">⚡ 故障报告</button>
+                                <button onclick="wrMaterialFilter('fault')" id="wr-mat-filter-fault" class="wr-mat-tab" class="btn-chip">⚡ 故障报告</button>
                                 <!-- 通报文电（整合会议纪要） -->
-                                <button onclick="wrMaterialFilter('dispatch')" id="wr-mat-filter-dispatch" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">📨 通报文电</button>
-                                <button onclick="wrMaterialFilter('other')" id="wr-mat-filter-other" class="wr-mat-tab" style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#f8fafc;font-size:0.78rem;cursor:pointer;white-space:nowrap;">📄 其它</button>
+                                <button onclick="wrMaterialFilter('dispatch')" id="wr-mat-filter-dispatch" class="wr-mat-tab" class="btn-chip">📨 通报文电</button>
+                                <button onclick="wrMaterialFilter('other')" id="wr-mat-filter-other" class="wr-mat-tab" class="btn-chip">📄 其它</button>
                                 <input id="wr-mat-search" placeholder="搜索..." type="text" oninput="wrRenderMaterials()"
                                     style="margin-left:auto;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;min-width:100px;">
                             </div>
@@ -832,7 +832,7 @@
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);display:flex;flex-direction:column;gap:14px;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-weight:700;font-size:1rem;color:var(--primary);">📥 导入资料 — 选择类型</span>
-                <button onclick="document.getElementById('wr-import-type-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);">✕</button>
+                <button onclick="document.getElementById('wr-import-type-modal').style.display='none'" class="btn-close">✕</button>
             </div>
             <div style="font-size:0.85rem;color:var(--text-secondary);">请先选择资料类型，再选择文件导入：</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -852,7 +852,7 @@
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(600px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span id="wr-tpl-modal-title" style="font-weight:700;font-size:1rem;color:var(--primary);">📝 自定义模板</span>
-                <button onclick="document.getElementById('wr-tpl-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);">✕</button>
+                <button onclick="document.getElementById('wr-tpl-modal').style.display='none'" class="btn-close">✕</button>
             </div>
             <div style="font-size:0.8rem;color:var(--text-secondary);padding:6px 10px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">💡 自定义模板：可将历史报告文本粘贴于此，保存后在撰写报告时可选用。支持 {{占位符}} 格式。</div>
             <div style="display:flex;flex-direction:column;gap:8px;">
@@ -1185,7 +1185,7 @@
         <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:min(360px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
-                <button onclick="toggleSettingsPanel()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>
+                <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" style="padding:10px 14px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔧 API 配置</button>
@@ -1197,22 +1197,22 @@
                 <!-- 数据管理（可展开） -->
                 <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:0.88rem;cursor:pointer;">📦 数据管理 ▾</div>
                 <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
-                    <button onclick="document.getElementById('global-backup-btn').click();" style="padding:10px 14px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📦 一键备份</button>
+                    <button onclick="document.getElementById('global-backup-btn').click();" class="btn-primary-sm" style="padding:10px 14px;background:#059669;border-radius:10px;text-align:left;">📦 一键备份</button>
                     <button onclick="document.getElementById('global-restore-btn').click();" style="padding:10px 14px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📂 一键导入</button>
                     <div style="border-top:1px solid #e5e7eb;margin:4px 0;"></div>
                     <!-- 写作资料库 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
                         <span style="font-size:0.8rem;">✍️ 写作资料</span>
                         <span style="font-size:0.7rem;color:#666;" id="set-wr-count">—</span>
-                        <button onclick="wrMaterialImportUnified()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;cursor:pointer;">导入</button>
-                        <button onclick="wrMaterialExportAll()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;cursor:pointer;">导出</button>
-                        <button onclick="wrMaterialClearAll()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;cursor:pointer;">清空</button>
+                        <button onclick="wrMaterialImportUnified()" class="btn-data-sm btn-data-blue">导入</button>
+                        <button onclick="wrMaterialExportAll()" class="btn-data-sm btn-data-green">导出</button>
+                        <button onclick="wrMaterialClearAll()" class="btn-data-sm btn-data-red">清空</button>
                     </div>
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
                         <span style="font-size:0.8rem;">📊 历史报告</span>
                         <span style="font-size:0.7rem;color:#666;" id="set-wrhist-count">—</span>
-                        <button onclick="wrExportAllReports()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;cursor:pointer;">导出</button>
-                        <button onclick="wrClearAllReports()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;cursor:pointer;">清空</button>
+                        <button onclick="wrExportAllReports()" class="btn-data-sm btn-data-green">导出</button>
+                        <button onclick="wrClearAllReports()" class="btn-data-sm btn-data-red">清空</button>
                     </div>
                 </div>
 
@@ -1225,8 +1225,8 @@
 
                 <div style="border-top:1px solid #e5e7eb;"></div>
 
-                <button onclick="clearAllCache()" style="padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;color:#991b1b;">🗑️ 清除缓存</button>
-                <button onclick="toggleSettingsPanel();showAboutPanel();" style="padding:10px 14px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">ℹ️ 关于系统</button>
+                <button onclick="clearAllCache()" class="btn-data-sm btn-data-red" style="padding:10px 14px;font-size:0.88rem;border-radius:10px;text-align:left;">🗑️ 清除缓存</button>
+                <button onclick="toggleSettingsPanel();showAboutPanel();" class="btn-outline">ℹ️ 关于系统</button>
             </div>
             <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
                 <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
@@ -1241,7 +1241,7 @@
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:14px;padding:22px;width:min(400px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">🚂 安监智能辅助系统</span>
-                <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>
+                <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close">✕</button>
             </div>
             <div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7;">
                 <div style="margin-bottom:8px;">铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判。</div>
@@ -1273,7 +1273,7 @@
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(400px,95vw);max-height:85vh;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔗 选择本次使用的数据源</span>
-                <button onclick="var m=document.getElementById('ds-datasource-modal');m.style.display='none';m.querySelector('#ds-dialog-confirm')._reject&&m.querySelector('#ds-dialog-confirm')._reject();" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>
+                <button onclick="var m=document.getElementById('ds-datasource-modal');m.style.display='none';m.querySelector('#ds-dialog-confirm')._reject&&m.querySelector('#ds-dialog-confirm')._reject();" class="btn-close">✕</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-rules" value="rules" checked> 📋 规章制度</label>
@@ -1286,8 +1286,8 @@
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-remember" checked> ✅ 记住此次选择</label>
             </div>
             <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
-                <button onclick="var m=document.getElementById('ds-datasource-modal');m.style.display='none';m.querySelector('#ds-dialog-confirm')._reject&&m.querySelector('#ds-dialog-confirm')._reject();" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;">取消</button>
-                <button id="ds-dialog-confirm" style="padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">确认使用</button>
+                <button onclick="var m=document.getElementById('ds-datasource-modal');m.style.display='none';m.querySelector('#ds-dialog-confirm')._reject&&m.querySelector('#ds-dialog-confirm')._reject();" class="btn-outline">取消</button>
+                <button id="ds-dialog-confirm" class="btn-primary-sm">确认使用</button>
             </div>
         </div>
     </div>
@@ -1315,8 +1315,8 @@
                 <div style="text-align:center;padding:20px;color:#888;">加载中…</div>
             </div>
             <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
-                <button onclick="document.getElementById('ds-material-modal').style.display='none'" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;">取消</button>
-                <button id="ds-material-confirm" style="padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">附加选中资料</button>
+                <button onclick="document.getElementById('ds-material-modal').style.display='none'" class="btn-outline">取消</button>
+                <button id="ds-material-confirm" class="btn-primary-sm">附加选中资料</button>
             </div>
         </div>
     </div>
@@ -1326,7 +1326,7 @@
         <div class="modal-content" style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);margin:auto;display:flex;flex-direction:column;">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔧 大模型 API 配置</span>
-                <button onclick="document.getElementById('api-config-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>
+                <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-close">✕</button>
             </div>
             <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 2px 0 0;">
                 <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:0.78rem;color:#1e40af;line-height:1.6;">
@@ -1360,10 +1360,10 @@
                 </div>
             </div>
             <div class="modal-footer" style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">
-                <button onclick="document.getElementById('api-config-modal').style.display='none'" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;">取消</button>
+                <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-outline">取消</button>
                 <button id="modal-reset-default" style="padding:8px 16px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:0.85rem;cursor:pointer;">🔄 恢复默认</button>
                 <button id="modal-clear-key" style="padding:8px 16px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:0.85rem;cursor:pointer;">🗑️ 清除</button>
-                <button id="modal-save-config" style="padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">💾 保存</button>
+                <button id="modal-save-config" class="btn-primary-sm">💾 保存</button>
             </div>
         </div>
     </div>

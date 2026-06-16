@@ -1243,33 +1243,104 @@
     <!-- 关于系统面板 -->
     <div id="about-panel" style="display:none;position:fixed;inset:0;z-index:11100;">
         <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:14px;padding:22px;width:min(400px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">🚂 安监智能辅助系统</span>
-                <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close">✕</button>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:24px;width:min(420px,92vw);max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.2);">
+            <!-- 标题栏 -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:1.5rem;">🚂</span>
+                    <div>
+                        <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.2</div>
+                    </div>
+                </div>
+                <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
             </div>
-            <div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7;">
-                <div style="margin-bottom:8px;">铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判。</div>
-                <div style="margin-bottom:6px;font-weight:600;color:var(--text);">🎉 v2.1 新功能</div>
-                <div style="padding-left:8px;margin-bottom:2px;">📊 统计分析：性质分布/类别排行/单位违规TOP10 可视化面板</div>
-                <div style="padding-left:8px;margin-bottom:2px;">📐 检查信息6列结构：性质/时间/类别/问题描述/规章依据/单位</div>
-                <div style="padding-left:8px;margin-bottom:2px;">🏷️ 专业筛选：从责任单位自动提取专业（如兰州电务段→电务）</div>
-                <div style="padding-left:8px;margin-bottom:2px;">⚠️ 智能风险研判：基于本地数据AI风险趋势分析（Beta）</div>
-                <div style="padding-left:8px;margin-bottom:2px;">📱 PWA应用：支持安装到桌面/手机，离线也能用</div>
-                <div style="padding-left:8px;margin-bottom:2px;">📚 术语库扩展至766条铁路专业词</div>
-                <div style="padding-left:8px;margin-bottom:2px;">🧠 智能对话长期记忆：自动记录对话关键信息</div>
-                <div style="padding-left:8px;margin-bottom:2px;">⚙️ 设置中心：API多平台配置/数据管理/术语库一站式</div>
-                <div style="margin-top:8px;margin-bottom:4px;font-weight:600;color:var(--text);">📦 核心功能</div>
-                <div style="padding-left:8px;">📖 检查手册 · 四层级多专业项点定位</div>
-                <div style="padding-left:8px;">📊 检查信息 · 六维检索+专业筛选+统计分析</div>
-                <div style="padding-left:8px;">📋 规章制度 · 专业筛选全文比对高亮</div>
-                <div style="padding-left:8px;">📝 工作日志 · 图文记录多媒体提醒</div>
-                <div style="padding-left:8px;">📞 车站电话 · 多单位通讯录快捷拨号</div>
-                <div style="padding-left:8px;">🤖 智能助手 · AI对规/对话/写作/风险研判</div>
-                <div style="padding-left:8px;">💾 数据管理 · 一键备份/导入/导出（Excel+JSON）</div>
-                <div style="padding-left:8px;">🔄 横向滑动 · 手指滑动1/3屏幕切换模块</div>
+
+            <!-- 系统简介 -->
+            <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
+                铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判，助力安监工作智能化。
             </div>
-            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:0.75rem;color:#9ca3af;">数据存储于浏览器 IndexedDB · 离线可用 · GitHub Pages 部署</div>
+
+            <!-- v2.2 新功能 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🎉</span>
+                    <span>v2.2 版本更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🎨 UI优化：设置面板/资料管理按钮样式统一美化</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📝 一键记入日志：检查信息结果卡可直接记入工作日志</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📊 资料导出优化：智能写作资料导出包含历史报告</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🐛 Bug修复：修复历史报告搜索框重复显示问题</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📱 兼容性提升：优化华为浏览器兼容性</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 核心功能 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>📦</span>
+                    <span>核心功能</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>📖</span>
+                        <span>检查手册</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>📊</span>
+                        <span>检查信息</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>📋</span>
+                        <span>规章制度</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>📝</span>
+                        <span>工作日志</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>📞</span>
+                        <span>车站电话</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>🤖</span>
+                        <span>智能助手</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 技术信息 -->
+            <div style="background:#f8fafc;border-radius:10px;padding:12px;font-size:0.75rem;color:#64748b;line-height:1.8;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
+                </div>
+                <div>• 数据存储：浏览器 IndexedDB（本地离线）</div>
+                <div>• AI引擎：豆包大模型 API</div>
+                <div>• 部署方式：GitHub Pages 静态托管</div>
+                <div>• PWA支持：可安装到桌面/手机</div>
+            </div>
+
+            <!-- 底部信息 -->
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;font-size:0.73rem;color:#9ca3af;">
+                <span>开发者：赵海兵</span>
+                <span>2026.06</span>
+            </div>
         </div>
     </div>
 

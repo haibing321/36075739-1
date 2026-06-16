@@ -109,6 +109,37 @@
                 return text.slice(0, 200).trim();
             };
 
+            // 从检查信息一键记入日志（方案 A：直接追加到今天）
+            // content: 问题描述, regulation: 规章依据, date: 可选，默认今天
+            window.addIssueToDiary = function(content, regulation, date) {
+                if (!content || !content.trim()) return;
+                const targetDate = date || (function() {
+                    var d = new Date();
+                    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                })();
+                loadDiaries(); // 确保最新数据
+                var existing = diaries.find(function(d) { return d.date === targetDate; });
+                if (existing) {
+                    // 追加到已有记录
+                    if (!existing.issues) existing.issues = [];
+                    if (!existing.regulations) existing.regulations = [];
+                    existing.issues.push(content.trim());
+                    existing.regulations.push((regulation || '').trim());
+                } else {
+                    // 创建新记录
+                    diaries.push({
+                        date: targetDate,
+                        work: '',
+                        issues: [content.trim()],
+                        regulations: [(regulation || '').trim()],
+                        mediaIds: []
+                    });
+                }
+                diaries.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
+                saveDiaries();
+                updateDiaryCount();
+            };
+
             window.saveDiary = async function(btnEl) {
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();

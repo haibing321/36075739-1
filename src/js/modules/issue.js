@@ -555,7 +555,7 @@
                     });
                     regulationHtml = '<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #3b82f6;font-size:0.85rem;border-radius:0 4px 4px 0;"><strong>📜 规章依据：</strong>' + regText + '</div>';
                 }
-                return '<div class="result-card ' + levelClass + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div>' + regulationHtml + '</div></div>';
+                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div>' + regulationHtml + '</div></div>';
             }
 
             window.issueCopyContent = function(btn) {
@@ -569,6 +569,22 @@
                     try { document.execCommand('copy'); btn.classList.add('copied'); btn.textContent = '✅ 已复制'; setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '📋 复制'; }, 2000); } catch (e) { alert('复制失败'); }
                     document.body.removeChild(textarea);
                 });
+            };
+            // 从检查信息结果卡记入工作日志
+            window.addIssueToDiaryFromCard = function(btn) {
+                const card = btn.closest('.result-card');
+                if (!card) return;
+                const content = decodeURIComponent(card.dataset.rawContent || '');
+                const regulation = decodeURIComponent(card.dataset.rawRegulation || '');
+                if (!content.trim()) return;
+                if (window.addIssueToDiary) {
+                    window.addIssueToDiary(content, regulation);
+                    btn.textContent = '✅ 已记入';
+                    btn.disabled = true;
+                    setTimeout(function() { btn.textContent = '📝 记入日志'; btn.disabled = false; }, 2000);
+                } else {
+                    alert('工作日志模块未加载');
+                }
             };
 
             window.issueToggleLowMatch = function() { showLowMatch = !showLowMatch; if (allFilteredResults.length > 0) { const high = allFilteredResults.filter(r => r.matchRate >= MATCH_THRESHOLD); const low = allFilteredResults.filter(r => r.matchRate < MATCH_THRESHOLD); issueDisplayResults(high, low, currentKeywords); } };

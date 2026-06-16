@@ -774,17 +774,22 @@
                                 try {
                                     const data = JSON.parse(text);
                                     
-                                    // 检测是否为导出备份格式（含 materials 数组）
+                                    // 检测是否为导出备份格式（含 materials / reports 数组）
                                     let jsonItems = null;
+                                    let jsonReports = null;
                                     if (data.materials && Array.isArray(data.materials)) {
                                         jsonItems = data.materials; // 导出备份格式，拆分存储
-                                    } else if (Array.isArray(data)) {
+                                    }
+                                    if (data.reports && Array.isArray(data.reports)) {
+                                        jsonReports = data.reports;
+                                    }
+                                    if (!jsonItems && Array.isArray(data)) {
                                         jsonItems = data; // 纯数组格式，拆分存储
                                     }
-                                    
+
                                     if (jsonItems && jsonItems.length > 0) {
                                         // 拆分存储：每条记录独立存入数据库
-                                        console.log('[导入] JSON检测到' + jsonItems.length + '条记录，拆分存储');
+                                        console.log('[导入] JSON检测到' + jsonItems.length + '条资料记录，拆分存储');
                                         for (const ji of jsonItems) {
                                             const jiTitle = ji.title || ji.name || ji.fileName || file.name + '_' + jsonItems.indexOf(ji);
                                             const jiContent = ji.content || '';
@@ -803,9 +808,25 @@
                                             });
                                             successCount++;
                                         }
-                                        processed++;
-                                        continue; // 跳过下面的单条保存逻辑
                                     }
+
+                                    // 同时导入历史报告
+                                    if (jsonReports && jsonReports.length > 0) {
+                                        console.log('[导入] JSON检测到' + jsonReports.length + '篇历史报告，写入数据库');
+                                        for (const r of jsonReports) {
+                                            await wrDbPut(WR_RPT_STORE, {
+                                                id:        r.id || undefined,
+                                                title:     r.title || '',
+                                                content:   r.content || '',
+                                                prompt:    r.prompt || '',
+                                                createdAt: r.createdAt || Date.now(),
+                                                materialCount: r.materialCount || { issues: 0, rules: 0, reports: 0 }
+                                            });
+                                            successCount++;
+                                        }
+                                    }
+
+                                    if (jsonItems || jsonReports) { processed++; continue; }
                                     
                                     // 非数组格式（单条JSON对象），作为整体存储
                                     item.content = JSON.stringify(data);
@@ -2134,7 +2155,7 @@
                 }
 
                 listEl.innerHTML = filtered.map(r => `
-                    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:10px;">
+                    <div class="wr-mat-card">
                         <div style="flex:1;min-width:0;cursor:pointer;" onclick="wrViewReport(${r.id})">
                             <div style="font-weight:700;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">${wrEsc(r.title||'未命名报告')}</div>
                             <div style="font-size:0.75rem;color:var(--text-secondary);margin:3px 0;">
@@ -2145,9 +2166,9 @@
                             <div style="font-size:0.78rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc((r.content||'').replace(/\n/g,' ').slice(0,80))}…</div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-                            <button onclick="wrViewReport(${r.id})" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.75rem;cursor:pointer;">查看</button>
-                            <button onclick="wrModifyHistoryReport(${r.id})" style="padding:4px 10px;border:1px solid #bfdbfe;border-radius:var(--radius-sm);background:#eff6ff;color:#1d4ed8;font-size:0.75rem;cursor:pointer;">✏️ 修改</button>
-                            <button onclick="wrDeleteReport(${r.id})" style="padding:4px 10px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.75rem;cursor:pointer;">删除</button>
+                            <button onclick="wrViewReport(${r.id})" class="wr-mat-btn wr-mat-btn-view">查看</button>
+                            <button onclick="wrModifyHistoryReport(${r.id})" class="wr-mat-btn wr-mat-btn-template">✏️ 修改</button>
+                            <button onclick="wrDeleteReport(${r.id})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
                         </div>
                     </div>`).join('');
             };
@@ -2584,9 +2605,9 @@
                     const btn = document.getElementById('wr-mat-filter-' + t);
                     if (!btn) return;
                     if (t === type) {
-                        btn.style.background = 'var(--primary)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--primary)';
+                        btn.classList.add('active');
                     } else {
-                        btn.style.background = '#f8fafc'; btn.style.color = 'var(--text)'; btn.style.borderColor = 'var(--border)';
+                        btn.classList.remove('active');
                     }
                 });
                 // 故障报告同时包含故障统计（stats），通报文电同时包含会议纪要（meeting）
@@ -2604,9 +2625,9 @@
                     const btn = document.getElementById('wr-mat-filter-' + t);
                     if (!btn) return;
                     if (t === 'history') {
-                        btn.style.background = 'var(--primary)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--primary)';
+                        btn.classList.add('active');
                     } else {
-                        btn.style.background = '#f8fafc'; btn.style.color = 'var(--text)'; btn.style.borderColor = 'var(--border)';
+                        btn.classList.remove('active');
                     }
                 });
                 const histZone = document.getElementById('wr-mat-history-zone');
@@ -2663,7 +2684,7 @@
                     const preview = (typeof m.content === 'string' ? m.content : String(m.content || '')).replace(/\n/g, ' ').slice(0, 80);
                     const isTemplate = m.matType === 'template';
                     return `
-                    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;align-items:flex-start;gap:10px;">
+                    <div class="wr-mat-card">
                         <div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">${extIcon}</div>
                         <div style="flex:1;min-width:0;">
                             <div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(m.title||m.fileName)}</div>
@@ -2676,12 +2697,12 @@
                             <div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(preview)}…</div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-                            <button onclick="wrViewMaterial(${m.id})" style="padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.73rem;cursor:pointer;">查看</button>
-                            ${!isTemplate ? `<button onclick="wrSetAsTemplate(${m.id})" style="padding:4px 10px;border:1px solid #bfdbfe;border-radius:var(--radius-sm);background:#eff6ff;color:#1e40af;font-size:0.73rem;cursor:pointer;" title="设为写作模版">⭐ 设模版</button>` : '<button disabled style="padding:4px 10px;border:1px solid #e2e8f0;border-radius:var(--radius-sm);background:#f1f5f9;color:#94a3b8;font-size:0.73rem;cursor:not-allowed;">✓ 已是模版</button>'}
-                            <select onchange="wrChangeMaterialType(${m.id},this.value)" style="padding:3px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.7rem;cursor:pointer;background:#f8fafc;" title="修改类型">
+                            <button onclick="wrViewMaterial(${m.id})" class="wr-mat-btn wr-mat-btn-view">查看</button>
+                            ${!isTemplate ? `<button onclick="wrSetAsTemplate(${m.id})" class="wr-mat-btn wr-mat-btn-template" title="设为写作模版">⭐ 设模版</button>` : '<button disabled class="wr-mat-btn" style="background:#f1f5f9;color:#94a3b8;cursor:not-allowed;border:1px solid #e2e8f0;">✓ 已是模版</button>'}
+                            <select onchange="wrChangeMaterialType(${m.id},this.value)" class="wr-mat-select" title="修改类型">
                                 ${Object.entries(WR_MAT_TYPES).map(([k,v])=>'<option value="'+k+'"'+(k===m.matType?' selected':'')+'>'+v.label+'</option>').join('')}
                             </select>
-                            <button onclick="wrDeleteMaterial(${m.id})" style="padding:4px 10px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.73rem;cursor:pointer;">删除</button>
+                            <button onclick="wrDeleteMaterial(${m.id})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
                         </div>
                     </div>`;
                 }).join('');
@@ -2838,17 +2859,19 @@ ${details || '(无)'}
             };
 
             /**
-             * 导出资料库为JSON
+             * 导出资料库 + 历史报告为JSON
              */
             window.wrMaterialExportAll = async function() {
                 const all = await wrDbGetAll(WR_MAT_STORE);
-                if (!all.length) { alert('资料库为空，无法导出'); return; }
+                const reports = await wrDbGetAll(WR_RPT_STORE);
+                if (!all.length && !reports.length) { alert('资料库和历史报告均为空，无法导出'); return; }
                 // 导出时去掉sheets（可能很大），只保留content
-                const exportData = all.map(m => ({ ...m, sheets: undefined }));
-                const blob = new Blob([JSON.stringify({ materials: exportData, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+                const exportMaterials = all.map(m => ({ ...m, sheets: undefined }));
+                const exportData = { materials: exportMaterials, reports: reports, exportDate: new Date().toISOString() };
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url; a.download = '资料库备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+                a.href = url; a.download = '智能写作备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
                 URL.revokeObjectURL(url);
             };
 

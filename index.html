@@ -508,28 +508,14 @@
                         </div>
                     </div>
 
-                    <!-- 子模块切换按钮 -->
-                    <div id="ds-sub-tabs" style="display:flex;gap:6px;margin-bottom:12px;">
-                        <button id="ds-sub-btn-chat" onclick="dsSwitchSub('chat')"
-                            style="flex:1;padding:10px 18px;border:2px solid #3b82f6;border-radius:var(--radius-md);background:#3b82f6;color:#fff;font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            💬 智能对话
-                        </button>
-                        <button id="ds-sub-btn-check" onclick="dsSwitchSub('check')"
-                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            ⚖️ 智能对规
-                        </button>
-                        <button id="ds-sub-btn-writer" onclick="dsSwitchSub('writer')"
-                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            ✍️ 智能写作
-                        </button>
-                        <button id="ds-sub-btn-risk" onclick="dsSwitchSub('risk')"
-                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            📊 风险研判
-                        </button>
-                        <button id="ds-sub-btn-doubao" onclick="dsSwitchSub('doubao')"
-                            style="flex:1;padding:10px 18px;border:2px solid var(--border);border-radius:var(--radius-md);background:#f8fafc;color:var(--text);font-size:0.875rem;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;">
-                            🤖 豆包
-                        </button>
+                    <!-- 子模块切换 -->
+                    <div style="margin-bottom:12px;">
+                        <select id="ds-sub-select" onchange="dsSwitchSub(this.value)" style="width:100%;padding:10px 14px;border:2px solid #3b82f6;border-radius:var(--radius-md);background:#fff;font-size:0.9rem;font-weight:600;cursor:pointer;color:var(--text);">
+                            <option value="chat">💬 智能对话</option>
+                            <option value="check">⚖️ 智能对规</option>
+                            <option value="writer">✍️ 智能写作</option>
+                            <option value="risk">📊 风险研判</option>
+                        </select>
                     </div>
 
                     <!-- === 智能对规子模块 === -->

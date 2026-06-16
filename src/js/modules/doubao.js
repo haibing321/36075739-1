@@ -272,49 +272,23 @@
             // 子模块切换：智能对规 / 智能对话 / 智能写作
             let _dsCurrentSub = 'chat'; // 默认显示智能对话
             window.dsSwitchSub = function(tab) {
-                var btnCheck  = document.getElementById('ds-sub-btn-check');
-                var btnChat   = document.getElementById('ds-sub-btn-chat');
-                var btnWriter = document.getElementById('ds-sub-btn-writer');
-                var btnRisk   = document.getElementById('ds-sub-btn-risk');
-                var btnDoubao = document.getElementById('ds-sub-btn-doubao');
-                var panelCheck  = document.getElementById('ds-sub-check');
-                var panelChat   = document.getElementById('ds-sub-chat');
-                var panelWriter = document.getElementById('ds-sub-writer');
-                var panelRisk   = document.getElementById('ds-sub-risk');
-                var panelDoubao = document.getElementById('ds-sub-doubao');
-                if (!btnCheck || !btnChat || !panelCheck || !panelChat) return;
-
-                // 重置所有按钮样式
-                [btnCheck, btnChat, btnWriter, btnRisk, btnDoubao].forEach(function(b) {
-                    if (!b) return;
-                    b.style.background = '#f8fafc'; b.style.color = 'var(--text)'; b.style.borderColor = 'var(--border)';
-                });
-                [panelCheck, panelChat, panelWriter, panelRisk, panelDoubao].forEach(function(p) { if (p) p.style.display = 'none'; });
-
+                var panels = {
+                    check:  document.getElementById('ds-sub-check'),
+                    chat:   document.getElementById('ds-sub-chat'),
+                    writer: document.getElementById('ds-sub-writer'),
+                    risk:   document.getElementById('ds-sub-risk'),
+                    doubao: document.getElementById('ds-sub-doubao')
+                };
+                // 隐藏所有面板
+                Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
+                // 显示目标面板
+                var panel = panels[tab];
+                if (panel) panel.style.display = 'flex';
                 _dsCurrentSub = tab;
-                if (tab === 'check') {
-                    btnCheck.style.background = '#3b82f6'; btnCheck.style.color = '#fff'; btnCheck.style.borderColor = '#3b82f6';
-                    panelCheck.style.display = 'flex';
-                    return;
-                } else if (tab === 'writer') {
-                    if (btnWriter) { btnWriter.style.background = '#3b82f6'; btnWriter.style.color = '#fff'; btnWriter.style.borderColor = '#3b82f6'; }
-                    if (panelWriter) panelWriter.style.display = 'flex';
-                    wrInit();
-                    return;
-                } else if (tab === 'risk') {
-                    if (btnRisk) { btnRisk.style.background = '#3b82f6'; btnRisk.style.color = '#fff'; btnRisk.style.borderColor = '#3b82f6'; }
-                    if (panelRisk) panelRisk.style.display = 'flex';
-                    return;
-                } else if (tab === 'doubao') {
-                    if (btnDoubao) { btnDoubao.style.background = '#3b82f6'; btnDoubao.style.color = '#fff'; btnDoubao.style.borderColor = '#3b82f6'; }
-                    if (panelDoubao) panelDoubao.style.display = 'flex';
-                    return;
-                } else {
-                    // chat
-                    btnChat.style.background = '#3b82f6'; btnChat.style.color = '#fff'; btnChat.style.borderColor = '#3b82f6';
-                    panelChat.style.display = 'flex';
-                    return;
-                }
+                if (tab === 'writer' && typeof wrInit === 'function') wrInit();
+                // 同步下拉框
+                var sel = document.getElementById('ds-sub-select');
+                if (sel) sel.value = tab;
             };
 
             // 历史侧边栏抽屉开关
@@ -442,7 +416,7 @@
             function toggleDoubaoMode() {
                 var hasApiKey = !!dsApiKey && dsApiKey !== DS_PLACEHOLDER_KEY;
                 var webview   = document.getElementById('doubao-webview');
-                var subTabs   = document.getElementById('ds-sub-tabs');
+                var subTabs   = document.getElementById('ds-sub-select');
                 var subCheck  = document.getElementById('ds-sub-check');
                 var subChat   = document.getElementById('ds-sub-chat');
                 var subWriter = document.getElementById('ds-sub-writer');

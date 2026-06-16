@@ -7086,7 +7086,7 @@ ${details || '(无)'}
           var report = {
             title: title || ('风险研判 ' + now.toLocaleString('zh-CN').replace(/\//g, '-')),
             category: '风险研判',
-            content: plainText.slice(0, 500),
+            content: plainText,
             rawHtml: html,
             date: now.toISOString(),
             createdAt: now.getTime()
@@ -7109,6 +7109,28 @@ ${details || '(无)'}
             dbReq.onerror = function() { reject(dbReq.error); };
           });
           console.log('风险报告已存入写作历史');
+          // 同时存到 writing_materials，供附件选择器读取
+          try {
+            var dbReq2 = indexedDB.open('railway_writer_db', 2);
+            await new Promise(function(resolve, reject) {
+              dbReq2.onsuccess = function() {
+                var db = dbReq2.result;
+                if (!db.objectStoreNames.contains('writing_materials')) { db.close(); resolve(); return; }
+                var tx = db.transaction('writing_materials', 'readwrite');
+                tx.objectStore('writing_materials').add({
+                  title: report.title,
+                  content: plainText,
+                  type: 'report',
+                  date: report.date,
+                  createdAt: report.createdAt,
+                  source: '风险研判'
+                });
+                tx.oncomplete = function() { db.close(); resolve(); };
+                tx.onerror = function() { resolve(); };
+              };
+              dbReq2.onerror = function() { resolve(); };
+            });
+          } catch(e2) { console.warn('同步到写作资料库失败:', e2); }
         } catch(e) {
           console.warn('保存风险报告到写作历史失败:', e);
         }

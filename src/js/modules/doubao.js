@@ -906,6 +906,19 @@
                 input.value = ''; // 允许重复选同一文件
             };
 
+            // ===== +号附件菜单 =====
+            window.dsToggleAttachMenu = function() {
+                var menu = document.getElementById('ds-attach-menu');
+                if (!menu) return;
+                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+            };
+            document.addEventListener('click', function(e) {
+                var menu = document.getElementById('ds-attach-menu');
+                if (menu && menu.style.display === 'block' && !e.target.closest('#ds-attach-menu') && !e.target.closest('[onclick*=\"dsToggleAttachMenu\"]')) {
+                    menu.style.display = 'none';
+                }
+            });
+
             // ===== 写作资料库附件选择 =====
             window._dsMaterialCache = [];
 

@@ -642,7 +642,7 @@
                         <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;">
                             <textarea id="ds-user-input" rows="2" placeholder="输入问题，按 Ctrl+Enter 或点击发送..." oninput="autoResize(this)"
                                 style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;resize:none;line-height:1.5;max-height:120px;"></textarea>
-                            <div style="display:flex;flex-direction:column;gap:4px;">
+                            <div style="display:flex;flex-direction:column;gap:4px;position:relative;">
                                 <button onclick="dsSendMsg()" id="ds-send-btn" class="btn btn-primary" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;" title="发送消息">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
                                         <path d="M12 19V5"/>
@@ -651,8 +651,11 @@
                                 </button>
                                 <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.doc,.docx,.xls,.xlsx,.pdf,.csv,.json"
                                     style="display:none;" onchange="dsHandleAttach(this)">
-                                <button onclick="document.getElementById('ds-attach-file').click()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;" title="添加本地文件">+</button>
-                                <button onclick="dsOpenMaterialPicker()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;font-size:0.9rem;" title="从写作资料库选择">📚</button>
+                                <button onclick="dsToggleAttachMenu()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;" title="添加附件">+</button>
+                                <div id="ds-attach-menu" style="display:none;position:absolute;right:44px;bottom:0;background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);border:1px solid #e2e8f0;padding:6px;z-index:100;white-space:nowrap;min-width:130px;">
+                                    <div onclick="dsToggleAttachMenu();document.getElementById('ds-attach-file').click();" style="padding:8px 14px;font-size:0.82rem;cursor:pointer;border-radius:8px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">📁 本地文件</div>
+                                    <div onclick="dsToggleAttachMenu();dsOpenMaterialPicker();" style="padding:8px 14px;font-size:0.82rem;cursor:pointer;border-radius:8px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">📚 写作资料</div>
+                                </div>
                             </div>
                         </div>
                         <!-- 已附加文件标签（已移除，改为直接显示在输入框中） -->

@@ -115,7 +115,6 @@
                     }
                 } catch (e) {}
                 issueRefreshCategorySelect();
-                issueRefreshUnitSelect();
             }
 
             function extractTradeFromUnit(unitName) {
@@ -151,27 +150,6 @@
                     select.appendChild(opt);
                 });
                 // 恢复之前选中的值（如果还存在）
-                if (currentValue && sorted.indexOf(currentValue) !== -1) {
-                    select.value = currentValue;
-                }
-            }
-
-            function issueRefreshUnitSelect() {
-                var select = document.getElementById('issue-unitSelect');
-                if (!select) return;
-                var currentValue = select.value;
-                var units = new Set();
-                dataCache.forEach(function(item) {
-                    if (item.unit) units.add(String(item.unit).trim());
-                });
-                var sorted = Array.from(units).sort(function(a, b) { return a.localeCompare(b, 'zh'); });
-                select.innerHTML = '<option value="">全部单位</option>';
-                sorted.forEach(function(u) {
-                    var opt = document.createElement('option');
-                    opt.value = u;
-                    opt.textContent = u.length > 25 ? u.slice(0, 23) + '…' : u;
-                    select.appendChild(opt);
-                });
                 if (currentValue && sorted.indexOf(currentValue) !== -1) {
                     select.value = currentValue;
                 }
@@ -330,12 +308,6 @@
                 showLowMatch = false;
                 var catSelect = document.getElementById('issue-categorySelect');
                 if (catSelect) catSelect.value = '';
-                var unitSelect = document.getElementById('issue-unitSelect');
-                if (unitSelect) unitSelect.value = '';
-                var ds = document.getElementById('issue-date-start');
-                if (ds) ds.value = '';
-                var de = document.getElementById('issue-date-end');
-                if (de) de.value = '';
             };
 
             function getXingzhi(item) {
@@ -466,20 +438,6 @@
                 var tradeFilter = document.getElementById('issue-categorySelect')?.value || '';
                 if (tradeFilter) {
                     data = data.filter(function(d) { return extractTradeFromUnit(d.unit) === tradeFilter; });
-                }
-                // 按选中单位过滤
-                var unitFilter = document.getElementById('issue-unitSelect')?.value || '';
-                if (unitFilter) {
-                    data = data.filter(function(d) { return (d.unit || '') === unitFilter; });
-                }
-                // 按日期范围过滤
-                var dateStart = document.getElementById('issue-date-start')?.value || '';
-                var dateEnd = document.getElementById('issue-date-end')?.value || '';
-                if (dateStart) {
-                    data = data.filter(function(d) { try { return new Date(d.datetime || '') >= new Date(dateStart); } catch(e) { return true; } });
-                }
-                if (dateEnd) {
-                    data = data.filter(function(d) { try { return new Date(d.datetime || '') <= new Date(dateEnd + 'T23:59:59'); } catch(e) { return true; } });
                 }
 
                 setTimeout(() => {

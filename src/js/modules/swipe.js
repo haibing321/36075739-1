@@ -61,8 +61,8 @@
         var adx = Math.abs(dx);
         var ady = Math.abs(dy);
 
-        // 水平位移不足屏幕40% → 忽略
-        var minSwipe = Math.max(window.innerWidth * 0.4, 80);
+        // 水平位移不足屏幕1/3 → 忽略
+        var minSwipe = Math.max(window.innerWidth * 0.33, 60);
         if (adx < minSwipe) return;
         if (ady > adx) return;
 

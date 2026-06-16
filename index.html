@@ -510,7 +510,7 @@
 
                     <!-- 子模块切换 -->
                     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-                        <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);white-space:nowrap;">智能模式</label>
+                        <label style="font-size:0.9rem;font-weight:600;color:var(--text-secondary);white-space:nowrap;">智能模式</label>
                         <select id="ds-sub-select" onchange="dsSwitchSub(this.value)" style="flex:1;padding:10px 14px;border:2px solid #3b82f6;border-radius:var(--radius-md);background:#fff;font-size:0.9rem;font-weight:600;cursor:pointer;color:var(--text);">
                             <option value="chat">💬 智能对话</option>
                             <option value="check">⚖️ 智能对规</option>
@@ -523,11 +523,6 @@
                     <div id="ds-sub-check" style="display:none;flex-direction:column;flex:1;min-height:0;">
                         <!-- 自动对规模块 -->
                         <div style="background: linear-gradient(135deg, #e0f2fe, #e6f7ff); border-radius: 12px; padding: 16px; flex:1; overflow-y:auto;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                                <span style="font-size: 1.2rem;">⚖️</span>
-                                <span style="font-weight: 600; color: var(--primary);">智能对规</span>
-                                <span style="font-size: 0.75rem; background: #fff; padding: 2px 8px; border-radius: 20px; color: var(--info);">Beta</span>
-                            </div>
                             <textarea id="autoCheck-input" rows="2" placeholder="输入检查问题，例如：工务作业人员在天窗点外违规上道作业，未设置防护。"
                                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; resize: none; margin-bottom: 10px; box-sizing: border-box; min-height: 40px; max-height: 200px; line-height: 1.5;"
                                 oninput="autoResize(this);acOnInputChange(this.value)"></textarea>
@@ -755,11 +750,6 @@
                     <!-- === 风险研判子模块 === -->
                     <div id="ds-sub-risk" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
                         <div style="background:linear-gradient(135deg,#eff6ff,#e0f2fe);border-radius:12px;padding:16px;flex:1;display:flex;flex-direction:column;">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                                <span style="font-size:1.2rem;">📊</span>
-                                <span style="font-weight:600;color:var(--primary);">智能风险研判</span>
-                                <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:var(--info);">Beta</span>
-                            </div>
                             <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">基于本地检查信息数据，AI自动分析风险趋势并生成预警措施报告。</p>
                             
                             <!-- 风险研判条件配置 -->

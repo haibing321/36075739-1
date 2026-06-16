@@ -1610,7 +1610,7 @@
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 if (!apiKey) {
                     const ok = confirm('未配置 DeepSeek API Key，是否打开 API 配置？\n点击确定打开配置弹窗，点击取消则改用本地匹配。');
-                    if (ok) showApiConfigModal();
+                    if (ok) window.showApiConfigModal();
                     else window.autoCheckLocal();
                     return;
                 }

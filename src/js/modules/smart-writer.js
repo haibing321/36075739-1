@@ -2613,8 +2613,11 @@
                 // 故障报告同时包含故障统计（stats），通报文电同时包含会议纪要（meeting）
                 const histZone = document.getElementById('wr-mat-history-zone');
                 const matList  = document.getElementById('wr-mat-list');
+                const matSearch = document.getElementById('wr-mat-search');
                 if (histZone) histZone.style.display = 'none';
                 if (matList)  matList.style.display = 'flex';
+                // 显示主搜索框
+                if (matSearch) matSearch.style.display = '';
                 wrRenderMaterials();
             };
 
@@ -2632,8 +2635,11 @@
                 });
                 const histZone = document.getElementById('wr-mat-history-zone');
                 const matList  = document.getElementById('wr-mat-list');
+                const matSearch = document.getElementById('wr-mat-search');
                 if (matList)  matList.style.display = 'none';
                 if (histZone) { histZone.style.display = 'flex'; histZone.style.flexDirection = 'column'; }
+                // 隐藏主搜索框，避免与历史报告搜索框重复
+                if (matSearch) matSearch.style.display = 'none';
                 wrRenderHistory();
             };
 

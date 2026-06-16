@@ -597,15 +597,14 @@
                 });
             }
 
-            // 数据源按钮：点击弹出选择对话框，选择后用当前输入内容发送
+            // 数据源按钮绑定（已改为HTML onclick直接打开模态框）
             setTimeout(function() {
-                var resetBtn = document.getElementById('ds-reset-datasource');
+                var resetBtn = document.getElementById('ds-reset-datasource-btn');
                 if (resetBtn) resetBtn.onclick = async function() {
                     var inputEl = document.getElementById('ds-user-input');
                     var currentText = inputEl ? inputEl.value.trim() : '';
                     var result = await showDataSourceSelector();
                     if (!result) return;
-                    // 设置临时数据源，让 dsSendMsg 内部使用用户选择的配置
                     window._tempDataSrc = result;
                     try {
                         if (currentText && inputEl) {

@@ -612,13 +612,8 @@
                             <option value="frontend">💻 前端工程师</option>
                             <option value="riskanalyst">🔍 风险分析专家</option>
                           </select>
-                          <label style="display:none;">
-                            <input type="checkbox" id="memoryEnableOld" checked>
-                          </label>
-                          <button id="ds-reset-datasource" style="display:none;"></button>
                           <div style="flex:1"></div>
-                          <button id="statsBtn" style="background: #e2e8f0; border: none; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer;">📊 统计</button>
-                          <button id="ds-reset-datasource" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 16px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer; color: #15803d;">🔄 数据源</button>
+                          <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;">📊 关联数据</button>
                         </div>
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
                         <!-- 输入区 -->
@@ -1193,7 +1188,7 @@
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" style="padding:10px 14px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔧 API 配置</button>
-                <button onclick="toggleSettingsPanel();document.getElementById('ds-reset-datasource').click();" style="padding:10px 14px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔄 数据源配置</button>
+                <button onclick="toggleSettingsPanel();var m=document.getElementById('ds-datasource-modal');m.style.display='flex';" style="padding:10px 14px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-size:0.88rem;cursor:pointer;text-align:left;">🔄 数据源配置</button>
                 <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;cursor:pointer;">
                     <span style="font-size:0.88rem;">🧠 长期记忆</span>
                     <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">

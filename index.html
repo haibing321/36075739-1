@@ -724,18 +724,6 @@
                                     style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f0fdf4;color:#065f46;font-size:0.85rem;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:5px;">
                                     ← 返回写作
                                 </button>
-                                <button onclick="wrMaterialImportUnified()"
-                                    style="padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.85rem;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:5px;">
-                                    📥 导入资料
-                                </button>
-                                <button onclick="wrMaterialExportAll()"
-                                    style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">
-                                    📤 导出全部
-                                </button>
-                                <button onclick="wrMaterialClearAll()"
-                                    style="padding:8px 14px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.82rem;cursor:pointer;">
-                                    🗑️ 清空全部
-                                </button>
                                 <span id="wr-mat-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;"></span>
                             </div>
                             <!-- 说明栏 -->
@@ -765,14 +753,6 @@
                             <!-- 历史报告子区域（点击「历史报告」Tab 时显示） -->
                             <div id="wr-mat-history-zone" style="display:none;flex-direction:column;gap:8px;flex:1;min-height:0;">
                                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                                    <button onclick="wrExportAllReports()"
-                                        style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">
-                                        📤 导出历史报告
-                                    </button>
-                                    <button onclick="wrClearAllReports()"
-                                        style="padding:7px 12px;border:1px solid #fca5a5;border-radius:var(--radius-sm);background:#fff1f2;color:#b91c1c;font-size:0.82rem;cursor:pointer;">
-                                        🗑️ 清空历史报告
-                                    </button>
                                     <span id="wr-hist-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;">0 篇</span>
                                 </div>
                                 <input id="wr-hist-search" placeholder="搜索历史报告..." type="text" oninput="wrRenderHistory()"
@@ -1243,6 +1223,21 @@
                 <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
                     <button onclick="document.getElementById('global-backup-btn').click();" style="padding:10px 14px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📦 一键备份</button>
                     <button onclick="document.getElementById('global-restore-btn').click();" style="padding:10px 14px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:0.85rem;cursor:pointer;text-align:left;">📂 一键导入</button>
+                    <div style="border-top:1px solid #e5e7eb;margin:4px 0;"></div>
+                    <!-- 写作资料库 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                        <span style="font-size:0.8rem;">✍️ 写作资料</span>
+                        <span style="font-size:0.7rem;color:#666;" id="set-wr-count">—</span>
+                        <button onclick="wrMaterialImportUnified()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;cursor:pointer;">导入</button>
+                        <button onclick="wrMaterialExportAll()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;cursor:pointer;">导出</button>
+                        <button onclick="wrMaterialClearAll()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;cursor:pointer;">清空</button>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                        <span style="font-size:0.8rem;">📊 历史报告</span>
+                        <span style="font-size:0.7rem;color:#666;" id="set-wrhist-count">—</span>
+                        <button onclick="wrExportAllReports()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;cursor:pointer;">导出</button>
+                        <button onclick="wrClearAllReports()" style="font-size:0.7rem;padding:3px 8px;border-radius:8px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;cursor:pointer;">清空</button>
+                    </div>
                 </div>
 
                 <!-- 术语库管理（可展开） -->

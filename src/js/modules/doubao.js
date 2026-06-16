@@ -6004,6 +6004,8 @@
                 ).sort((a,b) => b.date - a.date);
 
                 if (countEl) countEl.textContent = filtered.length + '/' + reports.length + ' 篇';
+                var setCount = document.getElementById('set-wrhist-count');
+                if (setCount) setCount.textContent = reports.length + '篇';
 
                 if (!filtered.length) {
                     listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">' + (q ? '无匹配结果' : '暂无历史报告') + '</div>';
@@ -6522,6 +6524,8 @@
                 filtered.sort((a,b) => b.importAt - a.importAt);
 
                 if (countEl) countEl.textContent = filtered.length + '/' + all.length + ' 条资料';
+                var setCount = document.getElementById('set-wr-count');
+                if (setCount) setCount.textContent = all.length + '条';
 
                 if (!filtered.length) {
                     listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">'

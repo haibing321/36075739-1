@@ -906,6 +906,81 @@
                 input.value = ''; // 允许重复选同一文件
             };
 
+            // ===== 写作资料库附件选择 =====
+            window._dsMaterialCache = [];
+
+            window.dsOpenMaterialPicker = async function() {
+                var modal = document.getElementById('ds-material-modal');
+                if (!modal) return;
+                modal.style.display = 'flex';
+                var list = document.getElementById('ds-material-list');
+                list.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中…</div>';
+                document.getElementById('ds-material-search').value = '';
+                document.getElementById('ds-material-type-filter').value = '';
+                try {
+                    var db = await new Promise(function(res, rej) {
+                        var r = indexedDB.open('railway_writer_db', 2);
+                        r.onerror = function(){ rej(r.error); };
+                        r.onsuccess = function(){ res(r.result); };
+                    });
+                    var materials = await new Promise(function(res) {
+                        var tx = db.transaction('writing_materials', 'readonly');
+                        var store = tx.objectStore('writing_materials');
+                        store.getAll().onsuccess = function(e) { res(e.target.result || []); };
+                    });
+                    db.close();
+                    window._dsMaterialCache = materials || [];
+                    dsRenderMaterialList(window._dsMaterialCache);
+                } catch(e) {
+                    list.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626;">加载失败：' + (e.message||'资料库为空') + '</div>';
+                }
+            };
+
+            window.dsFilterMaterials = function() {
+                var keyword = (document.getElementById('ds-material-search')?.value || '').trim().toLowerCase();
+                var type = document.getElementById('ds-material-type-filter')?.value || '';
+                var filtered = window._dsMaterialCache.filter(function(m) {
+                    var matchKw = !keyword || (m.title||'').toLowerCase().indexOf(keyword) !== -1 || (m.content||'').toLowerCase().indexOf(keyword) !== -1;
+                    var matchType = !type || (m.type||'') === type;
+                    return matchKw && matchType;
+                });
+                dsRenderMaterialList(filtered);
+            };
+
+            function dsRenderMaterialList(items) {
+                var list = document.getElementById('ds-material-list');
+                if (!items.length) {
+                    list.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">没有匹配的资料</div>';
+                    return;
+                }
+                var typeMap = {report:'📄 报告',inspect:'🔍 检查信息',template:'📋 模版',fault:'⚠️ 故障',notice:'📢 通报',other:'📎 其它'};
+                var html = '';
+                items.slice(0, 50).forEach(function(m, i) {
+                    var typeLabel = typeMap[m.type] || '📎 资料';
+                    var title = (m.title || '无标题').slice(0, 60);
+                    html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#f8fafc;border-radius:8px;cursor:pointer;border:1px solid #e2e8f0;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#f8fafc\'">'
+                        + '<input type="checkbox" value="'+i+'" class="ds-mat-cb" style="margin-top:2px;flex-shrink:0;">'
+                        + '<div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:500;">'+typeLabel+' ' + (title||'无标题') + '</div>'
+                        + '<div style="font-size:0.72rem;color:#888;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + ((m.content||'').slice(0,80)) + '</div></div>'
+                        + '</label>';
+                });
+                list.innerHTML = html;
+                document.getElementById('ds-material-confirm').onclick = function() {
+                    var cbs = document.querySelectorAll('.ds-mat-cb:checked');
+                    var selected = [];
+                    cbs.forEach(function(cb) { selected.push(items[parseInt(cb.value)]); });
+                    if (!selected.length) { alert('请至少选择一项资料'); return; }
+                    selected.forEach(function(m) {
+                        var text = (m.content || '').slice(0, 4000);
+                        window._dsAttachments = window._dsAttachments || [];
+                        window._dsAttachments.push({ name: m.title || '写作资料', text: text, source: 'material' });
+                        var inputEl = document.getElementById('ds-user-input');
+                        if (inputEl) { inputEl.value = (inputEl.value||'') + ' [📚 ' + (m.title||'资料') + '] '; }
+                    });
+                    document.getElementById('ds-material-modal').style.display = 'none';
+                };
+            }
+
             // 读取纯文本文件
             window.dsReadTextFile = function(file) {
                 return new Promise((resolve, reject) => {

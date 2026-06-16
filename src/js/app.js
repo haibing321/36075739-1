@@ -1,5 +1,5 @@
 /**
- * 安监智能查询系统 · 完整六模块版
+ * 安监智能辅助系统 · 完整六模块版
  * ===================================================
  * 应用入口文件 - 负责模块加载顺序和全局初始化协调
  * 
@@ -75,7 +75,7 @@
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('%c安监智能查询系统 · 初始化开始', 'color:#1a365d;font-weight:bold;');
+    console.log('%c安监智能辅助系统 · 初始化开始', 'color:#1a365d;font-weight:bold;');
 
     // 启动时检查存储配额（延迟3秒等各模块初始化完成）
     if (window.storageManager) {
@@ -384,4 +384,4 @@ window._updateModelList = function() {
     if (map[url]) modelEl.value = map[url];
 };
 
-console.log('%c安监智能查询系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
+console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');

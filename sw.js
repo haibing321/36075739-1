@@ -1,10 +1,10 @@
 /**
- * 安监智能查询系统 - Service Worker v1
+ * 安监智能辅助系统 - Service Worker v1
  * 策略: AppShell precache + CDN runtime cache + NetworkFirst for HTML
  */
 
 var CACHE_PREFIX = 'aj-v';
-var CACHE_VERSION = '12';
+var CACHE_VERSION = '13';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========

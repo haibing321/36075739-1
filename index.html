@@ -23,6 +23,23 @@
                    worker-src 'self';
                    child-src https://www.doubao.com;">
 
+    <!-- 关键CSS：防止页面加载时闪烁 -->
+    <style>
+        /* 隐藏所有面板，只显示激活的面板 */
+        .panel { display: none; }
+        .panel.active { display: flex; }
+
+        /* 隐藏所有AI助手子模块，只显示默认的子模块 */
+        #doubao-webview { display: none; }
+        #ds-sub-check { display: none; }
+        #ds-sub-writer { display: none; }
+        #ds-sub-risk { display: none; }
+        #ds-sub-doubao { display: none; }
+
+        /* 默认显示智能对话子模块 */
+        #ds-sub-chat { display: flex; }
+    </style>
+
     <!-- 边缘滑出退出提示 - 优先加载 -->
     <script>
     (function() {
@@ -501,7 +518,7 @@
                     <!-- API 配置模态框 -->
 
                     <!-- 豆包网页版嵌入（API未配置时显示） -->
-                    <div id="doubao-webview" style="display:flex;flex-direction:column;min-height:500px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
+                    <div id="doubao-webview" style="display:none;flex-direction:column;min-height:500px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
                         <iframe src="https://www.doubao.com/chat/" style="width:100%;height:70vh;border:none;" title="豆包网页版"></iframe>
                         <div style="text-align:center;padding:8px;font-size:0.75rem;color:var(--text-secondary);background:#f8fafc;">
                             ⚠️ 豆包网页版为第三方服务。如需使用本地智能助手，请<button id="quick-config-btn" style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:2px 10px;margin:0 4px;cursor:pointer;font-size:0.75rem;">点击配置 API Key</button>。
@@ -1450,6 +1467,47 @@
         <button id="global-backup-btn">📦 备份</button>
         <button id="global-restore-btn">📂 导入</button>
     </div>
+
+    <!-- 页面初始化脚本 -->
+    <script>
+    // 立即执行初始化，避免页面闪烁
+    (function() {
+        'use strict';
+
+        // 等待 DOM 和所有 deferred scripts 加载完成
+        function initPage() {
+            // 初始化 AI 助手页面
+            var apiKey = localStorage.getItem('ds_api_key_v1') || '';
+            var doubugWebview = document.getElementById('doubao-webview');
+            var subChat = document.getElementById('ds-sub-chat');
+
+            if (!apiKey) {
+                // API 未配置：显示豆包网页版，隐藏子模块
+                if (doubugWebview) doubugWebview.style.display = 'flex';
+                if (subChat) subChat.style.display = 'none';
+            } else {
+                // API 已配置：显示默认子模块（智能对话）
+                if (typeof window.dsSwitchSub === 'function') {
+                    window.dsSwitchSub('chat');
+                }
+            }
+
+            // 隐藏所有主模块，只显示当前模块
+            var currentModule = localStorage.getItem('current_module') || 'issue';
+            if (typeof window.switchModule === 'function') {
+                window.switchModule(currentModule);
+            }
+        }
+
+        // 如果 DOM 已就绪，立即执行；否则等待 DOMContentLoaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPage);
+        } else {
+            // DOM 已就绪，延迟一点执行确保 JS 模块已加载
+            setTimeout(initPage, 100);
+        }
+    })();
+    </script>
 
 </body>
 </html>

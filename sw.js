@@ -4,7 +4,7 @@
  */
 
 var CACHE_PREFIX = 'aj-v';
-var CACHE_VERSION = '99';
+var CACHE_VERSION = '100';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -200,7 +200,8 @@ self.addEventListener('fetch', function(event) {
         return cache.match(req).then(function(cached) {
           var fetchPromise = fetch(req).then(function(networkResp) {
             if (networkResp.ok) {
-              cache.put(req, networkResp);
+              // 克隆 response，因为 body 只能消费一次
+              cache.put(req, networkResp.clone());
             }
             return networkResp;
           }).catch(function() { return null; });

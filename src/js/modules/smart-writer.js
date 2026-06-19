@@ -2899,4 +2899,7 @@ ${details || '(无)'}
         // dsInit 在 IIFE 开头定义，也需暴露
         window.dsInit                 = typeof dsInit !== 'undefined' ? dsInit : function(){};
 
+        // 导出用于设置面板计数的函数
+        window.getWrMatCount = async function() { try { var all = await wrDbGetAll(WR_MAT_STORE); return all.length; } catch(e) { return 0; } };
+        window.getWrRptCount = async function() { try { var all = await wrDbGetAll(WR_RPT_STORE); return all.length; } catch(e) { return 0; } };
     })();

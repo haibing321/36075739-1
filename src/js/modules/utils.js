@@ -670,19 +670,25 @@
             };
 
             // ========== 设置面板 — 各模块数据计数更新 ==========
-            window.updateDataManagementStats = function() {
-                var els = { handbook: 'set-handbook-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', term: 'set-term-count' };
+            window.updateDataManagementStats = async function() {
+                var els = { handbook: 'set-handbook-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', wrmat: 'set-wr-count', wrrpt: 'set-wrhist-count', term: 'set-term-count' };
                 var getters = {
                     handbook: function() { return window.getHandbookData ? window.getHandbookData().length : 0; },
                     issue:    function() { return window.getIssueData    ? window.getIssueData().length    : 0; },
                     rule:     function() { return window.getRulesData   ? window.getRulesData().length   : 0; },
                     diary:    function() { return window.getDiaryData   ? window.getDiaryData().length   : 0; },
                     phone:    function() { return window.getPhoneData   ? window.getPhoneData().length   : 0; },
+                    wrmat:    async function() { return window.getWrMatCount ? await window.getWrMatCount() : '—'; },
+                    wrrpt:    async function() { return window.getWrRptCount ? await window.getWrRptCount() : '—'; },
                     term:     function() { return window.getTermCount   ? window.getTermCount()          : '—'; }
                 };
-                Object.keys(els).forEach(function(k) {
+                var keys = Object.keys(els);
+                for (var i = 0; i < keys.length; i++) {
+                    var k = keys[i];
                     var el = document.getElementById(els[k]);
-                    if (el) { var v = getters[k](); el.textContent = typeof v === 'number' ? v + '条' : v; }
-                });
+                    if (!el) continue;
+                    var v = await getters[k]();
+                    el.textContent = typeof v === 'number' ? v + '条' : v;
+                }
             };
         })();

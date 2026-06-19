@@ -62,8 +62,9 @@
                 };
             }
 
-            // 按钮点击 → 打开文件选择器
-            document.getElementById("handbook-importBtn").addEventListener('click', function() {
+            // 按钮点击 → 打开文件选择器（按钮已迁移至设置面板，做空值保护）
+            var _hbBtn = document.getElementById("handbook-importBtn");
+            if (_hbBtn) _hbBtn.addEventListener('click', function() {
                 document.getElementById('handbook-jsonFile').click();
             });
 

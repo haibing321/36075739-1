@@ -1986,10 +1986,12 @@
                 document.getElementById('rule-searchBtn').addEventListener('click', renderResults);
                 document.getElementById('rule-clearSearchBtn').addEventListener('click', clearSearch);
                 document.getElementById('rule-btnAdd').addEventListener('click', addKeywordInput);
-                document.getElementById('rule-importBtn').addEventListener('click', handleImportClick);
-                document.getElementById('rule-exportBtn').addEventListener('click', () => openModal('rule-exportModal'));
-                document.getElementById('rule-catalogBtn').addEventListener('click', showCatalog);
-                document.getElementById('rule-clearBtn').addEventListener('click', async () => {
+                // 以下按钮已迁移至设置面板，做空值保护
+                var _el;
+                _el = document.getElementById('rule-importBtn'); if (_el) _el.addEventListener('click', handleImportClick);
+                _el = document.getElementById('rule-exportBtn'); if (_el) _el.addEventListener('click', function() { openModal('rule-exportModal'); });
+                _el = document.getElementById('rule-catalogBtn'); if (_el) _el.addEventListener('click', showCatalog);
+                _el = document.getElementById('rule-clearBtn'); if (_el) _el.addEventListener('click', async function() {
                     if (confirm('确定要清空所有规章吗？\n\n点击"确定"：清空\n点击"取消"：恢复示例')) {
                         rules = [];
                         await saveToStorage();

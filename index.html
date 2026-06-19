@@ -614,6 +614,12 @@
                           <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;">📊 关联数据</button>
                         </div>
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
+                        <!-- 状态栏 -->
+                        <div id="ds-mode-status" style="display:flex; align-items:center; gap:12px; padding:6px 12px; background:#f1f5f9; border-radius:20px; margin-bottom:8px; font-size:0.8rem;">
+                            <span>📍 模式：<strong id="ds-current-mode-label">💬 智能对话</strong></span>
+                            <span style="color:#94a3b8;">|</span>
+                            <span>🧑‍💼 角色：<strong id="ds-current-role-label">通用</strong></span>
+                        </div>
                         <!-- 输入区 -->
                         <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;">
                             <textarea id="ds-user-input" rows="2" placeholder="输入问题，按 Ctrl+Enter 或点击发送..." oninput="autoResize(this)"
@@ -1315,7 +1321,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.2</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1326,32 +1332,36 @@
                 铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判，助力安监工作智能化。
             </div>
 
-            <!-- v2.2 新功能 -->
+            <!-- v2.3 新功能 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🎉</span>
-                    <span>v2.2 版本更新</span>
+                    <span>v2.3 版本更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🎨 UI优化：设置面板/资料管理按钮样式统一美化</span>
+                        <span>⚡ 性能优化：重型库按需加载，首屏脚本从~2MB降至~50KB</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📝 一键记入日志：检查信息结果卡可直接记入工作日志</span>
+                        <span>🔍 搜索防抖：输入停止500ms自动搜索，告别卡顿</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📊 资料导出优化：智能写作资料导出包含历史报告</span>
+                        <span>📊 统计升级：渐变色柱状图+动画+四卡片概要仪表盘</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🐛 Bug修复：修复历史报告搜索框重复显示问题</span>
+                        <span>⚙️ 设置整合：数据管理按钮统一迁移至设置面板</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📱 兼容性提升：优化华为浏览器兼容性</span>
+                        <span>📡 离线增强：SW预缓存全部CSS/JS，断网完整可用</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔧 Web Worker：后台线程搜索，大数据量不冻屏</span>
                     </div>
                 </div>
             </div>
@@ -1403,8 +1413,7 @@
 
             <!-- 底部信息 -->
             <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;font-size:0.73rem;color:#9ca3af;">
-                <span>开发者：赵海兵</span>
-                <span>2026.06</span>
+                <span>开发者：赵海兵 · 2026.06</span>
             </div>
         </div>
     </div>
@@ -1545,6 +1554,11 @@
             if (typeof window.switchModule === 'function') {
                 window.switchModule(currentModule);
             }
+
+            // 绑定角色切换按钮
+            var _roleSelect = document.getElementById('expertRole');
+            if (_roleSelect) { _roleSelect.addEventListener('change', function() { if (typeof updateModeStatus === 'function') updateModeStatus(); }); }
+            if (typeof updateModeStatus === 'function') updateModeStatus();
         }
 
         // 如果 DOM 已就绪，立即执行；否则等待 DOMContentLoaded

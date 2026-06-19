@@ -279,17 +279,26 @@
                     risk:   document.getElementById('ds-sub-risk'),
                     doubao: document.getElementById('ds-sub-doubao')
                 };
-                // 隐藏所有面板
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
-                // 显示目标面板
                 var panel = panels[tab];
                 if (panel) panel.style.display = 'flex';
                 _dsCurrentSub = tab;
                 if (tab === 'writer' && typeof wrInit === 'function') wrInit();
-                // 同步下拉框
                 var sel = document.getElementById('ds-sub-select');
                 if (sel) sel.value = tab;
+                if (typeof updateModeStatus === 'function') updateModeStatus();
             };
+            function updateModeStatus() {
+                var sub = _dsCurrentSub || 'chat';
+                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };
+                var modeLabel = document.getElementById('ds-current-mode-label');
+                if (modeLabel) modeLabel.textContent = labelMap[sub] || '智能对话';
+                var roleSelect = document.getElementById('expertRole');
+                var role = roleSelect ? roleSelect.value : 'default';
+                var roleMap = { default:'通用', dianwu:'⚡ 电务', gongwu:'🛤️ 工务', gongdian:'🔌 供电', keyun:'🚌 客运', chewu:'🚂 车务', jiwu:'🚄 机务', cheliang:'🚃 车辆', tongxin:'📡 通信', fangjian:'🏗️ 房建', huoyun:'📦 货运', tongyong:'🛡️ 综合', frontend:'💻 前端', riskanalyst:'🔍 风险分析' };
+                var roleLabel = document.getElementById('ds-current-role-label');
+                if (roleLabel) roleLabel.textContent = roleMap[role] || '通用';
+            }
 
             // 历史侧边栏抽屉开关
             let _dsSidebarOpen = false;
@@ -831,105 +840,169 @@
             window.dsSendMsg = async function() {
                 if (dsStreaming) return;
                 const input = document.getElementById('ds-user-input');
-                const userText = input.value.trim();
+                let userText = input.value.trim();
                 if (!userText) return;
 
-                // ── 意图路由：自动切换子模块（已关闭，避免误跳转）──
-                // var _skipRouting = window._skipIntentRouting_inner === true;
-                // window._skipIntentRouting_inner = false;
-                // const _lowerText = userText;
-                // const _isCheckIntent = /对规|违反了?哪|不符合|哪条|违章|超限|应对应|依据什么规|检查问题/.test(_lowerText);
-                // const _isWriteIntent = /写报告|生成报告|起草|撰写|安全分析|月度总结|专项报告/.test(_lowerText);
-                // if (!_skipRouting && _isCheckIntent && typeof dsSwitchSub === 'function') {
-                //     input.value = '';
-                //     dsSwitchSub('check');
-                //     const acInput = document.getElementById('autoCheck-input');
-                //     if (acInput) {
-                //         acInput.value = userText;
-                //         window.autoCheckAI_force();
-                //     }
-                //     return;
-                // }
-                // if (!_skipRouting && _isWriteIntent && typeof dsSwitchSub === 'function') {
-                //     input.value = '';
-                //     dsSwitchSub('write');
-                //     const wrInput = document.getElementById('wr-query-input');
-                //     if (wrInput) wrInput.value = userText;
-                //     return;
-                // }
+                const rawUserText = userText;
 
+                // ════════════════════════════════════════════
+                // 1. 强制命令路由（最高优先级）
+                // ════════════════════════════════════════════
+                if (rawUserText.startsWith('/check ')) {
+                    const query = rawUserText.replace('/check ', '').trim();
+                    if (!query) { alert('请输入对规内容'); return; }
+                    dsSwitchSub('check');
+                    const acInput = document.getElementById('autoCheck-input');
+                    if (acInput) { acInput.value = query; setTimeout(function() { if (typeof window.autoCheckLocal === 'function') window.autoCheckLocal(); }, 200); }
+                    input.value = ''; return;
+                }
+                if (rawUserText.startsWith('/write ')) {
+                    const query = rawUserText.replace('/write ', '').trim();
+                    if (!query) { alert('请输入写作需求'); return; }
+                    dsSwitchSub('writer');
+                    const wrInput = document.getElementById('wr-query-input');
+                    if (wrInput) { wrInput.value = query; setTimeout(function() { if (typeof window.wrWrite === 'function') window.wrWrite(); }, 300); }
+                    input.value = ''; return;
+                }
+                if (rawUserText.startsWith('/risk ')) {
+                    const query = rawUserText.replace('/risk ', '').trim();
+                    if (!query) { alert('请输入研判重点'); return; }
+                    dsSwitchSub('risk');
+                    const focusInput = document.getElementById('risk-focus');
+                    if (focusInput) { focusInput.value = query; setTimeout(function() { if (typeof window.runRiskAnalysis === 'function') window.runRiskAnalysis(); }, 300); }
+                    input.value = ''; return;
+                }
+
+                // ════════════════════════════════════════════
+                // 2. 当前激活子模块锁定（次高优先级）
+                // ════════════════════════════════════════════
+                const currentSub = _dsCurrentSub || 'chat';
+                if (currentSub === 'check') {
+                    dsSwitchSub('check');
+                    const acInput = document.getElementById('autoCheck-input');
+                    if (acInput) { acInput.value = rawUserText; setTimeout(function() { if (typeof window.autoCheckLocal === 'function') window.autoCheckLocal(); }, 200); }
+                    input.value = ''; return;
+                }
+                if (currentSub === 'writer') {
+                    dsSwitchSub('writer');
+                    const wrInput = document.getElementById('wr-query-input');
+                    if (wrInput) { wrInput.value = rawUserText; setTimeout(function() { if (typeof window.wrWrite === 'function') window.wrWrite(); }, 300); }
+                    input.value = ''; return;
+                }
+                if (currentSub === 'risk') {
+                    dsSwitchSub('risk');
+                    const focusInput = document.getElementById('risk-focus');
+                    if (focusInput) { focusInput.value = rawUserText; setTimeout(function() { if (typeof window.runRiskAnalysis === 'function') window.runRiskAnalysis(); }, 300); }
+                    input.value = ''; return;
+                }
+
+                // ════════════════════════════════════════════
+                // 3. 自然语言意图识别（仅 chat 模式）
+                // ════════════════════════════════════════════
+                if (currentSub === 'chat') {
+                    const lower = rawUserText.toLowerCase();
+                    if (/对规|违反|违章|不符合|哪条规章|匹配条款/.test(lower)) {
+                        dsSwitchSub('check');
+                        const acInput = document.getElementById('autoCheck-input');
+                        if (acInput) { acInput.value = rawUserText; setTimeout(function() { if (typeof window.autoCheckLocal === 'function') window.autoCheckLocal(); }, 200); }
+                        input.value = ''; return;
+                    }
+                    if (/写报告|生成.*报告|起草|撰写|月度总结|整改通知书/.test(lower)) {
+                        dsSwitchSub('writer');
+                        const wrInput = document.getElementById('wr-query-input');
+                        if (wrInput) { wrInput.value = rawUserText; setTimeout(function() { if (typeof window.wrWrite === 'function') window.wrWrite(); }, 300); }
+                        input.value = ''; return;
+                    }
+                    if (/风险|趋势|研判|预警/.test(lower)) {
+                        dsSwitchSub('risk');
+                        const focusInput = document.getElementById('risk-focus');
+                        if (focusInput) { focusInput.value = rawUserText; setTimeout(function() { if (typeof window.runRiskAnalysis === 'function') window.runRiskAnalysis(); }, 300); }
+                        input.value = ''; return;
+                    }
+                }
+
+                // ════════════════════════════════════════════
+                // 4. 普通对话（保留原有全部逻辑）
+                // ════════════════════════════════════════════
+                // ---- 4.1 API Key ----
                 const key = dsApiKey || await _getApiKey();
                 if (!key || key === DS_PLACEHOLDER_KEY) {
                     dsAppendMsg('system', '⚠️ 请先配置 DeepSeek API Key（在上方输入框中输入并点击「保存」）。\n\n如需申请 API Key，请访问：https://platform.deepseek.com/');
                     return;
                 }
 
-                // 拼接附件内容到问题末尾（AI 读取用）
+                // ---- 4.2 附件处理 ----
                 const validAttach = (window._dsAttachments || []).filter(Boolean);
                 let finalText = userText;
                 let attachNames = [];
                 if (validAttach.length > 0) {
-                    attachNames = validAttach.map(a => a.name);
-                    finalText += '\n\n【附件内容】\n' + validAttach.map(a =>
-                        '--- 文件：' + a.name + ' ---\n' + a.text
-                    ).join('\n\n');
-                    // 清空附件
+                    attachNames = validAttach.map(function(a) { return a.name; });
+                    finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
                     window._dsAttachments = [];
                     document.getElementById('ds-attach-file') && (document.getElementById('ds-attach-file').value = '');
                 }
-
                 input.value = '';
                 input.style.height = '';
 
-                // 存储用户消息（displayText 用于显示，content 用于 AI）
                 const displayText = attachNames.length > 0
                     ? userText + '\n📎 ' + attachNames.join('、')
                     : userText;
 
-                // 若无当前会话，自动新建一个（保证保存路径有效）
+                // ---- 4.3 对话历史 ----
                 if (!dsCurrentConvId) {
                     dsCurrentConvId = dsGenerateId();
                     dsHistory = [];
-                    dsConversations.unshift({
-                        id: dsCurrentConvId,
-                        title: '新对话',
-                        messages: [],
-                        timestamp: Date.now(),
-                        pinned: false
-                    });
+                    dsConversations.unshift({ id: dsCurrentConvId, title: '新对话', messages: [], timestamp: Date.now(), pinned: false });
                     localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
                     dsRenderHistoryList();
                 }
-
                 dsHistory.push({ role: 'user', content: finalText, displayText: displayText });
                 dsRenderAll();
-                // 【性能优化】不在此时写 localStorage，等流式结束后统一保存
 
-                // 不再自动弹出数据源选择，使用会话记忆或默认全部关闭
-                // 支持临时数据源覆盖（数据源按钮选择不记住时使用）
+                // ---- 4.4 角色注入 ----
+                var roleSelect = document.getElementById('expertRole');
+                var selectedRole = roleSelect ? roleSelect.value : 'default';
+                var rolePrompt = '';
+                if (window.ROLE_PROMPTS && window.ROLE_PROMPTS[selectedRole]) {
+                    rolePrompt = window.ROLE_PROMPTS[selectedRole] + '\n\n';
+                }
+
+                // ---- 4.5 长期记忆 ----
+                var memoryText = '';
+                if (typeof extractFacts === 'function' && typeof addMemory === 'function' && typeof getRelevantMemories === 'function') {
+                    try {
+                        var newFacts = extractFacts(userText);
+                        newFacts.forEach(function(f) { addMemory(f); });
+                        var memories = getRelevantMemories(userText);
+                        if (memories.length) {
+                            memoryText = '【长期记忆】\n' + memories.map(function(m) { return '• ' + m.fact; }).join('\n') + '\n\n';
+                        }
+                    } catch(e) {}
+                }
+
+                // ---- 4.6 系统提示 ----
                 var _tempSrc = window._tempDataSrc || null;
                 var _dataSrc = _tempSrc || _sessionDataSource || { rules: false, issue: false, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
-                // 【性能优化】所有数据源都关闭时，跳过 dsBuildSystemPrompt 的全遍历评分
-                const hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
-                const systemPrompt = hasAnySource
+                var hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
+                var baseSystem = hasAnySource
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)
                     : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
-                // 临时数据源（不记住）使用完后清除；会话数据源不记住时也清除
+                var systemPrompt = rolePrompt + memoryText + baseSystem;
                 if (_tempSrc) { window._tempDataSrc = null; }
 
-                const messages = [
+                var messages = [
                     { role: 'system', content: systemPrompt },
-                    ...dsHistory.slice(-10)   // 携带最近 10 条上下文
+                    ...dsHistory.slice(-10)
                 ];
 
-                // 占位助手消息（流式输出用）
+                // ---- 4.7 流式对话 ----
                 dsHistory.push({ role: 'assistant', content: '' });
-                const assistantIdx = dsHistory.length - 1;
+                var assistantIdx = dsHistory.length - 1;
                 dsRenderAll();
                 dsScrollBottom();
 
                 dsStreaming = true;
-                const sendBtn = document.getElementById('ds-send-btn');
+                var sendBtn = document.getElementById('ds-send-btn');
                 sendBtn.disabled = false;
                 sendBtn.style.opacity = '1';
                 sendBtn.style.background = '#e53e3e';
@@ -939,31 +1012,20 @@
 
                 try {
                     window._dsAbortController = new AbortController();
-                    // 前端工程师角色需要更大 token 配额，避免代码截断
-                    const roleSelect = document.getElementById('expertRole');
-                    const isFrontendRole = roleSelect && roleSelect.value === 'frontend';
-                    const isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
-                    const maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
-                    const resp = await fetch(dsApiUrl, {
+                    var isFrontendRole = selectedRole === 'frontend';
+                    var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
+                    var maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
+                    var resp = await fetch(dsApiUrl, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + key
-                        },
-                        body: JSON.stringify({
-                            model: dsModel,
-                            messages: messages,
-                            stream: true,
-                            temperature: 0.7,
-                            max_tokens: maxTokens
-                        }),
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                        body: JSON.stringify({ model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens }),
                         signal: window._dsAbortController.signal
                     });
 
                     if (!resp.ok) {
-                        const errText = await resp.text();
-                        let errMsg = '请求失败（HTTP ' + resp.status + '）';
-                        const statusHints = {
+                        var errText = await resp.text();
+                        var errMsg = '请求失败（HTTP ' + resp.status + '）';
+                        var statusHints = {
                             401: '⚠️ API Key 无效或未填写，请确认已填入正确的 Key',
                             402: '⚠️ 账户余额不足，请前往对应平台充值后重试',
                             403: '⚠️ API Key 无访问权限，请检查 Key 是否正确',
@@ -974,59 +1036,54 @@
                         if (statusHints[resp.status]) {
                             errMsg = statusHints[resp.status];
                         } else {
-                            try {
-                                const errJson = JSON.parse(errText);
-                                errMsg += '：' + (errJson.error?.message || errText.slice(0, 200));
-                            } catch(e) { errMsg += '：' + errText.slice(0, 200); }
+                            try { var errJson = JSON.parse(errText); errMsg += '：' + (errJson.error?.message || errText.slice(0, 200)); }
+                            catch(e) { errMsg += '：' + errText.slice(0, 200); }
                         }
                         dsHistory[assistantIdx].content = '❌ ' + errMsg;
-                        dsRenderAll(); /* 仅渲染错误提示，不写 localStorage */
+                        dsRenderAll();
                         return;
                     }
 
-                    // SSE 流式读取
-                    const reader = resp.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    let _renderTick = 0; // 渲染节流计数器
-
+                    var reader = resp.body.getReader();
+                    var decoder = new TextDecoder();
+                    var buffer = '';
+                    var _renderTick = 0;
                     while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop(); // 保留未完成行
-                        for (const line of lines) {
-                            const trimmed = line.trim();
+                        var resp2 = await reader.read();
+                        if (resp2.done) break;
+                        buffer += decoder.decode(resp2.value, { stream: true });
+                        var lines2 = buffer.split('\n');
+                        buffer = lines2.pop();
+                        for (let _li = 0; _li < lines2.length; _li++) {
+                            var trimmed = lines2[_li].trim();
                             if (!trimmed || trimmed === 'data: [DONE]') continue;
                             if (trimmed.startsWith('data: ')) {
                                 try {
-                                    const json = JSON.parse(trimmed.slice(6));
-                                    const delta = json.choices?.[0]?.delta?.content || '';
+                                    var json2 = JSON.parse(trimmed.slice(6));
+                                    var delta = json2.choices?.[0]?.delta?.content || '';
                                     if (delta) {
                                         dsHistory[assistantIdx].content += delta;
-                                        // 【性能优化】节流渲染：每3个chunk刷新一次DOM
                                         _renderTick++;
                                         if (_renderTick % 3 === 0) {
-                                            const chatBox = document.getElementById('ds-chat-box');
-                                            const bubbles = chatBox.querySelectorAll('.ds-bubble-assistant');
-                                            const lastBubble = bubbles[bubbles.length - 1];
+                                            var chatBox = document.getElementById('ds-chat-box');
+                                            var bubbles = chatBox.querySelectorAll('.ds-bubble-assistant');
+                                            var lastBubble = bubbles[bubbles.length - 1];
                                             if (lastBubble) lastBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content) + '<span class="ds-cursor">▌</span>';
                                             dsScrollBottom();
                                         }
                                     }
-                                } catch(e) { /* 跳过解析失败的行 */ }
+                                } catch(e) {}
                             }
                         }
                     }
-                    // 流结束：强制最后一次渲染
+
                     var _finalChatBox = document.getElementById('ds-chat-box');
                     var _finalBubbles = _finalChatBox.querySelectorAll('.ds-bubble-assistant');
                     var _finalBubble = _finalBubbles[_finalBubbles.length - 1];
                     if (_finalBubble) _finalBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content);
                     dsSaveHistory();
                     dsRenderHistoryList();
-                    // 流式结束后注入反馈按钮
+
                     setTimeout(function(){
                         var lastBubble = _finalChatBox.querySelector('.ds-bubble-assistant:last-of-type');
                         if (lastBubble && !lastBubble.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
@@ -1034,39 +1091,57 @@
                         }
                     }, 50);
 
+                    // ---- 主动建议 ----
+                    var aiContent = dsHistory[assistantIdx].content;
+                    var suggestions = [];
+                    if (/违章|违反|不符合|对规/.test(aiContent)) suggestions.push('📝 生成整改通知书');
+                    if (/风险|趋势|研判|预警/.test(aiContent)) suggestions.push('📊 生成风险研判报告');
+                    if (/检查|问题|隐患/.test(aiContent)) suggestions.push('📋 查询相关规章');
+                    if (suggestions.length > 0 && _finalChatBox) {
+                        var lastMsgDiv = _finalChatBox.querySelector('.ds-row-assistant:last-of-type');
+                        if (lastMsgDiv) {
+                            var suggestDiv = document.createElement('div');
+                            suggestDiv.style.cssText = 'display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;';
+                            suggestions.forEach(function(text) {
+                                var btn = document.createElement('button');
+                                btn.textContent = text;
+                                btn.className = 'btn btn-secondary btn-small';
+                                btn.onclick = function() {
+                                    var ib = document.getElementById('ds-user-input');
+                                    if (ib) ib.value = text.replace(/^[^\s]+\s/, '');
+                                    setTimeout(function() { dsSendMsg(); }, 100);
+                                };
+                                suggestDiv.appendChild(btn);
+                            });
+                            lastMsgDiv.appendChild(suggestDiv);
+                        }
+                    }
+
                 } catch(err) {
                     if (err.name === 'AbortError') {
-                        // 用户手动停止，保留已生成内容
-                        const chatBox2 = document.getElementById('ds-chat-box');
+                        var chatBox2 = document.getElementById('ds-chat-box');
                         if (chatBox2) {
-                            const cursors2 = chatBox2.querySelectorAll('.ds-cursor');
-                            cursors2.forEach(c => c.remove());
+                            var cursors2 = chatBox2.querySelectorAll('.ds-cursor');
+                            cursors2.forEach(function(c) { c.remove(); });
                             setTimeout(function(){
-                                var lastBubble = chatBox2.querySelector('.ds-bubble-assistant:last-of-type');
-                                if (lastBubble && !lastBubble.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
-                                    window._addFeedbackButtons(lastBubble, lastBubble.innerText);
+                                var lastBubble2 = chatBox2.querySelector('.ds-bubble-assistant:last-of-type');
+                                if (lastBubble2 && !lastBubble2.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
+                                    window._addFeedbackButtons(lastBubble2, lastBubble2.innerText);
                                 }
                             }, 50);
                         }
-                        /* 用户手动停止时不写 localStorage，流结束才保存 */
                     } else {
-                        // 检测 CORS 错误，提示具体原因
                         if (err.message && (err.message.indexOf('Failed to fetch') !== -1)) {
-                            dsHistory[assistantIdx].content = '❌ 网络错误：CORS 跨域限制\n\n'
-                                + '当前 API（' + dsApiUrl.split('/api/')[0] + '）不允许浏览器直接访问。\n\n'
-                                + '解决方案：\n'
-                                + '1. 切换使用 DeepSeek API（推荐，支持浏览器调用）\n'
-                                + '2. 或等待后续版本支持 CORS 代理';
+                            dsHistory[assistantIdx].content = '❌ 网络错误：CORS 跨域限制\n\n当前 API（' + dsApiUrl.split('/api/')[0] + '）不允许浏览器直接访问。\n\n解决方案：\n1. 切换使用 DeepSeek API（推荐，支持浏览器调用）\n2. 或等待后续版本支持 CORS 代理';
                         } else {
                             dsHistory[assistantIdx].content = '❌ 网络错误：' + err.message + '\n请检查网络连接或 API Key 是否正确。';
                         }
                         dsRenderAll();
-                        /* 网络错误不写 localStorage */
                     }
                 } finally {
                     window._dsAbortController = null;
                     dsStreaming = false;
-                    const sendBtn2 = document.getElementById('ds-send-btn');
+                    var sendBtn2 = document.getElementById('ds-send-btn');
                     if (sendBtn2) {
                         sendBtn2.disabled = false;
                         sendBtn2.style.opacity = '1';
@@ -1079,6 +1154,7 @@
             };
 
             // ---- 快捷提问 ----
+
             window.dsQuick = function(text) {
                 document.getElementById('ds-user-input').value = text;
                 dsSendMsg();
@@ -1878,63 +1954,11 @@
       }
 
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
-      var originalDsSendMsg = window.dsSendMsg;
       window.ROLE_PROMPTS = ROLE_PROMPTS;
-      window._originalSendMsg = originalDsSendMsg;
+      window._originalSendMsg = window.dsSendMsg;
 
-      if (typeof originalDsSendMsg === 'function') {
-        window.dsSendMsg = async function() {
-          const inputEl = document.getElementById('ds-user-input');
-          let userText = inputEl ? inputEl.value.trim() : '';
-          if (!userText) return;
-
-          const roleSelect = document.getElementById('expertRole');
-          const selectedRole = roleSelect ? roleSelect.value : '';
-          const isProfessional = selectedRole !== '' && selectedRole !== 'tongyong' && selectedRole !== 'frontend';
-          const writingMode = document.getElementById('writing-mode') && document.getElementById('writing-mode').checked;
-
-          // 写作模式路由
-          if (writingMode && typeof window.wrWrite === 'function') {
-            inputEl.value = '';
-            var wrInputEl = document.getElementById('wr-query-input');
-            if (wrInputEl) wrInputEl.value = userText;
-            var chatBox = document.getElementById('ds-chat-box');
-            if (chatBox) { chatBox.style.display = 'flex'; }
-            try { await window.wrWrite(); } catch(e) {}
-            var reportText = window._wrCurrentReportContent;
-            if (reportText && chatBox) {
-              var asstDiv = document.createElement('div');
-              asstDiv.className = 'ds-row-assistant';
-              asstDiv.innerHTML = '<div class="ds-bubble-assistant">' + (typeof wrStreamFormat === 'function' ? wrStreamFormat(reportText.slice(0, 800)) : reportText.slice(0, 800).replace(/\n/g, '<br>')) + '</div>';
-              chatBox.appendChild(asstDiv);
-            }
-            if (wrInputEl) wrInputEl.value = '';
-            return;
-          }
-
-          // 1. 角色设定
-          var rolePrompt = '';
-          var key = selectedRole || 'default';
-          if (ROLE_PROMPTS[key]) {
-            rolePrompt = '【角色设定】\n' + ROLE_PROMPTS[key] + '\n\n';
-          }
-
-          // 2. 长期记忆
-          const newFacts = extractFacts(userText);
-          newFacts.forEach(f => addMemory(f));
-          var memories = getRelevantMemories(userText);
-          var memoryText = memories.length ? '【长期记忆】\n' + memories.map(function(m) { return '• ' + m.fact; }).join('\n') + '\n\n' : '';
-
-          // 3. 组装并发送
-          var finalMessage = rolePrompt + memoryText + '用户问题：' + userText;
-          inputEl.value = finalMessage;
-          await originalDsSendMsg();
-          inputEl.value = '';
-
-          let convCount = parseInt(localStorage.getItem('conv_count') || '0') + 1;
-          localStorage.setItem('conv_count', convCount);
-        };
-      }
+      // 角色注入和长期记忆已内置到 dsSendMsg 中，此处保留暴露 ROLE_PROMPTS
+      window.dsSendMsg._roleInjectionEnabled = true;
 
       // ---------- 10. 反馈收集 ----------
       function addFeedbackButtons(messageDiv, assistantContent) {

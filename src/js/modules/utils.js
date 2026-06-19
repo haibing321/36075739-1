@@ -642,4 +642,30 @@
                 cleanupOldMedia: cleanupOldMedia,
                 cleanupAll: cleanupAll
             };
+
+            // ========== 动态加载脚本（按需加载大型库）==========
+            window.loadScript = function(src) {
+                return new Promise(function(resolve, reject) {
+                    if (document.querySelector('script[src="' + src + '"]')) {
+                        return resolve();
+                    }
+                    var script = document.createElement('script');
+                    script.src = src;
+                    script.onload = function() { resolve(); };
+                    script.onerror = function() { reject(new Error('加载失败: ' + src)); };
+                    document.head.appendChild(script);
+                });
+            };
+
+            // ========== 防抖工具 ==========
+            window.debounce = function(fn, delay) {
+                delay = delay || 300;
+                var timer;
+                return function() {
+                    var args = arguments;
+                    var ctx = this;
+                    clearTimeout(timer);
+                    timer = setTimeout(function() { fn.apply(ctx, args); }, delay);
+                };
+            };
         })();

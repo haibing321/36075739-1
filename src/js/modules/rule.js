@@ -678,7 +678,13 @@
                 div.id = 'rule-kw_' + window.ruleKeywordCount;
                 div.innerHTML = '<label>关键词' + window.ruleKeywordCount + '</label><input type="text" id="rule-input_' + window.ruleKeywordCount + '" placeholder="输入关键词' + window.ruleKeywordCount + '">' + (window.ruleKeywordCount > 1 ? '<button class="btn-remove" onclick="removeRuleKeyword(' + window.ruleKeywordCount + ')">×</button>' : '');
                 container.appendChild(div);
-                setTimeout(() => document.getElementById('rule-input_' + window.ruleKeywordCount)?.focus(), 100);
+                const input = document.getElementById('rule-input_' + window.ruleKeywordCount);
+                if (input) {
+                    input.addEventListener('input', debounce(function() {
+                        renderResults();
+                    }, 500));
+                    setTimeout(() => input.focus(), 100);
+                }
                 updateAddBtn();
             }
 

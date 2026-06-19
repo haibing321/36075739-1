@@ -198,9 +198,15 @@
                 const div = document.createElement('div');
                 div.className = 'keyword-row';
                 div.id = 'issue-kw_' + keywordNum;
-                div.innerHTML = '<label>关键词' + keywordNum + '</label><input type="text" id="issue-input_' + keywordNum + '" placeholder="输入关键词' + keywordNum + '" onkeypress="issueHandleKeyPress(event,' + keywordNum + ')">' + (keywordNum > 1 ? '<button class="btn-remove" onclick="issueRemoveKeyword(' + keywordNum + ')">×</button>' : '');
+                div.innerHTML = '<label>关键词' + keywordNum + '</label><input type="text" id="issue-input_' + keywordNum + '" placeholder="输入关键词' + keywordNum + '">' + (keywordNum > 1 ? '<button class="btn-remove" onclick="issueRemoveKeyword(' + keywordNum + ')">×</button>' : '');
                 container.appendChild(div);
-                setTimeout(() => document.getElementById('issue-input_' + keywordNum).focus(), 100);
+                const input = document.getElementById('issue-input_' + keywordNum);
+                if (input) {
+                    input.addEventListener('input', debounce(function() {
+                        issueDoSearch();
+                    }, 500));
+                    setTimeout(() => input.focus(), 100);
+                }
                 issueUpdateAddBtn();
             };
 

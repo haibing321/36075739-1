@@ -668,4 +668,20 @@
                     timer = setTimeout(function() { fn.apply(ctx, args); }, delay);
                 };
             };
+
+            // ========== 设置面板 — 各模块数据计数更新 ==========
+            window.updateDataManagementStats = function() {
+                var els = { handbook: 'set-handbook-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count' };
+                var getters = {
+                    handbook: function() { return window.getHandbookData ? window.getHandbookData().length : 0; },
+                    issue:    function() { return window.getIssueData    ? window.getIssueData().length    : 0; },
+                    rule:     function() { return window.getRulesData   ? window.getRulesData().length   : 0; },
+                    diary:    function() { return window.getDiaryData   ? window.getDiaryData().length   : 0; },
+                    phone:    function() { return window.getPhoneData   ? window.getPhoneData().length   : 0; }
+                };
+                Object.keys(els).forEach(function(k) {
+                    var el = document.getElementById(els[k]);
+                    if (el) el.textContent = (getters[k]()) + '条';
+                });
+            };
         })();

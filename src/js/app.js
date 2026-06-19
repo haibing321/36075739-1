@@ -338,7 +338,12 @@ window.onclick = function(e) {
 
 window.toggleSettingsPanel = function() {
     var p = document.getElementById('settings-panel');
-    if (p) p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'block' : 'none';
+    if (!p) return;
+    var isOpening = (p.style.display === 'none' || p.style.display === '');
+    p.style.display = isOpening ? 'block' : 'none';
+    if (isOpening && window.updateDataManagementStats) {
+        window.updateDataManagementStats();
+    }
 };
 
 window.clearAllCache = function() {

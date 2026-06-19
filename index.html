@@ -1191,8 +1191,8 @@
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="font-size:0.8rem;">📦 全局备份</span>
                         <span style="display:flex;gap:6px;">
-                            <button onclick="document.getElementById('global-backup-btn').click();" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">备份</button>
-                            <button onclick="document.getElementById('global-restore-btn').click();" class="btn-data-sm" style="padding:5px 10px;font-size:0.78rem;background:#fef3c7;border:1px solid #fbbf24;color:#92400e;">恢复</button>
+                            <button onclick="document.getElementById('global-backup-btn').click();" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
+                            <button onclick="document.getElementById('global-restore-btn').click();" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
                         </span>
                     </div>
                     <div style="border-top:1px solid #e5e7eb;margin:2px 0;"></div>
@@ -1274,6 +1274,7 @@
                             <span style="font-size:0.7rem;color:#666;" id="set-wrhist-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
+                            <button onclick="wrImportWithType('history')" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
                             <button onclick="wrExportAllReports()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
                             <button onclick="wrClearAllReports()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
                         </span>
@@ -1287,6 +1288,7 @@
                         <span style="display:flex;gap:6px;">
                             <button onclick="importRailwayTerms()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
                             <button onclick="exportRailwayTerms()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
+                            <button onclick="if(confirm('确定清空铁路术语库?')){localStorage.removeItem('patch_term_library_v2');alert('已清空，刷新后生效');}" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
                         </span>
                     </div>
                 </div>

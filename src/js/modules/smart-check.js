@@ -2360,6 +2360,8 @@
 
             // ========== 自动对规子模块 END ==========
     window.patchInferTrade = patchInferTrade;
+    // 术语库计数
+    window.getTermCount = function() { return PATCH_TERM_LIBRARY.length; };
 
     console.log("✅ smart-check.js 已加载");
 })();

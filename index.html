@@ -1187,9 +1187,15 @@
                 <!-- 数据管理（可展开） -->
                 <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:0.88rem;cursor:pointer;">📦 数据管理 ▾</div>
                 <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
-                    <button onclick="document.getElementById('global-backup-btn').click();" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;">📦 一键备份</button>
-                    <button onclick="document.getElementById('global-restore-btn').click();" class="btn-primary-sm" style="padding:9px 14px;background:#d97706;border-radius:10px;text-align:left;">📂 一键导入</button>
-                    <div style="border-top:1px solid #e5e7eb;margin:4px 0;"></div>
+                    <!-- 全局备份/恢复 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-size:0.8rem;">📦 全局备份</span>
+                        <span style="display:flex;gap:6px;">
+                            <button onclick="document.getElementById('global-backup-btn').click();" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">备份</button>
+                            <button onclick="document.getElementById('global-restore-btn').click();" class="btn-data-sm" style="padding:5px 10px;font-size:0.78rem;background:#fef3c7;border:1px solid #fbbf24;color:#92400e;">恢复</button>
+                        </span>
+                    </div>
+                    <div style="border-top:1px solid #e5e7eb;margin:2px 0;"></div>
                     <!-- 检查手册 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
@@ -1272,13 +1278,17 @@
                             <button onclick="wrClearAllReports()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
                         </span>
                     </div>
-                </div>
-
-                <!-- 术语库管理（可展开） -->
-                <div onclick="var s=document.getElementById('set-term-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#ecfeff;border:1px solid #67e8f9;border-radius:10px;font-size:0.88rem;cursor:pointer;">📚 术语库管理 ▾</div>
-                <div id="set-term-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
-                    <button onclick="importRailwayTerms();" class="btn-primary-sm" style="padding:9px 14px;background:#0891b2;border-radius:10px;text-align:left;">📚 导入词库</button>
-                    <button onclick="exportRailwayTerms();" class="btn-primary-sm" style="padding:9px 14px;background:#0e7490;border-radius:10px;text-align:left;">📤 导出词库</button>
+                    <!-- 术语库 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:0.8rem;">📚 铁路术语库</span>
+                            <span style="font-size:0.7rem;color:#666;" id="set-term-count">—</span>
+                        </span>
+                        <span style="display:flex;gap:6px;">
+                            <button onclick="importRailwayTerms()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
+                            <button onclick="exportRailwayTerms()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
+                        </span>
+                    </div>
                 </div>
 
                 <div style="border-top:1px solid #e5e7eb;"></div>

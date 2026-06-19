@@ -151,6 +151,7 @@
             };
 
             window.phoneHandleExcel = async function(e) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
                 const file = e.target.files[0];
                 if (!file) return;
                 try {

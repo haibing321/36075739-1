@@ -371,6 +371,7 @@
             }
 
             window.issueDoSearch = async function() {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js');
                 if (window.perfMonitor) perfMonitor.start('search_issue');
                 const keywords = [];
                 for (let i = 1; i <= keywordNum; i++) {
@@ -590,6 +591,7 @@
                 } catch (err) { alert('JSON导入失败: ' + err.message); }
             }
             window.issueHandleExcel = async function(e) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
                 const file = e.target.files[0]; if (!file) return;
                 openModal('issue-importModal');
                 try {

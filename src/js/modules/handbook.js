@@ -91,6 +91,7 @@
 
             // 解析单个DOCX文件
             async function _parseDocxFile(file) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js');
                 if (typeof mammoth === 'undefined') {
                     alert('mammoth 库未加载，请检查网络连接');
                     return null;

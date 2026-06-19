@@ -258,6 +258,7 @@
     }
 
     window.oneClickBackup = async function() {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
         if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
         _toast('正在收集数据…');
         var backup = { version: 3, exportDate: new Date().toISOString(), modules: {} };
@@ -320,7 +321,8 @@
         } catch(e) { _toast('备份失败：' + e.message, true); }
     };
 
-    window.oneClickRestore = function() {
+    window.oneClickRestore = async function() {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
         if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
         // 使用兼容华为浏览器的文件选择器（input 必须在 DOM 中 + cancel 监听）
         triggerFileInput('.zip', async function(e) {

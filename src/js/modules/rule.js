@@ -815,6 +815,11 @@
                 await processFiles(window.pendingImportFiles, trade);
             }
             async function processFiles(files, trade) {
+                await Promise.all([
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js'),
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js'),
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js')
+                ]);
                 isProcessing = true;
                 const btn = document.getElementById('rule-importBtn');
                 let successCount = 0, skipCount = 0;
@@ -941,6 +946,7 @@
                 alert('导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个');
             }
             window.doExport = async function(format) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
                 const selectedTrade = document.getElementById('rule-exportTrade')?.value;
                 let exportRules = rules;
                 if (selectedTrade && selectedTrade !== '') exportRules = rules.filter(r => r.trade === selectedTrade);
@@ -975,6 +981,7 @@
 
             // 根据选择导出ZIP（支持按专业筛选）
             window.exportToZipWithSelection = async function(selectedTrade, exportRules) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
                 if (exportRules.length === 0) { alert('暂无规章可导出'); return; }
                 if (typeof JSZip === 'undefined') { alert('JSZip 库未加载，请检查网络连接'); return; }
                 

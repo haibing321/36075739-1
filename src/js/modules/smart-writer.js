@@ -755,6 +755,12 @@
                         return;
                     }
                     
+                    // 按需加载解析库
+                    await Promise.all([
+                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'),
+                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js')
+                    ]);
+                    
                     for (const file of files) {
                         console.log('[导入] 开始处理文件:', file.name, '类型:', matType);
                         try {
@@ -2063,6 +2069,10 @@
                     return;
                 }
                 if (typeof window.htmlDocx === 'undefined') {
+                    await loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js');
+                }
+                if (typeof window.htmlDocx === 'undefined') {
+                    // 二次检查：loadScript 失败后的 fallback
                     await new Promise((resolve, reject) => {
                         const script = document.createElement('script');
                         script.src = 'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js';

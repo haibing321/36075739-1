@@ -1164,17 +1164,13 @@
     </div>
 
 
-    <!-- Modular JS -->
-    <!-- CDN 外部库（defer: 并行下载，不阻塞渲染，按文档顺序执行） -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer onerror="console.warn('[CDN] xlsx 加载失败')"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" defer onerror="console.warn('[CDN] pdf.js 加载失败')"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js" defer onerror="console.warn('[CDN] mammoth 加载失败')"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js" defer onerror="console.warn('[CDN] fuse.js 加载失败')"></script>
-    <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer onerror="console.warn('[CDN] jszip 加载失败')"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xml-js@1.6.11/dist/xml-js.min.js" defer onerror="console.warn('[CDN] xml-js 加载失败')"></script>
+    <!--
+      性能优化: 将重型库延迟到使用时动态加载（via loadScript）
+      首屏只需加载 ~50KB 的核心 JS，无需等待 ~2MB 的大型库
+      保留 DOMPurify 确保安全防护随时可用
+    -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer onerror="console.warn('[CDN] DOMPurify 加载失败')"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" defer onerror="console.warn('[CDN] html-docx 加载失败')"></script>
+    <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
     <!-- 本地模块（defer: 并行下载，DOM 解析后按顺序执行） -->
     <script src="src/js/modules/utils.js" defer></script>
     <script src="src/js/modules/errorMonitor.js" defer></script>

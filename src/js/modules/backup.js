@@ -56,15 +56,37 @@
     function writeIndexedDB(dbName, storeName, version, data, clearFirst) {
         if (clearFirst === undefined) clearFirst = true;
         return new Promise(function(resolve, reject) {
-            // 优先用 dbManager 共享连接，避免版本冲突
             var p;
             var isOwnDB = false;
             if (window.dbManager && typeof window.dbManager.getDB === 'function') {
                 p = window.dbManager.getDB(dbName).then(function(db) {
                     if (!db.objectStoreNames.contains(storeName)) {
-                        db.close(); throw new Error('存储 ' + storeName + ' 不存在');
+                        // 共享连接中没有此 store → 关闭缓存，回退到独立连接（带 onupgradeneeded）
+                        console.warn('[writeIndexedDB] ' + dbName + ' 缺少 ' + storeName + '，回退独立连接');
+                        try { db.close(); } catch(e) {}
+                        if (window.dbManager && typeof window.dbManager.closeDB === 'function') {
+                            window.dbManager.closeDB(dbName);
+                        }
+                        throw new Error('_FALLBACK_');  // 特殊标记，触发回退
                     }
                     return db;
+                }).catch(function(err) {
+                    if (err.message === '_FALLBACK_') {
+                        // 回退到独立连接（带 onupgradeneeded 创建 store）
+                        isOwnDB = true;
+                        return new Promise(function(res, rej) {
+                            var req = indexedDB.open(dbName, version || 1);
+                            req.onupgradeneeded = function(e) {
+                                var db2 = e.target.result;
+                                if (!db2.objectStoreNames.contains(storeName)) {
+                                    db2.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                                }
+                            };
+                            req.onsuccess = function() { res(req.result); };
+                            req.onerror = function() { rej(req.error); };
+                        });
+                    }
+                    throw err;
                 });
             } else {
                 isOwnDB = true;

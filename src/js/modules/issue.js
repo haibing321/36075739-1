@@ -8,20 +8,18 @@
             const searchFields = ['性质', 'category', 'content', 'regulation', 'unit'];
             let currentPage = 1, pageSize = 20, totalPages = 1, allFilteredResults = [];
 
-            async function initDB() {
-                // 首次注册 schema 到 dbManager（仅注册一次）
-                if (!window._issueDBRegistered) {
-                    window.dbManager.register('RailwayIssueDB_v2', 2, function(database, e) {
-                        if (!database.objectStoreNames.contains(STORE_NAME)) {
-                            const store = database.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-                            store.createIndex('性质', '性质', { unique: false });
-                            store.createIndex('datetime', 'datetime', { unique: false });
-                            store.createIndex('category', 'category', { unique: false });
-                            store.createIndex('unit', 'unit', { unique: false });
-                        }
-                    });
-                    window._issueDBRegistered = true;
+            // 立即注册 DB schema（模块加载时，确保 backup.js writeIndexedDB 调用前 schema 已就绪）
+            window.dbManager.register('RailwayIssueDB_v2', 2, function(database, e) {
+                if (!database.objectStoreNames.contains(STORE_NAME)) {
+                    const store = database.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                    store.createIndex('性质', '性质', { unique: false });
+                    store.createIndex('datetime', 'datetime', { unique: false });
+                    store.createIndex('category', 'category', { unique: false });
+                    store.createIndex('unit', 'unit', { unique: false });
                 }
+            });
+
+            async function initDB() {
                 db = await window.dbManager.getDB('RailwayIssueDB_v2');
                 return db;
             }

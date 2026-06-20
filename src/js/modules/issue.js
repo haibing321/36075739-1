@@ -697,13 +697,14 @@
             };
 
             window.addEventListener('load', async function() {
+                // 始终绑定文件导入事件（不依赖 IndexedDB 初始化成功）
+                document.getElementById('issue-fileInput').addEventListener('change', issueHandleFile);
                 try {
                     await initDB();
                     await updateStorage();
                     issueAddKeyword();
                     const data = await loadData();
                     if (data.length === 0) await issueLoadDemoData();
-                    document.getElementById('issue-fileInput').addEventListener('change', issueHandleFile);
                 } catch (e) {
                     console.error('[issue] 初始化失败:', e.message);
                     // IndexedDB 版本冲突通常是临时的，刷新可恢复

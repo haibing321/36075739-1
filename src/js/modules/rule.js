@@ -734,24 +734,29 @@
                 if (isProcessing) { alert('正在处理中'); return; }
                 const input = document.getElementById('rule-fileInput');
                 if (!input) return;
-                input.onchange = async (e) => {
-                    const files = e.target.files;
-                    if (!files || files.length === 0) return;
-                    
-                    // 检查是否有ZIP文件
-                    const zipFile = Array.from(files).find(f => f.name.toLowerCase().endsWith('.zip'));
-                    if (zipFile) {
-                        // ZIP文件直接导入
-                        await importFromZip(zipFile);
-                    } else {
-                        // 其他文件(PDF/DOCX/JSON)走原有逻辑
-                        window.pendingImportFiles = Array.from(files);
-                        openModal('rule-importModal');
-                    }
-                    e.target.value = '';
-                };
                 input.click();
             }
+
+            // 在 init 时绑定 onchange（设置面板直接 click input 时也会触发此 handler）
+            (function bindRuleFileInput() {
+                var _inp = document.getElementById('rule-fileInput');
+                if (_inp) {
+                    _inp.onchange = async (e) => {
+                        const files = e.target.files;
+                        if (!files || files.length === 0) return;
+                        if (isProcessing) { alert('正在处理中'); return; }
+
+                        const zipFile = Array.from(files).find(f => f.name.toLowerCase().endsWith('.zip'));
+                        if (zipFile) {
+                            await importFromZip(zipFile);
+                        } else {
+                            window.pendingImportFiles = Array.from(files);
+                            openModal('rule-importModal');
+                        }
+                        e.target.value = '';
+                    };
+                }
+            })();
             
             // 将DOCX转换为单个section（保留图片、表格、排版）
             // 不再按章节拆分——一个文件对应一条规章
@@ -1992,20 +1997,6 @@
                 _el = document.getElementById('rule-exportBtn'); if (_el) _el.addEventListener('click', function() { openModal('rule-exportModal'); });
                 _el = document.getElementById('rule-catalogBtn'); if (_el) _el.addEventListener('click', showCatalog);
                 _el = document.getElementById('rule-clearBtn'); if (_el) _el.addEventListener('click', async function() {
-                    if (confirm('确定要清空所有规章吗？\n\n点击"确定"：清空\n点击"取消"：恢复示例')) {
-                        rules = [];
-                        await saveToStorage();
-                        refreshTradeSelect();
-                        updateTotalBadge();
-                        renderResults();
-                    } else {
-                        rules = sampleRules.map(r => ({ ...r }));
-                        await saveToStorage();
-                        refreshTradeSelect();
-                        updateTotalBadge();
-                        renderResults();
-                    }
-                });
                 document.getElementById('rule-totalBadge').addEventListener('click', showCatalog);
                 document.getElementById('rule-tradeSelect').addEventListener('change', renderResults);
                 document.getElementById('rule-catalogFilter')?.addEventListener('input', renderCatalog);

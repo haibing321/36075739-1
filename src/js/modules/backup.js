@@ -224,37 +224,34 @@
      * 安全触发文件选择器（兼容华为浏览器等移动端）
      * 关键修复：input 必须在 DOM 树中才能在华为浏览器正常弹出选择对话框
      */
+    // ⚠️ 重要：input.click() 必须在同步用户手势上下文中执行
+    // requestAnimationFrame 会丢失用户手势，导致文件选择器被浏览器拦截
     function triggerFileInput(accept, callback) {
         var input = document.createElement('input');
         input.type = 'file';
         input.accept = accept || '*/*';
-        input.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;width:0;height:0;'; // 隐藏但在DOM中
+        input.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;width:0;height:0;';
 
         // 必须添加到 DOM —— 华为浏览器不在此 DOM 中则 click() 无效
         document.body.appendChild(input);
 
         input.onchange = function(e) {
             callback(e);
-            // 延迟清理：确保事件处理完成后再移除
             setTimeout(function() {
                 if (input.parentNode) document.body.removeChild(input);
             }, 100);
         };
 
-        // 用户取消时也需清理
         input.addEventListener('cancel', function() {
             setTimeout(function() {
                 if (input.parentNode) document.body.removeChild(input);
             }, 100);
         }, { once: true });
 
-        // 使用 requestAnimationFrame 确保 DOM 已更新后再触发 click（解决部分浏览器的时序问题）
-        requestAnimationFrame(function() {
-            try { input.click(); } catch(err) {
-                console.warn('[backup] input.click() 失败，尝试重试:', err.message);
-                setTimeout(function() { try { input.click(); } catch(e2) { /* 最终放弃 */ } }, 50);
-            }
-        });
+        // 同步 click，保留用户手势上下文
+        try { input.click(); } catch(err) {
+            console.warn('[backup] input.click() 失败:', err.message);
+        }
     }
 
     window.oneClickBackup = async function() {
@@ -321,11 +318,11 @@
         } catch(e) { _toast('备份失败：' + e.message, true); }
     };
 
-    window.oneClickRestore = async function() {
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
-        if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
-        // 使用兼容华为浏览器的文件选择器（input 必须在 DOM 中 + cancel 监听）
+    window.oneClickRestore = function() {
+        // 先用同步手势打开文件选择器（避免 await 丢失用户手势）
         triggerFileInput('.zip', async function(e) {
+            await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+            if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
             var file = e.target.files[0]; if (!file) return;
             try {
                 _toast('正在解析备份文件…');

@@ -61,21 +61,31 @@
             if (window.dbManager && typeof window.dbManager.getDB === 'function') {
                 p = window.dbManager.getDB(dbName).then(function(db) {
                     if (!db.objectStoreNames.contains(storeName)) {
-                        // 共享连接中没有此 store → 关闭缓存，回退到独立连接（带 onupgradeneeded）
                         console.warn('[writeIndexedDB] ' + dbName + ' 缺少 ' + storeName + '，回退独立连接');
                         try { db.close(); } catch(e) {}
                         if (window.dbManager && typeof window.dbManager.closeDB === 'function') {
                             window.dbManager.closeDB(dbName);
                         }
-                        throw new Error('_FALLBACK_');  // 特殊标记，触发回退
+                        throw new Error('_FALLBACK_');
                     }
                     return db;
                 }).catch(function(err) {
-                    if (err.message === '_FALLBACK_') {
-                        // 回退到独立连接（带 onupgradeneeded 创建 store）
-                        isOwnDB = true;
-                        return new Promise(function(res, rej) {
-                            var req = indexedDB.open(dbName, version || 1);
+                    // dbManager 失败（store 缺失 / 版本冲突 / 连接断开等）→ 统一回退独立连接
+                    console.warn('[writeIndexedDB] dbManager 失败(' + dbName + '):', err.message, '→ 回退独立连接');
+                    // 清理 dbManager 缓存，避免连接冲突
+                    if (window.dbManager && typeof window.dbManager.closeDB === 'function') {
+                        window.dbManager.closeDB(dbName);
+                    }
+                    isOwnDB = true;
+                    return new Promise(function(res, rej) {
+                        // 先探测当前版本，再以 >= 当前版本的方式打开（避免 "requested version less than existing" 报错）
+                        var fallbackVer = version || 1;
+                        var rawReq = indexedDB.open(dbName);
+                        rawReq.onsuccess = function() {
+                            var existingVer = rawReq.result.version;
+                            rawReq.result.close();
+                            var targetVer = Math.max(fallbackVer, existingVer + 1);
+                            var req = indexedDB.open(dbName, targetVer);
                             req.onupgradeneeded = function(e) {
                                 var db2 = e.target.result;
                                 if (!db2.objectStoreNames.contains(storeName)) {
@@ -84,9 +94,20 @@
                             };
                             req.onsuccess = function() { res(req.result); };
                             req.onerror = function() { rej(req.error); };
-                        });
-                    }
-                    throw err;
+                        };
+                        rawReq.onerror = function() {
+                            // 无法探测 → 用原版本直接开（可能会失败）
+                            var req = indexedDB.open(dbName, fallbackVer);
+                            req.onupgradeneeded = function(e) {
+                                var db2 = e.target.result;
+                                if (!db2.objectStoreNames.contains(storeName)) {
+                                    db2.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                                }
+                            };
+                            req.onsuccess = function() { res(req.result); };
+                            req.onerror = function() { rej(req.error); };
+                        };
+                    });
                 });
             } else {
                 isOwnDB = true;

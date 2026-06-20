@@ -390,9 +390,7 @@
                     if (!(bm.rules.length === 1 && bm.rules[0].id === 1 && bm.rules[0].data)) {
                         standardRules = [{ id: 1, data: bm.rules }];
                     }
-                    // 使用 store.put 保留 id=1（不能用 writeIndexedDB，会移除 id）
-                    // 使用 dbManager 获取共享连接恢复规章数据
-                    await new Promise(function(resolve, reject) {
+                    var rulesRestored = await new Promise(function(resolve, reject) {
                         window.dbManager.getDB('RailwayRuleDB').then(function(db) {
                             var tx = db.transaction('ruleCollection', 'readwrite');
                             var store = tx.objectStore('ruleCollection');
@@ -400,11 +398,47 @@
                             for (var i = 0; i < standardRules.length; i++) {
                                 store.put(standardRules[i]);
                             }
-                            tx.oncomplete = function() { resolve(); };
+                            tx.oncomplete = function() { resolve(standardRules[0].data.length); };
                             tx.onerror = function() { reject(tx.error); };
-                        }).catch(reject);
+                        }).catch(function(err) {
+                            // dbManager 失败 → 回退独立连接（自动探测版本+创建 store）
+                            console.warn('[backup] RailwayRuleDB 连接失败，回退独立连接:', err.message);
+                            if (window.dbManager && typeof window.dbManager.closeDB === 'function') {
+                                window.dbManager.closeDB('RailwayRuleDB');
+                            }
+                            var rawReq = indexedDB.open('RailwayRuleDB');
+                            rawReq.onsuccess = function() {
+                                var existingVer = rawReq.result.version;
+                                rawReq.result.close();
+                                var targetVer = Math.max(3, existingVer + 1);
+                                var req = indexedDB.open('RailwayRuleDB', targetVer);
+                                req.onupgradeneeded = function(e) {
+                                    var db2 = e.target.result;
+                                    if (!db2.objectStoreNames.contains('ruleCollection')) {
+                                        var store = db2.createObjectStore('ruleCollection', { keyPath: 'id', autoIncrement: true });
+                                        store.createIndex('trade', 'trade', { unique: false });
+                                    }
+                                    if (!db2.objectStoreNames.contains('rule_images')) {
+                                        db2.createObjectStore('rule_images', { keyPath: 'id', autoIncrement: true });
+                                    }
+                                };
+                                req.onsuccess = function() {
+                                    var db = req.result;
+                                    var tx = db.transaction('ruleCollection', 'readwrite');
+                                    var store = tx.objectStore('ruleCollection');
+                                    store.clear();
+                                    for (var j = 0; j < standardRules.length; j++) {
+                                        store.put(standardRules[j]);
+                                    }
+                                    tx.oncomplete = function() { resolve(standardRules[0].data.length); };
+                                    tx.onerror = function() { reject(tx.error); };
+                                };
+                                req.onerror = function() { reject(req.error); };
+                            };
+                            rawReq.onerror = function() { reject(rawReq.error); };
+                        });
                     });
-                    console.log('已恢复 ' + standardRules[0].data.length + ' 条规章制度');
+                    console.log('已恢复 ' + rulesRestored + ' 条规章制度');
                 } else {
                     console.warn('备份中无规章制度数据');
                 }

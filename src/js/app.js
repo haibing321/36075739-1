@@ -189,6 +189,20 @@ window.onclick = function(e) {
     var _installBtn = null;
     var _installBtnAdded = false;
 
+    // SW 注册已禁用（v2.x SW 缓存策略导致移动端持续使用旧缓存，无法正常更新）
+    // 恢复方法：删除后面三行 return 即可
+    console.log('[PWA] SW 注册已跳过（缓存问题）');
+
+    // 清理已注册的旧 Service Worker（如果有的话）
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(reg) {
+            reg.unregister();
+            console.log('[PWA] 已注销旧 SW:', reg.scope);
+        });
+    });
+
+    return;
+
     navigator.serviceWorker.register('sw.js').then(function(reg) {
         console.log('[PWA] SW 注册成功');
 

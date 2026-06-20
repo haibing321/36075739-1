@@ -1997,6 +1997,20 @@
                 _el = document.getElementById('rule-exportBtn'); if (_el) _el.addEventListener('click', function() { openModal('rule-exportModal'); });
                 _el = document.getElementById('rule-catalogBtn'); if (_el) _el.addEventListener('click', showCatalog);
                 _el = document.getElementById('rule-clearBtn'); if (_el) _el.addEventListener('click', async function() {
+                    if (confirm('确定要清空所有规章吗？\n\n点击"确定"：清空\n点击"取消"：恢复示例')) {
+                        rules = [];
+                        await saveToStorage();
+                        refreshTradeSelect();
+                        updateTotalBadge();
+                        renderResults();
+                    } else {
+                        rules = sampleRules.map(r => ({ ...r }));
+                        await saveToStorage();
+                        refreshTradeSelect();
+                        updateTotalBadge();
+                        renderResults();
+                    }
+                });
                 document.getElementById('rule-totalBadge').addEventListener('click', showCatalog);
                 document.getElementById('rule-tradeSelect').addEventListener('change', renderResults);
                 document.getElementById('rule-catalogFilter')?.addEventListener('input', renderCatalog);

@@ -2030,7 +2030,8 @@
           var apiKey = localStorage.getItem('ds_api_key_v1') || '';
           if (!apiKey) { resultEl.innerHTML = '<div style="color:#ef4444;padding:16px;">⚠️ 请先在设置中配置 API Key</div>'; return; }
 
-          var response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+          var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+          var response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

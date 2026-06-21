@@ -277,6 +277,7 @@
                     chat:   document.getElementById('ds-sub-chat'),
                     writer: document.getElementById('ds-sub-writer'),
                     risk:   document.getElementById('ds-sub-risk'),
+                    checklist: document.getElementById('ds-sub-checklist'),
                     doubao: document.getElementById('ds-sub-doubao')
                 };
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
@@ -290,7 +291,7 @@
             };
             function updateModeStatus() {
                 var sub = _dsCurrentSub || 'chat';
-                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };
+                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', risk: '📊 风险研判', checklist: '📋 检查清单', doubao: '🤖 豆包网页版' };
                 var modeLabel = document.getElementById('ds-current-mode-label');
                 if (modeLabel) modeLabel.textContent = labelMap[sub] || '智能对话';
                 var roleSelect = document.getElementById('expertRole');
@@ -1954,6 +1955,104 @@
       }
 
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
+      // ---------- 14. 检查清单生成 ----------
+      window.generateChecklist = async function() {
+        var unit = document.getElementById('checklist-unit').value.trim();
+        var focus = document.getElementById('checklist-focus').value.trim();
+        var level = document.getElementById('checklist-level').value;
+        var resultEl = document.getElementById('checklist-result');
+        if (!unit) { alert('请输入单位名称'); return; }
+        if (!focus) { alert('请输入检查重点'); return; }
+
+        resultEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);"><div class="spinner"></div><p style="margin-top:12px;">正在分析检查信息和检查手册，生成清单...</p></div>';
+
+        try {
+          // 1. 获取检查信息中该单位的问题
+          var issues = window.getIssueData ? window.getIssueData() : [];
+          var unitIssues = issues.filter(function(d) { return d && d.unit && d.unit.indexOf(unit) !== -1; });
+          // 如果精确匹配不到，尝试模糊匹配
+          if (unitIssues.length === 0) {
+            unitIssues = issues.filter(function(d) {
+              return d && d.unit && (d.unit.indexOf(unit.split('段')[0]) !== -1 || unit.indexOf(d.unit.split('段')[0]) !== -1);
+            });
+          }
+          var issueSummary = '';
+          if (unitIssues.length > 0) {
+            // 按性质统计
+            var natureCount = {};
+            var catCount = {};
+            unitIssues.forEach(function(d) {
+              var n = d['性质'] || '空白';
+              natureCount[n] = (natureCount[n] || 0) + 1;
+              var c = d.category || '待分类';
+              catCount[c] = (catCount[c] || 0) + 1;
+            });
+            issueSummary = '该单位共 ' + unitIssues.length + ' 条问题记录。\n';
+            issueSummary += '问题性质分布: ' + JSON.stringify(natureCount) + '\n';
+            issueSummary += '类别分布: ' + JSON.stringify(catCount) + '\n';
+            // 取最近20条问题详情
+            issueSummary += '典型问题: \n';
+            var recent = unitIssues.slice(-20);
+            recent.forEach(function(d, i) {
+              issueSummary += (i+1) + '. [' + (d['性质']||'') + '][' + (d.category||'') + '] ' + (d.content||'').slice(0,150) + '\n';
+            });
+          } else {
+            issueSummary = '未找到该单位的检查信息记录，将基于检查手册和检查重点生成通用清单。\n';
+          }
+
+          // 2. 获取检查手册相关内容
+          var handbook = window.getHandbookData ? window.getHandbookData() : [];
+          var handbookText = '';
+          var keywords = focus.split(/[,，\s]+/);
+          if (handbook.length > 0) {
+            var matched = handbook.filter(function(h) {
+              var txt = (h.title||'') + (h.content||'');
+              return keywords.some(function(k) { return txt.indexOf(k) !== -1; });
+            });
+            if (matched.length === 0) matched = handbook.slice(0, 5); // 兜底
+            handbookText = matched.map(function(h) { return '- ' + (h.title||'') + ': ' + (h.content||'').slice(0,200); }).join('\n');
+          } else {
+            handbookText = '检查手册数据未加载，将基于检查重点生成通用清单。';
+          }
+
+          // 3. 构建 prompt
+          var dsPrompt = '你是铁路安全检查专家。请根据以下信息为【' + unit + '】生成一份有针对性的' + level + '级检查清单：\n\n'
+            + '【检查重点】' + focus + '\n\n'
+            + '【该单位历史问题】\n' + issueSummary + '\n\n'
+            + '【检查手册相关内容】\n' + handbookText + '\n\n'
+            + '请按以下格式输出检查清单：\n'
+            + '1. 检查项目分类（如：安全管理/设备质量/作业标准/人员素质/应急管理等）\n'
+            + '2. 每个类别下列出具体检查内容（编号+检查项+检查要点）\n'
+            + '3. 标注重点关注项（该单位的高频/典型问题对应项）\n'
+            + '4. 输出格式简洁清晰，适合打印携带到现场';
+
+          // 4. 调用 API
+          var apiKey = localStorage.getItem('ds_api_key_v1') || '';
+          if (!apiKey) { resultEl.innerHTML = '<div style="color:#ef4444;padding:16px;">⚠️ 请先在设置中配置 API Key</div>'; return; }
+
+          var response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + apiKey
+            },
+            body: JSON.stringify({
+              model: (localStorage.getItem('ds_model_v1') || 'ep-20240820145249-9vhch').replace('doubao-','').replace('deepseek-',''),
+              messages: [{ role: 'user', content: dsPrompt }],
+              stream: false,
+              max_tokens: 4096
+            })
+          });
+
+          if (!response.ok) throw new Error('API请求失败: ' + response.status);
+          var data = await response.json();
+          var content = data.choices[0].message.content;
+          resultEl.innerHTML = '<div style="background:#f9fafb;border-radius:8px;padding:14px;white-space:pre-wrap;line-height:1.8;">' + content.replace(/\n/g, '<br>') + '</div>';
+        } catch(e) {
+          resultEl.innerHTML = '<div style="color:#ef4444;padding:16px;">生成失败: ' + e.message + '</div>';
+        }
+      };
+
       window.ROLE_PROMPTS = ROLE_PROMPTS;
       window._originalSendMsg = window.dsSendMsg;
 

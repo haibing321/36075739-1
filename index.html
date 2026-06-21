@@ -34,6 +34,7 @@
         #ds-sub-check { display: none; }
         #ds-sub-writer { display: none; }
         #ds-sub-risk { display: none; }
+        #ds-sub-checklist { display: none; }
         #ds-sub-doubao { display: none; }
 
         /* 默认显示智能对话子模块 */
@@ -513,6 +514,7 @@
                             <option value="check">⚖️ 智能对规</option>
                             <option value="writer">✍️ 智能写作</option>
                             <option value="risk">📊 智能风险研判</option>
+                            <option value="checklist">📋 检查清单</option>
                             <option value="doubao">🤖 豆包网页版</option>
                         </select>
                     </div>
@@ -812,6 +814,24 @@
                                     🔄 重新生成
                                 </button>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- === 检查清单子模块 === -->
+                    <div id="ds-sub-checklist" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
+                        <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-radius:12px;padding:16px;flex:1;overflow-y:auto;">
+                            <div style="font-weight:700;font-size:0.92rem;color:var(--primary);margin-bottom:10px;">📋 生成检查清单</div>
+                            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                                <select id="checklist-level" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
+                                    <option value="段">段级</option>
+                                    <option value="车间">车间级</option>
+                                    <option value="班组">班组级</option>
+                                </select>
+                                <input id="checklist-unit" placeholder="单位名称（如：深圳工务段）" style="flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
+                            </div>
+                            <textarea id="checklist-focus" rows="2" placeholder="检查重点（如：防洪安全、施工防护、道口管理）" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;resize:none;margin-bottom:10px;box-sizing:border-box;"></textarea>
+                            <button onclick="generateChecklist()" style="padding:10px 20px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">🔍 生成检查清单</button>
+                            <div id="checklist-result" style="margin-top:12px;font-size:0.83rem;line-height:1.8;white-space:pre-wrap;word-break:break-word;"></div>
                         </div>
                     </div>
 

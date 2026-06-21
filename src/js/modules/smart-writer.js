@@ -2902,4 +2902,18 @@ ${details || '(无)'}
         // 导出用于设置面板计数的函数
         window.getWrMatCount = async function() { try { var all = await wrDbGetAll(WR_MAT_STORE); return all.length; } catch(e) { return 0; } };
         window.getWrRptCount = async function() { try { var all = await wrDbGetAll(WR_RPT_STORE); return all.length; } catch(e) { return 0; } };
+
+        // 防抖搜索（替换 inline oninput）
+        (function() {
+            var matSearch = document.getElementById('wr-mat-search');
+            var histSearch = document.getElementById('wr-hist-search');
+            if (matSearch && window.wrRenderMaterials) {
+                matSearch.removeAttribute('oninput');
+                matSearch.addEventListener('input', window.debounce(window.wrRenderMaterials, 300));
+            }
+            if (histSearch && window.wrRenderHistory) {
+                histSearch.removeAttribute('oninput');
+                histSearch.addEventListener('input', window.debounce(window.wrRenderHistory, 300));
+            }
+        })();
     })();

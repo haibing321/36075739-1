@@ -221,7 +221,7 @@
 
             const input = document.getElementById('phone-searchInput');
             if (input) {
-                input.addEventListener('input', function() { showPhoneSuggestions(this); });
+                input.addEventListener('input', debounce(function() { showPhoneSuggestions(input); }, 300));
                 input.addEventListener('blur', function() { setTimeout(() => { const sugg = document.getElementById('phone-suggestions'); if (sugg) sugg.style.display = 'none'; }, 200); });
             }
             document.getElementById('phone-fileInput').addEventListener('change', phoneHandleFile);

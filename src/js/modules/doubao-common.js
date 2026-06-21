@@ -257,4 +257,13 @@
     };
 
     console.log('✅ doubao-common.js 已加载');
+
+    // 防抖搜索：资料搜索（替换 inline oninput）
+    (function() {
+        var searchEl = document.getElementById('ds-material-search');
+        if (searchEl && window.dsFilterMaterials) {
+            searchEl.removeAttribute('oninput');
+            searchEl.addEventListener('input', window.debounce(window.dsFilterMaterials, 300));
+        }
+    })();
 })();

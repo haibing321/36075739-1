@@ -80,48 +80,36 @@
                 });
             }
 
+            // 缓存 quota 查询结果，避免每次 updateStorage 都异步查询
+            var _cachedQuotaMB = null;
+            async function _getQuotaMB() {
+                if (_cachedQuotaMB !== null) return _cachedQuotaMB;
+                try {
+                    if (window.storageManager) {
+                        var qi = await window.storageManager.checkQuota();
+                        _cachedQuotaMB = qi.quotaMB;
+                    }
+                } catch(e) { _cachedQuotaMB = 10305; /* 浏览器默认 */ }
+                return _cachedQuotaMB;
+            }
+
             async function updateStorage() {
                 try {
-                    const data = await loadData(), count = data.length;
-                    let sizeMB = 0;
-                    if (count > 0) {
-                        // 使用 JSON.stringify 精确计算当前模块数据大小
-                        const jsonStr = JSON.stringify(data);
-                        sizeMB = (jsonStr.length / 1024 / 1024).toFixed(2);
-                    }
+                    // 使用 dataCache 代替 loadData()（避免重复读取 69k 条记录）
+                    var count = dataCache.length;
+                    // 轻量估算：每条记录约 300 字节
+                    var sizeMB = (count * 300 / 1024 / 1024).toFixed(2);
                     document.getElementById('issue-recordCount').textContent = count + ' 条';
 
-                    // 尝试使用 storageManager 获取真实配额
-                    if (window.storageManager) {
-                        try {
-                            var quotaInfo = await window.storageManager.checkQuota();
-                            document.getElementById('issue-storageText').textContent =
-                                parseFloat(sizeMB) + ' / ' + quotaInfo.quotaMB + ' MB';
-                            const percent = Math.min((parseFloat(sizeMB) / Math.max(quotaInfo.quotaMB, 1)) * 100, 100);
-                            var bar = document.getElementById('issue-storageBar');
-                            bar.style.width = percent + '%';
-                            if (percent > 80) bar.className = 'storage-fill danger';
-                            else if (percent > 60) bar.className = 'storage-fill warning';
-                            else bar.className = 'storage-fill';
-                        } catch(qe) {
-                            // 降级为原来的 50MB 硬编码显示
-                            document.getElementById('issue-storageText').textContent = sizeMB + ' MB';
-                            const percent = Math.min((sizeMB / 50) * 100, 100);
-                            var bar2 = document.getElementById('issue-storageBar');
-                            bar2.style.width = percent + '%';
-                            if (percent > 80) bar2.className = 'storage-fill danger';
-                            else if (percent > 60) bar2.className = 'storage-fill warning';
-                            else bar2.className = 'storage-fill';
-                        }
-                    } else {
-                        document.getElementById('issue-storageText').textContent = sizeMB + ' MB';
-                        const percent = Math.min((sizeMB / 50) * 100, 100);
-                        var bar3 = document.getElementById('issue-storageBar');
-                        bar3.style.width = percent + '%';
-                        if (percent > 80) bar3.className = 'storage-fill danger';
-                        else if (percent > 60) bar3.className = 'storage-fill warning';
-                        else bar3.className = 'storage-fill';
-                    }
+                    var quotaMB = await _getQuotaMB();
+                    var siz = parseFloat(sizeMB);
+                    document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + quotaMB + ' MB';
+                    var percent = Math.min((siz / Math.max(quotaMB, 1)) * 100, 100);
+                    var bar = document.getElementById('issue-storageBar');
+                    bar.style.width = percent + '%';
+                    if (percent > 80) bar.className = 'storage-fill danger';
+                    else if (percent > 60) bar.className = 'storage-fill warning';
+                    else bar.className = 'storage-fill';
                 } catch (e) {}
                 issueRefreshCategorySelect();
             }
@@ -706,14 +694,13 @@
             };
 
             window.addEventListener('load', async function() {
-                // 始终绑定文件导入事件（不依赖 IndexedDB 初始化成功）
                 document.getElementById('issue-fileInput').addEventListener('change', issueHandleFile);
                 try {
                     await initDB();
-                    await updateStorage();
+                    await loadData();  // 加载到 dataCache
+                    await updateStorage();  // 更新 UI（使用 dataCache，不再重复 loadData）
                     issueAddKeyword();
-                    const data = await loadData();
-                    if (data.length === 0) await issueLoadDemoData();
+                    if (dataCache.length === 0) await issueLoadDemoData();
                 } catch (e) {
                     console.error('[issue] 初始化失败:', e.message);
                     // IndexedDB 版本冲突通常是临时的，刷新可恢复

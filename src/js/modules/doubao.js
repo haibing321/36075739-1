@@ -638,7 +638,7 @@
 
                 let sysParts = [
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
-                    '回答请使用中文，条理清晰，引用数据时注明来源（如"规章制度：XXX"、"检查信息：XXX"）。',
+                    '回答请使用中文，条理清晰，引用数据时注明来源（如"规章制度：XXX"、"检查信息：XXX"）。禁止使用Markdown格式，纯文本输出。',
                     '若业务数据中未找到相关内容，如实告知，不得捏造。'
                 ];
 
@@ -987,7 +987,7 @@
                 var hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
                 var baseSystem = hasAnySource
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)
-                    : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                    : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。禁止使用Markdown格式（* # - 等符号），纯文本回复。';
                 var systemPrompt = rolePrompt + memoryText + baseSystem;
                 if (_tempSrc) { window._tempDataSrc = null; }
 
@@ -1538,7 +1538,7 @@
           return;
         }
         const systemPrompt = '你是铁路安全对规专家。请基于以下【参考资料】中的真实历史案例和规章条款，分析用户输入的检查问题。\n' + refText +
-          '【输出要求】\n1. 明确指出问题违反的具体条款（必须引用上述规章中的编号和内容，如果没有明确条款则说明「参考资料中无直接对应条款」）。\n2. 对比历史案例，指出相似点和特殊性。\n3. 给出具体整改建议（可借鉴案例中的有效做法）。\n4. 不得编造任何条款或数据。';
+          '【输出要求】\n1. 明确指出问题违反的具体条款（必须引用上述规章中的编号和内容，如果没有明确条款则说明「参考资料中无直接对应条款」）。\n2. 对比历史案例，指出相似点和特殊性。\n3. 给出具体整改建议（可借鉴案例中的有效做法）。\n4. 不得编造任何条款或数据。\n5. 禁止使用Markdown格式（不使用 * # ** - 等符号），纯文本输出。';
         if (container) container.innerHTML = '<div style="padding:20px">🤖 AI 正在分析，请稍候...</div>';
         try {
           const resp = await fetch(apiUrl, {
@@ -1826,7 +1826,7 @@
             userMsg += '\n请开始分析。';
 
             messages = [
-              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。' },
+              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。禁止使用Markdown格式，纯文本输出。' },
               { role: 'user', content: userMsg }
             ];
           } else {

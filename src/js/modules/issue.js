@@ -80,31 +80,17 @@
                 });
             }
 
-            // 缓存 quota 查询结果，避免每次 updateStorage 都异步查询
-            var _cachedQuotaMB = null;
-            async function _getQuotaMB() {
-                if (_cachedQuotaMB !== null) return _cachedQuotaMB;
-                try {
-                    if (window.storageManager) {
-                        var qi = await window.storageManager.checkQuota();
-                        _cachedQuotaMB = qi.quotaMB;
-                    }
-                } catch(e) { _cachedQuotaMB = 10305; /* 浏览器默认 */ }
-                return _cachedQuotaMB;
-            }
-
             async function updateStorage() {
                 try {
-                    // 使用 dataCache 代替 loadData()（避免重复读取 69k 条记录）
                     var count = dataCache.length;
-                    // 轻量估算：每条记录约 300 字节
                     var sizeMB = (count * 300 / 1024 / 1024).toFixed(2);
                     document.getElementById('issue-recordCount').textContent = count + ' 条';
 
-                    var quotaMB = await _getQuotaMB();
+                    // 显示为 已用 / 200MB（模块专属容量上限）
+                    var quotaMB = MAX_STORAGE_MB;
                     var siz = parseFloat(sizeMB);
                     document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + quotaMB + ' MB';
-                    var percent = Math.min((siz / Math.max(quotaMB, 1)) * 100, 100);
+                    var percent = Math.min((siz / quotaMB) * 100, 100);
                     var bar = document.getElementById('issue-storageBar');
                     bar.style.width = percent + '%';
                     if (percent > 80) bar.className = 'storage-fill danger';

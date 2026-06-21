@@ -937,4 +937,10 @@
             });
             // 暴露数据获取接口（供联动数据使用）
             window.getDiaryData = function() { return diaries; };
+            window.clearAllDiaries = function() {
+                if (!confirm('⚠️ 确定清空所有工作日志吗？此操作不可恢复！')) return;
+                diaries = [];
+                saveDiaries();
+                alert('已清空所有工作日志');
+            };
         })();

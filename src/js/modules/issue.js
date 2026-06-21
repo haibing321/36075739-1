@@ -1,6 +1,7 @@
         // ========== Issue System ==========
         (function() {
             const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 2;
+            const MAX_STORAGE_MB = 200;  // 检查信息最大存储容量 200MB
             let db = null, dataCache = [], keywordNum = 0, MAX_KEYWORDS = 4;
             let showLowMatch = false, currentResults = [], currentKeywords = [];
             const MATCH_THRESHOLD = 75;
@@ -32,6 +33,16 @@
                     await insertBatch(dataArray.slice(i, i + batchSize));
                 }
                 dataCache = dataArray;
+                checkStorageCapacity(dataArray.length);
+            }
+
+            // 检查存储容量（超过 200MB 时提示）
+            function checkStorageCapacity(count) {
+                // 估算：每条记录约 300 字节 (content+regulation+meta)
+                var estMB = (count * 300) / (1024 * 1024);
+                if (estMB > MAX_STORAGE_MB) {
+                    console.warn('[issue] 数据量已达 ' + estMB.toFixed(0) + ' MB，超过 ' + MAX_STORAGE_MB + ' MB 上限，建议清理旧数据');
+                }
             }
 
             function insertBatch(batch) {

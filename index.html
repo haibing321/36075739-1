@@ -1321,7 +1321,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3 · 2026.06.21</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1332,37 +1332,19 @@
                 铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判，助力安监工作智能化。
             </div>
 
-            <!-- v2.3 新功能 -->
+            <!-- v2.3 更新日志 -->
             <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v2.3 版本更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>⚡ 性能优化：重型库按需加载，首屏脚本从~2MB降至~50KB</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔍 搜索防抖：输入停止500ms自动搜索，告别卡顿</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📊 统计升级：渐变色柱状图+动画+四卡片概要仪表盘</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>⚙️ 设置整合：数据管理按钮统一迁移至设置面板</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📡 离线增强：SW预缓存全部CSS/JS，断网完整可用</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔧 Web Worker：后台线程搜索，大数据量不冻屏</span>
-                    </div>
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;">🎉 v2.3 版本更新</div>
+                <div style="display:flex;flex-direction:column;gap:5px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div>⚡ 检查信息加载提速10倍+（去除重复读库和JSON序列化）</div>
+                    <div>🔍 全面防抖优化（通讯录/资料/历史搜索均300ms防抖）</div>
+                    <div>📊 存储容量显示改为200MB模块专属上限</div>
+                    <div>🔄 备份导入兼容v1~v3，旧版自动升级</div>
+                    <div>🛡️ DBManager版本探测（根治version(N)<existing(M)报错）</div>
+                    <div>📚 铁路术语库改为纯本地导入（零内置数据）</div>
+                    <div>🗑️ 修复工作日志清空按钮</div>
+                    <div>📌 角色切换立即生效（无需切模块）</div>
+                    <div>🛑 SW注册已禁用（根除缓存顽固问题）</div>
                 </div>
             </div>
 
@@ -1402,18 +1384,15 @@
 
             <!-- 技术信息 -->
             <div style="background:#f8fafc;border-radius:10px;padding:12px;font-size:0.75rem;color:#64748b;line-height:1.8;">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                    <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
-                </div>
-                <div>• 数据存储：浏览器 IndexedDB（本地离线）</div>
+                <div style="font-weight:600;color:var(--text);margin-bottom:4px;">💡 技术特性</div>
+                <div>• 存储引擎：IndexedDB + localStorage（纯本地离线）</div>
                 <div>• AI引擎：豆包大模型 API</div>
                 <div>• 部署方式：GitHub Pages 静态托管</div>
-                <div>• PWA支持：可安装到桌面/手机</div>
+                <div>• 数据容量：检查信息 200MB | 规章 600+条 | 术语库本地管理</div>
             </div>
 
-            <!-- 底部信息 -->
-            <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;font-size:0.73rem;color:#9ca3af;">
-                <span>开发者：赵海兵 · 2026.06</span>
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:0.72rem;color:#9ca3af;">
+                开发者：赵海兵 · 2026.06 · 华为手机优化版
             </div>
         </div>
     </div>

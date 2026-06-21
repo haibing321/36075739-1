@@ -275,7 +275,6 @@
                 // 已有有效缓存
                 if (_cache[name] && _cache[name].db) {
                     try {
-                        // 快速检测连接是否仍然有效
                         void _cache[name].db.objectStoreNames;
                         return Promise.resolve(_cache[name].db);
                     } catch(e) {
@@ -291,45 +290,66 @@
 
                 var info = _upgrades[name] || { version: 1, fn: null };
 
+                // 先探测现有版本，避免 "requested version (N) is less than existing (M)" 报错
                 var p = new Promise(function(resolve, reject) {
-                    var req = indexedDB.open(name, info.version);
-                    req.onerror = function() {
-                        console.error('[dbManager] 打开失败:', name, req.error);
-                        reject(req.error);
-                    };
-                    req.onblocked = function() {
-                        console.warn('[dbManager] 升级被阻塞:', name, '- 请关闭其他标签页');
-                        // 关闭旧连接以解除阻塞
-                        if (_cache[name] && _cache[name].db) {
-                            try { _cache[name].db.close(); } catch(e) {}
-                            delete _cache[name];
-                        }
-                    };
-                    req.onsuccess = function() {
-                        var db = req.result;
-                        // 监听版本变化/关闭事件，自动清缓存
-                        db.onversionchange = function() {
-                            console.log('[dbManager] 版本变化，关闭连接:', name);
-                            db.close();
-                            delete _cache[name];
-                        };
-                        db.onclose = function() {
-                            console.log('[dbManager] 连接已关闭:', name);
-                            delete _cache[name];
-                        };
-                        _cache[name].db = db;
-                        resolve(db);
-                    };
-                    if (info.fn) {
-                        req.onupgradeneeded = function(e) {
-                            try {
-                                info.fn(e.target.result, e);
-                            } catch(upgradeErr) {
-                                console.error('[dbManager] upgrade 失败:', name, upgradeErr);
-                                // 不 reject — 让 onerror 处理
+                    var probeReq = indexedDB.open(name);
+                    probeReq.onsuccess = function() {
+                        var existingVer = probeReq.result.version;
+                        probeReq.result.close();
+                        // 使用 max(注册版本, 已有版本) 打开，确保 >= 已有版本
+                        var targetVer = Math.max(info.version, existingVer);
+                        if (targetVer < existingVer) targetVer = existingVer;
+                        var req = indexedDB.open(name, targetVer);
+                        req.onerror = function() { reject(req.error); };
+                        req.onblocked = function() {
+                            console.warn('[dbManager] 升级被阻塞:', name);
+                            if (_cache[name] && _cache[name].db) {
+                                try { _cache[name].db.close(); } catch(e) {}
+                                delete _cache[name];
                             }
                         };
-                    }
+                        req.onsuccess = function() {
+                            var db = req.result;
+                            db.onversionchange = function() {
+                                console.log('[dbManager] 版本变化，关闭连接:', name);
+                                db.close();
+                                delete _cache[name];
+                            };
+                            db.onclose = function() {
+                                console.log('[dbManager] 连接已关闭:', name);
+                                delete _cache[name];
+                            };
+                            _cache[name].db = db;
+                            _cache[name].version = targetVer;
+                            resolve(db);
+                        };
+                        if (info.fn && targetVer > existingVer) {
+                            req.onupgradeneeded = function(e) {
+                                try { info.fn(e.target.result, e); }
+                                catch(upgradeErr) { console.error('[dbManager] upgrade 失败:', name, upgradeErr); }
+                            };
+                        }
+                    };
+                    probeReq.onerror = function() {
+                        // 探测失败（可能是全新DB）→ 直接用注册版本打开
+                        var req = indexedDB.open(name, info.version);
+                        req.onerror = function() { reject(req.error); };
+                        req.onblocked = function() { console.warn('[dbManager] 升级被阻塞:', name); };
+                        req.onsuccess = function() {
+                            var db = req.result;
+                            db.onversionchange = function() { db.close(); delete _cache[name]; };
+                            db.onclose = function() { delete _cache[name]; };
+                            _cache[name].db = db;
+                            _cache[name].version = info.version;
+                            resolve(db);
+                        };
+                        if (info.fn) {
+                            req.onupgradeneeded = function(e) {
+                                try { info.fn(e.target.result, e); }
+                                catch(upgradeErr) { console.error('[dbManager] upgrade 失败:', name, upgradeErr); }
+                            };
+                        }
+                    };
                 });
 
                 _cache[name] = { promise: p, db: null, version: info.version };

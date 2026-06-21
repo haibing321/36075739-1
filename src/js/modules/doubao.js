@@ -2038,7 +2038,7 @@
               'Authorization': 'Bearer ' + apiKey
             },
             body: JSON.stringify({
-              model: (localStorage.getItem('ds_model_v1') || 'ep-20240820145249-9vhch').replace('doubao-','').replace('deepseek-',''),
+              model: localStorage.getItem('ds_model_v1') || 'ep-20240820145249-9vhch',
               messages: [{ role: 'user', content: dsPrompt }],
               stream: false,
               max_tokens: 4096

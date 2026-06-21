@@ -2048,7 +2048,47 @@
           if (!response.ok) throw new Error('API请求失败: ' + response.status);
           var data = await response.json();
           var content = data.choices[0].message.content;
-          resultEl.innerHTML = '<div style="background:#f9fafb;border-radius:8px;padding:14px;white-space:pre-wrap;line-height:1.8;">' + content.replace(/\n/g, '<br>') + '</div>';
+          // 保存生成结果供"保存到资料库"使用
+          window._lastChecklistContent = content;
+          window._lastChecklistUnit = unit;
+          window._lastChecklistFocus = focus;
+          resultEl.innerHTML = '<div style="background:#f9fafb;border-radius:8px;padding:14px;white-space:pre-wrap;line-height:1.8;">' + content.replace(/\n/g, '<br>') + '</div>'
+            + '<button onclick="saveChecklistToMaterials()" style="margin-top:10px;padding:8px 16px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">💾 保存到资料库（其它）</button>';
+
+          // 保存到资料库函数
+          window.saveChecklistToMaterials = async function() {
+            if (!window._lastChecklistContent) { alert('没有可保存的内容'); return; }
+            try {
+              // 直接写 IndexedDB（与 smart-writer 使用同一个 DB）
+              var dbReq = indexedDB.open('railway_writer_db', 2);
+              dbReq.onupgradeneeded = function(e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains('writing_materials')) {
+                  var store = db.createObjectStore('writing_materials', { keyPath: 'id', autoIncrement: true });
+                  store.createIndex('matType', 'matType', { unique: false });
+                }
+              };
+              dbReq.onsuccess = function(e) {
+                var db = e.target.result;
+                var tx = db.transaction('writing_materials', 'readwrite');
+                var store = tx.objectStore('writing_materials');
+                var item = {
+                  fileName: '检查清单_' + window._lastChecklistUnit + '.txt',
+                  title: '检查清单 - ' + window._lastChecklistUnit + ' - ' + window._lastChecklistFocus,
+                  matType: 'other',
+                  content: window._lastChecklistContent.slice(0, 50000),
+                  sheets: null,
+                  rowCount: null,
+                  fileSize: new Blob([window._lastChecklistContent]).size,
+                  importAt: Date.now()
+                };
+                var req = store.put(item);
+                req.onsuccess = function() { db.close(); alert('✅ 已保存到资料库「其它」分类'); };
+                req.onerror = function() { db.close(); alert('保存失败: ' + req.error.message); };
+              };
+              dbReq.onerror = function(e) { alert('数据库打开失败: ' + e.target.error.message); };
+            } catch(e) { alert('保存失败: ' + e.message); }
+          };
         } catch(e) {
           resultEl.innerHTML = '<div style="color:#ef4444;padding:16px;">生成失败: ' + e.message + '</div>';
         }

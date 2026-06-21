@@ -373,7 +373,20 @@
                 var backupFile = zip.file('full_backup.json');
                 if (!backupFile) throw new Error('缺少 full_backup.json，可能不是有效的安系统备份文件');
                 var backup = JSON.parse(await backupFile.async('string'));
-                if (backup.version !== 2 && backup.version !== 3) throw new Error('版本不兼容（仅支持v2/v3，当前文件v' + (backup.version||'未知') + '）');
+                // 兼容旧版本备份：v1/v2 自动升级到 v3
+                if (!backup.version || backup.version < 1 || backup.version > 3) {
+                    throw new Error('无法识别的备份文件版本（当前文件v' + (backup.version||'未知') + '，仅支持v1~v3）');
+                }
+                if (backup.version < 3) {
+                    console.warn('[backup] 旧版本备份 v' + backup.version + '，自动升级到 v3');
+                    backup.version = 3;
+                    // v1→v3 迁移：旧备份可能没有 writingMaterials / writingReports / termLibrary / memos / diaryMedia
+                    if (!backup.modules.writingMaterials) backup.modules.writingMaterials = [];
+                    if (!backup.modules.writingReports) backup.modules.writingReports = [];
+                    if (!backup.modules.termLibrary) backup.modules.termLibrary = [];
+                    if (!backup.modules.memos) backup.modules.memos = [];
+                    if (!backup.modules.diaryMedia) backup.modules.diaryMedia = [];
+                }
                 if (!confirm('⚠️ 将覆盖现有数据，确定继续？')) return;
 
                 _toast('正在恢复数据…');

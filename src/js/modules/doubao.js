@@ -2066,6 +2066,11 @@
         memoryEnabled = memoryCheck.checked;
         memoryCheck.addEventListener('change', function(e){ memoryEnabled = e.target.checked; });
       }
+      // 角色切换时立即更新状态栏（不再需要切模块才能看到）
+      var roleSelect = document.getElementById('expertRole');
+      if (roleSelect && typeof updateModeStatus === 'function') {
+        roleSelect.addEventListener('change', updateModeStatus);
+      }
       observeAssistantBubbles();
 
       console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集', 'color:#059669;font-weight:bold;');

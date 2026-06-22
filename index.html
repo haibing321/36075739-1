@@ -158,7 +158,9 @@ window.openApiConfigModal = function() {
         keyEl.placeholder = apiKey ? '已配置（如需修改请重新输入）' : 'sk-...';
     }
     if (modalEl) {
-        modalEl.style.display = 'flex';
+        modalEl.style.display = 'block';
+        // 强制重绘（移动浏览器可能在 display 变更后不立即渲染 fixed 元素）
+        void modalEl.offsetHeight;
         console.log('[debug] modal should now be visible, display=', modalEl.style.display);
     } else {
         alert('错误：找不到 api-config-modal 元素！');

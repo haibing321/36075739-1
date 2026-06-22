@@ -583,7 +583,7 @@
                     document.getElementById('ds-dialog-phone').checked = defCfg.phone;
                     document.getElementById('ds-dialog-diary').checked = defCfg.diary;
                     document.getElementById('ds-dialog-remember').checked = defCfg.remember;
-                    modal.style.cssText = 'display:flex;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11100;';
+                    modal.style.display = 'flex';
                     var confirmBtn = document.getElementById('ds-dialog-confirm');
                     var reject = null;
                     confirmBtn._reject = function() { if (reject) { reject(); reject = null; } };

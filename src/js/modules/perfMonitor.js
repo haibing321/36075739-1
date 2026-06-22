@@ -216,6 +216,7 @@
         if (_initialized) return this;
         _initialized = true;
         load();
+        _supportedVitals = []; // 重置后重新检测，避免 localStorage 恢复后重复堆积
 
         // 注册 Web Vitals 观察者
         observeLCP();

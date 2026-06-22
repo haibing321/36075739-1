@@ -194,12 +194,14 @@ window.onclick = function(e) {
     console.log('[PWA] SW 注册已跳过（缓存问题）');
 
     // 清理已注册的旧 Service Worker（如果有的话）
-    navigator.serviceWorker.getRegistrations().then(function(regs) {
-        regs.forEach(function(reg) {
-            reg.unregister();
-            console.log('[PWA] 已注销旧 SW:', reg.scope);
-        });
-    });
+    if (location.protocol !== 'file:') {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(reg) {
+                reg.unregister();
+                console.log('[PWA] 已注销旧 SW:', reg.scope);
+            });
+        }).catch(function() { /* file:// 不支持 SW */ });
+    }
 
     return;
 

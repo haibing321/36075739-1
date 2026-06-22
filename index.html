@@ -139,37 +139,12 @@
     <link rel="stylesheet" href="src/css/modules.css">
     <link rel="stylesheet" href="src/css/responsive.css">
 <script>
-// API 配置弹窗（内联定义，确保设置面板按钮可直接调用）
-window.openApiConfigModal = function() {
-    console.log('[debug] openApiConfigModal called');
-    // 注意：app.js 已经调用了 toggleSettingsPanel()，这里不用重复调
-    var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://www.doubao.com/api/v1';
-    var model  = localStorage.getItem('ds_model_v1') || 'doubao-lite-32k';
-    var apiKey = localStorage.getItem('ds_api_key_v1') || '';
-    var urlEl   = document.getElementById('modal-apiurl');
-    var modelEl = document.getElementById('modal-model');
-    var keyEl   = document.getElementById('modal-apikey');
-    var modalEl = document.getElementById('api-config-modal');
-    console.log('[debug] modalEl:', modalEl, 'urlEl:', urlEl);
-    if (urlEl)   urlEl.value   = apiUrl;
-    if (modelEl) modelEl.value  = model;
-    if (keyEl) {
-        keyEl.value = apiKey ? '****************' : '';
-        keyEl.type = 'password';
-        keyEl.placeholder = apiKey ? '已配置（如需修改请重新输入）' : 'sk-...';
-    }
-    if (modalEl) {
-        // 关闭设置面板避免遮挡
-        var sp = document.getElementById('settings-panel');
-        if (sp) sp.style.display = 'none';
-        modalEl.style.display = 'flex';
-        console.log('[debug] modal should now be visible, display=', modalEl.style.display);
-    } else {
-        alert('错误：找不到 api-config-modal 元素！');
-    }
+// api-config 和 showApiConfigModal 由 doubao.js 的 bindApiModalEvents 定义
+// 保留别名供兼容
+window.openApiConfigModal = window.openApiConfigModal || function() {
+    var m = document.getElementById('api-config-modal');
+    if (m) m.style.display = 'block';
 };
-// 同时覆盖 doubao.js 中可能定义的同名函数
-window.showApiConfigModal = window.openApiConfigModal;
 </script>
 </head>
 <body>
@@ -1230,14 +1205,14 @@ window.showApiConfigModal = window.openApiConfigModal;
     <script src="src/js/app.js" defer></script>
     <!-- 设置面板（全局浮层，不依赖任何tab） -->
     <div id="settings-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11000;">
-        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="clearTimeout(window._apiModalTimer);toggleSettingsPanel()"></div>
-        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:360px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);" onclick="event.stopPropagation()">
+        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="toggleSettingsPanel()"></div>
+        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:360px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
-                <button onclick="clearTimeout(window._apiModalTimer);toggleSettingsPanel()" class="btn-close">✕</button>
+                <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
-                <button id="btn-api-config" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;" onclick="toggleSettingsPanel();clearTimeout(window._apiModalTimer);window._apiModalTimer=setTimeout(function(){openApiConfigModal()},150);">🔧 API 配置</button>
+                <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;">🔧 API 配置</button>
                 <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;cursor:pointer;">
                     <span style="font-size:0.88rem;">🧠 长期记忆</span>
                     <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
@@ -1355,7 +1330,7 @@ window.showApiConfigModal = window.openApiConfigModal;
                 <div style="border-top:1px solid #e5e7eb;"></div>
 
                 <button onclick="clearAllCache()" class="btn-primary-sm" style="padding:9px 14px;background:#dc2626;border-radius:10px;text-align:left;">🗑️ 清除缓存</button>
-                <button onclick="clearTimeout(window._apiModalTimer);toggleSettingsPanel();showAboutPanel();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">ℹ️ 关于系统</button>
+                <button onclick="toggleSettingsPanel();showAboutPanel();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">ℹ️ 关于系统</button>
             </div>
             <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
                 <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>

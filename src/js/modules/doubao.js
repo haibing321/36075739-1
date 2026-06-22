@@ -1307,6 +1307,8 @@
         window.bindApiModalEvents     = typeof bindApiModalEvents !== 'undefined' ? bindApiModalEvents : function(){};
         // dsInit 在 IIFE 开头定义，也需暴露
         window.dsInit                 = typeof dsInit !== 'undefined' ? dsInit : function(){};
+        // 数据源选择器（关联数据按钮需要）
+        window.showDataSourceSelector = typeof showDataSourceSelector !== 'undefined' ? showDataSourceSelector : function(){ console.warn('[doubao] showDataSourceSelector 未定义'); return Promise.resolve(null); };
 
     })();
 

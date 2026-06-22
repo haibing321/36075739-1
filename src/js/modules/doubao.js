@@ -527,9 +527,6 @@
                 localStorage.setItem(DS_MODEL_STORAGE, model);
                 updateApiStatusBadge();
                 document.getElementById('api-config-modal').style.display = 'none';
-                // 恢复设置面板背景
-                var settingsBackdrop = document.querySelector('#settings-panel > div:first-child');
-                if (settingsBackdrop) settingsBackdrop.style.display = '';
                 toggleDoubaoMode();
             }
 
@@ -543,8 +540,6 @@
                 document.getElementById('modal-apikey').value = '';
                 updateApiStatusBadge();
                 document.getElementById('api-config-modal').style.display = 'none';
-                var settingsBackdrop = document.querySelector('#settings-panel > div:first-child');
-                if (settingsBackdrop) settingsBackdrop.style.display = '';
                 if (typeof toggleDoubaoMode === 'function') toggleDoubaoMode();
             }
 

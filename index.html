@@ -159,9 +159,10 @@ window.openApiConfigModal = function() {
         keyEl.placeholder = apiKey ? '已配置（如需修改请重新输入）' : 'sk-...';
     }
     if (modalEl) {
-        modalEl.style.display = 'block';
-        // 强制浏览器立即绘制（华为浏览器 fixed 元素延迟渲染的已知问题）
-        modalEl.getBoundingClientRect();
+        // 关闭设置面板避免遮挡
+        var sp = document.getElementById('settings-panel');
+        if (sp) sp.style.display = 'none';
+        modalEl.style.display = 'flex';
         console.log('[debug] modal should now be visible, display=', modalEl.style.display);
     } else {
         alert('错误：找不到 api-config-modal 元素！');
@@ -1229,14 +1230,14 @@ window.showApiConfigModal = window.openApiConfigModal;
     <script src="src/js/app.js" defer></script>
     <!-- 设置面板（全局浮层，不依赖任何tab） -->
     <div id="settings-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11000;">
-        <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="toggleSettingsPanel()"></div>
-        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:min(360px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="clearTimeout(window._apiModalTimer);toggleSettingsPanel()"></div>
+        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:360px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);" onclick="event.stopPropagation()">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
-                <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
+                <button onclick="clearTimeout(window._apiModalTimer);toggleSettingsPanel()" class="btn-close">✕</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
-                <button id="btn-api-config" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;" onclick="toggleSettingsPanel();setTimeout(function(){openApiConfigModal()},100);">🔧 API 配置</button>
+                <button id="btn-api-config" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;" onclick="toggleSettingsPanel();clearTimeout(window._apiModalTimer);window._apiModalTimer=setTimeout(function(){openApiConfigModal()},150);">🔧 API 配置</button>
                 <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;cursor:pointer;">
                     <span style="font-size:0.88rem;">🧠 长期记忆</span>
                     <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
@@ -1354,7 +1355,7 @@ window.showApiConfigModal = window.openApiConfigModal;
                 <div style="border-top:1px solid #e5e7eb;"></div>
 
                 <button onclick="clearAllCache()" class="btn-primary-sm" style="padding:9px 14px;background:#dc2626;border-radius:10px;text-align:left;">🗑️ 清除缓存</button>
-                <button onclick="toggleSettingsPanel();showAboutPanel();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">ℹ️ 关于系统</button>
+                <button onclick="clearTimeout(window._apiModalTimer);toggleSettingsPanel();showAboutPanel();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">ℹ️ 关于系统</button>
             </div>
             <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
                 <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
@@ -1364,8 +1365,8 @@ window.showApiConfigModal = window.openApiConfigModal;
     </div>
 
     <!-- 关于系统面板 -->
-    <div id="about-panel" style="display:none;position:fixed;inset:0;z-index:11100;">
-        <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
+    <div id="about-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:99998;">
+        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:24px;width:min(420px,92vw);max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.2);">
             <!-- 标题栏 -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
@@ -1450,7 +1451,7 @@ window.showApiConfigModal = window.openApiConfigModal;
     </div>
 
     <!-- 数据源选择弹窗（全局） -->
-    <div id="ds-datasource-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11100;align-items:center;justify-content:center;">
+    <div id="ds-datasource-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:99999;align-items:center;justify-content:center;">
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(400px,95vw);max-height:85vh;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔗 选择本次使用的数据源</span>
@@ -1503,8 +1504,8 @@ window.showApiConfigModal = window.openApiConfigModal;
     </div>
 
     <!-- API 配置弹窗（全局） -->
-    <div id="api-config-modal" style="display:none;position:fixed;inset:0;z-index:11200;transform:translateZ(0);">
-        <div style="position:absolute;inset:0;background:rgba(0,0,0,.45);" onclick="document.getElementById('api-config-modal').style.display='none'"></div>
+    <div id="api-config-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:99999;">
+        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);" onclick="document.getElementById('api-config-modal').style.display='none'"></div>
         <div class="modal-content" style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔧 大模型 API 配置</span>

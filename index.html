@@ -142,8 +142,7 @@
 // API 配置弹窗（内联定义，确保设置面板按钮可直接调用）
 window.openApiConfigModal = function() {
     console.log('[debug] openApiConfigModal called');
-    // 关闭设置面板（与关于系统同理：避免设置面板的 stacking context 阻挡弹窗）
-    if (window.toggleSettingsPanel) toggleSettingsPanel();
+    // 注意：app.js 已经调用了 toggleSettingsPanel()，这里不用重复调
     var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://www.doubao.com/api/v1';
     var model  = localStorage.getItem('ds_model_v1') || 'doubao-lite-32k';
     var apiKey = localStorage.getItem('ds_api_key_v1') || '';

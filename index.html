@@ -16,7 +16,7 @@
           content="default-src 'self';
                    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com 'unsafe-inline' 'unsafe-eval';
                    style-src 'self' 'unsafe-inline';
-                   connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com https://ark.cn-beijing.volces.com;
+                   connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com;
                    img-src 'self' blob: data:;
                    frame-src https://www.doubao.com;
                    font-src 'self';
@@ -34,7 +34,6 @@
         #ds-sub-check { display: none; }
         #ds-sub-writer { display: none; }
         #ds-sub-risk { display: none; }
-        #ds-sub-checklist { display: none; }
         #ds-sub-doubao { display: none; }
 
         /* 默认显示智能对话子模块 */
@@ -138,14 +137,6 @@
     <link rel="stylesheet" href="src/css/components.css">
     <link rel="stylesheet" href="src/css/modules.css">
     <link rel="stylesheet" href="src/css/responsive.css">
-<script>
-// api-config 和 showApiConfigModal 由 doubao.js 的 bindApiModalEvents 定义
-// 保留别名供兼容
-window.openApiConfigModal = window.openApiConfigModal || function() {
-    var m = document.getElementById('api-config-modal');
-    if (m) m.style.display = 'block';
-};
-</script>
 </head>
 <body>
     <header class="header">
@@ -510,7 +501,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                     <div id="doubao-webview" style="display:none;flex-direction:column;min-height:500px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
                         <iframe src="https://www.doubao.com/chat/" style="width:100%;height:70vh;border:none;" title="豆包网页版"></iframe>
                         <div style="text-align:center;padding:8px;font-size:0.75rem;color:var(--text-secondary);background:#f8fafc;">
-                            ⚠️ 豆包网页版为第三方服务。如需使用本地智能助手，请<button id="quick-config-btn" style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:2px 10px;margin:0 4px;cursor:pointer;font-size:0.75rem;" onclick="openApiConfigModal()">点击配置 API Key</button>。
+                            ⚠️ 豆包网页版为第三方服务。如需使用本地智能助手，请<button id="quick-config-btn" style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:2px 10px;margin:0 4px;cursor:pointer;font-size:0.75rem;">点击配置 API Key</button>。
                         </div>
                     </div>
 
@@ -522,7 +513,6 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                             <option value="check">⚖️ 智能对规</option>
                             <option value="writer">✍️ 智能写作</option>
                             <option value="risk">📊 智能风险研判</option>
-                            <option value="checklist">📋 检查清单</option>
                             <option value="doubao">🤖 豆包网页版</option>
                         </select>
                     </div>
@@ -621,7 +611,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                             <option value="riskanalyst">🔍 风险分析专家</option>
                           </select>
                           <div style="flex:1"></div>
-                          <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;" onclick="showDataSourceSelector()">📊 关联数据</button>
+                          <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;">📊 关联数据</button>
                         </div>
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
                         <!-- 状态栏 -->
@@ -822,24 +812,6 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                                     🔄 重新生成
                                 </button>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- === 检查清单子模块 === -->
-                    <div id="ds-sub-checklist" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
-                        <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-radius:12px;padding:16px;flex:1;overflow-y:auto;">
-                            <div style="font-weight:700;font-size:0.92rem;color:var(--primary);margin-bottom:10px;">📋 生成检查清单</div>
-                            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-                                <select id="checklist-level" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
-                                    <option value="段">段级</option>
-                                    <option value="车间">车间级</option>
-                                    <option value="班组">班组级</option>
-                                </select>
-                                <input id="checklist-unit" placeholder="单位名称（如：深圳工务段）" style="flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
-                            </div>
-                            <textarea id="checklist-focus" rows="2" placeholder="检查重点（如：防洪安全、施工防护、道口管理）" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;resize:none;margin-bottom:10px;box-sizing:border-box;"></textarea>
-                            <button onclick="generateChecklist()" style="padding:10px 20px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">🔍 生成检查清单</button>
-                            <div id="checklist-result" style="margin-top:12px;font-size:0.83rem;line-height:1.8;white-space:pre-wrap;word-break:break-word;"></div>
                         </div>
                     </div>
 
@@ -1205,8 +1177,8 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
     <script src="src/js/app.js" defer></script>
     <!-- 设置面板（全局浮层，不依赖任何tab） -->
     <div id="settings-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11000;">
-        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="toggleSettingsPanel()"></div>
-        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:360px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="toggleSettingsPanel()"></div>
+        <div style="position:absolute;top:56px;right:12px;background:#fff;border-radius:14px;padding:18px;width:min(360px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
                 <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
@@ -1322,7 +1294,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                         <span style="display:flex;gap:6px;">
                             <button onclick="importRailwayTerms()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
                             <button onclick="exportRailwayTerms()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="if(confirm('确定清空铁路术语库吗？')){localStorage.removeItem('patch_term_library_v2');localStorage.removeItem('railway_terms_custom');alert('已清空，刷新页面后生效');}" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
+                            <button onclick="if(confirm('确定清空铁路术语库?')){localStorage.removeItem('patch_term_library_v2');alert('已清空，刷新后生效');}" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
                         </span>
                     </div>
                 </div>
@@ -1340,8 +1312,8 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
     </div>
 
     <!-- 关于系统面板 -->
-    <div id="about-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11100;">
-        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
+    <div id="about-panel" style="display:none;position:fixed;inset:0;z-index:11100;">
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:24px;width:min(420px,92vw);max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.2);">
             <!-- 标题栏 -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
@@ -1349,7 +1321,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3 · 2026.06.21</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1360,19 +1332,37 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
                 铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判，助力安监工作智能化。
             </div>
 
-            <!-- v2.3 更新日志 -->
+            <!-- v2.3 新功能 -->
             <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;">🎉 v2.3 版本更新</div>
-                <div style="display:flex;flex-direction:column;gap:5px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div>⚡ 检查信息加载提速10倍+（去除重复读库和JSON序列化）</div>
-                    <div>🔍 全面防抖优化（通讯录/资料/历史搜索均300ms防抖）</div>
-                    <div>📊 存储容量显示改为200MB模块专属上限</div>
-                    <div>🔄 备份导入兼容v1~v3，旧版自动升级</div>
-                    <div>🛡️ DBManager版本探测（根治version(N)<existing(M)报错）</div>
-                    <div>📚 铁路术语库改为纯本地导入（零内置数据）</div>
-                    <div>🗑️ 修复工作日志清空按钮</div>
-                    <div>📌 角色切换立即生效（无需切模块）</div>
-                    <div>🛑 SW注册已禁用（根除缓存顽固问题）</div>
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🎉</span>
+                    <span>v2.3 版本更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>⚡ 性能优化：重型库按需加载，首屏脚本从~2MB降至~50KB</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔍 搜索防抖：输入停止500ms自动搜索，告别卡顿</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📊 统计升级：渐变色柱状图+动画+四卡片概要仪表盘</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>⚙️ 设置整合：数据管理按钮统一迁移至设置面板</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📡 离线增强：SW预缓存全部CSS/JS，断网完整可用</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔧 Web Worker：后台线程搜索，大数据量不冻屏</span>
+                    </div>
                 </div>
             </div>
 
@@ -1412,21 +1402,24 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
 
             <!-- 技术信息 -->
             <div style="background:#f8fafc;border-radius:10px;padding:12px;font-size:0.75rem;color:#64748b;line-height:1.8;">
-                <div style="font-weight:600;color:var(--text);margin-bottom:4px;">💡 技术特性</div>
-                <div>• 存储引擎：IndexedDB + localStorage（纯本地离线）</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
+                </div>
+                <div>• 数据存储：浏览器 IndexedDB（本地离线）</div>
                 <div>• AI引擎：豆包大模型 API</div>
                 <div>• 部署方式：GitHub Pages 静态托管</div>
-                <div>• 数据容量：检查信息 200MB | 规章 600+条 | 术语库本地管理</div>
+                <div>• PWA支持：可安装到桌面/手机</div>
             </div>
 
-            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:0.72rem;color:#9ca3af;">
-                开发者：赵海兵 · 2026.06 · 华为手机优化版
+            <!-- 底部信息 -->
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;font-size:0.73rem;color:#9ca3af;">
+                <span>开发者：赵海兵 · 2026.06</span>
             </div>
         </div>
     </div>
 
     <!-- 数据源选择弹窗（全局） -->
-    <div id="ds-datasource-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:11100;align-items:center;justify-content:center;">
+    <div id="ds-datasource-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11100;align-items:center;justify-content:center;">
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(400px,95vw);max-height:85vh;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔗 选择本次使用的数据源</span>
@@ -1479,7 +1472,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
     </div>
 
     <!-- API 配置弹窗（全局） -->
-    <div id="api-config-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:11200;overflow-y:auto;padding:5vh 0;">
+    <div id="api-config-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11200;overflow-y:auto;padding:5vh 0;">
         <div class="modal-content" style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);margin:auto;display:flex;flex-direction:column;">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔧 大模型 API 配置</span>

@@ -360,25 +360,6 @@ window.toggleSettingsPanel = function() {
     }
 };
 
-// 打开 API 配置弹窗（不依赖 doubao.js 闭包，直接从 localStorage 读取）
-window.openApiConfigModal = function() {
-    var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://www.doubao.com/api/v1';
-    var model  = localStorage.getItem('ds_model_v1') || 'doubao-lite-32k';
-    var apiKey = localStorage.getItem('ds_api_key_v1') || '';
-    var urlEl   = document.getElementById('modal-apiurl');
-    var modelEl = document.getElementById('modal-model');
-    var keyEl   = document.getElementById('modal-apikey');
-    var modalEl = document.getElementById('api-config-modal');
-    if (urlEl)   urlEl.value   = apiUrl;
-    if (modelEl) modelEl.value  = model;
-    if (keyEl) {
-        keyEl.value = apiKey ? '****************' : '';
-        keyEl.type = 'password';
-        keyEl.placeholder = apiKey ? '已配置（如需修改请重新输入）' : 'sk-...';
-    }
-    if (modalEl) modalEl.style.display = 'block';
-};
-
 window.clearAllCache = function() {
     if (!confirm('⚠️ 将清除所有缓存数据并刷新页面，确定继续？')) return;
     // 清除 SW 缓存

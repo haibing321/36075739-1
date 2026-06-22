@@ -138,6 +138,28 @@
     <link rel="stylesheet" href="src/css/components.css">
     <link rel="stylesheet" href="src/css/modules.css">
     <link rel="stylesheet" href="src/css/responsive.css">
+<script>
+// API 配置弹窗（内联定义，确保设置面板按钮可直接调用）
+window.openApiConfigModal = function() {
+    var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://www.doubao.com/api/v1';
+    var model  = localStorage.getItem('ds_model_v1') || 'doubao-lite-32k';
+    var apiKey = localStorage.getItem('ds_api_key_v1') || '';
+    var urlEl   = document.getElementById('modal-apiurl');
+    var modelEl = document.getElementById('modal-model');
+    var keyEl   = document.getElementById('modal-apikey');
+    var modalEl = document.getElementById('api-config-modal');
+    if (urlEl)   urlEl.value   = apiUrl;
+    if (modelEl) modelEl.value  = model;
+    if (keyEl) {
+        keyEl.value = apiKey ? '****************' : '';
+        keyEl.type = 'password';
+        keyEl.placeholder = apiKey ? '已配置（如需修改请重新输入）' : 'sk-...';
+    }
+    if (modalEl) modalEl.style.display = 'block';
+};
+// 同时覆盖 doubao.js 中可能定义的同名函数
+window.showApiConfigModal = window.openApiConfigModal;
+</script>
 </head>
 <body>
     <header class="header">
@@ -1204,7 +1226,7 @@
                 <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;">
-                <button onclick="toggleSettingsPanel();window.openApiConfigModal();" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;">🔧 API 配置</button>
+                <button onclick="toggleSettingsPanel();openApiConfigModal();" class="btn-primary-sm" style="padding:9px 14px;border-radius:10px;text-align:left;">🔧 API 配置</button>
                 <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;cursor:pointer;">
                     <span style="font-size:0.88rem;">🧠 长期记忆</span>
                     <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">

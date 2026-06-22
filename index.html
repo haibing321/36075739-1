@@ -1340,7 +1340,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
     </div>
 
     <!-- 关于系统面板 -->
-    <div id="about-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:99998;">
+    <div id="about-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:11100;">
         <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.35);" onclick="var p=document.getElementById('about-panel');p.style.display='none';"></div>
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:24px;width:min(420px,92vw);max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.2);">
             <!-- 标题栏 -->
@@ -1426,7 +1426,7 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
     </div>
 
     <!-- 数据源选择弹窗（全局） -->
-    <div id="ds-datasource-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:99999;align-items:center;justify-content:center;">
+    <div id="ds-datasource-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:11100;align-items:center;justify-content:center;">
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(400px,95vw);max-height:85vh;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔗 选择本次使用的数据源</span>
@@ -1479,9 +1479,8 @@ window.openApiConfigModal = window.openApiConfigModal || function() {
     </div>
 
     <!-- API 配置弹窗（全局） -->
-    <div id="api-config-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:99999;">
-        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);" onclick="document.getElementById('api-config-modal').style.display='none'"></div>
-        <div class="modal-content" style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;">
+    <div id="api-config-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:11200;overflow-y:auto;padding:5vh 0;">
+        <div class="modal-content" style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);margin:auto;display:flex;flex-direction:column;">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">🔧 大模型 API 配置</span>
                 <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-close">✕</button>

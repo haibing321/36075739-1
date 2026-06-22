@@ -158,9 +158,10 @@ window.openApiConfigModal = function() {
         keyEl.placeholder = apiKey ? '已配置（如需修改请重新输入）' : 'sk-...';
     }
     if (modalEl) {
+        // 临时隐藏设置面板的背景层（避免 z-index 被设置面板的 stacking context 阻挡）
+        var settingsBackdrop = document.querySelector('#settings-panel > div:first-child');
+        if (settingsBackdrop) settingsBackdrop.style.display = 'none';
         modalEl.style.display = 'block';
-        // 强制重绘（移动浏览器可能在 display 变更后不立即渲染 fixed 元素）
-        void modalEl.offsetHeight;
         console.log('[debug] modal should now be visible, display=', modalEl.style.display);
     } else {
         alert('错误：找不到 api-config-modal 元素！');

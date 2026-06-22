@@ -416,54 +416,26 @@ function bindGlobalButtons() {
     // API 配置按钮（设置面板内）
     var btnApi = document.getElementById('btn-api-config');
     if (btnApi) {
-        btnApi.addEventListener('click', function() {
-            console.log('[app.js] API配置按钮被点击');
-            toggleSettingsPanel();
-            if (window.openApiConfigModal) window.openApiConfigModal();
-            else alert('错误：openApiConfigModal 未定义！');
-        });
-        console.log('[app.js] ✓ btn-api-config 绑定成功');
+        // onclick 已内联到 HTML（toggleSettingsPanel + setTimeout(openApiConfigModal)）
+        console.log('[app.js] ✓ btn-api-config 已由 HTML onclick 处理');
     } else {
         console.warn('[app.js] ✗ 找不到 btn-api-config 元素');
     }
 
-    // 快速配置按钮（豆包网页版提示区）
+    // 快速配置按钮（豆包网页版提示区）— onclick 已内联到 HTML
     var btnQuick = document.getElementById('quick-config-btn');
     if (btnQuick) {
-        btnQuick.addEventListener('click', function() {
-            console.log('[app.js] 快速配置按钮被点击');
-            if (window.openApiConfigModal) window.openApiConfigModal();
-            else alert('错误：openApiConfigModal 未定义！');
-        });
-        console.log('[app.js] ✓ quick-config-btn 绑定成功');
+        console.log('[app.js] ✓ quick-config-btn 已由 HTML onclick="openApiConfigModal()" 处理');
     } else {
         console.warn('[app.js] ✗ 找不到 quick-config-btn 元素');
     }
 
-    // 关联数据按钮（智能对话模块）
+    // 关联数据按钮（智能对话模块）— onclick 已内联到 HTML
     var btnData = document.getElementById('ds-reset-datasource-btn');
     if (btnData) {
-        btnData.addEventListener('click', function() {
-            console.log('[app.js] 关联数据按钮被点击');
-            if (window.showDataSourceSelector) window.showDataSourceSelector();
-            else alert('错误：showDataSourceSelector 未定义！请检查 doubao.js 是否加载。');
-        });
-        console.log('[app.js] ✓ ds-reset-datasource-btn 绑定成功');
+        console.log('[app.js] ✓ ds-reset-datasource-btn 已由 HTML onclick="showDataSourceSelector()" 处理');
     } else {
-        console.warn('[app.js] ✗ 找不到 ds-reset-datasource-btn（可能 tab 未渲染，延迟重试）');
-        // 延迟重试（DOM 可能尚未渲染）
-        setTimeout(function() {
-            var b = document.getElementById('ds-reset-datasource-btn');
-            if (b) {
-                b.addEventListener('click', function() {
-                    console.log('[app.js] 关联数据按钮被点击（延迟绑定）');
-                    if (window.showDataSourceSelector) window.showDataSourceSelector();
-                    else alert('错误：showDataSourceSelector 未定义！');
-                });
-                console.log('[app.js] ✓ ds-reset-datasource-btn 延迟绑定成功');
-            }
-        }, 1000);
-    }
+        console.warn('[app.js] ✗ 找不到 ds-reset-datasource-btn（可能 tab 未渲染）');
 }
 
 // DOM 准备完毕后绑定

@@ -436,6 +436,7 @@ function bindGlobalButtons() {
         console.log('[app.js] ✓ ds-reset-datasource-btn 已由 HTML onclick="showDataSourceSelector()" 处理');
     } else {
         console.warn('[app.js] ✗ 找不到 ds-reset-datasource-btn（可能 tab 未渲染）');
+    }
 }
 
 // DOM 准备完毕后绑定

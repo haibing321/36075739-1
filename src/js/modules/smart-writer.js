@@ -46,7 +46,6 @@
                     // 检查缓存连接是否仍然有效
                     if (_wrDB) {
                         try {
-                            // 快速有效性检测：数据库关闭后 objectStoreNames 不可访问
                             void _wrDB.objectStoreNames;
                             _wrDBOpening = null;
                             return resolve(_wrDB);
@@ -56,9 +55,24 @@
                         }
                     }
 
-                    var req = indexedDB.open(WR_DB_NAME, WR_DB_VER);
+                    // 先探测现有版本，避免 "requested version < existing" 报错
+                    var probeReq = indexedDB.open(WR_DB_NAME);
+                    probeReq.onsuccess = function() {
+                        var existingVer = probeReq.result.version;
+                        probeReq.result.close();
+                        openWithVersion(Math.max(WR_DB_VER, existingVer), resolve, reject);
+                    };
+                    probeReq.onerror = function() {
+                        // 探测失败，直接用注册版本打开
+                        openWithVersion(WR_DB_VER, resolve, reject);
+                    };
+                });
+
+                function openWithVersion(version, resolve, reject) {
+                    var req = indexedDB.open(WR_DB_NAME, version);
                     req.onblocked = function() {
                         console.warn('[writer] DB升级被阻塞');
+                        if (_wrDB) { _wrDB.close(); _wrDB = null; }
                     };
                     req.onupgradeneeded = function(e) {
                         var db = e.target.result;
@@ -82,10 +96,9 @@
                             console.error('[writer] upgrade失败:', upErr);
                         }
                     };
-                    req.onsuccess = e => {
+                    req.onsuccess = function(e) {
                         _wrDB = e.target.result;
-                        // 监听连接关闭，自动清除缓存
-                        _wrDB.onclose = () => {
+                        _wrDB.onclose = function() {
                             console.log('[DB] 连接已关闭，清除缓存');
                             _wrDB = null;
                             _wrDBOpening = null;
@@ -93,12 +106,11 @@
                         _wrDBOpening = null;
                         resolve(_wrDB);
                     };
-                    req.onerror = e => { _wrDBOpening = null; reject(e.target.error); };
-                    req.onblocked = () => {
-                        console.warn('[DB] 数据库被阻塞，关闭旧连接');
-                        if (_wrDB) { _wrDB.close(); _wrDB = null; }
+                    req.onerror = function(e) {
+                        _wrDBOpening = null;
+                        reject(e.target.error);
                     };
-                });
+                }
 
                 return _wrDBOpening;
             }

@@ -45,13 +45,7 @@
 
                 const migrated = oldTerms.filter(t => typeof t === 'string' && t.length >= 2).map(term => ({ term, trade: '通用' }));
                 const map = new Map();
-                // DEFAULT_TERMS 已移除，词库仅从 localStorage 加载
-                // 清理旧缓存：如果之前内置词库被缓存在 localStorage 中（766条），需要清除
-                if (DEFAULT_TERMS.length === 0 && savedTerms.length >= 700) {
-                    console.log('[词库] 检测到旧版内置词库缓存(' + savedTerms.length + '条)，自动清除');
-                    savedTerms = [];
-                    localStorage.removeItem('patch_term_library_v2');
-                }
+                // 将旧版纯字符串格式迁移到新版结构化格式
                 migrated.forEach(item => map.set(item.term.toLowerCase(), item));
                 savedTerms.forEach(item => { if (item && item.term) map.set(item.term.toLowerCase(), item); });
                 PATCH_TERM_LIBRARY = Array.from(map.values());

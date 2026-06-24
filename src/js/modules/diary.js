@@ -29,7 +29,7 @@
                 div.id = `diary-issue-row-${index}`;
                 div.innerHTML = `
                     <div style="display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;">
-                        <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="检查发现问题 ${index+1}" oninput="autoResize(this)">${escapeHtml(value)}</textarea>
+                        <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="检查发现问题 ${index+1}" oninput="autoResize(this)" style="flex:1; min-width:0; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; resize:vertical; font-family:inherit; min-height:38px; line-height:1.5;">${escapeHtml(value)}</textarea>
                         <button class="btn btn-small btn-secondary" onclick="copyIssueWithRegulation(${index}, this)" style="white-space:nowrap; padding:4px 10px; flex-shrink:0;" title="复制问题及规章依据">📋 复制</button>
                         ${index > 0 ? '<button class="btn-remove-issue" onclick="removeIssueField(' + index + ')">×</button>' : ''}
                     </div>

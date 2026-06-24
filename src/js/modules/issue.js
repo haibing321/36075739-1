@@ -178,7 +178,8 @@
                 if (!data.length) { alert('暂无数据'); return; }
                 var nats = {}; data.forEach(function(d) { var v = getXingzhi(d) || '空白'; nats[v] = (nats[v]||0)+1; });
                 var cats = {}; data.forEach(function(d) { var v = d.category || '待分类'; cats[v] = (cats[v]||0)+1; });
-                var units = {}; data.forEach(function(d) { if (d.unit) { var u = String(d.unit).trim(); units[u] = (units[u]||0)+1; } });
+                // 按一级单位统计（取 ~ 前的第一段，如一库多层级名称只取顶层单位）
+                var units = {}; data.forEach(function(d) { if (d.unit) { var u = String(d.unit).split('~')[0].trim(); units[u] = (units[u]||0)+1; } });
                 var topUnits = Object.entries(units).sort(function(a,b){return b[1]-a[1]}).slice(0,10);
                 var times = data.map(function(d){return d.datetime||''}).filter(Boolean).sort();
                 var timeRange = times.length ? times[0].slice(0,10) + ' ~ ' + times[times.length-1].slice(0,10) : '无数据';

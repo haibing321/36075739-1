@@ -125,7 +125,8 @@
                     { keywords: ['天水车站','兰州车站','迎水桥车站','兰州北车站','调度所','银川车站'], trade: '车务' },
                     { keywords: ['物流中心'], trade: '货运' },
                     { keywords: ['天平','华澳','工程管理所','工程建设指挥部','甘肃信达','宁夏城际'], trade: '建设' },
-                    { keywords: ['宁夏铁路多远','宁夏铁路多元','国际旅行','疾病预防控制所','后勤保障','职工培训中心','金轮实业'], trade: '辅业' }
+                    { keywords: ['宁夏铁路多远','宁夏铁路多元','国际旅行','疾病预防控制所','后勤保障','职工培训中心','金轮实业'], trade: '辅业' },
+                    { keywords: ['综合维修'], trade: '高铁基础设施' }
                 ];
                 for (var mi = 0; mi < unitTradeMap.length; mi++) {
                     for (var ki = 0; ki < unitTradeMap[mi].keywords.length; ki++) {

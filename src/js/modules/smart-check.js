@@ -955,9 +955,16 @@
                         else if (xz === 'C类' || xz.includes('C')) { levelBorderColor = '#059669'; xzBg = '#059669'; }
                         // 高亮关键词
                         let contentHtml = acEscHtml(iss.content || '');
+                        let regulationHtml = '';
+                        if (iss.regulation) {
+                            regulationHtml = '<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:0.82rem;color:#6b7280;">'
+                                + '<span style="font-weight:500;color:#4b5563;">规章依据：</span>'
+                                + acEscHtml(iss.regulation) + '</div>';
+                        }
                         lowerKws.forEach(function(k) {
                             const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
                             contentHtml = contentHtml.replace(reg, '<span class="highlight">$1</span>');
+                            if (regulationHtml) regulationHtml = regulationHtml.replace(reg, '<span class="highlight">$1</span>');
                         });
                         // OR 模式描述
                         var modeDesc = x.matchCount + '/' + kwTotal + '词命中';
@@ -969,7 +976,7 @@
                             + (iss.datetime ? '<span class="tag tag-time">📅 ' + acEscHtml(iss.datetime) + '</span>' : '')
                             + '</div>'
                             + '<div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="acIssueDetailModal(' + idx + ')">📄 全文</button></div>'
-                            + '<div class="result-text">' + contentHtml + '</div></div>'
+                            + '<div class="result-text">' + contentHtml + regulationHtml + '</div></div>'
                             + '</div>';
                     });
                     html += '</div>';

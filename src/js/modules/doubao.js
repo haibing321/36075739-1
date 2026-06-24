@@ -1932,7 +1932,32 @@
             parts.push('类别TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
             parts.push('性质分布: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
             if (Object.keys(units).length > 0) parts.push('涉及单位: '+Object.entries(units).sort(function(a,b){return b[1]-a[1]}).slice(0,10).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
-            parts.push('样本: '+filtered.slice(0,5).map(function(d){return (d.datetime||'')+' ['+(d['性质']||'')+'] '+(d.category||'')+' '+(d.content||'').slice(0,60)+(d.unit?' @'+d.unit:'')}).join(' | '));
+            // 按类别归类问题，每个类别列举几方面典型问题
+            var categoryGroups = {};
+            filtered.forEach(function(d) {
+              var cat = d.category || '其他';
+              if (!categoryGroups[cat]) categoryGroups[cat] = [];
+              var text = (d.content||'').trim();
+              if (text && text.length >= 5) categoryGroups[cat].push(text);
+            });
+            parts.push('\n【问题分类归集】');
+            Object.keys(categoryGroups).sort(function(a,b){return categoryGroups[b].length-categoryGroups[a].length;}).forEach(function(cat) {
+              var items = categoryGroups[cat];
+              parts.push('\n■ ' + cat + '（共' + items.length + '条）：');
+              // 去重归类：按前15个字符归类
+              var typGroups = {};
+              items.forEach(function(t) {
+                var key = t.slice(0, 15);
+                if (!typGroups[key]) typGroups[key] = { count: 0, samples: [] };
+                typGroups[key].count++;
+                if (typGroups[key].samples.length < 2) typGroups[key].samples.push(t.length > 80 ? t.slice(0, 80) + '…' : t);
+              });
+              var topTypes = Object.entries(typGroups).sort(function(a,b){return b[1].count-a[1].count;}).slice(0, 5);
+              topTypes.forEach(function(entry, i) {
+                parts.push('  ' + (i+1) + '. 此类问题出现' + entry[1].count + '次，例如：' + entry[1].samples[0]);
+              });
+            });
+            parts.push('\n请先对以上各类问题分别分析症结，再进行综合风险研判。');
           }
         } catch(e) { parts.push('【检查信息】读取失败'); console.error('风险研判: 检查信息读取异常', e); }
 

@@ -135,8 +135,8 @@
                 for (var i = 0; i < tradeKeys.length; i++) {
                     if (name.indexOf(tradeKeys[i]) !== -1) return tradeKeys[i];
                 }
-                // 无匹配时返回空（不将该单位名作为专业显示）
-                return '';
+                // 无匹配时返回单位名本身（方便排查未归类的单位）
+                return name;
             }
 
             function issueRefreshCategorySelect() {

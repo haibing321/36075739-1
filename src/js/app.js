@@ -194,14 +194,12 @@ window.onclick = function(e) {
     console.log('[PWA] SW 注册已跳过（缓存问题）');
 
     // 清理已注册的旧 Service Worker（如果有的话）
-    if (location.protocol !== 'file:') {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-            regs.forEach(function(reg) {
-                reg.unregister();
-                console.log('[PWA] 已注销旧 SW:', reg.scope);
-            });
-        }).catch(function() { /* file:// 不支持 SW */ });
-    }
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(reg) {
+            reg.unregister();
+            console.log('[PWA] 已注销旧 SW:', reg.scope);
+        });
+    });
 
     return;
 
@@ -406,42 +404,3 @@ window._updateModelList = function() {
 };
 
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
-
-// ===================================================
-// 事件绑定（不依赖 onclick 属性，改用 addEventListener）
-// ===================================================
-function bindGlobalButtons() {
-    console.log('[app.js] bindGlobalButtons() 执行');
-
-    // API 配置按钮（设置面板内）
-    var btnApi = document.getElementById('btn-api-config');
-    if (btnApi) {
-        // onclick 已内联到 HTML（toggleSettingsPanel + setTimeout(openApiConfigModal)）
-        console.log('[app.js] ✓ btn-api-config 已由 HTML onclick 处理');
-    } else {
-        console.warn('[app.js] ✗ 找不到 btn-api-config 元素');
-    }
-
-    // 快速配置按钮（豆包网页版提示区）— onclick 已内联到 HTML
-    var btnQuick = document.getElementById('quick-config-btn');
-    if (btnQuick) {
-        console.log('[app.js] ✓ quick-config-btn 已由 HTML onclick="openApiConfigModal()" 处理');
-    } else {
-        console.warn('[app.js] ✗ 找不到 quick-config-btn 元素');
-    }
-
-    // 关联数据按钮（智能对话模块）— onclick 已内联到 HTML
-    var btnData = document.getElementById('ds-reset-datasource-btn');
-    if (btnData) {
-        console.log('[app.js] ✓ ds-reset-datasource-btn 已由 HTML onclick="showDataSourceSelector()" 处理');
-    } else {
-        console.warn('[app.js] ✗ 找不到 ds-reset-datasource-btn（可能 tab 未渲染）');
-    }
-}
-
-// DOM 准备完毕后绑定
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bindGlobalButtons);
-} else {
-    bindGlobalButtons();
-}

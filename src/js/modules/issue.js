@@ -1,7 +1,6 @@
         // ========== Issue System ==========
         (function() {
             const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 2;
-            const MAX_STORAGE_MB = 200;  // 检查信息最大存储容量 200MB
             let db = null, dataCache = [], keywordNum = 0, MAX_KEYWORDS = 4;
             let showLowMatch = false, currentResults = [], currentKeywords = [];
             const MATCH_THRESHOLD = 75;
@@ -33,16 +32,6 @@
                     await insertBatch(dataArray.slice(i, i + batchSize));
                 }
                 dataCache = dataArray;
-                checkStorageCapacity(dataArray.length);
-            }
-
-            // 检查存储容量（超过 200MB 时提示）
-            function checkStorageCapacity(count) {
-                // 估算：每条记录约 300 字节 (content+regulation+meta)
-                var estMB = (count * 300) / (1024 * 1024);
-                if (estMB > MAX_STORAGE_MB) {
-                    console.warn('[issue] 数据量已达 ' + estMB.toFixed(0) + ' MB，超过 ' + MAX_STORAGE_MB + ' MB 上限，建议清理旧数据');
-                }
             }
 
             function insertBatch(batch) {
@@ -82,20 +71,46 @@
 
             async function updateStorage() {
                 try {
-                    var count = dataCache.length;
-                    var sizeMB = (count * 300 / 1024 / 1024).toFixed(2);
+                    const data = await loadData(), count = data.length;
+                    let sizeMB = 0;
+                    if (count > 0) {
+                        // 使用 JSON.stringify 精确计算当前模块数据大小
+                        const jsonStr = JSON.stringify(data);
+                        sizeMB = (jsonStr.length / 1024 / 1024).toFixed(2);
+                    }
                     document.getElementById('issue-recordCount').textContent = count + ' 条';
 
-                    // 显示为 已用 / 200MB（模块专属容量上限）
-                    var quotaMB = MAX_STORAGE_MB;
-                    var siz = parseFloat(sizeMB);
-                    document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + quotaMB + ' MB';
-                    var percent = Math.min((siz / quotaMB) * 100, 100);
-                    var bar = document.getElementById('issue-storageBar');
-                    bar.style.width = percent + '%';
-                    if (percent > 80) bar.className = 'storage-fill danger';
-                    else if (percent > 60) bar.className = 'storage-fill warning';
-                    else bar.className = 'storage-fill';
+                    // 尝试使用 storageManager 获取真实配额
+                    if (window.storageManager) {
+                        try {
+                            var quotaInfo = await window.storageManager.checkQuota();
+                            document.getElementById('issue-storageText').textContent =
+                                parseFloat(sizeMB) + ' / ' + quotaInfo.quotaMB + ' MB';
+                            const percent = Math.min((parseFloat(sizeMB) / Math.max(quotaInfo.quotaMB, 1)) * 100, 100);
+                            var bar = document.getElementById('issue-storageBar');
+                            bar.style.width = percent + '%';
+                            if (percent > 80) bar.className = 'storage-fill danger';
+                            else if (percent > 60) bar.className = 'storage-fill warning';
+                            else bar.className = 'storage-fill';
+                        } catch(qe) {
+                            // 降级为原来的 50MB 硬编码显示
+                            document.getElementById('issue-storageText').textContent = sizeMB + ' MB';
+                            const percent = Math.min((sizeMB / 50) * 100, 100);
+                            var bar2 = document.getElementById('issue-storageBar');
+                            bar2.style.width = percent + '%';
+                            if (percent > 80) bar2.className = 'storage-fill danger';
+                            else if (percent > 60) bar2.className = 'storage-fill warning';
+                            else bar2.className = 'storage-fill';
+                        }
+                    } else {
+                        document.getElementById('issue-storageText').textContent = sizeMB + ' MB';
+                        const percent = Math.min((sizeMB / 50) * 100, 100);
+                        var bar3 = document.getElementById('issue-storageBar');
+                        bar3.style.width = percent + '%';
+                        if (percent > 80) bar3.className = 'storage-fill danger';
+                        else if (percent > 60) bar3.className = 'storage-fill warning';
+                        else bar3.className = 'storage-fill';
+                    }
                 } catch (e) {}
                 issueRefreshCategorySelect();
             }
@@ -680,13 +695,14 @@
             };
 
             window.addEventListener('load', async function() {
+                // 始终绑定文件导入事件（不依赖 IndexedDB 初始化成功）
                 document.getElementById('issue-fileInput').addEventListener('change', issueHandleFile);
                 try {
                     await initDB();
-                    await loadData();  // 加载到 dataCache
-                    await updateStorage();  // 更新 UI（使用 dataCache，不再重复 loadData）
+                    await updateStorage();
                     issueAddKeyword();
-                    if (dataCache.length === 0) await issueLoadDemoData();
+                    const data = await loadData();
+                    if (data.length === 0) await issueLoadDemoData();
                 } catch (e) {
                     console.error('[issue] 初始化失败:', e.message);
                     // IndexedDB 版本冲突通常是临时的，刷新可恢复

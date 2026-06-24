@@ -455,8 +455,8 @@
                 } else {
                     console.warn('备份中无规章制度数据');
                 }
-                if (bm.diary && Array.isArray(bm.diary) && bm.diary.length > 0) localStorage.setItem('railway_work_diary_v2', JSON.stringify(bm.diary));
-                if (bm.phone && Array.isArray(bm.phone) && bm.phone.length > 0) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
+                if (bm.diary) localStorage.setItem('railway_work_diary_v2', JSON.stringify(bm.diary));
+                if (bm.phone) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
                 if (bm.handbook && Array.isArray(bm.handbook) && bm.handbook.length) {
                     localStorage.setItem('handbook_fourlevel_v1', JSON.stringify(bm.handbook));
                     console.log('已恢复 ' + bm.handbook.length + ' 条手册条目');
@@ -469,12 +469,10 @@
                 if (bm.writingReports && Array.isArray(bm.writingReports) && bm.writingReports.length) {
                     await writeIndexedDB('railway_writer_db', 'writing_reports', 2, bm.writingReports);
                 }
-                if (bm.dsConversations && Array.isArray(bm.dsConversations) && bm.dsConversations.length > 0) localStorage.setItem('ds_conversations_v1', JSON.stringify(bm.dsConversations));
-                if (bm.dsChatHistory && Array.isArray(bm.dsChatHistory) && bm.dsChatHistory.length > 0) localStorage.setItem('ds_chat_history_v1', JSON.stringify(bm.dsChatHistory));
-                if (bm.termLibrary && Array.isArray(bm.termLibrary) && bm.termLibrary.length > 0) {
-                    localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
-                }
-                if (bm.memos && Array.isArray(bm.memos) && bm.memos.length > 0) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
+                if (bm.dsConversations) localStorage.setItem('ds_conversations_v1', JSON.stringify(bm.dsConversations));
+                if (bm.dsChatHistory) localStorage.setItem('ds_chat_history_v1', JSON.stringify(bm.dsChatHistory));
+                if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
+                if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
                 if (bm.diaryMedia) {
                     // 将 base64 异步还原为 ArrayBuffer，避免手机端卡死
                     _toast('正在还原多媒体文件…');

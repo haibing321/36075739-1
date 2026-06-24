@@ -16,7 +16,7 @@
           content="default-src 'self';
                    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com 'unsafe-inline' 'unsafe-eval';
                    style-src 'self' 'unsafe-inline';
-                   connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com https://ark.cn-beijing.volces.com;
+                   connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com;
                    img-src 'self' blob: data:;
                    frame-src https://www.doubao.com;
                    font-src 'self';
@@ -35,7 +35,6 @@
         #ds-sub-writer { display: none; }
         #ds-sub-risk { display: none; }
         #ds-sub-doubao { display: none; }
-        #ds-sub-checklist { display: none; }
 
         /* 默认显示智能对话子模块 */
         #ds-sub-chat { display: flex; }
@@ -610,7 +609,6 @@
                             <option value="tongyong">🛡️ 综合安全监察</option>
                             <option value="frontend">💻 前端工程师</option>
                             <option value="riskanalyst">🔍 风险分析专家</option>
-                            <option value="checklist">📋 检查清单</option>
                           </select>
                           <div style="flex:1"></div>
                           <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;">📊 关联数据</button>
@@ -814,24 +812,6 @@
                                     🔄 重新生成
                                 </button>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- === 检查清单子模块 === -->
-                    <div id="ds-sub-checklist" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
-                        <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-radius:12px;padding:16px;flex:1;overflow-y:auto;">
-                            <div style="font-weight:700;font-size:0.92rem;color:var(--primary);margin-bottom:10px;">📋 生成检查清单</div>
-                            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-                                <select id="checklist-level" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
-                                    <option value="段">段级</option>
-                                    <option value="车间">车间级</option>
-                                    <option value="班组">班组级</option>
-                                </select>
-                                <input id="checklist-unit" placeholder="单位名称（如：深圳工务段）" style="flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
-                            </div>
-                            <textarea id="checklist-focus" rows="2" placeholder="检查重点（如：防洪安全、施工防护、道口管理）" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;resize:none;margin-bottom:10px;box-sizing:border-box;"></textarea>
-                            <button onclick="generateChecklist()" style="padding:10px 20px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">🔍 生成检查清单</button>
-                            <div id="checklist-result" style="margin-top:12px;font-size:0.83rem;line-height:1.8;white-space:pre-wrap;word-break:break-word;"></div>
                         </div>
                     </div>
 
@@ -1341,7 +1321,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3 · 2026.06.23</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.3</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1359,18 +1339,6 @@
                     <span>v2.3 版本更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔧 一键备份恢复修复：空数组误覆盖词库/日记/电话数据</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🪟 弹窗修复：CSS动画覆盖transform导致配置/数据源弹窗不可见</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📋 AI检查清单：根据单位级别+名称+检查重点生成清单</span>
-                    </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
                         <span>⚡ 性能优化：重型库按需加载，首屏脚本从~2MB降至~50KB</span>
@@ -1437,10 +1405,10 @@
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                     <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
                 </div>
-                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，检查信息200MB）</div>
-                <div>• AI引擎：OpenAI兼容大模型 API（DeepSeek/通义千问/智谱等）</div>
+                <div>• 数据存储：浏览器 IndexedDB（本地离线）</div>
+                <div>• AI引擎：豆包大模型 API</div>
                 <div>• 部署方式：GitHub Pages 静态托管</div>
-                <div>• 兼容优化：华为/Chrome/Edge/手机端全面适配</div>
+                <div>• PWA支持：可安装到桌面/手机</div>
             </div>
 
             <!-- 底部信息 -->

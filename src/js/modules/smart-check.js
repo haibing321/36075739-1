@@ -817,7 +817,7 @@
                 // ---------- 匹配检查信息（OR模式 + 权重评分）----------
                 // 改进：OR模式（至少命中1个词即可），按命中数量和权重综合排序
                 const matchedIssues = issues.map(function(iss) {
-                    var text = ((iss.content || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
+                    var text = ((iss.content || '') + ' ' + (iss.regulation || '') + ' ' + (iss.category || '') + ' ' + (iss['性质'] || '')).toLowerCase();
                     var matchedKws = lowerKws.filter(function(k) { return text.includes(k); });
                     var matchCount = matchedKws.length;
                     if (matchCount === 0) return null;
@@ -1050,7 +1050,7 @@
                 const list = window._lastACIssues;
                 if (!list || !list[idx]) return;
                 const iss = list[idx].iss;
-                alert('【检查信息】\n性质：' + (iss['性质'] || '') + '\n类别：' + (iss.category || '') + '\n时间：' + (iss.datetime || '') + '\n\n' + (iss.content || ''));
+                alert('【检查信息】\n性质：' + (iss['性质'] || '') + '\n类别：' + (iss.category || '') + '\n时间：' + (iss.datetime || '') + '\n规章依据：' + (iss.regulation || '') + '\n\n' + (iss.content || ''));
             };
 
             window.acRuleDetailModal = function(idx) {
@@ -1346,6 +1346,8 @@
                     const { iss, score } = issuesToProcess[index];
                     
                     let fullText = iss.content || '';
+                    // 合并规章依据到全文，确保对规时也能匹配到关联的规章信息
+                    if (iss.regulation) fullText += ' ' + iss.regulation;
                     if (fullText.length > 2000) fullText = fullText.slice(0, 2000);
                     
                     // ── 策略1：正则提取标准格式条款 ──
@@ -1580,7 +1582,7 @@
                 if (!qWords.length) return 0;
                 let maxScore = 0;
                 issues.forEach(iss => {
-                    const text = ((iss.content || '') + ' ' + (iss.category || '')).toLowerCase();
+                    const text = ((iss.content || '') + ' ' + (iss.regulation || '') + ' ' + (iss.category || '')).toLowerCase();
                     const hitCount = qWords.filter(w => text.includes(w)).length;
                     const score = Math.round((hitCount / qWords.length) * 100);
                     if (score > maxScore) maxScore = score;

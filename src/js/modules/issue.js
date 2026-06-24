@@ -141,6 +141,9 @@
                 var currentValue = select.value;
                 // 从 dataCache 的 单位 字段提取专业
                 var trades = new Set();
+                // 默认添加常见专业，确保下拉框始终完整
+                var defaultTrades = ['车务','货运','建设','辅业','工务','电务','供电','车辆','机务','通信','信号','房建','客运'];
+                defaultTrades.forEach(function(t) { trades.add(t); });
                 dataCache.forEach(function(item) {
                     if (item.unit) {
                         var trade = extractTradeFromUnit(item.unit);

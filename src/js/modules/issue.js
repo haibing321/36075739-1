@@ -120,14 +120,18 @@
                 var name = String(unitName).trim();
                 // 铁路单位常见专业关键词（按长度降序，优先匹配更具体的）
                 var tradeKeys = ['高铁基础设施','综合维修','基础设施','客运','货运','车务','机务','工务','电务','供电','车辆','通信','信号','房建','给水','供电'];
-                // 显式单位名 → 专业映射（优先于关键词匹配）
-                var unitTradeMap = {
-                    '天水车站':'车务','兰州车站':'车务','迎水桥车站':'车务','兰州北车站':'车务','调度所':'车务',
-                    '物流中心':'货运',
-                    '天平公司':'建设','华澳公司':'建设','工程管理所':'建设','工程建设指挥部':'建设',
-                    '疾病预防控制所':'辅业','后勤保障':'辅业','职工培训中心':'辅业','金轮实业':'辅业'
-                };
-                if (unitTradeMap[name]) return unitTradeMap[name];
+                // 显式单位名 → 专业映射（优先于关键词匹配，支持子串匹配）
+                var unitTradeMap = [
+                    { keywords: ['天水车站','兰州车站','迎水桥车站','兰州北车站','调度所'], trade: '车务' },
+                    { keywords: ['物流中心'], trade: '货运' },
+                    { keywords: ['天平','华澳','工程管理所','工程建设指挥部'], trade: '建设' },
+                    { keywords: ['疾病预防控制所','后勤保障','职工培训中心','金轮实业'], trade: '辅业' }
+                ];
+                for (var mi = 0; mi < unitTradeMap.length; mi++) {
+                    for (var ki = 0; ki < unitTradeMap[mi].keywords.length; ki++) {
+                        if (name.indexOf(unitTradeMap[mi].keywords[ki]) !== -1) return unitTradeMap[mi].trade;
+                    }
+                }
                 for (var i = 0; i < tradeKeys.length; i++) {
                     if (name.indexOf(tradeKeys[i]) !== -1) return tradeKeys[i];
                 }

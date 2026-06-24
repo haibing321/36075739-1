@@ -277,7 +277,6 @@
                     chat:   document.getElementById('ds-sub-chat'),
                     writer: document.getElementById('ds-sub-writer'),
                     risk:   document.getElementById('ds-sub-risk'),
-                    checklist: document.getElementById('ds-sub-checklist'),
                     doubao: document.getElementById('ds-sub-doubao')
                 };
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
@@ -291,7 +290,7 @@
             };
             function updateModeStatus() {
                 var sub = _dsCurrentSub || 'chat';
-                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', risk: '📊 风险研判', checklist: '📋 检查清单', doubao: '🤖 豆包网页版' };
+                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };
                 var modeLabel = document.getElementById('ds-current-mode-label');
                 if (modeLabel) modeLabel.textContent = labelMap[sub] || '智能对话';
                 var roleSelect = document.getElementById('expertRole');
@@ -638,7 +637,7 @@
 
                 let sysParts = [
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
-                    '回答请使用中文，条理清晰，引用数据时注明来源（如"规章制度：XXX"、"检查信息：XXX"）。禁止使用Markdown格式，纯文本输出。',
+                    '回答请使用中文，条理清晰，引用数据时注明来源（如"规章制度：XXX"、"检查信息：XXX"）。',
                     '若业务数据中未找到相关内容，如实告知，不得捏造。'
                 ];
 
@@ -987,7 +986,7 @@
                 var hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
                 var baseSystem = hasAnySource
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)
-                    : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。禁止使用Markdown格式（* # - 等符号），纯文本回复。';
+                    : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
                 var systemPrompt = rolePrompt + memoryText + baseSystem;
                 if (_tempSrc) { window._tempDataSrc = null; }
 
@@ -1307,8 +1306,6 @@
         window.bindApiModalEvents     = typeof bindApiModalEvents !== 'undefined' ? bindApiModalEvents : function(){};
         // dsInit 在 IIFE 开头定义，也需暴露
         window.dsInit                 = typeof dsInit !== 'undefined' ? dsInit : function(){};
-        // 数据源选择器（关联数据按钮需要）
-        window.showDataSourceSelector = typeof showDataSourceSelector !== 'undefined' ? showDataSourceSelector : function(){ console.warn('[doubao] showDataSourceSelector 未定义'); return Promise.resolve(null); };
 
     })();
 
@@ -1540,7 +1537,7 @@
           return;
         }
         const systemPrompt = '你是铁路安全对规专家。请基于以下【参考资料】中的真实历史案例和规章条款，分析用户输入的检查问题。\n' + refText +
-          '【输出要求】\n1. 明确指出问题违反的具体条款（必须引用上述规章中的编号和内容，如果没有明确条款则说明「参考资料中无直接对应条款」）。\n2. 对比历史案例，指出相似点和特殊性。\n3. 给出具体整改建议（可借鉴案例中的有效做法）。\n4. 不得编造任何条款或数据。\n5. 禁止使用Markdown格式（不使用 * # ** - 等符号），纯文本输出。';
+          '【输出要求】\n1. 明确指出问题违反的具体条款（必须引用上述规章中的编号和内容，如果没有明确条款则说明「参考资料中无直接对应条款」）。\n2. 对比历史案例，指出相似点和特殊性。\n3. 给出具体整改建议（可借鉴案例中的有效做法）。\n4. 不得编造任何条款或数据。';
         if (container) container.innerHTML = '<div style="padding:20px">🤖 AI 正在分析，请稍候...</div>';
         try {
           const resp = await fetch(apiUrl, {
@@ -1828,7 +1825,7 @@
             userMsg += '\n请开始分析。';
 
             messages = [
-              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。禁止使用Markdown格式，纯文本输出。' },
+              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。' },
               { role: 'user', content: userMsg }
             ];
           } else {
@@ -1957,146 +1954,6 @@
       }
 
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
-      // ---------- 14. 检查清单生成 ----------
-      window.generateChecklist = async function() {
-        var unit = document.getElementById('checklist-unit').value.trim();
-        var focus = document.getElementById('checklist-focus').value.trim();
-        var level = document.getElementById('checklist-level').value;
-        var resultEl = document.getElementById('checklist-result');
-        if (!unit) { alert('请输入单位名称'); return; }
-        if (!focus) { alert('请输入检查重点'); return; }
-
-        resultEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);"><div class="spinner"></div><p style="margin-top:12px;">正在分析检查信息和检查手册，生成清单...</p></div>';
-
-        try {
-          // 1. 获取检查信息中该单位的问题
-          var issues = window.getIssueData ? window.getIssueData() : [];
-          var unitIssues = issues.filter(function(d) { return d && d.unit && d.unit.indexOf(unit) !== -1; });
-          // 如果精确匹配不到，尝试模糊匹配
-          if (unitIssues.length === 0) {
-            unitIssues = issues.filter(function(d) {
-              return d && d.unit && (d.unit.indexOf(unit.split('段')[0]) !== -1 || unit.indexOf(d.unit.split('段')[0]) !== -1);
-            });
-          }
-          var issueSummary = '';
-          if (unitIssues.length > 0) {
-            // 按性质统计
-            var natureCount = {};
-            var catCount = {};
-            unitIssues.forEach(function(d) {
-              var n = d['性质'] || '空白';
-              natureCount[n] = (natureCount[n] || 0) + 1;
-              var c = d.category || '待分类';
-              catCount[c] = (catCount[c] || 0) + 1;
-            });
-            issueSummary = '该单位共 ' + unitIssues.length + ' 条问题记录。\n';
-            issueSummary += '问题性质分布: ' + JSON.stringify(natureCount) + '\n';
-            issueSummary += '类别分布: ' + JSON.stringify(catCount) + '\n';
-            // 取最近20条问题详情
-            issueSummary += '典型问题: \n';
-            var recent = unitIssues.slice(-20);
-            recent.forEach(function(d, i) {
-              issueSummary += (i+1) + '. [' + (d['性质']||'') + '][' + (d.category||'') + '] ' + (d.content||'').slice(0,150) + '\n';
-            });
-          } else {
-            issueSummary = '未找到该单位的检查信息记录，将基于检查手册和检查重点生成通用清单。\n';
-          }
-
-          // 2. 获取检查手册相关内容
-          var handbook = window.getHandbookData ? window.getHandbookData() : [];
-          var handbookText = '';
-          var keywords = focus.split(/[,，\s]+/);
-          if (handbook.length > 0) {
-            var matched = handbook.filter(function(h) {
-              var txt = (h.title||'') + (h.content||'');
-              return keywords.some(function(k) { return txt.indexOf(k) !== -1; });
-            });
-            if (matched.length === 0) matched = handbook.slice(0, 5); // 兜底
-            handbookText = matched.map(function(h) { return '- ' + (h.title||'') + ': ' + (h.content||'').slice(0,200); }).join('\n');
-          } else {
-            handbookText = '检查手册数据未加载，将基于检查重点生成通用清单。';
-          }
-
-          // 3. 构建 prompt
-          var dsPrompt = '你是铁路安全检查专家。请根据以下信息为【' + unit + '】生成一份有针对性的' + level + '级检查清单：\n\n'
-            + '【检查重点】' + focus + '\n\n'
-            + '【该单位历史问题】\n' + issueSummary + '\n\n'
-            + '【检查手册相关内容】\n' + handbookText + '\n\n'
-            + '请按以下格式输出检查清单：\n'
-            + '1. 检查项目分类（如：安全管理/设备质量/作业标准/人员素质/应急管理等）\n'
-            + '2. 每个类别下列出具体检查内容（编号+检查项+检查要点）\n'
-            + '3. 标注重点关注项（该单位的高频/典型问题对应项）\n'
-            + '4. 输出格式简洁清晰，适合打印携带到现场\n'
-            + '\n【重要】禁止使用Markdown格式，不要使用 * # ** - 等符号。纯文本输出，用中文序号和空格缩进表达层级。';
-
-          // 4. 调用 API
-          var apiKey = localStorage.getItem('ds_api_key_v1') || '';
-          if (!apiKey) { resultEl.innerHTML = '<div style="color:#ef4444;padding:16px;">⚠️ 请先在设置中配置 API Key</div>'; return; }
-
-          var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-          var response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + apiKey
-            },
-            body: JSON.stringify({
-              model: localStorage.getItem('ds_model_v1') || 'ep-20240820145249-9vhch',
-              messages: [{ role: 'user', content: dsPrompt }],
-              stream: false,
-              max_tokens: 4096
-            })
-          });
-
-          if (!response.ok) throw new Error('API请求失败: ' + response.status);
-          var data = await response.json();
-          var content = data.choices[0].message.content;
-          // 保存生成结果供"保存到资料库"使用
-          window._lastChecklistContent = content;
-          window._lastChecklistUnit = unit;
-          window._lastChecklistFocus = focus;
-          resultEl.innerHTML = '<div style="background:#f9fafb;border-radius:8px;padding:14px;white-space:pre-wrap;line-height:1.8;">' + content.replace(/\n/g, '<br>') + '</div>'
-            + '<button onclick="saveChecklistToMaterials()" style="margin-top:10px;padding:8px 16px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">💾 保存到资料库（其它）</button>';
-
-          // 保存到资料库函数
-          window.saveChecklistToMaterials = async function() {
-            if (!window._lastChecklistContent) { alert('没有可保存的内容'); return; }
-            try {
-              // 直接写 IndexedDB（与 smart-writer 使用同一个 DB）
-              var dbReq = indexedDB.open('railway_writer_db', 2);
-              dbReq.onupgradeneeded = function(e) {
-                var db = e.target.result;
-                if (!db.objectStoreNames.contains('writing_materials')) {
-                  var store = db.createObjectStore('writing_materials', { keyPath: 'id', autoIncrement: true });
-                  store.createIndex('matType', 'matType', { unique: false });
-                }
-              };
-              dbReq.onsuccess = function(e) {
-                var db = e.target.result;
-                var tx = db.transaction('writing_materials', 'readwrite');
-                var store = tx.objectStore('writing_materials');
-                var item = {
-                  fileName: '检查清单_' + window._lastChecklistUnit + '.txt',
-                  title: '检查清单 - ' + window._lastChecklistUnit + ' - ' + window._lastChecklistFocus,
-                  matType: 'other',
-                  content: window._lastChecklistContent.slice(0, 50000),
-                  sheets: null,
-                  rowCount: null,
-                  fileSize: new Blob([window._lastChecklistContent]).size,
-                  importAt: Date.now()
-                };
-                var req = store.put(item);
-                req.onsuccess = function() { db.close(); alert('✅ 已保存到资料库「其它」分类'); };
-                req.onerror = function() { db.close(); alert('保存失败: ' + req.error.message); };
-              };
-              dbReq.onerror = function(e) { alert('数据库打开失败: ' + e.target.error.message); };
-            } catch(e) { alert('保存失败: ' + e.message); }
-          };
-        } catch(e) {
-          resultEl.innerHTML = '<div style="color:#ef4444;padding:16px;">生成失败: ' + e.message + '</div>';
-        }
-      };
-
       window.ROLE_PROMPTS = ROLE_PROMPTS;
       window._originalSendMsg = window.dsSendMsg;
 

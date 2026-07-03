@@ -1382,12 +1382,12 @@
                         <span>⚙️ 设置整合：数据管理按钮统一迁移至设置面板</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📡 离线增强：SW预缓存全部CSS/JS，断网完整可用</span>
+                        <span style="color:#94a3b8;margin-top:2px;">—</span>
+                        <span style="text-decoration:line-through;color:#94a3b8;">📡 离线增强：SW预缓存全部CSS/JS，断网完整可用（因缓存问题已禁用）</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔧 Web Worker：后台线程搜索，大数据量不冻屏</span>
+                        <span style="color:#94a3b8;margin-top:2px;">—</span>
+                        <span style="text-decoration:line-through;color:#94a3b8;">🔧 Web Worker：后台线程搜索，大数据量不冻屏（因缓存问题已禁用）</span>
                     </div>
                 </div>
             </div>
@@ -1431,10 +1431,11 @@
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                     <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
                 </div>
-                <div>• 数据存储：浏览器 IndexedDB（本地离线）</div>
-                <div>• AI引擎：豆包大模型 API</div>
+                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，检查信息200MB）</div>
+                <div>• AI引擎：OpenAI兼容大模型 API（DeepSeek/通义千问/智谱等）</div>
                 <div>• 部署方式：GitHub Pages 静态托管</div>
-                <div>• PWA支持：可安装到桌面/手机</div>
+                <div>• 兼容优化：华为/Chrome/Edge/手机端全面适配</div>
+                <div>• 注：SW/PWA 因缓存问题已禁用</div>
             </div>
 
             <!-- 底部信息 -->

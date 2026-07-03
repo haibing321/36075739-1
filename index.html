@@ -392,9 +392,9 @@
                         <div class="diary-view-header">
                             <span class="diary-view-title">✏️ 输入内容</span>
                             <div style="display:flex;gap:6px;align-items:center;">
-                                <button class="btn btn-primary btn-small" onclick="saveDiary(this)">💾 保存</button>
-                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)">📄 全部复制</button>
-                                <button class="btn btn-accent" onclick="toggleMultimediaPanel()" id="btn-multimedia-toggle" style="background:#d97706;color:white;">📸 多媒体录入</button>
+                                <button class="btn btn-primary btn-small" onclick="saveDiary(this)" style="padding:6px 14px;border-radius:8px;font-size:0.85rem;">💾 保存</button>
+                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)" style="padding:6px 14px;border-radius:8px;font-size:0.85rem;">📄 全部复制</button>
+                                <button class="btn btn-small" onclick="toggleMultimediaPanel()" id="btn-multimedia-toggle" style="padding:6px 14px;border-radius:8px;font-size:0.85rem;background:#d97706;color:white;">📸 多媒体</button>
                             </div>
                         </div>
                         <!-- 日期选择（仅输入视图显示） -->
@@ -426,7 +426,7 @@
                         </div>
                         <div class="diary-section">
                             <div class="diary-section-title">📋 工作内容</div>
-                            <textarea id="diary-work" class="diary-textarea" placeholder="请输入工作内容..." oninput="autoResize(this)"></textarea>
+                            <textarea id="diary-work" class="diary-textarea" placeholder="请输入工作内容..." oninput="autoResize(this);diaryAutoSave()"></textarea>
                         </div>
                         <div class="diary-section">
                             <div class="diary-section-title">⚠️ 检查发现问题</div>
@@ -1355,6 +1355,10 @@
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
                         <span>✏️ 规章编辑修复：编辑框正确显示规章标题</span>
                     </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔄 SW重启：NetworkFirst+StaleWhileRevalidate，版本号基于日期自动更新</span>
+                    </div>
                 </div>
             </div>
 
@@ -1382,12 +1386,12 @@
                         <span>⚙️ 设置整合：数据管理按钮统一迁移至设置面板</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#94a3b8;margin-top:2px;">—</span>
-                        <span style="text-decoration:line-through;color:#94a3b8;">📡 离线增强：SW预缓存全部CSS/JS，断网完整可用（因缓存问题已禁用）</span>
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📡 离线增强：SW预缓存全部CSS/JS，断网完整可用</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#94a3b8;margin-top:2px;">—</span>
-                        <span style="text-decoration:line-through;color:#94a3b8;">🔧 Web Worker：后台线程搜索，大数据量不冻屏（因缓存问题已禁用）</span>
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔧 Web Worker：后台线程搜索，大数据量不冻屏</span>
                     </div>
                 </div>
             </div>
@@ -1435,7 +1439,7 @@
                 <div>• AI引擎：OpenAI兼容大模型 API（DeepSeek/通义千问/智谱等）</div>
                 <div>• 部署方式：GitHub Pages 静态托管</div>
                 <div>• 兼容优化：华为/Chrome/Edge/手机端全面适配</div>
-                <div>• 注：SW/PWA 因缓存问题已禁用</div>
+                <div>• SW已重启：NetworkFirst+StaleWhileRevalidate策略，部署自动更新</div>
             </div>
 
             <!-- 底部信息 -->

@@ -13,6 +13,20 @@
             function loadDiaries() { try { const data = localStorage.getItem(STORAGE_KEY); if (data) { diaries = JSON.parse(data); diaries.forEach(d => { if (!d.regulations) d.regulations = []; if (d.issues && d.issues.length > d.regulations.length) { while (d.regulations.length < d.issues.length) d.regulations.push(''); } }); } } catch (e) { diaries = []; } }
             function saveDiaries() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries)); } catch (e) { alert('保存失败：' + e.message); } }
 
+            // 自动保存（防抖 2 秒）
+            var _autoSaveTimer = null;
+            function autoSaveDiary() {
+                if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+                _autoSaveTimer = setTimeout(function() {
+                    var date = document.getElementById('diary-date');
+                    if (date && date.value && typeof window.saveDiary === 'function') {
+                        window.saveDiary({ noToast: true });
+                    }
+                }, 2000);
+            }
+            // 输入框统一触发自动保存
+            window.diaryAutoSave = function() { autoSaveDiary(); };
+
             function renderIssueFields(issues = [], regulations = []) {
                 const container = document.getElementById('diary-issues-container');
                 container.innerHTML = '';
@@ -29,12 +43,12 @@
                 div.id = `diary-issue-row-${index}`;
                 div.innerHTML = `
                     <div style="display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;">
-                        <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="检查发现问题 ${index+1}" oninput="autoResize(this)" style="flex:1; min-width:0; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; resize:vertical; font-family:inherit; min-height:38px; line-height:1.5;">${escapeHtml(value)}</textarea>
+                        <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="检查发现问题 ${index+1}" oninput="autoResize(this);diaryAutoSave()" style="flex:1; min-width:0; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; resize:vertical; font-family:inherit; min-height:38px; line-height:1.5;">${escapeHtml(value)}</textarea>
                         <button class="btn btn-small btn-secondary" onclick="copyIssueWithRegulation(${index}, this)" style="white-space:nowrap; padding:4px 10px; flex-shrink:0;" title="复制问题及规章依据">📋 复制</button>
                         ${index > 0 ? '<button class="btn-remove-issue" onclick="removeIssueField(' + index + ')">×</button>' : ''}
                     </div>
                     <div style="display:flex; gap:6px; align-items:flex-start; margin-top:4px;">
-                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="规章依据" rows="2" oninput="autoResize(this)" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit; background:#f8fafc;">${escapeHtml(regulation)}</textarea>
+                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="规章依据" rows="2" oninput="autoResize(this);diaryAutoSave()" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit; background:#f8fafc;">${escapeHtml(regulation)}</textarea>
                     </div>
                 `;
                 container.appendChild(div);
@@ -140,7 +154,9 @@
                 updateDiaryCount();
             };
 
-            window.saveDiary = async function(btnEl) {
+            window.saveDiary = async function(opts) {
+                var noToast = opts && opts.noToast;
+                var btnEl = noToast ? null : opts;
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();
                 if (!date) { alert('请选择日期'); return; }
@@ -182,34 +198,51 @@
                 isEditMode = false;
                 currentEditDate = null;
 
-                // 清空输入框
-                document.getElementById('diary-work').value = '';
-                renderIssueFields([]);
-                document.getElementById('diary-date').valueAsDate = new Date();
-
-                // 清空多媒体
-                _mediaFiles = [];
-                _mediaPreviews = [];
-                _mediaCaptureTimes = [];
-                _existingMediaIds = [];
-                document.getElementById('media-preview').innerHTML = '';
-
-                // 切换到查询视图
-                showQuery();
-
-                // 自复式反馈
-                if (btnEl) {
-                    const orig = btnEl.innerHTML;
-                    const origBg = btnEl.style.background;
-                    btnEl.innerHTML = '✓ 已保存';
-                    btnEl.style.background = '#276749';
-                    btnEl.disabled = true;
-                    setTimeout(function() {
-                        btnEl.innerHTML = orig;
-                        btnEl.style.background = origBg;
-                        btnEl.disabled = false;
+                // 清空输入框（自动保存不清空，用户还在输入）
+                if (noToast) {
+                    // 自动保存：右下角浮动提示
+                    var toast = document.getElementById('diary-save-toast');
+                    if (!toast) {
+                        toast = document.createElement('div');
+                        toast.id = 'diary-save-toast';
+                        toast.textContent = '💾 已自动保存';
+                        Object.assign(toast.style, {
+                            position:'fixed', bottom:'20px', right:'20px',
+                            background:'#276749', color:'#fff',
+                            padding:'8px 16px', borderRadius:'20px',
+                            fontSize:'0.82rem', fontWeight:'600',
+                            boxShadow:'0 2px 8px rgba(0,0,0,.2)',
+                            zIndex:'10000', opacity:'0',
+                            transition:'opacity .3s ease'
+                        });
+                        document.body.appendChild(toast);
+                    }
+                    toast.style.opacity = '1';
+                    clearTimeout(toast._timer);
+                    toast._timer = setTimeout(function() { toast.style.opacity = '0'; }, 2000);
+                } else {
+                    document.getElementById('diary-work').value = '';
+                    renderIssueFields([]);
+                    document.getElementById('diary-date').valueAsDate = new Date();
+                    _mediaFiles = [];
+                    _mediaPreviews = [];
+                    _mediaCaptureTimes = [];
+                    _existingMediaIds = [];
+                    document.getElementById('media-preview').innerHTML = '';
+                    showQuery();
+                    if (btnEl) {
+                        var orig = btnEl.innerHTML;
+                        var origBg = btnEl.style.background;
+                        btnEl.innerHTML = '✓ 已保存';
+                        btnEl.style.background = '#276749';
+                        btnEl.disabled = true;
+                        setTimeout(function() {
+                            btnEl.innerHTML = orig;
+                            btnEl.style.background = origBg;
+                            btnEl.disabled = false;
                     }, 2000);
                 }
+            }
             };
             window.clearDiaryForm = function() {
                 isEditMode = false;

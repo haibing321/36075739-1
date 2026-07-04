@@ -1191,11 +1191,14 @@
                 </label>
 
                 <!-- 数据管理（可展开） -->
-                <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:0.88rem;cursor:pointer;">📦 数据管理 ▾</div>
-                <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:0 8px;">
+                <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:600;color:var(--primary);flex:1;">📦 数据管理</span>
+                    <span id="set-data-mgr-arrow" style="color:#64748b;font-size:0.75rem;transition:transform .2s;">▾</span>
+                </div>
+                <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:10px 10px 8px;background:#f8fafc;border-radius:8px;">
                     <!-- 全局备份/恢复 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="font-size:0.8rem;">📦 全局备份</span>
+                        <span style="font-size:0.8rem;color:#475569;">📦 全局备份</span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="document.getElementById('global-backup-btn').click();" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
                             <button onclick="document.getElementById('global-restore-btn').click();" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1205,8 +1208,8 @@
                     <!-- 检查手册 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📖 检查手册</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-handbook-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📖 检查手册</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-handbook-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="document.getElementById('handbook-jsonFile').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1217,8 +1220,8 @@
                     <!-- 检查信息 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📊 检查信息</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-issue-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📊 检查信息</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-issue-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="document.getElementById('issue-fileInput').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1229,8 +1232,8 @@
                     <!-- 规章制度 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📋 规章制度</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-rule-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📋 规章制度</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-rule-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="document.getElementById('rule-fileInput').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1241,8 +1244,8 @@
                     <!-- 工作日志 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📝 工作日志</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-diary-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📝 工作日志</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-diary-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="importDiary()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1253,8 +1256,8 @@
                     <!-- 车站电话 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📞 车站电话</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-phone-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📞 车站电话</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-phone-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="document.getElementById('phone-fileInput').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1265,8 +1268,8 @@
                     <!-- 写作资料库 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">✍️ 写作资料</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-wr-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">✍️ 写作资料</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-wr-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="wrMaterialImportUnified()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1276,8 +1279,8 @@
                     </div>
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📊 历史报告</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-wrhist-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📊 历史报告</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-wrhist-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="wrImportWithType('history')" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
@@ -1288,8 +1291,8 @@
                     <!-- 术语库 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;">📚 铁路术语库</span>
-                            <span style="font-size:0.7rem;color:#666;" id="set-term-count">—</span>
+                            <span style="font-size:0.8rem;color:#475569;">📚 铁路术语库</span>
+                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-term-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
                             <button onclick="importRailwayTerms()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>

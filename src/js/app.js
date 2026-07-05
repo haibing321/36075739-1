@@ -409,26 +409,12 @@ console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;fon
 
 // ==================== 版本管理 ====================
 const APP_VERSION = 'v2.4'; // 与 about 面板保持一致
+const UPDATE_CHECK_URL = 'https://api.github.com/repos/haibing321/36075739-2/releases/latest';
 
-function getUpdateCheckUrl() {
-    return localStorage.getItem('update_check_url') || '';
-}
-function setUpdateCheckUrl(url) {
-    localStorage.setItem('update_check_url', url);
-}
-
-// 页面加载时恢复输入框值并执行静默检测
+// 页面加载时执行静默检测
 document.addEventListener('DOMContentLoaded', function() {
-    const urlInput = document.getElementById('setting-update-url');
-    if (urlInput) {
-        urlInput.value = getUpdateCheckUrl();
-        urlInput.addEventListener('change', function() {
-            setUpdateCheckUrl(this.value.trim());
-        });
-    }
     const verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = '当前版本 ' + APP_VERSION;
-    // 执行后台静默检测
     if (window.requestIdleCallback) {
         requestIdleCallback(function() { silentCheckUpdate(); }, { timeout: 5000 });
     } else {
@@ -439,15 +425,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // 手动检查
 async function checkForUpdate() {
     const statusEl = document.getElementById('update-status');
-    const url = getUpdateCheckUrl();
-    if (!url) {
-        statusEl.textContent = '⚠️ 请在输入框中填写版本检测 API 地址（或留空使用默认）';
-        statusEl.style.color = '#d97706';
-        return;
-    }
+    if (!statusEl) return;
     statusEl.textContent = '⏳ 正在检查...';
     statusEl.style.color = '#3b82f6';
-    await performUpdateCheck(url, true);
+    await performUpdateCheck(UPDATE_CHECK_URL, true);
 }
 
 // 静默检查
@@ -456,11 +437,7 @@ async function silentCheckUpdate() {
     if (lastCheck && (Date.now() - parseInt(lastCheck)) < 3600000) {
         return;
     }
-    let url = getUpdateCheckUrl();
-    if (!url) {
-        url = 'version.json';
-    }
-    await performUpdateCheck(url, false);
+    await performUpdateCheck(UPDATE_CHECK_URL, false);
     localStorage.setItem('_last_version_check', Date.now());
 }
 
@@ -476,9 +453,9 @@ async function performUpdateCheck(url, showStatus) {
         });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-        const remoteVersion = data.version || data.tag_name || data.latestVersion || '';
-        const releaseNotes = data.releaseNotes || data.body || data.notes || '';
-        const downloadUrl = data.downloadUrl || data.html_url || '';
+        const remoteVersion = data.tag_name || data.version || data.latestVersion || '';
+        const releaseNotes = data.body || data.releaseNotes || data.notes || '';
+        const downloadUrl = data.html_url || data.downloadUrl || 'https://github.com/haibing321/36075739-2/releases';
 
         if (!remoteVersion) {
             if (showStatus) {
@@ -493,10 +470,10 @@ async function performUpdateCheck(url, showStatus) {
             document.getElementById('tab-settings')?.classList.add('has-update-badge');
             localStorage.setItem('_has_update', 'true');
             if (showStatus) {
-                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes : '');
+                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '');
                 statusEl.style.color = '#dc2626';
                 if (confirm('发现新版本 ' + remoteVersion + '，是否查看更新详情？')) {
-                    window.open(downloadUrl || 'https://github.com/haibing321/36075739-2/releases', '_blank');
+                    window.open(downloadUrl, '_blank');
                 }
             }
         } else {

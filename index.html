@@ -1301,6 +1301,21 @@
                 <button onclick="clearAllCache()" class="btn-primary-sm" style="padding:9px 14px;background:#d97706;border-radius:10px;text-align:left;">🗑️ 清除缓存</button>
                 <button onclick="toggleSettingsPanel();showAboutPanel();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">ℹ️ 关于系统</button>
             </div>
+            <!-- 版本更新检查 -->
+            <div style="border-top:1px solid #e5e7eb; padding-top:12px; margin-top:12px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                    <span style="font-size:0.85rem; font-weight:600;">🔄 版本更新</span>
+                    <span style="font-size:0.7rem; color:#94a3b8;" id="setting-current-version">当前版本 v2.4</span>
+                </div>
+                <div style="display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="setting-update-url" placeholder="可选：自定义版本检测 API 地址"
+                           style="flex:2; min-width:150px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:0.8rem;">
+                    <button onclick="checkForUpdate()" style="padding:5px 12px; background:var(--primary); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;">
+                        🔍 检查更新
+                    </button>
+                </div>
+                <div id="update-status" style="font-size:0.75rem; color:#64748b; margin-top:4px;"></div>
+            </div>
             <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
                 <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
                 <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>

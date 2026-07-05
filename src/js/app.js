@@ -406,3 +406,125 @@ window._updateModelList = function() {
 };
 
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
+
+// ==================== 版本管理 ====================
+const APP_VERSION = 'v2.4'; // 与 about 面板保持一致
+
+function getUpdateCheckUrl() {
+    return localStorage.getItem('update_check_url') || '';
+}
+function setUpdateCheckUrl(url) {
+    localStorage.setItem('update_check_url', url);
+}
+
+// 页面加载时恢复输入框值并执行静默检测
+document.addEventListener('DOMContentLoaded', function() {
+    const urlInput = document.getElementById('setting-update-url');
+    if (urlInput) {
+        urlInput.value = getUpdateCheckUrl();
+        urlInput.addEventListener('change', function() {
+            setUpdateCheckUrl(this.value.trim());
+        });
+    }
+    const verSpan = document.getElementById('setting-current-version');
+    if (verSpan) verSpan.textContent = '当前版本 ' + APP_VERSION;
+    // 执行后台静默检测
+    if (window.requestIdleCallback) {
+        requestIdleCallback(function() { silentCheckUpdate(); }, { timeout: 5000 });
+    } else {
+        setTimeout(silentCheckUpdate, 3000);
+    }
+});
+
+// 手动检查
+async function checkForUpdate() {
+    const statusEl = document.getElementById('update-status');
+    const url = getUpdateCheckUrl();
+    if (!url) {
+        statusEl.textContent = '⚠️ 请在输入框中填写版本检测 API 地址（或留空使用默认）';
+        statusEl.style.color = '#d97706';
+        return;
+    }
+    statusEl.textContent = '⏳ 正在检查...';
+    statusEl.style.color = '#3b82f6';
+    await performUpdateCheck(url, true);
+}
+
+// 静默检查
+async function silentCheckUpdate() {
+    const lastCheck = localStorage.getItem('_last_version_check');
+    if (lastCheck && (Date.now() - parseInt(lastCheck)) < 3600000) {
+        return;
+    }
+    let url = getUpdateCheckUrl();
+    if (!url) {
+        url = 'version.json';
+    }
+    await performUpdateCheck(url, false);
+    localStorage.setItem('_last_version_check', Date.now());
+}
+
+// 核心检测函数
+async function performUpdateCheck(url, showStatus) {
+    if (showStatus === undefined) showStatus = false;
+    const statusEl = document.getElementById('update-status');
+    try {
+        const resp = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-cache'
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        const remoteVersion = data.version || data.tag_name || data.latestVersion || '';
+        const releaseNotes = data.releaseNotes || data.body || data.notes || '';
+        const downloadUrl = data.downloadUrl || data.html_url || '';
+
+        if (!remoteVersion) {
+            if (showStatus) {
+                statusEl.textContent = '❌ 远程版本信息缺失，检查接口格式';
+                statusEl.style.color = '#dc2626';
+            }
+            return;
+        }
+
+        const isNew = compareVersions(remoteVersion, APP_VERSION) > 0;
+        if (isNew) {
+            document.getElementById('tab-settings')?.classList.add('has-update-badge');
+            localStorage.setItem('_has_update', 'true');
+            if (showStatus) {
+                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes : '');
+                statusEl.style.color = '#dc2626';
+                if (confirm('发现新版本 ' + remoteVersion + '，是否查看更新详情？')) {
+                    window.open(downloadUrl || 'https://github.com/haibing321/36075739-2/releases', '_blank');
+                }
+            }
+        } else {
+            document.getElementById('tab-settings')?.classList.remove('has-update-badge');
+            localStorage.removeItem('_has_update');
+            if (showStatus) {
+                statusEl.textContent = '✅ 已是最新版 (' + APP_VERSION + ')';
+                statusEl.style.color = '#16a34a';
+            }
+        }
+    } catch (err) {
+        if (showStatus) {
+            statusEl.textContent = '❌ 检查失败：' + err.message;
+            statusEl.style.color = '#dc2626';
+        }
+        console.warn('[Update]', err);
+    }
+}
+
+// 版本号比较
+function compareVersions(v1, v2) {
+    function clean(v) { return v.replace(/^v/, '').split('.').map(Number); }
+    var a = clean(v1), b = clean(v2);
+    var len = Math.max(a.length, b.length);
+    for (var i = 0; i < len; i++) {
+        var n1 = a[i] || 0, n2 = b[i] || 0;
+        if (n1 > n2) return 1;
+        if (n1 < n2) return -1;
+    }
+    return 0;
+}

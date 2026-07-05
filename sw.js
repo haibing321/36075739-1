@@ -5,7 +5,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260703';
+var CACHE_VERSION = '20260705';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -39,7 +39,8 @@ var PRECACHE_URLS = [
   './src/js/modules/smart-check.js',
   './src/js/modules/smart-writer.js',
   './src/js/modules/doubao.js',
-  './src/js/modules/backup.js'
+  './src/js/modules/backup.js',
+  './version.json'
 ];
 
 // 本地 CSS/JS 模块（构建时需更新，此处用通配匹配）

@@ -1303,15 +1303,11 @@
             </div>
             <!-- 版本更新检查 -->
             <div style="border-top:1px solid #e5e7eb; padding-top:12px; margin-top:12px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                    <span style="font-size:0.85rem; font-weight:600;">🔄 版本更新</span>
-                    <span style="font-size:0.7rem; color:#94a3b8;" id="setting-current-version">当前版本 v2.4</span>
-                </div>
-                <div style="display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap;">
-                    <button onclick="checkForUpdate()" style="padding:5px 12px; background:var(--primary); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;">
-                        🔍 检查更新
-                    </button>
-                </div>
+                <button onclick="checkForUpdate()" style="display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 14px; background:#f8fafc; border:1px solid var(--border); border-radius:10px; cursor:pointer; font-size:0.85rem; text-align:left; transition:all 0.2s;"
+                        onmouseover="this.style.borderColor='#93c5fd'" onmouseout="this.style.borderColor='var(--border)'">
+                    <span><span style="font-weight:600;">🔄 检查更新</span> <span style="font-size:0.7rem; color:#94a3b8;" id="setting-current-version">v2.4</span></span>
+                    <span style="font-size:0.7rem; color:#3b82f6;">点击检查 →</span>
+                </button>
                 <div id="update-status" style="font-size:0.75rem; color:#64748b; margin-top:4px;"></div>
             </div>
             <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">

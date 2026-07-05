@@ -414,7 +414,7 @@ const UPDATE_CHECK_URL = 'https://api.github.com/repos/haibing321/36075739-2/rel
 // 页面加载时执行静默检测
 document.addEventListener('DOMContentLoaded', function() {
     const verSpan = document.getElementById('setting-current-version');
-    if (verSpan) verSpan.textContent = '当前版本 ' + APP_VERSION;
+    if (verSpan) verSpan.textContent = APP_VERSION;
     if (window.requestIdleCallback) {
         requestIdleCallback(function() { silentCheckUpdate(); }, { timeout: 5000 });
     } else {

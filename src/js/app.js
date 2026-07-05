@@ -451,6 +451,14 @@ async function performUpdateCheck(url, showStatus) {
             headers: { 'Accept': 'application/json' },
             cache: 'no-cache'
         });
+        // 404 = 仓库尚无发布版本
+        if (resp.status === 404) {
+            if (showStatus) {
+                statusEl.textContent = 'ℹ️ 暂无发布版本，GitHub 发布新版本后会自动检测';
+                statusEl.style.color = '#64748b';
+            }
+            return;
+        }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
         const remoteVersion = data.tag_name || data.version || data.latestVersion || '';

@@ -529,3 +529,33 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', bind); }
     else { bind(); }
 })();
+
+window.clearAllGlobalData = function() {
+    if (!confirm('⚠️ 确定清空所有数据？\\n此操作将清除：检查信息、规章制度、工作日志、备忘录、车站电话、检查手册、写作资料、对话记录等全部本地数据，且不可恢复！')) return;
+    if (!confirm('⚠️ 再次确认：清空后所有数据将永久丢失，确定继续？')) return;
+    window.showProgress(10, '正在清空 localStorage 数据…');
+    // 清空 localStorage 模块数据
+    var lsKeys = [
+        'railway_work_diary_v2', 'railway_phone_db_v1', 'handbook_fourlevel_v1',
+        'railway_memo_v1', 'patch_term_library_v2', 'ds_conversations_v1',
+        'ds_chat_history_v1', 'railway_rules_v1', 'railway_terms_custom',
+        'patch_term_library_v1'
+    ];
+    lsKeys.forEach(function(k) { try { localStorage.removeItem(k); } catch(e) {} });
+    window.showProgress(30, '正在清空 IndexedDB 数据…');
+    // 清空 IndexedDB
+    var dbNames = ['RailwayIssueDB_v2', 'RailwayRuleDB', 'DiaryMediaDB', 'railway_writer_db', 'RailwayMemoDB', 'RailwayPhoneDB', 'HandbookDB'];
+    Promise.all(dbNames.map(function(name) {
+        return new Promise(function(res) {
+            try {
+                var req = indexedDB.deleteDatabase(name);
+                req.onsuccess = res;
+                req.onerror = res;
+                req.onblocked = res;
+            } catch(e) { res(); }
+        });
+    })).then(function() {
+        window.finishProgress('✅ 已清空全部数据');
+        setTimeout(function() { location.reload(); }, 1500);
+    });
+};

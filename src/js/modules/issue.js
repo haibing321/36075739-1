@@ -20,12 +20,30 @@
             });
 
             async function initDB() {
-                db = await window.dbManager.getDB('RailwayIssueDB_v2');
+                // 确保数据库以版本2打开（保证 issues store 存在）
+                db = await window.dbManager.getDB('RailwayIssueDB_v2', 2);
                 return db;
             }
 
+            // 安全地检查 db 是否包含目标 store，若无则重新初始化
+            function ensureStoreExists() {
+                if (!db) return false;
+                try {
+                    // 如果 store 不存在会抛异常
+                    db.transaction([STORE_NAME], 'readonly');
+                    return true;
+                } catch(e) {
+                    console.warn('[issue] store 不存在，重新初始化:', e.message);
+                    if (window.dbManager && typeof window.dbManager.closeDB === 'function') {
+                        window.dbManager.closeDB(DB_NAME);
+                    }
+                    db = null;
+                    return false;
+                }
+            }
+
             async function saveData(dataArray) {
-                if (!db) await initDB();
+                if (!db || !ensureStoreExists()) await initDB();
                 await clearAllData();
                 const batchSize = 500;
                 for (let i = 0; i < dataArray.length; i += batchSize) {
@@ -48,7 +66,7 @@
             }
 
             async function loadData() {
-                if (!db) await initDB();
+                if (!db || !ensureStoreExists()) await initDB();
                 return new Promise((resolve, reject) => {
                     const transaction = db.transaction([STORE_NAME], 'readonly');
                     const store = transaction.objectStore(STORE_NAME);
@@ -59,7 +77,7 @@
             }
 
             async function clearAllData() {
-                if (!db) await initDB();
+                if (!db || !ensureStoreExists()) await initDB();
                 return new Promise((resolve, reject) => {
                     const transaction = db.transaction([STORE_NAME], 'readwrite');
                     const store = transaction.objectStore(STORE_NAME);

@@ -234,7 +234,7 @@
          *   - backup.js 等一次性操作可用 closeDB() 用完即关
          *
          * 注册的数据库（各模块在 DOMContentLoaded 中调用 register）：
-         *   'RailwayIssueDB_v2'  → { version: 1,  upgrade: issue.js 的 schema }
+         *   'RailwayIssueDB_v2'  → { version: 2,  upgrade: issue.js 的 schema }
          *   'RailwayRuleDB'      → { version: 3, upgrade: rule.js 的 schema }
          *   'DiaryMediaDB'       → { version: 1, upgrade: diary.js 的 schema }
          *   'railway_writer_db'  → { version: 2, upgrade: doubao.js 写作模块的 schema }
@@ -269,9 +269,10 @@
             /**
              * 获取数据库连接（带缓存的单例）
              * @param {string} name - 数据库名
+             * @param {number} [forceVersion] - 可选，强制以指定版本打开（用于修复 store 缺失场景）
              * @returns {Promise<IDBDatabase>}
              */
-            function getDB(name) {
+            function getDB(name, forceVersion) {
                 // 已有有效缓存
                 if (_cache[name] && _cache[name].db) {
                     try {
@@ -289,6 +290,8 @@
                 }
 
                 var info = _upgrades[name] || { version: 1, fn: null };
+                // 如果调用方传了 forceVersion，优先使用
+                var baseVer = (forceVersion !== undefined) ? forceVersion : info.version;
 
                 // 先探测现有版本，避免 "requested version (N) is less than existing (M)" 报错
                 var p = new Promise(function(resolve, reject) {
@@ -297,7 +300,7 @@
                         var existingVer = probeReq.result.version;
                         probeReq.result.close();
                         // 使用 max(注册版本, 已有版本) 打开，确保 >= 已有版本
-                        var targetVer = Math.max(info.version, existingVer);
+                        var targetVer = Math.max(baseVer, existingVer);
                         if (targetVer < existingVer) targetVer = existingVer;
                         var req = indexedDB.open(name, targetVer);
                         req.onerror = function() { reject(req.error); };

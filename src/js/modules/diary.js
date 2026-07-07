@@ -920,6 +920,7 @@
 
             // 导入日记数据
             window.importDiary = function() {
+                window.showProgress(10, '正在导入工作日志…');
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.json';
@@ -931,18 +932,18 @@
                         try {
                             const imported = JSON.parse(evt.target.result);
                             if (!Array.isArray(imported)) {
+                                window.hideProgress();
                                 alert('导入数据格式错误：需要数组格式');
                                 return;
                             }
-                            // 验证数据格式
                             const valid = imported.every(item => 
                                 item && (item.date || item.work || item.issues)
                             );
                             if (!valid) {
+                                window.hideProgress();
                                 alert('导入数据格式错误：部分数据缺少必要字段');
                                 return;
                             }
-                            // 合并数据（避免重复日期的记录）
                             const existingDates = new Set(diaries.map(d => d.date));
                             let addedCount = 0;
                             imported.forEach(item => {
@@ -951,10 +952,12 @@
                                     addedCount++;
                                 }
                             });
+                            window.showProgress(60, '正在保存…');
                             saveDiaries();
                             updateDiaryCount();
-                            alert('成功导入 ' + addedCount + ' 条记录！' + (imported.length - addedCount > 0 ? '\n（已跳过 ' + (imported.length - addedCount) + ' 条重复记录）' : ''));
+                            window.finishProgress('✅ 成功导入 ' + addedCount + ' 条' + (imported.length - addedCount > 0 ? '（跳过' + (imported.length - addedCount) + '条重复）' : ''));
                         } catch (err) {
+                            window.hideProgress();
                             alert('解析文件失败：' + err.message);
                         }
                     };

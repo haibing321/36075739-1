@@ -712,3 +712,24 @@
                 }
             };
         })();
+
+// ==================== 全局进度条 ====================
+window.showProgress = function(pct, label) {
+    var bar = document.getElementById('global-progress-bar');
+    var fill = document.getElementById('global-progress-fill');
+    var pctEl = document.getElementById('global-progress-pct');
+    var labelEl = document.getElementById('global-progress-label');
+    if (!bar) return;
+    bar.style.display = 'block';
+    if (fill) fill.style.width = Math.min(pct, 100) + '%';
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    if (labelEl && label !== undefined) labelEl.textContent = label;
+};
+window.hideProgress = function() {
+    var bar = document.getElementById('global-progress-bar');
+    if (bar) { bar.style.display = 'none'; }
+};
+window.finishProgress = function(label) {
+    window.showProgress(100, label || '✅ 完成');
+    setTimeout(window.hideProgress, 2000);
+};

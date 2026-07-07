@@ -199,6 +199,7 @@
 
             window.phoneExportJSON = function() {
                 if (phoneData.length === 0) { alert('没有数据可导出'); return; }
+                window.showProgress(50, '正在导出车站电话…');
                 const blob = new Blob([JSON.stringify(phoneData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -206,6 +207,7 @@
                 a.download = '车站电话_' + new Date().toISOString().slice(0,10) + '.json';
                 a.click();
                 URL.revokeObjectURL(url);
+                window.finishProgress('✅ 车站电话导出成功');
             };
             window.phoneDownloadTemplate = function() {
                 const template = [ { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' }, { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' } ];

@@ -613,6 +613,7 @@
 
             window.exportHandbook = function() {
                 if (handbookData.length === 0) { alert('没有数据可导出'); return; }
+                window.showProgress(50, '正在导出检查手册…');
                 var dataStr = JSON.stringify(handbookData, null, 2);
                 var blob = new Blob([dataStr], { type: 'application/json' });
                 var url = URL.createObjectURL(blob);
@@ -621,5 +622,6 @@
                 a.download = '安全检查手册_' + new Date().toISOString().slice(0,10) + '.json';
                 a.click();
                 URL.revokeObjectURL(url);
+                window.finishProgress('✅ 检查手册导出成功');
             };
         })();

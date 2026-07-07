@@ -670,6 +670,7 @@
 
             window.issueExportJSON = function() {
                 if (dataCache.length === 0) { alert('没有数据可导出'); return; }
+                window.showProgress(30, '正在导出检查信息…');
                 const exportData = dataCache.map(item => ({
                     '性质': getXingzhi(item),
                     '时间': item.datetime || '',
@@ -678,6 +679,7 @@
                     '规章依据': item.regulation || '',
                     '单位': item.unit || ''
                 }));
+                window.showProgress(60, '正在打包文件…');
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -685,6 +687,7 @@
                 a.download = '铁路检查信息_' + new Date().toISOString().slice(0, 10) + '_' + dataCache.length + '条.json';
                 a.click();
                 URL.revokeObjectURL(url);
+                window.finishProgress('✅ 检查信息导出成功');
             };
 
             window.issueDownloadTemplate = function() {

@@ -906,6 +906,7 @@
             // 导出日记数据
             window.exportDiary = function() {
                 if (diaries.length === 0) { alert('没有数据可导出'); return; }
+                window.showProgress(50, '正在导出工作日志…');
                 const dataStr = JSON.stringify(diaries, null, 2);
                 const blob = new Blob([dataStr], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -914,6 +915,7 @@
                 a.download = '工作写实_' + new Date().toISOString().slice(0,10) + '.json';
                 a.click();
                 URL.revokeObjectURL(url);
+                window.finishProgress('✅ 工作日志导出成功');
             };
 
             // 导入日记数据

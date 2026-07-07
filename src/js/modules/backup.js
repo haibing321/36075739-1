@@ -361,17 +361,9 @@
         } catch(e) { _toast('备份失败：' + e.message, true); }
     };
 
-    // ---- 全局导入进度条 ----
-    function _showRestoreProgress(show) {
-        var el = document.getElementById('global-restore-progress');
-        if (el) el.style.display = show ? 'block' : 'none';
-    }
-    function _setRestoreProgress(pct, status) {
-        var bar = document.getElementById('global-restore-bar');
-        var txt = document.getElementById('global-restore-status');
-        if (bar) bar.style.width = Math.min(pct, 100) + '%';
-        if (txt) txt.textContent = status || '';
-    }
+    // ---- 全局导入进度条（使用全局 showProgress） ----
+    function _showRestoreProgress(show) { if (!show) window.hideProgress(); }
+    function _setRestoreProgress(pct, status) { window.showProgress(pct, status); }
 
     window.oneClickRestore = function() {
         // 先用同步手势打开文件选择器（避免 await 丢失用户手势）
@@ -524,7 +516,7 @@
                 setTimeout(function() {
                     setTimeout(function(){ location.reload(); }, 2000);
                 }, 1000);
-            } catch(err) { _setRestoreProgress(0, '❌ 恢复失败：' + err.message); _toast('恢复失败：' + err.message, true); }
+            } catch(err) { window.showProgress(0, '❌ 恢复失败：' + err.message); _toast('恢复失败：' + err.message, true); }
         });
     };
 

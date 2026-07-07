@@ -300,22 +300,30 @@
     window.oneClickBackup = async function() {
         await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
         if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
-        _toast('正在收集数据…');
+        window.showProgress(5, '正在收集检查信息…');
         var backup = { version: 3, exportDate: new Date().toISOString(), modules: {} };
         var errors = [];
         try {
-            // 逐个模块独立 try/catch，一个失败不影响其他
             try { backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 2); } catch(e) { errors.push('检查信息: '+e.message); backup.modules.issues = []; }
+            window.showProgress(15, '正在收集规章制度…');
             try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); backup.modules.rules = []; }
+            window.showProgress(25, '正在收集工作日志…');
             backup.modules.diary = getLocal('railway_work_diary_v2', []);
+            window.showProgress(30, '正在收集车站电话…');
             backup.modules.phone = getLocal('railway_phone_db_v1', []);
+            window.showProgress(35, '正在收集检查手册…');
             backup.modules.handbook = getLocal('handbook_fourlevel_v1', []);
+            window.showProgress(40, '正在收集写作资料…');
             try { backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2); } catch(e) { errors.push('写作资料: '+e.message); backup.modules.writingMaterials = []; }
+            window.showProgress(45, '正在收集历史报告…');
             try { backup.modules.writingReports = await readIndexedDB('railway_writer_db', 'writing_reports', 2); } catch(e) { errors.push('写作报告: '+e.message); backup.modules.writingReports = []; }
+            window.showProgress(50, '正在收集对话记录…');
             backup.modules.dsConversations = getLocal('ds_conversations_v1', []);
             backup.modules.dsChatHistory = getLocal('ds_chat_history_v1', []);
+            window.showProgress(55, '正在收集术语库…');
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
+            window.showProgress(60, '正在收集多媒体文件…');
             backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1);
             // 将 diaryMedia 中的 blob (ArrayBuffer) 异步转为 base64，避免手机端主线程卡死
             var mediaFileCount = 0, mediaTotalBytes = 0;
@@ -347,18 +355,19 @@
                 backup.modules.diaryMedia = converted;
             }
 
+            window.showProgress(70, '正在压缩打包…');
             var zip = new JSZip();
             zip.file('full_backup.json', JSON.stringify(backup, null, 2));
             var blob = await zip.generateAsync({ type: 'blob' });
+            window.showProgress(90, '正在下载…');
             var fileName = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.zip';
 
             // 使用兼容性下载函数（替代原来的简单 a.click()）
             downloadBlob(blob, fileName);
 
-            _toast('备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') + '\n' +
-                   (errors.length > 0 ? '⚠️ 部分模块失败: ' + errors.join(', ') + '\n' : '') +
-                   '若未自动下载，请点击屏幕下方绿色按钮');
-        } catch(e) { _toast('备份失败：' + e.message, true); }
+            window.finishProgress('✅ 备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') +
+                   (errors.length > 0 ? ' ⚠️ 部分模块失败' : ''));
+        } catch(e) { window.hideProgress(); _toast('备份失败：' + e.message, true); }
     };
 
     // ---- 全局导入进度条（使用全局 showProgress） ----

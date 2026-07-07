@@ -80,22 +80,23 @@
                     }
                     document.getElementById('issue-recordCount').textContent = count + ' 条';
 
-                    // 尝试使用 storageManager 获取真实配额
+                    // 尝试使用 storageManager 获取真实配额（显示上限固定200MB）
+                    var displayQuotaMB = 200;
                     if (window.storageManager) {
                         try {
                             var quotaInfo = await window.storageManager.checkQuota();
                             document.getElementById('issue-storageText').textContent =
-                                parseFloat(sizeMB) + ' / ' + quotaInfo.quotaMB + ' MB';
-                            const percent = Math.min((parseFloat(sizeMB) / Math.max(quotaInfo.quotaMB, 1)) * 100, 100);
+                                parseFloat(sizeMB) + ' / ' + displayQuotaMB + ' MB';
+                            const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
                             var bar = document.getElementById('issue-storageBar');
                             bar.style.width = percent + '%';
                             if (percent > 80) bar.className = 'storage-fill danger';
                             else if (percent > 60) bar.className = 'storage-fill warning';
                             else bar.className = 'storage-fill';
                         } catch(qe) {
-                            // 降级为原来的 50MB 硬编码显示
-                            document.getElementById('issue-storageText').textContent = sizeMB + ' MB';
-                            const percent = Math.min((sizeMB / 50) * 100, 100);
+                            // 降级：硬编码 200MB
+                            document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + displayQuotaMB + ' MB';
+                            const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
                             var bar2 = document.getElementById('issue-storageBar');
                             bar2.style.width = percent + '%';
                             if (percent > 80) bar2.className = 'storage-fill danger';
@@ -103,8 +104,8 @@
                             else bar2.className = 'storage-fill';
                         }
                     } else {
-                        document.getElementById('issue-storageText').textContent = sizeMB + ' MB';
-                        const percent = Math.min((sizeMB / 50) * 100, 100);
+                        document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + displayQuotaMB + ' MB';
+                        const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
                         var bar3 = document.getElementById('issue-storageBar');
                         bar3.style.width = percent + '%';
                         if (percent > 80) bar3.className = 'storage-fill danger';
@@ -580,6 +581,7 @@
             };
             // JSON 导入
             async function issueHandleJSON(file) {
+                window.showProgress(10, '正在解析 JSON 文件…');
                 try {
                     const text = await file.text();
                     const imported = JSON.parse(text);
@@ -608,10 +610,11 @@
                         if (!action) finalData = [...dataCache, ...normalized];
                     }
                     await saveData(finalData); await updateStorage();
-                    alert(`成功导入 ${imported.length} 条JSON记录`);
-                } catch (err) { alert('JSON导入失败: ' + err.message); }
+                    window.finishProgress('✅ 成功导入 ' + imported.length + ' 条检查记录');
+                } catch (err) { window.hideProgress(); alert('JSON导入失败: ' + err.message); }
             }
             window.issueHandleExcel = async function(e) {
+                window.showProgress(5, '正在解析 Excel 文件…');
                 await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
                 const file = e.target.files[0]; if (!file) return;
                 openModal('issue-importModal');
@@ -656,9 +659,11 @@
                         const action = confirm('当前已有 ' + existingCount + ' 条记录。\n点击"确定"覆盖，点击"取消"追加');
                         if (!action) finalData = [...dataCache, ...newData];
                     }
+                    window.showProgress(70, '正在保存到数据库…');
                     document.getElementById('issue-importStatus').textContent = '正在保存...';
                     await saveData(finalData); await updateStorage(); closeModal('issue-importModal');
-                } catch (err) { closeModal('issue-importModal'); alert('导入失败: ' + err.message); }
+                    window.finishProgress('✅ 成功导入 ' + newData.length + ' 条记录');
+                } catch (err) { closeModal('issue-importModal'); window.hideProgress(); alert('导入失败: ' + err.message); }
                 e.target.value = '';
             };
 

@@ -1198,6 +1198,12 @@
                             <button onclick="document.getElementById('global-restore-btn').click();" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
                         </span>
                     </div>
+                    <div id="global-restore-progress" style="display:none; margin-top:6px;">
+                        <div style="font-size:0.72rem;color:#64748b;margin-bottom:3px;" id="global-restore-status">准备导入...</div>
+                        <div style="width:100%;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                            <div id="global-restore-bar" style="width:0%;height:100%;background:#3b82f6;border-radius:3px;transition:width 0.3s ease;"></div>
+                        </div>
+                    </div>
                     <div style="border-top:1px solid #e5e7eb;margin:2px 0;"></div>
                     <!-- 检查手册 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">

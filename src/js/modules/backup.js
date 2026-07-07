@@ -361,6 +361,18 @@
         } catch(e) { _toast('备份失败：' + e.message, true); }
     };
 
+    // ---- 全局导入进度条 ----
+    function _showRestoreProgress(show) {
+        var el = document.getElementById('global-restore-progress');
+        if (el) el.style.display = show ? 'block' : 'none';
+    }
+    function _setRestoreProgress(pct, status) {
+        var bar = document.getElementById('global-restore-bar');
+        var txt = document.getElementById('global-restore-status');
+        if (bar) bar.style.width = Math.min(pct, 100) + '%';
+        if (txt) txt.textContent = status || '';
+    }
+
     window.oneClickRestore = function() {
         // 先用同步手势打开文件选择器（避免 await 丢失用户手势）
         triggerFileInput('.zip', async function(e) {
@@ -368,7 +380,7 @@
             if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
             var file = e.target.files[0]; if (!file) return;
             try {
-                _toast('正在解析备份文件…');
+                _setRestoreProgress(5, '正在解析备份文件…');
                 var zip = await JSZip.loadAsync(file);
                 var backupFile = zip.file('full_backup.json');
                 if (!backupFile) throw new Error('缺少 full_backup.json，可能不是有效的安系统备份文件');
@@ -380,23 +392,24 @@
                 if (backup.version < 3) {
                     console.warn('[backup] 旧版本备份 v' + backup.version + '，自动升级到 v3');
                     backup.version = 3;
-                    // v1→v3 迁移：旧备份可能没有 writingMaterials / writingReports / termLibrary / memos / diaryMedia
                     if (!backup.modules.writingMaterials) backup.modules.writingMaterials = [];
                     if (!backup.modules.writingReports) backup.modules.writingReports = [];
                     if (!backup.modules.termLibrary) backup.modules.termLibrary = [];
                     if (!backup.modules.memos) backup.modules.memos = [];
                     if (!backup.modules.diaryMedia) backup.modules.diaryMedia = [];
                 }
-                if (!confirm('⚠️ 将覆盖现有数据，确定继续？')) return;
 
-                _toast('正在恢复数据…');
+                _showRestoreProgress(true);
+                _setRestoreProgress(10, '正在恢复检查信息…');
                 var bm = backup.modules;
+                _setRestoreProgress(15, '正在恢复检查信息…');
                 if (bm.issues && Array.isArray(bm.issues) && bm.issues.length) {
                     await writeIndexedDB('RailwayIssueDB_v2', 'issues', 2, bm.issues);
                     console.log('已恢复 ' + bm.issues.length + ' 条检查信息');
                 } else {
                     console.warn('备份中无检查信息数据');
                 }
+                _setRestoreProgress(25, '正在恢复规章制度…');
                 if (bm.rules && Array.isArray(bm.rules) && bm.rules.length) {
                     // 兼容备份格式：规章数据可能是 {id:1, data:[...]} 或直接的数组
                     var standardRules = bm.rules;
@@ -455,42 +468,44 @@
                 } else {
                     console.warn('备份中无规章制度数据');
                 }
+                _setRestoreProgress(35, '正在恢复工作日志…');
                 if (bm.diary) localStorage.setItem('railway_work_diary_v2', JSON.stringify(bm.diary));
+                _setRestoreProgress(40, '正在恢复车站电话…');
                 if (bm.phone) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
+                _setRestoreProgress(45, '正在恢复检查手册…');
                 if (bm.handbook && Array.isArray(bm.handbook) && bm.handbook.length) {
                     localStorage.setItem('handbook_fourlevel_v1', JSON.stringify(bm.handbook));
-                    console.log('已恢复 ' + bm.handbook.length + ' 条手册条目');
-                } else {
-                    console.warn('备份中无手册数据');
                 }
+                _setRestoreProgress(55, '正在恢复写作资料库…');
                 if (bm.writingMaterials && Array.isArray(bm.writingMaterials) && bm.writingMaterials.length) {
                     await writeIndexedDB('railway_writer_db', 'writing_materials', 2, bm.writingMaterials);
                 }
+                _setRestoreProgress(60, '正在恢复历史报告…');
                 if (bm.writingReports && Array.isArray(bm.writingReports) && bm.writingReports.length) {
                     await writeIndexedDB('railway_writer_db', 'writing_reports', 2, bm.writingReports);
                 }
+                _setRestoreProgress(65, '正在恢复对话记录…');
                 if (bm.dsConversations) localStorage.setItem('ds_conversations_v1', JSON.stringify(bm.dsConversations));
                 if (bm.dsChatHistory) localStorage.setItem('ds_chat_history_v1', JSON.stringify(bm.dsChatHistory));
+                _setRestoreProgress(70, '正在恢复术语库…');
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
+                _setRestoreProgress(75, '正在还原多媒体文件…');
                 if (bm.diaryMedia) {
-                    // 将 base64 异步还原为 ArrayBuffer，避免手机端卡死
-                    _toast('正在还原多媒体文件…');
                     for (var i = 0; i < bm.diaryMedia.length; i++) {
                         var rec = bm.diaryMedia[i];
                         if (rec.blobBase64) {
-                            // 分块异步还原，避免手机端主线程闪退
                             rec.blob = await new Promise(function(resolve) {
                                 var binary = atob(rec.blobBase64);
                                 var bytes = new Uint8Array(binary.length);
-                                var chunkSize = 65536; // 64KB 每块
+                                var chunkSize = 65536;
                                 var offset = 0;
                                 function processChunk() {
                                     var end = Math.min(offset + chunkSize, binary.length);
                                     for (var b = offset; b < end; b++) { bytes[b] = binary.charCodeAt(b); }
                                     offset = end;
                                     if (offset < binary.length) {
-                                        setTimeout(processChunk, 0); // 让出主线程
+                                        setTimeout(processChunk, 0);
                                     } else {
                                         resolve(bytes.buffer);
                                     }
@@ -505,12 +520,11 @@
                     await writeIndexedDB('DiaryMediaDB', 'media', 1, bm.diaryMedia);
                 }
 
-                _toast('恢复完成，即将刷新…');
-                // 等待所有异步写入完成，并额外留出 IndexedDB 事务落盘时间
+                _setRestoreProgress(100, '✅ 恢复完成，即将刷新…');
                 setTimeout(function() {
                     setTimeout(function(){ location.reload(); }, 2000);
                 }, 1000);
-            } catch(err) { _toast('恢复失败：' + err.message, true); }
+            } catch(err) { _setRestoreProgress(0, '❌ 恢复失败：' + err.message); _toast('恢复失败：' + err.message, true); }
         });
     };
 

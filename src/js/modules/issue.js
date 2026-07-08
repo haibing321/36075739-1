@@ -236,9 +236,6 @@
                 container.appendChild(div);
                 const input = document.getElementById('issue-input_' + keywordNum);
                 if (input) {
-                    input.addEventListener('input', debounce(function() {
-                        issueDoSearch();
-                    }, 500));
                     setTimeout(() => input.focus(), 100);
                 }
                 issueUpdateAddBtn();

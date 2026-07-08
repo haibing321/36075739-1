@@ -680,9 +680,6 @@
                 container.appendChild(div);
                 const input = document.getElementById('rule-input_' + window.ruleKeywordCount);
                 if (input) {
-                    input.addEventListener('input', debounce(function() {
-                        renderResults();
-                    }, 500));
                     setTimeout(() => input.focus(), 100);
                 }
                 updateAddBtn();

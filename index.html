@@ -1328,7 +1328,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.4 · 2026.07.03</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.5 · 2026.07.09</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1337,6 +1337,48 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判，助力安监工作智能化。
+            </div>
+
+            <!-- v2.5 新功能 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🎉</span>
+                    <span>v2.5 版本更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📊 导入导出进度条：全局/单模块导入导出统一显示蓝色进度动画</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📦 全局清空：数据管理新增全局清空按钮，二次确认+进度条</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔄 版本更新检查：内置GitHub Release检测，设置按钮红点提醒</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>📞 应急电话：车站电话更名为应急电话，天气查询按线别+方位后缀优化</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🔍 手动搜索：检查信息/规章移除输入自动搜索，需点击搜索按钮</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>💾 工作日志自动保存：输入内容2秒后自动保存，右下角浮动提示</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🎨 UI优化：按钮色调统一，层级用浅灰底色区隔，设置面板整体精简</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#22c55e;margin-top:2px;">✓</span>
+                        <span>🛡️ DB修复：IndexedDB store丢失时自动重建，导入失败自动修复</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v2.4 新功能 -->
@@ -1442,11 +1484,11 @@
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                     <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
                 </div>
-                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，检查信息200MB）</div>
+                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，存储上限200MB）</div>
                 <div>• AI引擎：OpenAI兼容大模型 API（DeepSeek/通义千问/智谱等）</div>
-                <div>• 部署方式：GitHub Pages 静态托管</div>
+                <div>• 部署方式：GitHub Pages 静态托管（自动版本检测）</div>
                 <div>• 兼容优化：华为/Chrome/Edge/手机端全面适配</div>
-                <div>• SW已重启：NetworkFirst+StaleWhileRevalidate策略，部署自动更新</div>
+                <div>• SW缓存：NetworkFirst+StaleWhileRevalidate策略，部署自动更新</div>
             </div>
 
             <!-- 底部信息 -->

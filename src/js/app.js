@@ -408,7 +408,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v2.4'; // 与 about 面板保持一致
+const APP_VERSION = 'v2.5'; // 与 about 面板保持一致
 const UPDATE_CHECK_URL = 'https://api.github.com/repos/haibing321/36075739-2/releases/latest';
 
 // 页面加载时执行静默检测

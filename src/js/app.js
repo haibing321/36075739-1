@@ -21,7 +21,7 @@
  *       rule.js            - 规章制度模块 (IndexedDB + 全文检索)
  *       diary.js           - 工作日志模块 (写实记录)
  *       memo.js            - 备忘提醒模块
- *       phone.js           - 车站电话模块
+ *       phone.js           - 应急电话模块
  *       handbook.js        - 检查手册模块 (四级目录大纲)
  *       swipe.js           - 侧滑手势切换模块
  *       doubao.js          - 智能助手模块 (DeepSeek API 对话/对规/写作)
@@ -50,7 +50,7 @@
  *   3. rule.js        - 规章制度
  *   4. diary.js       - 工作日志
  *   5. memo.js        - 备忘提醒
- *   6. phone.js       - 车站电话
+ *   6. phone.js       - 应急电话
  *   7. handbook.js    - 检查手册
  *   8. swipe.js       - 侧滑手势
  *   9. doubao.js      - 智能助手 (Part A + Part B)

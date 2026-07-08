@@ -109,7 +109,7 @@
                                 ${item.备注 ? `<span style="color:var(--text-secondary);">备注：</span><span>${escapeHtml(item.备注)}</span>` : ''}
                                 ${(item.站名) ? `
                                 <span style="color:var(--text-secondary);">天气：</span>
-                                <span><button class="phone-weather-btn" onclick="phoneGetWeather('${escapeHtml(item.站名||'')}',${item.纬度},${item.经度},'${weatherId}')">☀️ 查看天气</button></span>
+                                <span><button class="phone-weather-btn" onclick="phoneGetWeather('${escapeHtml(item.站名||'')}',${item.纬度},${item.经度},'${weatherId}','${escapeHtml(item.线名||'')}')">☀️ 查看天气</button></span>
                                 ` : ''}
                             </div>
                             <div class="phone-weather-box" id="${weatherId}"></div>
@@ -199,15 +199,15 @@
 
             window.phoneExportJSON = function() {
                 if (phoneData.length === 0) { alert('没有数据可导出'); return; }
-                window.showProgress(50, '正在导出车站电话…');
+                window.showProgress(50, '正在导出应急电话…');
                 const blob = new Blob([JSON.stringify(phoneData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = '车站电话_' + new Date().toISOString().slice(0,10) + '.json';
+                a.download = '应急电话_' + new Date().toISOString().slice(0,10) + '.json';
                 a.click();
                 URL.revokeObjectURL(url);
-                window.finishProgress('✅ 车站电话导出成功');
+                window.finishProgress('✅ 应急电话导出成功');
             };
             window.phoneDownloadTemplate = function() {
                 const template = [ { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' }, { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' } ];
@@ -244,7 +244,7 @@
             }
 
             // ── 天气查询（美化版 + 联网查坐标 & 自动保存到本地）──
-            window.phoneGetWeather = async function(stationName, lat, lon, boxId) {
+            window.phoneGetWeather = async function(stationName, lat, lon, boxId, lineName) {
                 const box = document.getElementById(boxId);
                 if (!box) return;
                 box.style.display = 'block';
@@ -253,11 +253,14 @@
                 if (btn) btn.disabled = true;
 
                 try {
-                    // 无坐标时联网搜索并保存到本地
+                    // 无坐标时联网搜索并保存到本地（优先结合线名定位，减少同名站误差）
                     if (!lat) {
+                        // 构建更精确的搜索词：线名 + 站名
+                        var geoQuery = stationName;
+                        if (lineName) geoQuery = lineName + ' ' + stationName;
                         // 有代理走 /geo，否则直接调 Open-Meteo Geocoding
                         if (PROXY) {
-                            const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(stationName)}`);
+                            const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(geoQuery)}`);
                             if (gr.ok) {
                                 const gd = await gr.json();
                                 if (gd && gd.lat) { lat = gd.lat; lon = gd.lon; }

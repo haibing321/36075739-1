@@ -181,7 +181,7 @@
                 <button class="nav-btn" onclick="switchTab('issue')" id="tab-issue"><span>📊</span> 检查信息</button>
                 <button class="nav-btn" onclick="switchTab('rule')" id="tab-rule"><span>📋</span> 规章制度</button>
                 <button class="nav-btn" onclick="switchTab('diary')" id="tab-diary"><span>📝</span> 工作日志</button>
-                <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone"><span>📞</span> 车站电话</button>
+                <button class="nav-btn" onclick="switchTab('phone')" id="tab-phone"><span>📞</span> 应急电话</button>
                 <button class="nav-btn" onclick="switchTab('doubao')" id="tab-doubao"><span>🤖</span> 智能助手</button>
                 <button class="nav-btn" onclick="toggleSettingsPanel()" id="tab-settings" style="margin-left:auto;"><span>⚙️</span> 设置</button>
             </nav>
@@ -438,13 +438,13 @@
             </div>
         </div>
 
-        <!-- 车站电话模块 (不变) -->
+        <!-- 应急电话模块 (不变) -->
         <div id="panel-phone" class="panel">
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-title-icon">📞</div>
-                        车站电话
+                        应急电话
                     </div>
                     <div class="card-subtitle">多单位通讯录 · 搜索一键拨号</div>
                 </div>
@@ -1248,10 +1248,10 @@
                             <button onclick="clearAllDiaries()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
                         </span>
                     </div>
-                    <!-- 车站电话 -->
+                    <!-- 应急电话 -->
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📞 车站电话</span>
+                            <span style="font-size:0.8rem;color:#475569;">📞 应急电话</span>
                             <span style="font-size:0.7rem;color:#94a3b8;" id="set-phone-count">—</span>
                         </span>
                         <span style="display:flex;gap:6px;">
@@ -1428,7 +1428,7 @@
                     </div>
                     <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
                         <span>📞</span>
-                        <span>车站电话</span>
+                        <span>应急电话</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
                         <span>🤖</span>
@@ -1468,7 +1468,7 @@
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-issue" value="issue" checked> 📊 检查台账</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-handbook" value="handbook"> 📖 检查手册</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-wr-all" value="wr_all"> ✍️ 智能写作资料</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-phone" value="phone"> 📞 车站电话</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-phone" value="phone"> 📞 应急电话</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-diary" value="diary"> 📝 工作日志</label>
                 <hr style="margin:4px 0;">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ds-dialog-remember" checked> ✅ 记住此次选择</label>

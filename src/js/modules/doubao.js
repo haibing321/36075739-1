@@ -765,12 +765,12 @@
                     }
                 }
 
-                // 车站电话：关键词评分 → top 5
+                // 应急电话：关键词评分 → top 5
                 if (usePhone && typeof window.getPhoneData === 'function') {
                     var phones = window.getPhoneData();
                     if (phones.length > 0) {
                         var topPhones = rankAndSlice(phones, userQuery, function(r){ return (r.单位||'')+' '+(r.站名||'')+' '+(r.线名||''); }, 5);
-                        var txt = '【车站电话数据（共' + phones.length + '条，仅展示最相关的5条）】\n';
+                        var txt = '【应急电话数据（共' + phones.length + '条，仅展示最相关的5条）】\n';
                         topPhones.forEach(function(r, i){
                             txt += (i+1) + '. ' + (r.单位||'') + ' - ' + (r.站名||'') + '（' + (r.线名||'') + '）：路电 ' + (r.路电||'无') + ' / 市电 ' + (r.市电||'无') + '\n';
                         });

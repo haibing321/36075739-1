@@ -309,7 +309,7 @@
             try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); backup.modules.rules = []; }
             window.showProgress(25, '正在收集工作日志…');
             backup.modules.diary = getLocal('railway_work_diary_v2', []);
-            window.showProgress(30, '正在收集车站电话…');
+            window.showProgress(30, '正在收集应急电话…');
             backup.modules.phone = getLocal('railway_phone_db_v1', []);
             window.showProgress(35, '正在收集检查手册…');
             backup.modules.handbook = getLocal('handbook_fourlevel_v1', []);
@@ -471,7 +471,7 @@
                 }
                 _setRestoreProgress(35, '正在恢复工作日志…');
                 if (bm.diary) localStorage.setItem('railway_work_diary_v2', JSON.stringify(bm.diary));
-                _setRestoreProgress(40, '正在恢复车站电话…');
+                _setRestoreProgress(40, '正在恢复应急电话…');
                 if (bm.phone) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
                 _setRestoreProgress(45, '正在恢复检查手册…');
                 if (bm.handbook && Array.isArray(bm.handbook) && bm.handbook.length) {
@@ -540,7 +540,7 @@
 })();
 
 window.clearAllGlobalData = function() {
-    if (!confirm('⚠️ 确定清空所有数据？\\n此操作将清除：检查信息、规章制度、工作日志、备忘录、车站电话、检查手册、写作资料、对话记录等全部本地数据，且不可恢复！')) return;
+    if (!confirm('⚠️ 确定清空所有数据？\\n此操作将清除：检查信息、规章制度、工作日志、备忘录、应急电话、检查手册、写作资料、对话记录等全部本地数据，且不可恢复！')) return;
     if (!confirm('⚠️ 再次确认：清空后所有数据将永久丢失，确定继续？')) return;
     window.showProgress(10, '正在清空 localStorage 数据…');
     // 清空 localStorage 模块数据

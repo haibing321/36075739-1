@@ -262,9 +262,10 @@
                 try {
                     // 无坐标时联网搜索并保存到本地（优先结合线名定位，减少同名站误差）
                     if (!lat) {
-                        // 去掉站名的方位后缀（如"白银西"→"白银"），便于地理编码API识别
-                        var geoName = stationName.replace(/[东西南北](南|北|东|西)?$/, '');
-                        if (!geoName) geoName = stationName;
+                        // 去掉站名的方位后缀和"站"字（如"白银西"→"白银","天水南站"→"天水"）
+                        var geoName = stationName.replace(/站$/, '').replace(/[东西南北](南|北|东|西)?$/, '');
+                        if (!geoName || geoName.length < 2) geoName = stationName.replace(/[东西南北](南|北|东|西)?站?$/, '');
+                        if (!geoName || geoName.length < 2) geoName = stationName;
                         // 构建更精确的搜索词：线名 + 站名
                         var geoQuery = geoName;
                         if (lineName) geoQuery = lineName + ' ' + geoName;

@@ -121,7 +121,14 @@
 
             window.phoneClearSearch = function() {
                 document.getElementById('phone-searchInput').value = '';
-                phoneDoSearch();
+                // 恢复初始状态：隐藏结果区，显示提示文字
+                var rc = document.getElementById('phone-results');
+                if (rc) {
+                    rc.style.display = 'none';
+                    rc.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📞</div><p>请输入关键词搜索或导入应急电话数据</p></div>';
+                }
+                var rcs = document.getElementById('phone-resultCount');
+                if (rcs) rcs.textContent = '';
             };
 
             // escapeHtml 已统一到 utils.js (window.escapeHtml)，此处不再重复定义

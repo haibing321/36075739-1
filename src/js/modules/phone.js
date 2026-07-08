@@ -255,9 +255,12 @@
                 try {
                     // 无坐标时联网搜索并保存到本地（优先结合线名定位，减少同名站误差）
                     if (!lat) {
+                        // 去掉站名的方位后缀（如"白银西"→"白银"），便于地理编码API识别
+                        var geoName = stationName.replace(/[东西南北](南|北|东|西)?$/, '');
+                        if (!geoName) geoName = stationName;
                         // 构建更精确的搜索词：线名 + 站名
-                        var geoQuery = stationName;
-                        if (lineName) geoQuery = lineName + ' ' + stationName;
+                        var geoQuery = geoName;
+                        if (lineName) geoQuery = lineName + ' ' + geoName;
                         // 有代理走 /geo，否则直接调 Open-Meteo Geocoding
                         if (PROXY) {
                             const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(geoQuery)}`);

@@ -278,9 +278,18 @@
                             }
                         } else {
                             try {
-                                const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoName)}&count=3&language=zh&format=json`;
-                                const gr = await fetch(url);
-                                const gd = await gr.json();
+                                // 先用带线名的精确词搜索，若查不到则回退到纯地名
+                                var searchQuery = geoQuery;
+                                var url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=5&language=zh&format=json`;
+                                var gr = await fetch(url);
+                                var gd = await gr.json();
+                                if (!gd.results || gd.results.length === 0) {
+                                    // 回退：只用地名（去掉线名）
+                                    searchQuery = geoName;
+                                    url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=5&language=zh&format=json`;
+                                    gr = await fetch(url);
+                                    gd = await gr.json();
+                                }
                                 if (gd.results && gd.results.length > 0) {
                                     const cn = gd.results.find(x => x.country_code === 'CN') || gd.results[0];
                                     lat = cn.latitude; lon = cn.longitude;

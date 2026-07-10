@@ -278,7 +278,7 @@
                             }
                         } else {
                             try {
-                                const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(stationName)}&count=3&language=zh&format=json`;
+                                const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoName)}&count=3&language=zh&format=json`;
                                 const gr = await fetch(url);
                                 const gd = await gr.json();
                                 if (gd.results && gd.results.length > 0) {

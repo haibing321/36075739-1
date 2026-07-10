@@ -278,23 +278,24 @@
                             }
                         } else {
                             try {
-                                // 限制搜索范围：兰州局辖区省份
-                                var provinceFilter = ['甘肃','宁夏','陕西','新疆','西藏','四川'];
+                                // 两级省份过滤：先甘宁，再陕川
                                 function pickResult(results) {
-                                    // 优先匹配辖区省份
                                     if (!results || !results.length) return null;
-                                    for (var i = 0; i < results.length; i++) {
-                                        var r = results[i];
-                                        if (r.country_code === 'CN' || r.country === '中国') {
-                                            var admin = (r.admin1 || '').replace(/省|自治区|回族|维吾尔/g, '');
-                                            if (provinceFilter.some(function(p) { return admin.indexOf(p) !== -1; })) {
-                                                return r;
-                                            }
-                                        }
+                                    function inProvince(r, list) {
+                                        if (r.country_code !== 'CN' && r.country !== '中国') return false;
+                                        var admin = (r.admin1 || '').replace(/省|自治区|回族|维吾尔/g, '');
+                                        return list.some(function(p) { return admin.indexOf(p) !== -1; });
                                     }
-                                    // 都匹配不上则取第一个中国结果
-                                    var cn = results.find(function(x) { return x.country_code === 'CN' || x.country === '中国'; });
-                                    return cn || results[0];
+                                    // 第一级：甘肃、宁夏
+                                    for (var i = 0; i < results.length; i++) {
+                                        if (inProvince(results[i], ['甘肃','宁夏'])) return results[i];
+                                    }
+                                    // 第二级：陕西、四川
+                                    for (var j = 0; j < results.length; j++) {
+                                        if (inProvince(results[j], ['陕西','四川'])) return results[j];
+                                    }
+                                    // 都不匹配 → 放弃（不跨辖区）
+                                    return null;
                                 }
                                 // 先用带线名的精确词搜索
                                 var searchQuery = geoQuery;

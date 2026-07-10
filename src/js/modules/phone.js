@@ -278,21 +278,40 @@
                             }
                         } else {
                             try {
-                                // 先用带线名的精确词搜索，若查不到则回退到纯地名
+                                // 限制搜索范围：兰州局辖区省份
+                                var provinceFilter = ['甘肃','宁夏','陕西','新疆','西藏','四川'];
+                                function pickResult(results) {
+                                    // 优先匹配辖区省份
+                                    if (!results || !results.length) return null;
+                                    for (var i = 0; i < results.length; i++) {
+                                        var r = results[i];
+                                        if (r.country_code === 'CN' || r.country === '中国') {
+                                            var admin = (r.admin1 || '').replace(/省|自治区|回族|维吾尔/g, '');
+                                            if (provinceFilter.some(function(p) { return admin.indexOf(p) !== -1; })) {
+                                                return r;
+                                            }
+                                        }
+                                    }
+                                    // 都匹配不上则取第一个中国结果
+                                    var cn = results.find(function(x) { return x.country_code === 'CN' || x.country === '中国'; });
+                                    return cn || results[0];
+                                }
+                                // 先用带线名的精确词搜索
                                 var searchQuery = geoQuery;
-                                var url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=5&language=zh&format=json`;
+                                var url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=8&language=zh&format=json`;
                                 var gr = await fetch(url);
                                 var gd = await gr.json();
-                                if (!gd.results || gd.results.length === 0) {
+                                var chosen = pickResult(gd.results);
+                                if (!chosen) {
                                     // 回退：只用地名（去掉线名）
                                     searchQuery = geoName;
-                                    url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=5&language=zh&format=json`;
+                                    url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=8&language=zh&format=json`;
                                     gr = await fetch(url);
                                     gd = await gr.json();
+                                    chosen = pickResult(gd.results);
                                 }
-                                if (gd.results && gd.results.length > 0) {
-                                    const cn = gd.results.find(x => x.country_code === 'CN') || gd.results[0];
-                                    lat = cn.latitude; lon = cn.longitude;
+                                if (chosen) {
+                                    lat = chosen.latitude; lon = chosen.longitude;
                                 }
                             } catch(_) {}
                         }

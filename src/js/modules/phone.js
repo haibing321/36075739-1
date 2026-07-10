@@ -260,26 +260,25 @@
                 if (btn) btn.disabled = true;
 
                 try {
-                    // 无坐标时联网搜索并保存到本地（优先结合线名定位，减少同名站误差）
-                    if (!lat) {
-                        // 去掉站名的方位后缀和"站"字（如"白银西"→"白银","天水南站"→"天水"）
-                        var geoName = stationName.replace(/站$/, '').replace(/[东西南北](南|北|东|西)?$/, '');
-                        if (!geoName || geoName.length < 2) geoName = stationName.replace(/[东西南北](南|北|东|西)?站?$/, '');
-                        if (!geoName || geoName.length < 2) geoName = stationName;
-                        // 构建更精确的搜索词：线名 + 站名
-                        var geoQuery = geoName;
-                        if (lineName) geoQuery = lineName + ' ' + geoName;
-                        // 有代理走 /geo，否则直接调 Open-Meteo Geocoding
-                        if (PROXY) {
-                            const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(geoQuery)}`);
-                            if (gr.ok) {
-                                const gd = await gr.json();
-                                if (gd && gd.lat) { lat = gd.lat; lon = gd.lon; }
-                            }
-                        } else {
-                            try {
-                                // 两级省份过滤：先甘宁，再陕川
-                                function pickResult(results) {
+                    // 总是重新联网搜索坐标（带省份过滤），避免旧坐标跨省不准
+                    // 去掉站名的方位后缀和"站"字（如"白银西"→"白银","天水南站"→"天水"）
+                    var geoName = stationName.replace(/站$/, '').replace(/[东西南北](南|北|东|西)?$/, '');
+                    if (!geoName || geoName.length < 2) geoName = stationName.replace(/[东西南北](南|北|东|西)?站?$/, '');
+                    if (!geoName || geoName.length < 2) geoName = stationName;
+                    // 构建更精确的搜索词：线名 + 站名
+                    var geoQuery = geoName;
+                    if (lineName) geoQuery = lineName + ' ' + geoName;
+                    // 有代理走 /geo，否则直接调 Open-Meteo Geocoding
+                    if (PROXY) {
+                        const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(geoQuery)}`);
+                        if (gr.ok) {
+                            const gd = await gr.json();
+                            if (gd && gd.lat) { lat = gd.lat; lon = gd.lon; }
+                        }
+                    } else {
+                        try {
+                            // 两级省份过滤：先甘宁，再陕川
+                            function pickResult(results) {
                                     if (!results || !results.length) return null;
                                     function inProvince(r, list) {
                                         if (r.country_code !== 'CN' && r.country !== '中国') return false;
@@ -327,7 +326,6 @@
                             }
                             saveToStorage();
                         }
-                    }
 
                     if (!lat) {
                         box.innerHTML = `<div style="background:#450a0a;border-radius:8px;padding:10px;color:#fca5a5;font-size:.82rem;text-align:center;">⚠️ 未找到坐标，暂无法查天气。<br><span style="opacity:.7;font-size:.78rem">联网搜索不可用时请手动补充</span></div>`;

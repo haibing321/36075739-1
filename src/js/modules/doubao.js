@@ -277,6 +277,7 @@
                     chat:   document.getElementById('ds-sub-chat'),
                     writer: document.getElementById('ds-sub-writer'),
                     risk:   document.getElementById('ds-sub-risk'),
+                    agent:  document.getElementById('ds-sub-agent'),
                     doubao: document.getElementById('ds-sub-doubao')
                 };
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
@@ -2098,5 +2099,44 @@
       }
       observeAssistantBubbles();
 
-      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集', 'color:#059669;font-weight:bold;');
+      // ========== 自主模式 Agent 发送消息 ==========
+      var _agentRunning = false;
+      window.dsAgentSend = async function() {
+        if (_agentRunning) return;
+        var input = document.getElementById('ds-agent-input');
+        var historyEl = document.getElementById('ds-agent-history');
+        if (!input || !historyEl) return;
+        var msg = input.value.trim();
+        if (!msg) return;
+        if (typeof window._agentRun !== 'function') { historyEl.innerHTML += '<div style="color:#dc2626">⚠️ 自主模式模块未加载</div>'; return; }
+
+        _agentRunning = true;
+        input.value = '';
+        input.disabled = true;
+        historyEl.innerHTML += '<div style="margin-bottom:8px;color:var(--primary);font-weight:600;">🧑 ' + msg.replace(/</g,'&lt;') + '</div>';
+
+        try {
+          var result = await window._agentRun(msg);
+          if (result && result.messages) {
+            result.messages.forEach(function(m) {
+              if (m.role === 'agent-plan') {
+                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#f59e0b;font-size:0.85rem;">' + m.content.replace(/</g,'&lt;') + '</div>';
+              } else if (m.role === 'agent-tool') {
+                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#059669;font-size:0.85rem;">' + m.content.replace(/</g,'&lt;') + '</div>';
+              } else if (m.role === 'assistant') {
+                historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;white-space:pre-wrap;font-size:0.9rem;">' + m.content.replace(/</g,'&lt;') + '</div>';
+              }
+            });
+          }
+        } catch(e) {
+          historyEl.innerHTML += '<div style="color:#dc2626">❌ 执行错误: ' + (e.message || '未知').replace(/</g,'&lt;') + '</div>';
+        }
+
+        _agentRunning = false;
+        input.disabled = false;
+        input.focus();
+        historyEl.scrollTop = historyEl.scrollHeight;
+      };
+
+      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集 · 自主模式', 'color:#059669;font-weight:bold;');
     })();

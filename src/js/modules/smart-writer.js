@@ -2902,4 +2902,21 @@ ${details || '(无)'}
         // 导出用于设置面板计数的函数
         window.getWrMatCount = async function() { try { var all = await wrDbGetAll(WR_MAT_STORE); return all.length; } catch(e) { return 0; } };
         window.getWrRptCount = async function() { try { var all = await wrDbGetAll(WR_RPT_STORE); return all.length; } catch(e) { return 0; } };
+
+        // Agent 桥接：保存报告到写作资料库
+        window.wrAgentSaveMaterial = async function(title, content) {
+            try {
+                await wrInitDB();
+                var item = {
+                    id: 'agent_' + Date.now(),
+                    title: title,
+                    content: content,
+                    type: 'history',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                await wrDbPut(WR_MAT_STORE, item);
+                return true;
+            } catch(e) { console.warn('[writer] agent save failed:', e.message); return false; }
+        };
     })();

@@ -95,6 +95,76 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
+// Agent 桥接函数（供 agent-core.js 工具调用）
+// ============================================================
+(function() {
+    /** 搜索检查信息 */
+    window._agentGetIssues = function(keyword, unit, category, limit) {
+        var data = [];
+        try {
+            if (typeof window.getIssueData === 'function') data = window.getIssueData();
+        } catch(e) { return []; }
+        if (!data.length) return [];
+        var filtered = data;
+        if (keyword) {
+            var kw = keyword.toLowerCase();
+            filtered = filtered.filter(function(i) {
+                return ['性质','category','content','regulation','unit'].some(function(f) {
+                    return (i[f] || '').toLowerCase().indexOf(kw) !== -1;
+                });
+            });
+        }
+        if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
+        if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
+        return filtered.slice(0, limit || 30);
+    };
+
+    /** 搜索规章制度 */
+    window._agentGetRules = function(keyword, limit) {
+        var rules = [];
+        try {
+            if (typeof window.getRulesData === 'function') rules = window.getRulesData();
+        } catch(e) { return []; }
+        if (!rules.length || !keyword) return rules.slice(0, limit || 10);
+        var kw = keyword.toLowerCase();
+        return rules.filter(function(r) {
+            return ((r.title||'') + ' ' + (r.content||'')).toLowerCase().indexOf(kw) !== -1;
+        }).slice(0, limit || 10);
+    };
+
+    /** 写入工作日志 */
+    window._agentWriteDiary = async function(content, issues) {
+        try {
+            if (typeof window.addIssueToDiary !== 'function') return { ok: false, error: '日志模块未就绪' };
+            var ok = window.addIssueToDiary(content, issues || '');
+            return { ok: !!ok, message: ok ? '日志已写入' : '写入失败' };
+        } catch(e) { return { ok: false, error: e.message }; }
+    };
+
+    /** 保存报告到写作资料库 */
+    window._agentSaveReport = async function(title, content) {
+        try {
+            if (typeof window.wrAgentSaveMaterial !== 'function') return { ok: false, error: '写作模块未就绪' };
+            var ok = window.wrAgentSaveMaterial(title, content);
+            return { ok: !!ok, message: ok ? '报告已保存' : '保存失败' };
+        } catch(e) { return { ok: false, error: e.message }; }
+    };
+
+    /** 搜索手册 */
+    window._agentGetHandbook = function(keyword, limit) {
+        var hb = [];
+        try {
+            if (typeof window.getHandbookData === 'function') hb = window.getHandbookData();
+        } catch(e) { return []; }
+        if (!hb.length || !keyword) return hb.slice(0, limit || 10);
+        var kw = keyword.toLowerCase();
+        return hb.filter(function(h) {
+            return ((h.title||'') + ' ' + (h.content||'') + ' ' + (h.rules||'')).toLowerCase().indexOf(kw) !== -1;
+        }).slice(0, limit || 10);
+    };
+})();
+
+// ============================================================
 // 全局事件处理
 // ============================================================
 

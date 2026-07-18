@@ -411,18 +411,13 @@ console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;fon
 const APP_VERSION = 'v2.5'; // 与 about 面板保持一致
 const UPDATE_CHECK_URL = 'https://api.github.com/repos/haibing321/36075739-2/releases/latest';
 
-// 页面加载时执行静默检测
+// 页面加载时显示版本号，不再自动检查更新（改为手动）
 document.addEventListener('DOMContentLoaded', function() {
     const verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
-    if (window.requestIdleCallback) {
-        requestIdleCallback(function() { silentCheckUpdate(); }, { timeout: 5000 });
-    } else {
-        setTimeout(silentCheckUpdate, 3000);
-    }
 });
 
-// 手动检查
+// 手动检查（点击设置中的检查更新按钮触发）
 async function checkForUpdate() {
     const statusEl = document.getElementById('update-status');
     if (!statusEl) return;

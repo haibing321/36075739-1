@@ -51,6 +51,9 @@
             // 性能埋点
             if (window.perfMonitor) perfMonitor.start('tab_switch');
 
+            // 记住当前模块，供刷新后恢复首屏（点击/侧滑均经此函数）
+            try { localStorage.setItem('current_module', tab); } catch (e) {}
+
             // 记录历史（侧滑或手动切换都记录）
             const prevActiveBtn = document.querySelector('.nav-btn.active');
             let prevTab = null;

@@ -487,8 +487,10 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v2.5'; // 与 about 面板保持一致
-const UPDATE_CHECK_URL = 'https://api.github.com/repos/haibing321/36075739-2/releases/latest';
+const APP_VERSION = 'v2.5'; // 与 about 面板、version.json 保持一致；发版时三者需同步更新
+// 检查更新源：读取已部署在 GitHub Pages 上的 version.json（无需打 GitHub Release，适配纯 Pages 部署）
+// 注意：version.json 在 SW 中走网络策略（不读缓存），可拿到最新部署版本
+const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';
 
 // 页面加载时显示版本号，不再自动检查更新（改为手动）
 document.addEventListener('DOMContentLoaded', function() {
@@ -525,10 +527,10 @@ async function performUpdateCheck(url, showStatus) {
             headers: { 'Accept': 'application/json' },
             cache: 'no-cache'
         });
-        // 404 = 仓库尚无发布版本
+        // 404 = version.json 不存在（部署配置异常）
         if (resp.status === 404) {
             if (showStatus) {
-                statusEl.textContent = 'ℹ️ 暂无发布版本，GitHub 发布新版本后会自动检测';
+                statusEl.textContent = 'ℹ️ 未找到版本信息文件，请确认部署包含 version.json';
                 statusEl.style.color = '#64748b';
             }
             return;

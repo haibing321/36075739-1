@@ -300,6 +300,8 @@
                 var roleLabel = document.getElementById('ds-current-role-label');
                 if (roleLabel) roleLabel.textContent = roleMap[role] || '通用';
             }
+            // 暴露给全局，使 index.html initPage 的首屏角色/模式状态刷新生效（此前因未挂 window 而成为死调用）
+            window.updateModeStatus = updateModeStatus;
 
             // 历史侧边栏抽屉开关
             let _dsSidebarOpen = false;

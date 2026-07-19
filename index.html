@@ -642,14 +642,18 @@
                     <!-- === 自主模式子模块 === -->
                     <div id="ds-sub-agent" style="display:none;flex-direction:column;min-width:0;flex:1;min-height:0;">
                         <div style="background:linear-gradient(135deg,#fef3c7,#fff7ed);border-radius:12px;padding:12px 16px;margin-bottom:10px;font-size:0.82rem;line-height:1.6;">
-                            <div style="font-weight:600;margin-bottom:4px;">🎯 自主模式</div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <span style="font-weight:600;">🎯 自主模式</span>
+                                <button onclick="dsAgentShowHistory()" style="font-size:0.74rem;padding:4px 10px;border:none;background:rgba(0,0,0,.08);border-radius:8px;cursor:pointer;">📜 历史</button>
+                            </div>
                             AI 可调用本地数据（检查信息、规章、日志、手册），自动规划并执行多步骤任务。
                         </div>
                         <div id="ds-agent-history" style="flex:1;overflow-y:auto;min-height:200px;border:1px solid var(--border);border-radius:8px;padding:12px;background:#fff;max-height:55vh;"></div>
                         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                             <input id="ds-agent-input" type="text" placeholder="描述任务目标，如：生成本周安全检查月报…" style="flex:1;padding:10px 14px;border:2px solid var(--border);border-radius:10px;font-size:0.9rem;"
                                 onkeydown="if(event.key==='Enter')dsAgentSend()">
-                            <button onclick="dsAgentSend()" class="btn-primary-sm" style="padding:10px 20px;font-size:0.9rem;white-space:nowrap;">🚀 执行</button>
+                            <button id="ds-agent-stop" onclick="dsAgentStop()" style="display:none;padding:10px 14px;font-size:0.9rem;white-space:nowrap;background:#fee2e2;color:#dc2626;border:none;border-radius:10px;cursor:pointer;">⏹ 停止</button>
+                            <button id="ds-agent-run" onclick="dsAgentSend()" class="btn-primary-sm" style="padding:10px 20px;font-size:0.9rem;white-space:nowrap;">🚀 执行</button>
                         </div>
                     </div>
 

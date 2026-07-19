@@ -34,16 +34,21 @@
     return new Promise(function(resolve, reject) {
       var tx = database.transaction(STORE, 'readwrite');
       var store = tx.objectStore(STORE);
-      // 保留最近 30 条
+      // 保留最近 30 条：仅删除超出部分，且删完立即 break，避免误删全部记录
       var countReq = store.count();
       countReq.onsuccess = function() {
         var total = countReq.result;
-        if (total >= 30) {
-          // 删除最旧的一条
-          var cursorReq = store.index('timestamp').openCursor();
+        var MAX = 30, overflow = total - (MAX - 1);
+        if (overflow > 0) {
+          var deleted = 0;
+          var cursorReq = store.index('timestamp').openCursor(); // 升序，最旧的在前
           cursorReq.onsuccess = function(e2) {
             var cursor = e2.target.result;
-            if (cursor) { cursor.delete(); cursor.continue(); }
+            if (cursor && deleted < overflow) {
+              cursor.delete();
+              deleted++;
+              cursor.continue();
+            }
           };
         }
       };

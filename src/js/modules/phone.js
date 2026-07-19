@@ -237,6 +237,37 @@
             // 暴露数据获取接口（供联动数据使用）
             window.getPhoneData = function() { return phoneData; };
 
+            // ── 纯坐标反查（供自主模式 Agent 调用，不操作 DOM）──
+            // 复用与新版 weather 查询一致的省份两级过滤逻辑
+            window.phoneGeocode = async function(stationName, lineName) {
+                var geoName = String(stationName || '').replace(/站$/, '').replace(/[东西南北](南|北|东|西)?$/, '');
+                if (!geoName || geoName.length < 2) geoName = String(stationName || '').replace(/[东西南北](南|北|东|西)?站?$/, '');
+                if (!geoName || geoName.length < 2) geoName = stationName;
+                function inProvince(r, list) {
+                    if (r.country_code !== 'CN' && r.country !== '中国') return false;
+                    var admin = (r.admin1 || '').replace(/省|自治区|回族|维吾尔/g, '');
+                    return list.some(function(p) { return admin.indexOf(p) !== -1; });
+                }
+                function pickResult(results) {
+                    if (!results || !results.length) return null;
+                    for (var i = 0; i < results.length; i++) if (inProvince(results[i], ['甘肃', '宁夏'])) return results[i];
+                    for (var j = 0; j < results.length; j++) if (inProvince(results[j], ['陕西', '四川'])) return results[j];
+                    return null;
+                }
+                async function searchOnce(q) {
+                    try {
+                        var url = 'https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=8&language=zh&format=json';
+                        var gr = await fetch(url);
+                        var gd = await gr.json();
+                        return pickResult(gd.results);
+                    } catch (_) { return null; }
+                }
+                var chosen = await searchOnce(lineName ? lineName + ' ' + geoName : geoName);
+                if (!chosen) chosen = await searchOnce(geoName);
+                if (chosen) return { lat: chosen.latitude, lon: chosen.longitude };
+                return null;
+            };
+
             // ── 连接配置（本地 file:// 走代理，网站部署直接调 API）──
             const isLocal = document.location.protocol === 'file:';
             const PROXY = isLocal ? 'http://127.0.0.1:5188' : null;

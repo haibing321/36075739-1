@@ -141,11 +141,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }).slice(0, limit || 10);
     };
 
-    /** 写入工作日志 */
+    /** 写入工作日志
+     *  agent 工具签名：write_diary(content=日志内容, issues=检查发现的问题)
+     *  diary 模块签名：addIssueToDiary(content=问题描述, regulation=规章依据, date)
+     *  修正：issues 不应误存为"规章依据"，合并进问题描述；content 作为正文
+     */
     window._agentWriteDiary = async function(content, issues) {
         try {
             if (typeof window.addIssueToDiary !== 'function') return { ok: false, error: '日志模块未就绪' };
-            var ok = window.addIssueToDiary(content, issues || '');
+            var fullContent = (content || '').trim();
+            if (issues && String(issues).trim()) {
+                fullContent += (fullContent ? '｜' : '') + '发现问题：' + String(issues).trim();
+            }
+            var ok = window.addIssueToDiary(fullContent, '');
             return { ok: !!ok, message: ok ? '日志已写入' : '写入失败' };
         } catch(e) { return { ok: false, error: e.message }; }
     };

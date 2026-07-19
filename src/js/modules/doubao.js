@@ -2136,29 +2136,99 @@
         _agentRunning = true;
         input.value = '';
         input.disabled = true;
-        historyEl.innerHTML += '<div style="margin-bottom:8px;color:var(--primary);font-weight:600;">🧑 ' + msg.replace(/</g,'&lt;') + '</div>';
+        var stopBtn = document.getElementById('ds-agent-stop');
+        var runBtn = document.getElementById('ds-agent-run');
+        if (stopBtn) stopBtn.style.display = '';
+        if (runBtn) runBtn.style.display = 'none';
+        historyEl.innerHTML += '<div style="margin-bottom:8px;color:var(--primary);font-weight:600;">🧑 ' + dsEsc(msg) + '</div>';
 
         try {
           var result = await window._agentRun(msg);
           if (result && result.messages) {
             result.messages.forEach(function(m) {
               if (m.role === 'agent-plan') {
-                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#f59e0b;font-size:0.85rem;">' + m.content.replace(/</g,'&lt;') + '</div>';
+                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#f59e0b;font-size:0.85rem;">' + dsEsc(m.content) + '</div>';
               } else if (m.role === 'agent-tool') {
-                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#059669;font-size:0.85rem;">' + m.content.replace(/</g,'&lt;') + '</div>';
+                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#059669;font-size:0.85rem;">' + dsEsc(m.content) + '</div>';
               } else if (m.role === 'assistant') {
-                historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;white-space:pre-wrap;font-size:0.9rem;">' + m.content.replace(/</g,'&lt;') + '</div>';
+                // B#8: 最终回答渲染 Markdown，与普通对话体验一致
+                historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;font-size:0.9rem;">' + dsMarkdown(m.content) + '</div>';
               }
             });
           }
         } catch(e) {
-          historyEl.innerHTML += '<div style="color:#dc2626">❌ 执行错误: ' + (e.message || '未知').replace(/</g,'&lt;') + '</div>';
+          historyEl.innerHTML += '<div style="color:#dc2626">❌ 执行错误: ' + dsEsc(e.message || '未知') + '</div>';
         }
 
         _agentRunning = false;
         input.disabled = false;
         input.focus();
+        if (stopBtn) stopBtn.style.display = 'none';
+        if (runBtn) runBtn.style.display = '';
         historyEl.scrollTop = historyEl.scrollHeight;
+      };
+
+      // B#7: 停止自主模式（中断在途请求 + 终止后续循环）
+      window.dsAgentStop = function() {
+        _agentRunning = false;
+        if (window.__agentAbort && typeof window.__agentAbort.abort === 'function') {
+          try { window.__agentAbort.abort(); } catch (_) {}
+        }
+        var stopBtn = document.getElementById('ds-agent-stop');
+        var runBtn = document.getElementById('ds-agent-run');
+        if (stopBtn) stopBtn.style.display = 'none';
+        if (runBtn) runBtn.style.display = '';
+        var historyEl = document.getElementById('ds-agent-history');
+        if (historyEl) historyEl.innerHTML += '<div style="color:#dc2626;font-size:0.85rem;margin:6px 0;">⏹️ 已手动停止</div>';
+      };
+
+      // A#2: 查看历史任务记录（解决"只写不读"）
+      window.dsAgentShowHistory = async function() {
+        var el = document.getElementById('ds-agent-history');
+        if (!el) return;
+        try {
+          var tasks = await window.getAgentTasks(20);
+          if (!tasks || !tasks.length) {
+            el.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">暂无历史任务记录</div>';
+            return;
+          }
+          var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+            + '<span style="font-weight:600;font-size:0.85rem;">📜 历史任务（共 ' + tasks.length + ' 条）</span>'
+            + '<button onclick="dsAgentClearHistory()" style="font-size:0.74rem;border:none;background:#fee2e2;color:#dc2626;border-radius:8px;padding:4px 10px;cursor:pointer;">🗑 清空</button>'
+            + '</div>';
+          tasks.forEach(function(t) {
+            var steps = (t.steps || []).map(function(s) { return s.tool + (s.ok ? ' ✅' : ' ❌'); }).join(' · ');
+            var time = (t.timestamp || '').replace('T', ' ').slice(0, 16);
+            html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px;">'
+              + '<div style="font-weight:600;font-size:0.85rem;color:#0f172a;">' + dsEsc(t.userIntent || '(无目标)') + '</div>'
+              + '<div style="font-size:0.78rem;color:#64748b;margin:2px 0;">' + dsEsc(time) + '</div>'
+              + '<div style="font-size:0.8rem;color:#059669;">' + dsEsc(steps) + '</div>'
+              + '</div>';
+          });
+          el.innerHTML = html;
+        } catch(e) {
+          el.innerHTML = '<div style="color:#dc2626;font-size:0.85rem;">加载历史失败：' + dsEsc(e.message || '') + '</div>';
+        }
+      };
+
+      // A#2: 清空历史任务记录
+      window.dsAgentClearHistory = async function() {
+        if (!confirm('⚠️ 将清空所有自主模式历史任务记录，确定？')) return;
+        try {
+          var db = await new Promise(function(res, rej) {
+            var r = indexedDB.open('AgentTaskDB', 1);
+            r.onsuccess = function() { res(r.result); };
+            r.onerror = function() { rej(r.error); };
+          });
+          await new Promise(function(res, rej) {
+            var tx = db.transaction('agent_tasks', 'readwrite');
+            tx.objectStore('agent_tasks').clear();
+            tx.oncomplete = function() { res(); };
+            tx.onerror = function() { rej(tx.error); };
+          });
+          var el = document.getElementById('ds-agent-history');
+          if (el) el.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">历史已清空</div>';
+        } catch(e) { alert('清空失败：' + (e.message || '')); }
       };
 
       console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集 · 自主模式', 'color:#059669;font-weight:bold;');

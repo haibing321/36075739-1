@@ -14,21 +14,25 @@
  *     modules.css          - 模块样式
  *     responsive.css       - 响应式
  *   js/
- *     app.js               - 入口文件 (本文件)
+ *     app.js               - 入口文件 (本文件，含 PWA 安装提示 / 屏蔽 Kimi 扩展 逻辑，原 pwa.js/anti-kimi.js/engine.js 已内联)
  *     modules/
- *       utils.js           - 公共工具函数 (TAB_LABELS, switchTab, pinyinMatch等)
- *       issue.js           - 检查信息模块 (IndexedDB + 关键词搜索)
+ *       utils.js           - 公共工具函数 (TAB_ORDER, switchTab, pinyinMatch, dbManager, storageManager, 全局进度条)
+ *       errorMonitor.js    - 全局错误监控 (window error / unhandledrejection 捕获上报)
+ *       perfMonitor.js     - 性能监控 (搜索耗时埋点)
+ *       issue.js           - 检查信息模块 (IndexedDB + Fuse 模糊搜索)
  *       rule.js            - 规章制度模块 (IndexedDB + 全文检索)
  *       diary.js           - 工作日志模块 (写实记录)
  *       memo.js            - 备忘提醒模块
- *       phone.js           - 应急电话模块
+ *       phone.js           - 应急电话模块 (含天气查询)
  *       handbook.js        - 检查手册模块 (四级目录大纲)
  *       swipe.js           - 侧滑手势切换模块
- *       doubao.js          - 智能助手模块 (DeepSeek API 对话/对规/写作)
+ *       doubao-common.js   - 智能助手公共工具 (表格渲染/上下文拼装)
+ *       smart-check.js     - 智能对规模块
+ *       smart-writer.js    - 智能写作模块 (资料库/历史报告)
+ *       doubao.js          - 智能助手主模块 (DeepSeek API 对话/对规/写作/BM25 检索)
+ *       agent-memory.js    - 自主模式任务记忆 (IndexedDB)
+ *       agent-core.js      - 自主模式规划器 + 工具集 (ReAct)
  *       backup.js          - 全局备份与恢复模块 (ZIP 打包)
- *       engine.js          - 前端增强引擎 (Toast/Ripple/懒加载/性能优化)
- *       pwa.js             - PWA 安装提示
- *       anti-kimi.js       - 屏蔽 Kimi 扩展悬浮按钮
  *
  * ===================================================
  * 外部依赖 (通过 <script> 标签在 HTML 中加载):
@@ -45,19 +49,24 @@
  * ===================================================
  * 模块加载顺序:
  * ===================================================
- *   1. utils.js       - 公共工具 (最先加载，其他模块依赖)
- *   2. issue.js       - 检查信息
- *   3. rule.js        - 规章制度
- *   4. diary.js       - 工作日志
- *   5. memo.js        - 备忘提醒
- *   6. phone.js       - 应急电话
- *   7. handbook.js    - 检查手册
- *   8. swipe.js       - 侧滑手势
- *   9. doubao.js      - 智能助手 (Part A + Part B)
- *  10. backup.js      - 备份恢复 (最后加载，依赖所有其他模块)
- *  11. engine.js      - 前端增强引擎
- *  12. pwa.js         - PWA 安装
- *  13. anti-kimi.js   - 屏蔽 Kimi 扩展
+ *   1. utils.js           - 公共工具 (最先加载，其他模块依赖)
+ *   2. errorMonitor.js    - 全局错误监控
+ *   3. perfMonitor.js     - 性能监控
+ *   4. diary.js           - 工作日志
+ *   5. issue.js           - 检查信息
+ *   6. rule.js            - 规章制度
+ *   7. memo.js            - 备忘提醒
+ *   8. phone.js           - 应急电话
+ *   9. handbook.js        - 检查手册
+ *  10. swipe.js           - 侧滑手势
+ *  11. doubao-common.js   - 智能助手公共工具
+ *  12. smart-check.js     - 智能对规
+ *  13. smart-writer.js    - 智能写作
+ *  14. doubao.js          - 智能助手主模块
+ *  15. agent-memory.js    - 自主模式任务记忆
+ *  16. agent-core.js      - 自主模式规划器
+ *  17. backup.js          - 备份恢复 (最后加载，依赖所有其他模块)
+ *  (PWA 安装提示 / 屏蔽 Kimi 扩展逻辑已内联在本文件 app.js 中)
  *
  * ===================================================
  * HTML 结构要求:

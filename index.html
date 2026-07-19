@@ -1591,8 +1591,8 @@
 
             // 隐藏所有主模块，只显示当前模块
             var currentModule = localStorage.getItem('current_module') || 'issue';
-            if (typeof window.switchModule === 'function') {
-                window.switchModule(currentModule);
+            if (typeof window.switchTab === 'function') {
+                window.switchTab(currentModule);
             }
 
             // 绑定角色切换按钮

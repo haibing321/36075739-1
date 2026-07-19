@@ -87,6 +87,20 @@
                 });
             }
 
+            // 渲染存储文本 + 进度条（统一三处重复逻辑）
+            function issueRenderStorage(sizeMB, displayQuotaMB) {
+                const textEl = document.getElementById('issue-storageText');
+                const bar = document.getElementById('issue-storageBar');
+                if (textEl) textEl.textContent = parseFloat(sizeMB) + ' / ' + displayQuotaMB + ' MB';
+                if (bar) {
+                    const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
+                    bar.style.width = percent + '%';
+                    if (percent > 80) bar.className = 'storage-fill danger';
+                    else if (percent > 60) bar.className = 'storage-fill warning';
+                    else bar.className = 'storage-fill';
+                }
+            }
+
             async function updateStorage() {
                 try {
                     const data = await loadData(), count = data.length;
@@ -98,38 +112,14 @@
                     }
                     document.getElementById('issue-recordCount').textContent = count + ' 条';
 
-                    // 尝试使用 storageManager 获取真实配额（显示上限固定200MB）
-                    var displayQuotaMB = 200;
+                    // 显示上限固定 200MB；storageManager.checkQuota 仅用于触发配额预警，结果不直接用于显示
+                    const displayQuotaMB = 200;
                     if (window.storageManager) {
                         try {
-                            var quotaInfo = await window.storageManager.checkQuota();
-                            document.getElementById('issue-storageText').textContent =
-                                parseFloat(sizeMB) + ' / ' + displayQuotaMB + ' MB';
-                            const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
-                            var bar = document.getElementById('issue-storageBar');
-                            bar.style.width = percent + '%';
-                            if (percent > 80) bar.className = 'storage-fill danger';
-                            else if (percent > 60) bar.className = 'storage-fill warning';
-                            else bar.className = 'storage-fill';
-                        } catch(qe) {
-                            // 降级：硬编码 200MB
-                            document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + displayQuotaMB + ' MB';
-                            const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
-                            var bar2 = document.getElementById('issue-storageBar');
-                            bar2.style.width = percent + '%';
-                            if (percent > 80) bar2.className = 'storage-fill danger';
-                            else if (percent > 60) bar2.className = 'storage-fill warning';
-                            else bar2.className = 'storage-fill';
-                        }
-                    } else {
-                        document.getElementById('issue-storageText').textContent = sizeMB + ' / ' + displayQuotaMB + ' MB';
-                        const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
-                        var bar3 = document.getElementById('issue-storageBar');
-                        bar3.style.width = percent + '%';
-                        if (percent > 80) bar3.className = 'storage-fill danger';
-                        else if (percent > 60) bar3.className = 'storage-fill warning';
-                        else bar3.className = 'storage-fill';
+                            await window.storageManager.checkQuota();
+                        } catch(qe) { /* 配额检测失败不影响存储条渲染 */ }
                     }
+                    issueRenderStorage(sizeMB, displayQuotaMB);
                 } catch (e) {}
                 issueRefreshCategorySelect();
             }

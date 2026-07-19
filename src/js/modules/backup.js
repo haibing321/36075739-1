@@ -225,38 +225,47 @@
      * 显示移动端下载按钮（当 a.click() 在手机上不可靠时使用）
      */
     function showMobileDownloadBtn(url, filename) {
-        // 移除旧按钮
         var old = document.getElementById('_mobile_dl_btn');
         if (old && old.parentNode) old.parentNode.removeChild(old);
 
         var displayName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
 
-        var btn = document.createElement('a');
+        var btn = document.createElement('div');
         btn.id = '_mobile_dl_btn';
-        btn.href = url;
-        btn.download = filename;
-        btn.innerHTML = '<span style="font-size:1.3rem;vertical-align:middle;">📥</span> 下载: ' + displayName;
+        btn.textContent = '📥 下载: ' + displayName;
         btn.style.cssText = [
             'display:block;position:fixed;bottom:80px;left:50%;',
             'transform:translateX(-50%);',
             'background:linear-gradient(135deg,#059669,#10b981);',
             'color:#fff;padding:14px 28px;border-radius:25px;',
-            'text-decoration:none;font-size:0.95rem;font-weight:600;',
+            'font-size:0.95rem;font-weight:600;',
             'z-index:99999;box-shadow:0 4px 20px rgba(5,150,105,0.4);',
-            'white-space:nowrap;animation:_mbdlFadeIn .3s ease;'
+            'white-space:nowrap;animation:_mbdlFadeIn .3s ease;cursor:pointer;'
         ].join('');
 
-        // 注入动画样式（仅一次）
-        if (!document.getElementById('_mbdl_style')) {
-            var s = document.createElement('style');
-            s.id = '_mbdl_style';
-            s.textContent = '@keyframes _mbdlFadeIn{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}';
-            document.head.appendChild(s);
-        }
+        // 华为浏览器需在用户手势上下文内触发放下载
+        btn.onclick = function() {
+            // 方案1：iframe 加载 blob URL（移动端最可靠，触发原生下载对话框）
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:0;height:0;border:none;';
+            iframe.src = url;
+            document.body.appendChild(iframe);
+            // 3秒后清理 iframe
+            setTimeout(function() { if (iframe.parentNode) document.body.removeChild(iframe); }, 3000);
+
+            // 方案2：兜底——window.open
+            var w = window.open(url, '_blank');
+            if (w) { setTimeout(function() { try { w.close(); } catch(e) {} }, 1000); }
+
+            // 提示
+            btn.textContent = '📥 正在下载，查看通知栏…';
+            btn.style.background = 'linear-gradient(135deg,#3b82f6,#60a5fa)';
+            setTimeout(function() { if (btn.parentNode) btn.parentNode.removeChild(btn); }, 15000);
+        };
 
         document.body.appendChild(btn);
 
-        // 15秒后自动移除（比 rule.js 更长，给用户足够时间点击）
+        // 15秒后自动移除
         setTimeout(function() {
             if (btn.parentNode) btn.parentNode.removeChild(btn);
             setTimeout(function() { URL.revokeObjectURL(url); }, 30000);

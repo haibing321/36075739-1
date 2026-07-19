@@ -1346,7 +1346,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.5 · 2026.07.09</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 v2.5 · 2026.07.18</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1354,111 +1354,43 @@
 
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
-                铁路安全监察智能辅助工具，集成 AI 大模型实现智能对规、对话写作、风险研判，助力安监工作智能化。
+                铁路安全监察智能辅助系统。集成 AI 智能体实现自主规划执行、智能对规、写作研判，支持全模块离线使用。
             </div>
 
-            <!-- v2.5 新功能 -->
+            <!-- v2.5 版本 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🎉</span>
-                    <span>v2.5 版本更新</span>
+                    <span>v2.5</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📊 导入导出进度条：全局/单模块导入导出统一显示蓝色进度动画</span>
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🤖 自主模式：AI 智能体可调用本地数据，自动规划并执行多步骤任务</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📦 全局清空：数据管理新增全局清空按钮，二次确认+进度条</span>
+                        <span>📊 导入导出进度条：全局及单模块导入导出统一显示蓝色进度动画</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔄 版本更新检查：内置GitHub Release检测，设置按钮红点提醒</span>
+                        <span>📦 数据管理统一：全局/单模块均配备导入·导出·清空三按钮</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📞 应急电话：车站电话更名为应急电话，天气查询按线别+方位后缀优化</span>
+                        <span>📞 应急电话：车站电话模块更名，天气查询按线别+省份三级过滤</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔍 手动搜索：检查信息/规章移除输入自动搜索，需点击搜索按钮</span>
+                        <span>🔍 手动搜索：检查信息/规章改为手动搜索，体验更可控</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>💾 工作日志自动保存：输入内容2秒后自动保存，右下角浮动提示</span>
+                        <span>🎨 UI 精简约：按钮色调统一，设置面板层级分明，整体更清爽</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🎨 UI优化：按钮色调统一，层级用浅灰底色区隔，设置面板整体精简</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🛡️ DB修复：IndexedDB store丢失时自动重建，导入失败自动修复</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v2.4 新功能 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v2.4 版本更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📊 风险研判升级：问题先按类别归类归集，再逐类分析更科学</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>⚖️ 智能对规兼容规章依据字段：本地匹配和AI对规均合并展示</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🏢 检查信息专业映射：新增建设/辅业等专业及子串匹配</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>✏️ 规章编辑修复：编辑框正确显示规章标题</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔄 SW重启：NetworkFirst+StaleWhileRevalidate，版本号基于日期自动更新</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v2.3 新功能 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v2.3 版本更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>⚡ 性能优化：重型库按需加载，首屏脚本从~2MB降至~50KB</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔍 搜索防抖：输入停止500ms自动搜索，告别卡顿</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📊 统计升级：渐变色柱状图+动画+四卡片概要仪表盘</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>⚙️ 设置整合：数据管理按钮统一迁移至设置面板</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>📡 离线增强：SW预缓存全部CSS/JS，断网完整可用</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#22c55e;margin-top:2px;">✓</span>
-                        <span>🔧 Web Worker：后台线程搜索，大数据量不冻屏</span>
+                        <span>🛡️ DB 修复：IndexedDB 异常时自动检测并重建，导入不再失败</span>
                     </div>
                 </div>
             </div>
@@ -1502,16 +1434,15 @@
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                     <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
                 </div>
-                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，存储上限200MB）</div>
-                <div>• AI引擎：OpenAI兼容大模型 API（DeepSeek/通义千问/智谱等）</div>
-                <div>• 部署方式：GitHub Pages 静态托管（自动版本检测）</div>
-                <div>• 兼容优化：华为/Chrome/Edge/手机端全面适配</div>
-                <div>• SW缓存：NetworkFirst+StaleWhileRevalidate策略，部署自动更新</div>
+                <div>• AI智能体：OpenAI兼容API + ReAct自主执行循环，可调用本地数据完成任务</div>
+                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，上限200MB）</div>
+                <div>• 部署方式：GitHub Pages 静态托管</div>
+                <div>• 兼容适配：华为/Chrome/Edge/手机端全面适配</div>
             </div>
 
             <!-- 底部信息 -->
             <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;font-size:0.73rem;color:#9ca3af;">
-                <span>开发者：赵海兵 · 2026.06</span>
+                <span>开发者：赵海兵 · 2026.07</span>
             </div>
         </div>
     </div>

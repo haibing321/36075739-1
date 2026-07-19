@@ -184,6 +184,26 @@
      *   - 手机端手势丢失后下载失效
      *   - 需要回退到可见的下载按钮
      */
+    /**
+     * 检测是否为华为/荣耀移动浏览器（对 blob URL 下载限制较严）
+     */
+    function _isHuaweiMobile() {
+        var ua = navigator.userAgent || '';
+        var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+        var isHuawei = /Huawei|Harmony|HONOR|HMS|HuaweiBrowser|TAS-AN00|TAS-AL00|OCE-AN10|LIO-AN00|NOH-AN00|ANA-AN00|ELS-AN00/i.test(ua);
+        return isMobile && isHuawei;
+    }
+
+    /**
+     * 将 Blob 读取为 Base64 Data URL（用于华为等不支持 blob URL 下载的浏览器）
+     */
+    function _blobToDataURL(blob, callback) {
+        var reader = new FileReader();
+        reader.onload = function(e) { callback(null, e.target.result); };
+        reader.onerror = function(e) { callback(e || new Error('FileReader failed'), null); };
+        reader.readAsDataURL(blob);
+    }
+
     function downloadBlob(blob, filename) {
         // 确保ZIP文件有正确的MIME类型（华为等浏览器对此更严格）
         if (filename.endsWith('.zip') && (!blob.type || blob.type === '' || blob.type === 'application/octet-stream')) {
@@ -199,15 +219,31 @@
             try { window.navigator.msSaveBlob(blob, filename); return; } catch(e) {}
         }
 
-        var url = URL.createObjectURL(blob);
-        var isMobile = /Mobi|Android|HuaweiBrowser|HMS/i.test(navigator.userAgent);
+        var isHuaweiMobile = _isHuaweiMobile();
+        var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
         var isComplex = filename.endsWith('.zip') || filename.endsWith('.docx') || filename.endsWith('.xlsx');
 
+        if (isHuaweiMobile && isComplex) {
+            // === 华为移动设备 + 复杂文件：转成 Base64 Data URL 后再显示下载按钮 ===
+            // blob URL 在华为浏览器中常被拦截，data URL 配合真实 <a download> 更可靠
+            _blobToDataURL(blob, function(err, dataUrl) {
+                if (!err && dataUrl) {
+                    showMobileDownloadBtn(dataUrl, filename, true);
+                } else {
+                    var url = URL.createObjectURL(blob);
+                    showMobileDownloadBtn(url, filename, false);
+                }
+            });
+            return;
+        }
+
         if (isMobile && isComplex) {
-            // === 华为手机端 + ZIP/DOCX/XLSX：显示手动点击的下载按钮 ===
-            showMobileDownloadBtn(url, filename);
+            // === 其他手机端 + ZIP/DOCX/XLSX：显示手动点击的下载按钮 ===
+            var url = URL.createObjectURL(blob);
+            showMobileDownloadBtn(url, filename, false);
         } else {
             // === 桌面端 / 手机端简单格式（JSON/TXT）：标准 a.click() ===
+            var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
             a.download = filename;
@@ -222,53 +258,47 @@
     }
 
     /**
-     * 显示移动端下载按钮（当 a.click() 在手机上不可靠时使用）
+     * 显示移动端下载按钮（使用真实 <a download> 标签，比 div.onclick 更可靠）
+     * @param {string} url - 下载链接（blob URL 或 data URL）
+     * @param {string} filename - 下载文件名
+     * @param {boolean} isDataUrl - 是否为 data URL（决定是否需要 revoke）
      */
-    function showMobileDownloadBtn(url, filename) {
+    function showMobileDownloadBtn(url, filename, isDataUrl) {
         var old = document.getElementById('_mobile_dl_btn');
         if (old && old.parentNode) old.parentNode.removeChild(old);
 
         var displayName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
 
-        var btn = document.createElement('div');
+        // 使用真实 <a> 标签，让用户直接点击 <a download>，而不是 JS 触发 click
+        var btn = document.createElement('a');
         btn.id = '_mobile_dl_btn';
-        btn.textContent = '📥 下载: ' + displayName;
+        btn.href = url;
+        btn.download = filename;
+        btn.innerHTML = '<span style="font-size:1.3rem;vertical-align:middle;">📥</span> 下载: ' + displayName;
         btn.style.cssText = [
             'display:block;position:fixed;bottom:80px;left:50%;',
             'transform:translateX(-50%);',
             'background:linear-gradient(135deg,#059669,#10b981);',
             'color:#fff;padding:14px 28px;border-radius:25px;',
-            'font-size:0.95rem;font-weight:600;',
+            'text-decoration:none;font-size:0.95rem;font-weight:600;',
             'z-index:99999;box-shadow:0 4px 20px rgba(5,150,105,0.4);',
             'white-space:nowrap;animation:_mbdlFadeIn .3s ease;cursor:pointer;'
         ].join('');
 
-        // 华为浏览器需在用户手势上下文内触发放下载
-        btn.onclick = function() {
-            // 方案1：iframe 加载 blob URL（移动端最可靠，触发原生下载对话框）
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:0;height:0;border:none;';
-            iframe.src = url;
-            document.body.appendChild(iframe);
-            // 3秒后清理 iframe
-            setTimeout(function() { if (iframe.parentNode) document.body.removeChild(iframe); }, 3000);
-
-            // 方案2：兜底——window.open
-            var w = window.open(url, '_blank');
-            if (w) { setTimeout(function() { try { w.close(); } catch(e) {} }, 1000); }
-
-            // 提示
-            btn.textContent = '📥 正在下载，查看通知栏…';
-            btn.style.background = 'linear-gradient(135deg,#3b82f6,#60a5fa)';
-            setTimeout(function() { if (btn.parentNode) btn.parentNode.removeChild(btn); }, 15000);
-        };
+        // 注入动画样式（仅一次）
+        if (!document.getElementById('_mobile_dl_style')) {
+            var s = document.createElement('style');
+            s.id = '_mobile_dl_style';
+            s.textContent = '@keyframes _mbdlFadeIn{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}';
+            document.head.appendChild(s);
+        }
 
         document.body.appendChild(btn);
 
-        // 15秒后自动移除
+        // 15秒后自动移除（data URL 无需 revoke）
         setTimeout(function() {
             if (btn.parentNode) btn.parentNode.removeChild(btn);
-            setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
+            if (!isDataUrl) setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
         }, 15000);
     }
 

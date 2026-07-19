@@ -2122,7 +2122,7 @@
       }
       observeAssistantBubbles();
 
-      // ========== 自主模式 Agent 发送消息 ==========
+      // ========== 智能体 Agent 发送消息 ==========
       var _agentRunning = false;
       window.dsAgentSend = async function() {
         if (_agentRunning) return;
@@ -2131,7 +2131,7 @@
         if (!input || !historyEl) return;
         var msg = input.value.trim();
         if (!msg) return;
-        if (typeof window._agentRun !== 'function') { historyEl.innerHTML += '<div style="color:#dc2626">⚠️ 自主模式模块未加载</div>'; return; }
+        if (typeof window._agentRun !== 'function') { historyEl.innerHTML += '<div style="color:#dc2626">⚠️ 智能体模块未加载</div>'; return; }
 
         _agentRunning = true;
         input.value = '';
@@ -2168,7 +2168,7 @@
         historyEl.scrollTop = historyEl.scrollHeight;
       };
 
-      // B#7: 停止自主模式（中断在途请求 + 终止后续循环）
+      // B#7: 停止智能体（中断在途请求 + 终止后续循环）
       window.dsAgentStop = function() {
         _agentRunning = false;
         if (window.__agentAbort && typeof window.__agentAbort.abort === 'function') {
@@ -2213,7 +2213,7 @@
 
       // A#2: 清空历史任务记录
       window.dsAgentClearHistory = async function() {
-        if (!confirm('⚠️ 将清空所有自主模式历史任务记录，确定？')) return;
+        if (!confirm('⚠️ 将清空所有智能体历史任务记录，确定？')) return;
         try {
           var db = await new Promise(function(res, rej) {
             var r = indexedDB.open('AgentTaskDB', 1);
@@ -2231,5 +2231,5 @@
         } catch(e) { alert('清空失败：' + (e.message || '')); }
       };
 
-      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集 · 自主模式', 'color:#059669;font-weight:bold;');
+      console.log('%c✅ 智能助手已启动 | 角色切换 · 长期记忆 · 反馈收集 · 智能体', 'color:#059669;font-weight:bold;');
     })();

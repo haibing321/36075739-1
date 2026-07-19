@@ -30,8 +30,8 @@
  *       smart-check.js     - 智能对规模块
  *       smart-writer.js    - 智能写作模块 (资料库/历史报告)
  *       doubao.js          - 智能助手主模块 (DeepSeek API 对话/对规/写作/BM25 检索)
- *       agent-memory.js    - 自主模式任务记忆 (IndexedDB)
- *       agent-core.js      - 自主模式规划器 + 工具集 (ReAct)
+ *       agent-memory.js    - 智能体任务记忆 (IndexedDB)
+ *       agent-core.js      - 智能体规划器 + 工具集 (ReAct)
  *       backup.js          - 全局备份与恢复模块 (ZIP 打包)
  *
  * ===================================================
@@ -63,8 +63,8 @@
  *  12. smart-check.js     - 智能对规
  *  13. smart-writer.js    - 智能写作
  *  14. doubao.js          - 智能助手主模块
- *  15. agent-memory.js    - 自主模式任务记忆
- *  16. agent-core.js      - 自主模式规划器
+ *  15. agent-memory.js    - 智能体任务记忆
+ *  16. agent-core.js      - 智能体规划器
  *  17. backup.js          - 备份恢复 (最后加载，依赖所有其他模块)
  *  (PWA 安装提示 / 屏蔽 Kimi 扩展逻辑已内联在本文件 app.js 中)
  *
@@ -507,7 +507,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v2.5'; // 与 about 面板、version.json 保持一致；发版时三者需同步更新
+const APP_VERSION = 'v2.6'; // 与 about 面板、version.json 保持一致；发版时三者需同步更新
 // 检查更新源：读取已部署在 GitHub Pages 上的 version.json（无需打 GitHub Release，适配纯 Pages 部署）
 // 注意：version.json 在 SW 中走网络策略（不读缓存），可拿到最新部署版本
 const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';

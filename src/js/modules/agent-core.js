@@ -1,5 +1,5 @@
 /**
- * Agent Core（自主模式核心）——规划器 + 工具注册 + ReAct 执行循环
+ * Agent Core（智能体核心）——规划器 + 工具注册 + ReAct 执行循环
  * 只暴露 window._agentRun(userMessage) 一个入口
  */
 (function() {
@@ -173,7 +173,7 @@
   window._agentRun = async function(userMessage) {
     // B#9: 密钥预检，未配置直接返回友好提示，避免白跑 ReAct 循环
     if (!localStorage.getItem('ds_api_key_v1')) {
-      return { messages: [{ role: 'assistant', content: '⚠️ 尚未配置 API Key，请先在「设置 → 智能助手」中填写 DeepSeek API Key，再使用自主模式。' }], taskId: null };
+      return { messages: [{ role: 'assistant', content: '⚠️ 尚未配置 API Key，请先在「设置 → 智能助手」中填写 DeepSeek API Key，再使用智能体。' }], taskId: null };
     }
     var taskId = 'agent_' + Date.now().toString(36);
     var taskRecord = {
@@ -201,7 +201,7 @@
       { role: 'system', content: system },
       { role: 'user', content: userMessage }
     ];
-    var renderMsgs = [{ role: 'agent-plan', content: '🤖 自主模式·启动', plan: [] }];
+    var renderMsgs = [{ role: 'agent-plan', content: '🧠 智能体·启动', plan: [] }];
     var maxLoops = 8; // B#6: 上限提到 8，复杂任务更从容
     var planShown = false;
     var lastCallKey = '', repeatCount = 0;

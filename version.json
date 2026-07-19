@@ -1,5 +1,5 @@
 {
-  "version": "v2.5",
-  "releaseNotes": "导入导出进度条、全局清空、版本检查、应急电话、手动搜索、UI优化",
+  "version": "v2.6",
+  "releaseNotes": "智能体重命名（原自主模式）、SW 缓存版本升级为12位时间戳（YYYYMMDDHHMMSS）",
   "downloadUrl": "https://haibing321.github.io/36075739-2/"
 }

@@ -237,7 +237,7 @@
             // 暴露数据获取接口（供联动数据使用）
             window.getPhoneData = function() { return phoneData; };
 
-            // ── 纯坐标反查（供自主模式 Agent 调用，不操作 DOM）──
+            // ── 纯坐标反查（供智能体 Agent 调用，不操作 DOM）──
             // 复用与新版 weather 查询一致的省份两级过滤逻辑
             window.phoneGeocode = async function(stationName, lineName) {
                 var geoName = String(stationName || '').replace(/站$/, '').replace(/[东西南北](南|北|东|西)?$/, '');

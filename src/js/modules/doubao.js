@@ -1370,9 +1370,22 @@
 
       function getRelevantMemories(query) {
         if (!memoryEnabled) return [];
-        // 无条件返回最近记忆，按时间倒序取最新10条
+        // 无条件返回最近记忆，按时间倒序取最新66条（注入上限由调用方控制）
         return userMemories.slice(-66).reverse();
       }
+
+      // 清空全部长期记忆（设置面板"清空"按钮调用）
+      function clearLongTermMemory() {
+        if (!confirm('确定清空所有长期记忆？此操作不可恢复。')) return;
+        try {
+          localStorage.removeItem(MEMORY_KEY);
+          userMemories = [];
+          alert('长期记忆已清空');
+        } catch (e) {
+          alert('清空失败：' + e.message);
+        }
+      }
+      window.clearLongTermMemory = clearLongTermMemory;
 
       // ---------- 4. 轻量级 BM25 检索器 ----------
       class LightBM25 {
@@ -2091,8 +2104,16 @@
       });
       var memoryCheck = document.getElementById('memoryEnable');
       if (memoryCheck) {
+        // 恢复持久化的开关状态（默认开启）
+        var savedMem = localStorage.getItem('memory_enabled');
+        if (savedMem !== null) {
+          memoryCheck.checked = (savedMem === '1');
+        }
         memoryEnabled = memoryCheck.checked;
-        memoryCheck.addEventListener('change', function(e){ memoryEnabled = e.target.checked; });
+        memoryCheck.addEventListener('change', function(e){
+          memoryEnabled = e.target.checked;
+          try { localStorage.setItem('memory_enabled', e.target.checked ? '1' : '0'); } catch(err){}
+        });
       }
       // 角色切换时立即更新状态栏（不再需要切模块才能看到）
       var roleSelect = document.getElementById('expertRole');

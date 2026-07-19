@@ -443,20 +443,32 @@ window.toggleSettingsPanel = function() {
 
 window.clearAllCache = function() {
     if (!confirm('⚠️ 将清除所有缓存数据并刷新页面，确定继续？')) return;
-    // 清除 SW 缓存
+
+    var pending = [];
+
+    // 清除 SW 缓存（等待删除完成，避免竞态导致旧缓存残留）
     if ('caches' in window) {
-        caches.keys().then(function(names) {
-            for (var i = 0; i < names.length; i++) caches.delete(names[i]);
-        });
+        pending.push(
+            caches.keys().then(function(names) {
+                return Promise.all(names.map(function(n) { return caches.delete(n); }));
+            })
+        );
     }
-    // 清除 SW 注册
+    // 注销 SW 注册
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-            for (var i = 0; i < regs.length; i++) regs[i].unregister();
-        });
+        pending.push(
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                return Promise.all(regs.map(function(r) { return r.unregister(); }));
+            })
+        );
     }
-    // 刷新页面
-    setTimeout(function(){ location.reload(true); }, 300);
+
+    // 等所有清理完成再刷新（不再用固定 300ms 强刷，杜绝竞态）
+    Promise.all(pending).then(function() {
+        location.reload(true);
+    }).catch(function() {
+        location.reload(true);
+    });
 };
 
 window.showAboutPanel = function() {

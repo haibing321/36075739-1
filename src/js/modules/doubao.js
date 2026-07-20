@@ -932,16 +932,8 @@
                 }
 
                 // ════════════════════════════════════════════
-                // 4. 普通对话（保留原有全部逻辑）
+                // 4.2 附件处理
                 // ════════════════════════════════════════════
-                // ---- 4.1 API Key ----
-                const key = dsApiKey || await _getApiKey();
-                if (!key || key === DS_PLACEHOLDER_KEY) {
-                    dsAppendMsg('system', '⚠️ 请先配置 DeepSeek API Key（在上方输入框中输入并点击「保存」）。\n\n如需申请 API Key，请访问：https://platform.deepseek.com/');
-                    return;
-                }
-
-                // ---- 4.2 附件处理 ----
                 const validAttach = (window._dsAttachments || []).filter(Boolean);
                 let finalText = userText;
                 let attachNames = [];
@@ -958,7 +950,9 @@
                     ? userText + '\n📎 ' + attachNames.join('、')
                     : userText;
 
-                // ---- 4.3 对话历史 ----
+                // ════════════════════════════════════════════
+                // 4.3 对话历史
+                // ════════════════════════════════════════════
                 if (!dsCurrentConvId) {
                     dsCurrentConvId = dsGenerateId();
                     dsHistory = [];
@@ -968,6 +962,20 @@
                 }
                 dsHistory.push({ role: 'user', content: finalText, displayText: displayText });
                 dsRenderAll();
+
+                // 进入流式生成核心（重新生成复用）
+                await window._dsRunStream(finalText);
+            };
+
+            // 流式生成核心：普通对话与「重新生成」共用
+            window._dsRunStream = async function(finalText) {
+                if (dsStreaming) return;
+                // ---- 4.1 API Key ----
+                const key = dsApiKey || await _getApiKey();
+                if (!key || key === DS_PLACEHOLDER_KEY) {
+                    dsAppendMsg('system', '⚠️ 请先配置 DeepSeek API Key（在上方输入框中输入并点击「保存」）。\n\n如需申请 API Key，请访问：https://platform.deepseek.com/');
+                    return;
+                }
 
                 // ---- 4.4 角色注入 ----
                 var roleSelect = document.getElementById('expertRole');
@@ -981,9 +989,9 @@
                 var memoryText = '';
                 if (typeof extractFacts === 'function' && typeof addMemory === 'function' && typeof getRelevantMemories === 'function') {
                     try {
-                        var newFacts = extractFacts(userText);
+                        var newFacts = extractFacts(finalText);
                         newFacts.forEach(function(f) { addMemory(f); });
-                        var memories = getRelevantMemories(userText);
+                        var memories = getRelevantMemories(finalText);
                         if (memories.length) {
                             memoryText = '【长期记忆】\n' + memories.map(function(m) { return '• ' + m.fact; }).join('\n') + '\n\n';
                         }
@@ -1163,6 +1171,18 @@
                 }
             };
 
+            // 重新生成：移除末尾助手消息，复用最后一条用户问题重发
+            window.dsRegenerate = function() {
+                if (dsStreaming) return;
+                if (!dsHistory.length) return;
+                while (dsHistory.length && dsHistory[dsHistory.length - 1].role === 'assistant') {
+                    dsHistory.pop();
+                }
+                const lastUser = dsHistory[dsHistory.length - 1];
+                if (!lastUser || lastUser.role !== 'user') return;
+                window._dsRunStream(lastUser.content);
+            };
+
             // ---- 快捷提问 ----
 
             window.dsQuick = function(text) {
@@ -1180,9 +1200,23 @@
                 const box = document.getElementById('ds-chat-box');
                 if (!box) return;
                 if (dsHistory.length === 0) {
-                    // 空对话时隐藏对话区，只显示输入框
-                    box.style.display = 'none';
-                    box.innerHTML = '';
+                    // 空对话时显示欢迎引导页（含快捷提问）
+                    box.style.display = 'flex';
+                    const quick = [
+                        '📋 查询《技规》中关于调车作业的规定',
+                        '⚠️ 分析近期典型安全隐患及原因',
+                        '📝 帮我写一份安全隐患整改通知书',
+                        '📊 生成本月安全风险研判报告'
+                    ];
+                    box.innerHTML = '<div class="ds-welcome">' +
+                        '<div class="ds-welcome-icon">🤖</div>' +
+                        '<h3 class="ds-welcome-title">铁路安全监察智能助手</h3>' +
+                        '<p class="ds-welcome-sub">可回答规章、对规、风险研判等铁路安全问题，也支持通用问答。在下方输入问题开始对话，或选择快捷提问：</p>' +
+                        '<div class="ds-quick-chips">' +
+                        quick.map(function(q) {
+                            return '<button class="ds-chip" onclick="dsQuick(' + JSON.stringify(q) + ')">' + q + '</button>';
+                        }).join('') +
+                        '</div></div>';
                     return;
                 }
                 // 有内容时显示对话区
@@ -1238,40 +1272,116 @@
                 setTimeout(function() { URL.revokeObjectURL(a.href); }, 100);
             };
 
-            // ---- 简易 Markdown 渲染 ----
+            // ---- 增强 Markdown 渲染 ----
             function dsMarkdown(text) {
                 if (!text) return '';
-                let s = dsEsc(text);
-                // 代码块（含下载按钮）
-                s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
-                    var ext = (lang || 'txt').toLowerCase();
-                    var fileExts = { html:'html', css:'css', js:'js', javascript:'js', ts:'ts', typescript:'ts', json:'json', py:'py', python:'py', sh:'sh', bash:'sh', sql:'sql', md:'md', xml:'xml', svg:'svg', txt:'txt' };
-                    var fileExt = fileExts[ext] || ext;
-                    return '<div style="position:relative;margin:6px 0;">' +
-                        '<button onclick="window.dsDownloadCode(this)" data-ext="' + fileExt + '" ' +
-                        'style="position:absolute;top:6px;right:6px;background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
-                        'onmouseover="this.style.background=\'#2563eb\'" onmouseout="this.style.background=\'#3b82f6\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
-                        '<pre style="background:#1e293b;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';
+                // 1. 抽取围栏代码块，避免后续行内替换污染其内部内容
+                const codeBlocks = [];
+                const CODE_SENTINEL = '@@DSCODEBLOCK@@';
+                let src = String(text).replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+                    codeBlocks.push({ lang: (lang || 'txt'), code: code });
+                    return CODE_SENTINEL + (codeBlocks.length - 1) + '@@';
                 });
-                // 行内代码
-                s = s.replace(/`([^`]+)`/g, '<code style="background:#e8ecf3;color:#c7254e;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>');
-                // 粗体
-                s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-                // 斜体
-                s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-                // 标题
-                s = s.replace(/^### (.+)$/gm, '<h4 style="color:var(--primary);margin:8px 0 4px;">$1</h4>');
-                s = s.replace(/^## (.+)$/gm, '<h3 style="color:var(--primary);margin:10px 0 4px;">$1</h3>');
-                s = s.replace(/^# (.+)$/gm, '<h2 style="color:var(--primary);margin:12px 0 4px;">$1</h2>');
-                // 无序列表
-                s = s.replace(/^[*\-] (.+)$/gm, '<li style="margin-left:16px;list-style:disc;">$1</li>');
-                // 有序列表
-                s = s.replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;list-style:decimal;">$1</li>');
-                // 换行
-                s = s.replace(/\n/g, '<br>');
-                return s;
-            }
 
+                // 2. 行级内联转换（先转义再替换）
+                function inline(str) {
+                    let s = dsEsc(str);
+                    s = s.replace(/`([^`]+)`/g, '<code class="ds-md-code">$1</code>');
+                    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                    s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+                    s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+                    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+                    return s;
+                }
+
+                // 3. 代码块渲染
+                function renderCodeBlock(item) {
+                    const ext = (item.lang || 'txt').toLowerCase();
+                    const fileExts = { html:'html', css:'css', js:'js', javascript:'js', ts:'ts', typescript:'ts', json:'json', py:'py', python:'py', sh:'sh', bash:'sh', sql:'sql', md:'md', xml:'xml', svg:'svg', txt:'txt' };
+                    const fileExt = fileExts[ext] || ext;
+                    return '<div class="ds-code-wrap"><button class="ds-code-dl" onclick="window.dsDownloadCode(this)" data-ext="' + fileExt + '" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button><pre class="ds-code"><code>' + dsEsc(item.code) + '</code></pre></div>';
+                }
+
+                // 4. 表格解析（| 表头 | / | --- | / 数据行）
+                function parseTable(lines, start) {
+                    const splitRow = function(row) { return row.split('|').slice(1, -1).map(function(c) { return c.trim(); }); };
+                    const header = splitRow(lines[start]);
+                    let next = start + 2; // 跳过分隔行
+                    const rows = [];
+                    while (next < lines.length && /^\|.*\|\s*$/.test(lines[next])) { rows.push(splitRow(lines[next])); next++; }
+                    let html = '<table class="ds-md-table"><thead><tr>' + header.map(function(h) { return '<th>' + inline(h) + '</th>'; }).join('') + '</tr></thead><tbody>';
+                    html += rows.map(function(r) { return '<tr>' + r.map(function(c) { return '<td>' + inline(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>';
+                    return { html: html, next: next };
+                }
+
+                // 5. 逐行块级解析
+                const lines = src.split('\n');
+                const out = [];
+                let listType = null; // 'ul' | 'ol'
+                function closeList() { if (listType) { out.push('</' + listType + '>'); listType = null; } }
+
+                let i = 0;
+                while (i < lines.length) {
+                    const line = lines[i];
+
+                    // 代码块占位
+                    const cb = line.match(/^@@DSCODEBLOCK@@(\d+)@@$/);
+                    if (cb) {
+                        closeList();
+                        out.push(renderCodeBlock(codeBlocks[+cb[1]]));
+                        i++; continue;
+                    }
+                    // 表格
+                    if (/^\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+                        closeList();
+                        const tbl = parseTable(lines, i);
+                        out.push(tbl.html);
+                        i = tbl.next; continue;
+                    }
+                    // 标题
+                    const h = line.match(/^(#{1,4})\s+(.+)$/);
+                    if (h) {
+                        closeList();
+                        const lv = h[1].length;
+                        out.push('<h' + lv + ' class="ds-md-h">' + inline(h[2]) + '</h' + lv + '>');
+                        i++; continue;
+                    }
+                    // 引用块
+                    if (/^>\s?/.test(line)) {
+                        closeList();
+                        const q = [];
+                        while (i < lines.length && /^>\s?/.test(lines[i])) { q.push(lines[i].replace(/^>\s?/, '')); i++; }
+                        out.push('<blockquote class="ds-md-quote">' + inline(q.join('\n')) + '</blockquote>');
+                        continue;
+                    }
+                    // 分隔线
+                    if (/^(\s*[-*_]){3,}\s*$/.test(line)) {
+                        closeList();
+                        out.push('<hr class="ds-md-hr">');
+                        i++; continue;
+                    }
+                    // 无序列表
+                    if (/^[*\-]\s+/.test(line)) {
+                        if (listType !== 'ul') { closeList(); out.push('<ul class="ds-md-ul">'); listType = 'ul'; }
+                        out.push('<li>' + inline(line.replace(/^[*\-]\s+/, '')) + '</li>');
+                        i++; continue;
+                    }
+                    // 有序列表
+                    if (/^\d+\.\s+/.test(line)) {
+                        if (listType !== 'ol') { closeList(); out.push('<ol class="ds-md-ol">'); listType = 'ol'; }
+                        out.push('<li>' + inline(line.replace(/^\d+\.\s+/, '')) + '</li>');
+                        i++; continue;
+                    }
+                    // 空行
+                    if (line.trim() === '') { closeList(); i++; continue; }
+                    // 普通段落
+                    closeList();
+                    out.push('<p class="ds-md-p">' + inline(line) + '</p>');
+                    i++;
+                }
+                closeList();
+                return out.join('');
+            }
             function dsEsc(s) {
                 return String(s || '')
                     .replace(/&/g, '&amp;')
@@ -2024,7 +2134,8 @@
         fbDiv.innerHTML = '<button class="feedback-copy" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#10b981\';this.style.color=\'#10b981\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="复制本条回复">📋 复制</button>' +
                           '<button class="feedback-download" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#8b5cf6\';this.style.color=\'#8b5cf6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="下载本条回复">📥 下载</button>' +
                           '<button class="feedback-good" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👍 有用</button>' +
-                          '<button class="feedback-bad" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#ef4444\';this.style.color=\'#ef4444\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👎 无用</button>';
+                          '<button class="feedback-bad" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#ef4444\';this.style.color=\'#ef4444\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👎 无用</button>' +
+                          '<button class="feedback-regen" onclick="window.dsRegenerate()" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="重新生成本条回复">🔄 重生成</button>';
         // 语音朗读按钮（仅支持 Web Speech API 的浏览器显示）
         if (typeof window.speechSynthesis !== 'undefined') {
           var readBtn = document.createElement('button');

@@ -329,41 +329,89 @@
                 contentEl.innerHTML = '<div class="hb-content-path">' + pathHtml + '</div><div class="hb-content-text">' + bodyHtml + '</div>';
             }
 
-            // 站内搜索：过滤手册数据并列出命中条目（带路径）
+            // 站内搜索：根据当前视图检索对应数据（大纲视图搜手册 / 规章制度视图搜规章）
             window.hbSearch = function(keyword) {
                 const treeEl = document.getElementById('hb-outlineTree');
                 const contentEl = document.getElementById('hb-outlineContent');
                 const infoEl = document.getElementById('hb-searchInfo');
                 const kw = (keyword || '').trim().toLowerCase();
+                const isOutline = document.getElementById('hb-toggleOutline').classList.contains('active');
                 if (!kw) {
                     if (infoEl) infoEl.style.display = 'none';
-                    const isOutline = document.getElementById('hb-toggleOutline').classList.contains('active');
                     if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
                     return;
                 }
-                const matched = handbookData.filter(d => [d.chapter, d.section, d.item, d.subitem, d.content].filter(Boolean).join(' ').toLowerCase().indexOf(kw) !== -1);
+
+                if (isOutline) {
+                    // ===== 大纲视图：检索手册数据 =====
+                    if (!handbookData.length) {
+                        if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '手册数据为空'; }
+                        treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">📭 尚未导入手册数据，请先在「设置」面板中导入 DOCX / JSON 文档</div>';
+                        contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
+                        return;
+                    }
+                    const matched = handbookData.filter(d => [d.chapter, d.section, d.item, d.subitem, d.content].filter(Boolean).join(' ').toLowerCase().indexOf(kw) !== -1);
+                    if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '命中 ' + matched.length + ' 条'; }
+                    if (matched.length === 0) {
+                        treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">未找到与「' + _esc(keyword) + '」相关的手册内容</div>';
+                        contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
+                        return;
+                    }
+                    let html = '';
+                    matched.slice(0, 50).forEach(function(d) {
+                        const path = [d.chapter, d.section, d.item, d.subitem].filter(Boolean).join(' › ');
+                        html += '<div class="hb-search-item" data-chapter="' + _esc(d.chapter) + '" data-section="' + _esc(d.section) + '" data-item="' + _esc(d.item) + '" data-subitem="' + _esc(d.subitem) + '" style="padding:10px 12px;border-bottom:1px solid #eef2f7;cursor:pointer;">'
+                            + '<div style="font-size:0.8rem;color:#64748b;">' + _esc(path) + '</div>'
+                            + '<div style="font-size:0.85rem;color:#1e293b;margin-top:2px;">' + _esc((d.content || '').slice(0, 80)) + '</div>'
+                            + '</div>';
+                    });
+                    if (matched.length > 50) html += '<div style="padding:10px;color:#94a3b8;font-size:0.8rem;">仅显示前50条，请缩小关键词</div>';
+                    treeEl.innerHTML = html;
+                    contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
+                    treeEl.querySelectorAll('.hb-search-item').forEach(function(it) {
+                        it.addEventListener('click', function() {
+                            treeEl.querySelectorAll('.hb-search-item.selected').forEach(x => x.classList.remove('selected'));
+                            this.classList.add('selected');
+                            _hbShowContent(this.dataset.chapter, this.dataset.section, this.dataset.item, this.dataset.subitem);
+                            if (window.innerWidth <= 600) contentEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        });
+                    });
+                    return;
+                }
+
+                // ===== 规章制度视图：检索规章制度数据 =====
+                const rules = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
+                if (!rules.length) {
+                    if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '规章制度数据为空'; }
+                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">📭 规章制度模块暂无数据，请先在「规章制度」模块导入文件</div>';
+                    contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
+                    return;
+                }
+                const matched = rules.filter(r => [r.trade, r.title, r.content, r.fileNumber, r.article].filter(Boolean).join(' ').toLowerCase().indexOf(kw) !== -1);
                 if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '命中 ' + matched.length + ' 条'; }
                 if (matched.length === 0) {
-                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">未找到与「' + _esc(keyword) + '」相关的手册内容</div>';
+                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">未找到与「' + _esc(keyword) + '」相关的规章制度</div>';
                     contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
                     return;
                 }
                 let html = '';
-                matched.slice(0, 50).forEach(function(d) {
-                    const path = [d.chapter, d.section, d.item, d.subitem].filter(Boolean).join(' › ');
-                    html += '<div class="hb-search-item" data-chapter="' + _esc(d.chapter) + '" data-section="' + _esc(d.section) + '" data-item="' + _esc(d.item) + '" data-subitem="' + _esc(d.subitem) + '" style="padding:10px 12px;border-bottom:1px solid #eef2f7;cursor:pointer;">'
+                matched.slice(0, 50).forEach(function(r) {
+                    const origIdx = rules.indexOf(r);
+                    const path = [r.trade, r.title].filter(Boolean).join(' › ');
+                    html += '<div class="hb-search-item" data-rule-idx="' + origIdx + '" style="padding:10px 12px;border-bottom:1px solid #eef2f7;cursor:pointer;">'
                         + '<div style="font-size:0.8rem;color:#64748b;">' + _esc(path) + '</div>'
-                        + '<div style="font-size:0.85rem;color:#1e293b;margin-top:2px;">' + _esc((d.content || '').slice(0, 80)) + '</div>'
+                        + '<div style="font-size:0.85rem;color:#1e293b;margin-top:2px;">' + _esc((r.content || '').slice(0, 80)) + '</div>'
                         + '</div>';
                 });
                 if (matched.length > 50) html += '<div style="padding:10px;color:#94a3b8;font-size:0.8rem;">仅显示前50条，请缩小关键词</div>';
                 treeEl.innerHTML = html;
-                contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧结果查看内容</div>';
+                contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
                 treeEl.querySelectorAll('.hb-search-item').forEach(function(it) {
                     it.addEventListener('click', function() {
                         treeEl.querySelectorAll('.hb-search-item.selected').forEach(x => x.classList.remove('selected'));
                         this.classList.add('selected');
-                        _hbShowContent(this.dataset.chapter, this.dataset.section, this.dataset.item, this.dataset.subitem);
+                        const ri = parseInt(this.dataset.ruleIdx, 10);
+                        if (typeof window.ruleViewFullText === 'function') window.ruleViewFullText(ri);
                         if (window.innerWidth <= 600) contentEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     });
                 });

@@ -176,7 +176,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!hb.length || !keyword) return hb.slice(0, limit || 10);
         var kw = keyword.toLowerCase();
         return hb.filter(function(h) {
-            return ((h.title||'') + ' ' + (h.content||'') + ' ' + (h.rules||'')).toLowerCase().indexOf(kw) !== -1;
+            var hay = [h.chapter, h.section, h.item, h.subitem, h.content].filter(Boolean).join(' ').toLowerCase();
+            return hay.indexOf(kw) !== -1;
         }).slice(0, limit || 10);
     };
 })();

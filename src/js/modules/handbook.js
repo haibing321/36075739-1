@@ -28,6 +28,11 @@
             function _esc(text) { if (!text) return ''; return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
             // ========== 导入确认通用函数 ==========
+            // 手册记录去重键（按章节路径 + 内容前50字）
+            function _hbKeyOf(d) {
+                return [d.chapter, d.section, d.item, d.subitem, (d.content || '').slice(0, 50)].join('||');
+            }
+
             function _showImportConfirm(count, importedData) {
                 const modal = document.getElementById('handbook-importModal');
                 document.getElementById('handbook-importMessage').innerText =
@@ -37,10 +42,13 @@
                 // 追加合并
                 document.getElementById('handbook-confirmImport').onclick = () => {
                     try {
-                        handbookData = handbookData.concat(importedData);
+                        const seen = new Set(handbookData.map(_hbKeyOf));
+                        const fresh = importedData.filter(d => { const k = _hbKeyOf(d); if (seen.has(k)) return false; seen.add(k); return true; });
+                        handbookData = handbookData.concat(fresh);
                         updateStats();
                         saveToStorage();
                         closeModal('handbook-importModal');
+                        if (fresh.length < importedData.length) console.log('[手册导入] 已跳过 ' + (importedData.length - fresh.length) + ' 条重复记录');
                     } catch(e) {
                         console.error('手册追加失败:', e);
                         closeModal('handbook-importModal');
@@ -100,16 +108,8 @@
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const result = await mammoth.convertToHtml({ arrayBuffer });
-                    // 调试：输出mammoth转换的原始HTML（截取前3000字符）
-                    console.log('[手册导入] mammoth原始HTML长度:', result.value.length);
-                    console.log('[手册导入] mammoth HTML前2000字符:', result.value.substring(0, 2000));
-                    console.log('[手册导入] mammoth HTML后1000字符:', result.value.slice(-1000));
-                    const parsedData = parseHandbookHtml(result.value);
-                    // 调试：输出解析结果
-                    console.log('[手册导入] 解析出', parsedData.length, '条记录');
-                    parsedData.forEach((d, i) => {
-                        console.log(`[${i}] ch="${d.chapter}" | sec="${d.section}" | item="${d.item}" | sub="${d.subitem}" | content="${d.content ? d.content.substring(0,80) : ''}"`);
-                    });
+                                        const parsedData = parseHandbookHtml(result.value);
+
                     if (parsedData.length === 0) {
                         alert(`文件 "${file.name}" 未能解析出有效数据，已跳过`);
                         return null;
@@ -290,6 +290,91 @@
             }
 
             // ========== 大纲浏览模式 ==========
+            // 内容 Markdown 渲染（复用对话模块的解析器，带兜底）
+            function _hbMd(text) {
+                if (typeof window.dsMarkdown === 'function') return window.dsMarkdown(text || '');
+                return _esc(text || '').replace(/\n/g, '<br>');
+            }
+
+            // 显示某节点内容（大纲点击与搜索复用）
+            function _hbShowContent(chapter, section, item, subitem) {
+                const contentEl = document.getElementById('hb-outlineContent');
+                let contents = [];
+                if (subitem) {
+                    contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item && d.subitem === subitem);
+                } else if (item) {
+                    contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item);
+                } else if (section) {
+                    contents = handbookData.filter(d => d.chapter === chapter && d.section === section);
+                } else if (chapter) {
+                    contents = handbookData.filter(d => d.chapter === chapter);
+                }
+
+                let pathHtml = '';
+                if (chapter) pathHtml += '<span class="path-chapter">' + _esc(chapter) + '</span>';
+                if (section) pathHtml += '<span class="path-section">' + _esc(section) + '</span>';
+                if (item) pathHtml += '<span class="path-item">' + _esc(item) + '</span>';
+                if (subitem) pathHtml += '<span class="path-subitem">' + _esc(subitem) + '</span>';
+
+                let bodyHtml = '';
+                contents.forEach(d => {
+                    if (d.subitem && d.content) {
+                        bodyHtml += '<div style="margin-bottom:12px;"><strong style="color:var(--primary);">' + _esc(d.subitem) + '</strong><br>' + _hbMd(d.content) + '</div>';
+                    } else if (d.content) {
+                        bodyHtml += '<div style="margin-bottom:8px;">' + _hbMd(d.content) + '</div>';
+                    }
+                });
+
+                if (!bodyHtml) bodyHtml = '<span style="color:#94a3b8;">（无详细内容，请展开子项查看）</span>';
+                contentEl.innerHTML = '<div class="hb-content-path">' + pathHtml + '</div><div class="hb-content-text">' + bodyHtml + '</div>';
+            }
+
+            // 站内搜索：过滤手册数据并列出命中条目（带路径）
+            window.hbSearch = function(keyword) {
+                const treeEl = document.getElementById('hb-outlineTree');
+                const contentEl = document.getElementById('hb-outlineContent');
+                const infoEl = document.getElementById('hb-searchInfo');
+                const kw = (keyword || '').trim().toLowerCase();
+                if (!kw) {
+                    if (infoEl) infoEl.style.display = 'none';
+                    const isOutline = document.getElementById('hb-toggleOutline').classList.contains('active');
+                    if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
+                    return;
+                }
+                const matched = handbookData.filter(d => [d.chapter, d.section, d.item, d.subitem, d.content].filter(Boolean).join(' ').toLowerCase().indexOf(kw) !== -1);
+                if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '命中 ' + matched.length + ' 条'; }
+                if (matched.length === 0) {
+                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">未找到与「' + _esc(keyword) + '」相关的手册内容</div>';
+                    contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
+                    return;
+                }
+                let html = '';
+                matched.slice(0, 50).forEach(function(d) {
+                    const path = [d.chapter, d.section, d.item, d.subitem].filter(Boolean).join(' › ');
+                    html += '<div class="hb-search-item" data-chapter="' + _esc(d.chapter) + '" data-section="' + _esc(d.section) + '" data-item="' + _esc(d.item) + '" data-subitem="' + _esc(d.subitem) + '" style="padding:10px 12px;border-bottom:1px solid #eef2f7;cursor:pointer;">'
+                        + '<div style="font-size:0.8rem;color:#64748b;">' + _esc(path) + '</div>'
+                        + '<div style="font-size:0.85rem;color:#1e293b;margin-top:2px;">' + _esc((d.content || '').slice(0, 80)) + '</div>'
+                        + '</div>';
+                });
+                if (matched.length > 50) html += '<div style="padding:10px;color:#94a3b8;font-size:0.8rem;">仅显示前50条，请缩小关键词</div>';
+                treeEl.innerHTML = html;
+                contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧结果查看内容</div>';
+                treeEl.querySelectorAll('.hb-search-item').forEach(function(it) {
+                    it.addEventListener('click', function() {
+                        treeEl.querySelectorAll('.hb-search-item.selected').forEach(x => x.classList.remove('selected'));
+                        this.classList.add('selected');
+                        _hbShowContent(this.dataset.chapter, this.dataset.section, this.dataset.item, this.dataset.subitem);
+                        if (window.innerWidth <= 600) contentEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                });
+            };
+
+            window.hbClearSearch = function() {
+                const el = document.getElementById('hb-searchInput');
+                if (el) el.value = '';
+                window.hbSearch('');
+            };
+
 
             // 数据持久化
             var STORAGE_KEY = 'handbook_fourlevel_v1';
@@ -315,6 +400,9 @@
                     handbookData = [];
                     updateStats();
                     saveToStorage();
+                    const isOutline = document.getElementById('hb-toggleOutline') && document.getElementById('hb-toggleOutline').classList.contains('active');
+                    if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
+                    const infoEl = document.getElementById('hb-searchInfo'); if (infoEl) infoEl.style.display = 'none';
                 }
             };
 
@@ -442,37 +530,8 @@
                         treeEl.querySelectorAll('.hb-tree-header.selected').forEach(h => h.classList.remove('selected'));
                         this.classList.add('selected');
 
-                        // 查找该节点对应的所有内容
-                        let contents = [];
-                        if (subitem) {
-                            contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item && d.subitem === subitem);
-                        } else if (item) {
-                            contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item);
-                        } else if (section) {
-                            contents = handbookData.filter(d => d.chapter === chapter && d.section === section);
-                        } else if (chapter) {
-                            contents = handbookData.filter(d => d.chapter === chapter);
-                        }
+                        _hbShowContent(chapter, section, item, subitem);
 
-                        // 渲染内容
-                        let pathHtml = '';
-                        if (chapter) pathHtml += '<span class="path-chapter">' + _esc(chapter) + '</span>';
-                        if (section) pathHtml += '<span class="path-section">' + _esc(section) + '</span>';
-                        if (item) pathHtml += '<span class="path-item">' + _esc(item) + '</span>';
-                        if (subitem) pathHtml += '<span class="path-subitem">' + _esc(subitem) + '</span>';
-
-                        let bodyHtml = '';
-                        contents.forEach(d => {
-                            if (d.subitem && d.content) {
-                                bodyHtml += '<div style="margin-bottom:12px;"><strong style="color:var(--primary);">' + _esc(d.subitem) + '</strong>\n' + _esc(d.content).replace(/\n/g, '<br>') + '</div>';
-                            } else if (d.content) {
-                                bodyHtml += '<div style="margin-bottom:8px;">' + _esc(d.content).replace(/\n/g, '<br>') + '</div>';
-                            }
-                        });
-
-                        if (!bodyHtml) bodyHtml = '<span style="color:#94a3b8;">（无详细内容，请展开子项查看）</span>';
-
-                        contentEl.innerHTML = '<div class="hb-content-path">' + pathHtml + '</div><div class="hb-content-text">' + bodyHtml + '</div>';
 
                         // 手机端：点击后自动滚动到内容区
                         if (window.innerWidth <= 600) {
@@ -541,7 +600,7 @@
 
                 let treeHtml = '';
                 tree.forEach(node => { treeHtml += renderNode(node); });
-                treeEl.innerHTML = treeHtml || '<div class="hb-content-placeholder">暂无数据</div>';
+                treeEl.innerHTML = '<div style="padding:8px 12px;background:#fffbeb;color:#92400e;font-size:0.8rem;border-radius:8px;margin-bottom:8px;">ⓘ 此视图只读参照规章制度模块数据，编辑请到「规章制度」模块</div>' + (treeHtml || '<div class="hb-content-placeholder">暂无数据</div>');
                 contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看全文</div>';
 
                 // 绑定点击事件

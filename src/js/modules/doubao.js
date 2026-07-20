@@ -1329,6 +1329,12 @@
     (function() {
       'use strict';
 
+      // ---------- 0. 跨 IIFE 依赖兜底（Part A 的 dsEsc / dsMarkdown） ----------
+      var dsEsc = typeof window.dsEsc === 'function' ? window.dsEsc
+        : function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+      var dsMarkdown = typeof window.dsMarkdown === 'function' ? window.dsMarkdown
+        : function(t){ return t||''; };
+
       // ---------- 1. 依赖检查 ----------
       const hasGetRules = typeof window.getRulesData === 'function';
       const hasGetIssue = typeof window.getIssueData === 'function';

@@ -1316,6 +1316,9 @@
         window.bindApiModalEvents     = typeof bindApiModalEvents !== 'undefined' ? bindApiModalEvents : function(){};
         // dsInit 在 IIFE 开头定义，也需暴露
         window.dsInit                 = typeof dsInit !== 'undefined' ? dsInit : function(){};
+        // Part B 增强功能（agent 等）依赖的 Part A 内部函数
+        window.dsEsc                  = typeof dsEsc !== 'undefined' ? dsEsc : function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+        window.dsMarkdown             = typeof dsMarkdown !== 'undefined' ? dsMarkdown : function(t){ return t||''; };
 
     })();
 

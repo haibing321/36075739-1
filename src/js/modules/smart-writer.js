@@ -1541,7 +1541,7 @@
 
             let _wrAbortController = null; // 用于停止写作生成
 
-            window.wrGenerate = async function() {
+            window.wrGenerate = async function(isRegenerate) {
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!q.trim()) { alert('请输入写作需求'); return; }
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
@@ -1562,29 +1562,52 @@
                     uploadedFiles.forEach(f => { enhancedQuery += `\n--- 文件：${f.name} ---\n${f.content}\n`; });
                 }
 
-                wrAppendChatBubble('user', q);
-                _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
-                document.getElementById('wr-query-input').value = '';
+                if (!isRegenerate) {
+                    wrAppendChatBubble('user', q);
+                    _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
+                    document.getElementById('wr-query-input').value = '';
+                }
                 wrUpdateConvBtn();
 
                 const aiBubble = wrAppendChatBubble('assistant', '', true);
                 const streamBubbleContent = document.getElementById('wr-stream-bubble-content');
                 if (writeBtn) writeBtn.disabled = true;
 
-                // 隐藏旧结果区
+                // 结果容器（检索加载态复用）
                 const resultEl = document.getElementById('wr-gen-result');
-                if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
 
                 try {
-                    // 获取用户选择的模板和资料
-                    let template = window._wrSelectedTemplate;
-                    let localMaterials = [];
-                    if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length) {
+                    // 显示检索加载态
+                    if (resultEl) { resultEl.style.display = 'block'; resultEl.innerHTML = '<div style="padding:14px;color:#64748b;font-size:0.85rem;">🔍 正在检索本地资料与台账数据…</div>'; }
+
+                    // 自动检索 vs 手动选择逻辑：
+                    // 未手动选择资料库资料 → 全自动检索（台账/模板/本地资料/历史报告/规则）
+                    // 已手动选择资料库资料 → 用手选资料，仍自动检索台账/规则/相似报告（保证数字真实、不编造）
+                    const manualMatIds = (window._wrSelectedMaterialIds || []).filter(Boolean);
+                    let materials;
+                    if (manualMatIds.length === 0) {
+                        try { materials = await wrRetrieveMaterials(q); }
+                        catch (e) { console.warn('自动检索失败，回退空资料', e); materials = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
+                    } else {
                         const allMats = await wrDbGetAll(WR_MAT_STORE);
-                        localMaterials = allMats.filter(m => window._wrSelectedMaterialIds.includes(m.id) && m.matType !== 'template');
+                        const chosenLocal = allMats.filter(m => manualMatIds.includes(m.id) && m.matType !== 'template');
+                        let auto;
+                        try { auto = await wrRetrieveMaterials(q); } catch (e) { auto = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
+                        materials = {
+                            parsed: auto.parsed || wrParseQuery(q),
+                            template: window._wrSelectedTemplate || auto.template,
+                            issues: auto.issues || [],
+                            stats: auto.stats || null,
+                            similarReports: auto.similarReports || [],
+                            ruleCandidates: auto.ruleCandidates || [],
+                            localMaterials: chosenLocal
+                        };
                     }
-                    const parsed = wrParseQuery(q);
-                    const materials = { parsed, template, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials };
+                    const parsed = materials.parsed;
+                    const template = materials.template;
+
+                    // 隐藏检索加载态，开始流式生成
+                    if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
 
                     // 构建提示词
                     const { sysPrompt, userPrompt } = wrBuildPrompt(enhancedQuery, materials);
@@ -1637,7 +1660,7 @@
                                     fullText += delta;
                                     const now = Date.now();
                                     if (now - lastRender > RENDER_INTERVAL && streamBubbleContent) {
-                                        streamBubbleContent.innerHTML = wrStreamFormat(fullText);
+                                        streamBubbleContent.innerHTML = (window.dsMarkdown ? window.dsMarkdown(fullText) : wrStreamFormat(fullText));
                                         const histEl = document.getElementById('wr-chat-history');
                                         if (histEl) histEl.scrollTop = histEl.scrollHeight;
                                         lastRender = now;
@@ -1647,7 +1670,7 @@
                         }
                     }
                     // 最后一次渲染
-                    if (streamBubbleContent) streamBubbleContent.innerHTML = wrStreamFormat(fullText);
+                    if (streamBubbleContent) streamBubbleContent.innerHTML = (window.dsMarkdown ? window.dsMarkdown(fullText) : wrStreamFormat(fullText));
                     
                     // 去掉流式气泡 id
                     if (aiBubble) aiBubble.id = '';
@@ -1677,6 +1700,7 @@
                     // 保存当前报告内容
                     window._wrCurrentReportContent = fullText;
                     window._wrCurrentReportQuery   = enhancedQuery;
+                    window._wrCurrentReportOrigQuery = q;
                     window._wrCurrentReportParsed  = parsed;
 
                     // 保存到历史
@@ -1699,6 +1723,10 @@
                             <button onclick="wrCopyText('${savedId}')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>
                             <button onclick="wrDownloadText('${savedId}')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>
                             ${template && template.templateBuffer ? `<button onclick="wrDownloadDocxFromTemplate()" style="padding:5px 10px;background:#2b6cb0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📄 导出DOCX</button>` : ''}
+                            <button onclick="wrSpeak('${savedId}')" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">🔊 朗读</button>
+
+                            <button onclick="wrRegenerate()" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">🔄 重新生成</button>
+
                             <span style="font-size:0.72rem;color:#059669;align-self:center;">✅ 已保存</span>
                         `;
                         aiBubble.appendChild(actionsDiv);
@@ -1712,6 +1740,7 @@
                             streamBubbleContent.style.background = '#fff7ed';
                             streamBubbleContent.textContent = '⏹️ 已停止生成';
                         }
+                        if (aiBubble) wrAppendRetryBtn(aiBubble);
                     } else {
                         let msg = err.message || '未知错误';
                         if (msg.includes('Failed to fetch')) msg = 'CORS跨域限制：当前API不支持浏览器直接访问，建议切换DeepSeek';
@@ -1720,6 +1749,7 @@
                             streamBubbleContent.style.color = '#e53e3e';
                             streamBubbleContent.textContent = '❌ 生成失败：' + msg;
                         }
+                        if (aiBubble) wrAppendRetryBtn(aiBubble);
                     }
                 } finally {
                     if (writeBtn) { writeBtn.disabled = false; writeBtn.textContent = '✍️ 开始写作'; }
@@ -1727,6 +1757,46 @@
                     _wrAbortController = null;
                 }
             };
+
+
+            // 语音朗读当前报告
+            window.wrSpeak = function() {
+                const text = (window._wrCurrentReportContent || '').replace(/【数据[^\]】]*】/g, '');
+                if (!text.trim()) return;
+                try {
+                    if (window.speechSynthesis) {
+                        window.speechSynthesis.cancel();
+                        const u = new SpeechSynthesisUtterance(text);
+                        u.lang = 'zh-CN'; u.rate = 1; u.pitch = 1;
+                        window.speechSynthesis.speak(u);
+                    }
+                } catch (e) {}
+            };
+
+            // 重新生成（移除末轮对话，复用原 query 重发）
+            window.wrRegenerate = function() {
+                let q = window._wrCurrentReportQuery;
+                if (!q || !q.trim()) q = (document.getElementById('wr-query-input') || {}).value || '';
+                if (!q.trim()) { alert('没有可重新生成的内容'); return; }
+                const histEl = document.getElementById('wr-chat-history');
+                if (histEl) {
+                    const rows = histEl.querySelectorAll('.ds-row-assistant');
+                    if (rows.length) rows[rows.length - 1].remove();
+                }
+                while (_wrConvHistory.length && _wrConvHistory[_wrConvHistory.length - 1].role === 'assistant') _wrConvHistory.pop();
+                while (_wrConvHistory.length && _wrConvHistory[_wrConvHistory.length - 1].role === 'user') _wrConvHistory.pop();
+                document.getElementById('wr-query-input').value = (window._wrCurrentReportOrigQuery != null ? window._wrCurrentReportOrigQuery : q);
+                wrGenerate(true);
+            };
+
+            // 在气泡下追加「重新生成」按钮（停止/失败时使用）
+            function wrAppendRetryBtn(bubble) {
+                if (!bubble) return;
+                const d = document.createElement('div');
+                d.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
+                d.innerHTML = '<button onclick="wrRegenerate()" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">🔄 重新生成</button>';
+                bubble.appendChild(d);
+            }
 
             // 停止写作生成
             window.stopWrGeneration = function() {

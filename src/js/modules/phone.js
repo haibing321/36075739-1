@@ -6,6 +6,7 @@
             const STORAGE_KEY = 'railway_phone_db_v1';
             let phoneData = [];
             let phoneSuggestions = [];
+            let phoneLastResults = [];
 
             function loadFromStorage() {
                 try { const data = localStorage.getItem(STORAGE_KEY); if (data) phoneData = JSON.parse(data); } catch (e) { phoneData = []; }
@@ -79,6 +80,7 @@
                     });
                 }
                 document.getElementById('phone-resultCount').textContent = filtered.length + ' 条';
+                phoneLastResults = filtered;
                 if (filtered.length === 0) {
                     resultsContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📞</div><p>没有找到匹配的电话</p></div>';
                     return;
@@ -99,7 +101,10 @@
                         <div class="result-card" style="position:relative;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                 <h3 style="font-size:1.1rem; color:var(--primary);">${escapeHtml(item.站名 || '')}</h3>
-                                <span class="tag tag-category">${escapeHtml(item.单位 || '')}</span>
+                                <span style="display:flex; align-items:center; gap:6px;">
+                                    <button class="btn-copy" onclick="phoneCopyEntry(${idx})" title="复制整条">📋 复制</button>
+                                    <span class="tag tag-category">${escapeHtml(item.单位 || '')}</span>
+                                </span>
                             </div>
                             <div style="display:grid; grid-template-columns:auto 1fr; gap:8px 12px; margin-bottom:8px;">
                                 <span style="color:var(--text-secondary);">线名：</span><span>${escapeHtml(item.线名 || '')}</span>
@@ -119,6 +124,37 @@
                 resultsContainer.innerHTML = html;
             };
 
+            // 复制整条电话记录（站名/单位/线名/路电/市电/备注）
+            window.phoneCopyEntry = function(idx) {
+                const item = phoneLastResults[idx];
+                if (!item) return;
+                const lines = [
+                    '站名：' + (item.站名 || ''),
+                    '单位：' + (item.单位 || ''),
+                    '线名：' + (item.线名 || ''),
+                    '路电：' + (item.路电 || ''),
+                    '市电：' + (item.市电 || ''),
+                ];
+                if (item.备注) lines.push('备注：' + item.备注);
+                const text = lines.join('\n');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function(){ phoneFlashCopied(idx); }, function(){ _legacyCopy(text); });
+                } else { _legacyCopy(text); }
+            };
+            function _legacyCopy(text) {
+                const ta = document.createElement('textarea');
+                ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); } catch (e) {}
+                document.body.removeChild(ta);
+            }
+            function phoneFlashCopied(idx) {
+                const btn = document.querySelector('.result-card .btn-copy[onclick="phoneCopyEntry(' + idx + ')"]');
+                if (!btn) return;
+                const old = btn.textContent; btn.textContent = '✅ 已复制';
+                setTimeout(function(){ btn.textContent = old; }, 1200);
+            }
+
             window.phoneClearSearch = function() {
                 document.getElementById('phone-searchInput').value = '';
                 // 恢复初始状态：隐藏结果区，显示提示文字
@@ -133,6 +169,18 @@
 
             // escapeHtml 已统一到 utils.js (window.escapeHtml)，此处不再重复定义
 
+            // 按站名去重合并：同名站点以导入数据覆盖，新站点追加
+            function phoneMergeByStation(incoming) {
+                const map = new Map();
+                phoneData.forEach(function(it) { if (it.站名) map.set(it.站名, it); });
+                let replaced = 0;
+                incoming.forEach(function(it) {
+                    if (it.站名 && map.has(it.站名)) replaced++;
+                    if (it.站名) map.set(it.站名, it);
+                });
+                return { data: Array.from(map.values()), replaced: replaced };
+            }
+
             window.phoneHandleFile = async function(e) {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -144,9 +192,9 @@
                         if (!Array.isArray(imported)) throw new Error('JSON 数据必须是数组');
                         if (imported.length === 0) throw new Error('JSON 文件无有效数据');
                         if (phoneData.length > 0) {
-                            const action = confirm(`成功解析 ${imported.length} 条JSON记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"追加。`);
+                            const action = confirm(`成功解析 ${imported.length} 条JSON记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"按站名去重追加。`);
                             if (action) phoneData = imported;
-                            else phoneData = [...phoneData, ...imported];
+                            else { const m = phoneMergeByStation(imported); phoneData = m.data; }
                         } else phoneData = imported;
                         saveToStorage();
                         phoneDoSearch();
@@ -195,9 +243,9 @@
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     if (phoneData.length > 0) {
-                        const action = confirm(`成功解析 ${newData.length} 条记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"追加。`);
+                        const action = confirm(`成功解析 ${newData.length} 条记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"按站名去重追加。`);
                         if (action) phoneData = newData;
-                        else phoneData = [...phoneData, ...newData];
+                        else { const m = phoneMergeByStation(newData); phoneData = m.data; }
                     } else phoneData = newData;
                     saveToStorage();
                     phoneDoSearch();
@@ -216,7 +264,23 @@
                 URL.revokeObjectURL(url);
                 window.finishProgress('✅ 应急电话导出成功');
             };
-            window.phoneDownloadTemplate = function() {
+            // 仅导出当前搜索结果（非全量）
+            window.phoneExportCurrentResults = function() {
+                const data = (phoneLastResults && phoneLastResults.length) ? phoneLastResults : phoneData;
+                if (data.length === 0) { alert('没有可导出的结果'); return; }
+                window.showProgress(50, '正在导出当前结果…');
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '应急电话_结果_' + new Date().toISOString().slice(0,10) + '.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                window.finishProgress('✅ 已导出 ' + data.length + ' 条当前结果');
+            };
+            window.phoneDownloadTemplate = async function() {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+                if (typeof XLSX === 'undefined') { alert('XLSX 库未加载，请检查网络连接后重试'); return; }
                 const template = [ { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' }, { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' } ];
                 const ws = XLSX.utils.json_to_sheet(template);
                 const wb = XLSX.utils.book_new();
@@ -291,72 +355,25 @@
                 if (btn) btn.disabled = true;
 
                 try {
-                    // 总是重新联网搜索坐标（带省份过滤），避免旧坐标跨省不准
-                    // 去掉站名的方位后缀和"站"字（如"白银西"→"白银","天水南站"→"天水"）
-                    var geoName = stationName.replace(/站$/, '').replace(/[东西南北](南|北|东|西)?$/, '');
-                    if (!geoName || geoName.length < 2) geoName = stationName.replace(/[东西南北](南|北|东|西)?站?$/, '');
-                    if (!geoName || geoName.length < 2) geoName = stationName;
-                    // 构建更精确的搜索词：线名 + 站名
-                    var geoQuery = geoName;
-                    if (lineName) geoQuery = lineName + ' ' + geoName;
-                    // 有代理走 /geo，否则直接调 Open-Meteo Geocoding
-                    if (PROXY) {
-                        const gr = await fetch(`${PROXY}/geo?name=${encodeURIComponent(geoQuery)}`);
-                        if (gr.ok) {
-                            const gd = await gr.json();
-                            if (gd && gd.lat) { lat = gd.lat; lon = gd.lon; }
-                        }
-                    } else {
+                    // 坐标优先级：已存经纬度(缓存命中) > 联网 geocode
+                    // 这样离线/file:// 无代理时也能查已存坐标的天气，且避免每次多余请求
+                    if (!lat || !lon) {
                         try {
-                            // 两级省份过滤：先甘宁，再陕川
-                            function pickResult(results) {
-                                    if (!results || !results.length) return null;
-                                    function inProvince(r, list) {
-                                        if (r.country_code !== 'CN' && r.country !== '中国') return false;
-                                        var admin = (r.admin1 || '').replace(/省|自治区|回族|维吾尔/g, '');
-                                        return list.some(function(p) { return admin.indexOf(p) !== -1; });
-                                    }
-                                    // 第一级：甘肃、宁夏
-                                    for (var i = 0; i < results.length; i++) {
-                                        if (inProvince(results[i], ['甘肃','宁夏'])) return results[i];
-                                    }
-                                    // 第二级：陕西、四川
-                                    for (var j = 0; j < results.length; j++) {
-                                        if (inProvince(results[j], ['陕西','四川'])) return results[j];
-                                    }
-                                    // 都不匹配 → 放弃（不跨辖区）
-                                    return null;
-                                }
-                                // 先用带线名的精确词搜索
-                                var searchQuery = geoQuery;
-                                var url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=8&language=zh&format=json`;
-                                var gr = await fetch(url);
-                                var gd = await gr.json();
-                                var chosen = pickResult(gd.results);
-                                if (!chosen) {
-                                    // 回退：只用地名（去掉线名）
-                                    searchQuery = geoName;
-                                    url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=8&language=zh&format=json`;
-                                    gr = await fetch(url);
-                                    gd = await gr.json();
-                                    chosen = pickResult(gd.results);
-                                }
-                                if (chosen) {
-                                    lat = chosen.latitude; lon = chosen.longitude;
-                                }
-                            } catch(_) {}
-                        }
-                        // 保存到 phoneData 和 localStorage
-                        if (lat) {
-                            for (let i = 0; i < phoneData.length; i++) {
-                                if (phoneData[i].站名 === stationName) {
-                                    phoneData[i].纬度 = lat;
-                                    phoneData[i].经度 = lon;
-                                    break;
-                                }
+                            const coords = await window.phoneGeocode(stationName, lineName);
+                            if (coords) { lat = coords.lat; lon = coords.lon; }
+                        } catch (_) {}
+                    }
+                    // 把（geocode 得到的）坐标补回数据，便于下次离线直接查
+                    if (lat) {
+                        for (let i = 0; i < phoneData.length; i++) {
+                            if (phoneData[i].站名 === stationName) {
+                                phoneData[i].纬度 = lat;
+                                phoneData[i].经度 = lon;
+                                break;
                             }
-                            saveToStorage();
                         }
+                        saveToStorage();
+                    }
 
                     if (!lat) {
                         box.innerHTML = `<div style="background:#450a0a;border-radius:8px;padding:10px;color:#fca5a5;font-size:.82rem;text-align:center;">⚠️ 未找到坐标，暂无法查天气。<br><span style="opacity:.7;font-size:.78rem">联网搜索不可用时请手动补充</span></div>`;

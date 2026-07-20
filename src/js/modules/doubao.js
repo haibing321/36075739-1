@@ -2021,6 +2021,16 @@
                           '<button class="feedback-download" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#8b5cf6\';this.style.color=\'#8b5cf6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="下载本条回复">📥 下载</button>' +
                           '<button class="feedback-good" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👍 有用</button>' +
                           '<button class="feedback-bad" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#ef4444\';this.style.color=\'#ef4444\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👎 无用</button>';
+        // 语音朗读按钮（仅支持 Web Speech API 的浏览器显示）
+        if (typeof window.speechSynthesis !== 'undefined') {
+          var readBtn = document.createElement('button');
+          readBtn.textContent = '🔊 朗读';
+          readBtn.style.cssText = 'background:none;border:1px solid #d1d5db;border-radius:14px;padding:3px 10px;font-size:0.75rem;cursor:pointer;color:#6b7280;transition:all 0.15s;';
+          readBtn.onmouseover = function(){ this.style.borderColor='#f59e0b'; this.style.color='#f59e0b'; };
+          readBtn.onmouseout = function(){ this.style.borderColor='#d1d5db'; this.style.color='#6b7280'; };
+          readBtn.onclick = function(){ dsSpeak(this); };
+          fbDiv.appendChild(readBtn);
+        }
         messageDiv.appendChild(fbDiv);
         // 复制本消息
         fbDiv.querySelector('.feedback-copy').onclick = function(){
@@ -2051,6 +2061,26 @@
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };
       }
       window._addFeedbackButtons = addFeedbackButtons;
+
+      // ========== 语音朗读 ==========
+      window.dsSpeak = function(btn) {
+        if (typeof window.speechSynthesis === 'undefined') return;
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          btn.textContent = '🔊 朗读';
+          return;
+        }
+        var bubble = btn.closest('.ds-bubble-assistant') || btn.parentElement.querySelector('.ds-bubble-assistant');
+        if (!bubble) return;
+        var text = bubble.innerText || bubble.textContent || '';
+        if (!text) return;
+        var utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'zh-CN'; utter.rate = 1.0;
+        utter.onend = function(){ btn.textContent = '🔊 朗读'; };
+        utter.onerror = function(){ btn.textContent = '🔊 朗读'; };
+        btn.textContent = '⏹ 停止';
+        window.speechSynthesis.speak(utter);
+      };
 
       function saveFeedback(type, content) {
         var logs = JSON.parse(localStorage.getItem('feedback_logs') || '[]');

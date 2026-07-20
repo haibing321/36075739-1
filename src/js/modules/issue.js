@@ -50,6 +50,9 @@
                     await insertBatch(dataArray.slice(i, i + batchSize));
                 }
                 dataCache = dataArray;
+                // 数据已变更，使 Fuse 索引失效，下次搜索时重建（避免覆盖导入同条数后命中长期缓存）
+                _fuseInstance = null;
+                _fuseDataVersion = 0;
             }
 
             function insertBatch(batch) {
@@ -455,6 +458,7 @@
                     }
 
                     allFilteredResults = results;
+                    issueApplyFeedbackSort(results); // 应用相关性反馈排序（👍置顶/👎沉底）
                     currentKeywords = keywords;
                     const highMatch = results.filter(r => r.matchRate >= MATCH_THRESHOLD);
                     const lowMatch = results.filter(r => r.matchRate < MATCH_THRESHOLD);
@@ -516,7 +520,8 @@
                 else if (xz === '红线' || xz.includes('红线')) { levelClass = 'level-hongxian'; xingzhiClass = 'tag-xz-hongxian'; }
                 else if (xz === '空白' || xz === '' || xz.includes('空白')) { levelClass = 'level-kongbai'; xingzhiClass = 'tag-xz-kongbai'; xingzhi = '空白'; }
                 else { levelClass = 'level-kongbai'; xingzhiClass = 'tag-xz-kongbai'; }
-                let content = item.content || '';
+                // 统一先 HTML 转义，再做关键词高亮（与规章依据一致，避免描述中含 < > & 时 XSS / 显示错乱）
+                let content = escapeHtml(item.content || '');
                 keywords.forEach(k => {
                     const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
                     content = content.replace(reg, '<span class="highlight">$1</span>');
@@ -531,7 +536,10 @@
                     });
                     regulationHtml = '<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #3b82f6;font-size:0.85rem;border-radius:0 4px 4px 0;"><strong>📜 规章依据：</strong>' + regText + '</div>';
                 }
-                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button></div><div class="result-text" data-content="' + encodeURIComponent(content.replace(/"/g, '&quot;')) + '">' + content + '</div>' + regulationHtml + '</div></div>';
+                // 长文本折叠 + 相关性反馈（👍/👎）
+                const isLong = content.length > 120;
+                const fb = issueGetFeedback(item);
+                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button><span style="margin-left:auto;display:flex;gap:4px;"><button class="btn-copy ' + (fb === 'good' ? 'fb-good' : '') + '" title="相关/准确" onclick="issueMarkRelevance(this,\'good\')">👍</button><button class="btn-copy ' + (fb === 'bad' ? 'fb-bad' : '') + '" title="不相关/不准" onclick="issueMarkRelevance(this,\'bad\')">👎</button></span></div><div class="result-text" ' + (isLong ? 'style="max-height:4.8em;overflow:hidden;"' : '') + ' data-content="' + encodeURIComponent(content) + '">' + content + '</div>' + (isLong ? '<button class="btn-link" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;padding:4px 0;" onclick="issueToggleExpand(this)">展开全文 ▼</button>' : '') + regulationHtml + '</div></div>';
             }
 
             window.issueCopyContent = function(btn) {
@@ -611,8 +619,8 @@
                     const existingCount = dataCache.length;
                     let finalData = normalized;
                     if (existingCount > 0) {
-                        const action = confirm(`当前已有 ${existingCount} 条记录。\n点击"确定"覆盖，点击"取消"追加`);
-                        if (!action) finalData = [...dataCache, ...normalized];
+                        const action = confirm(`当前已有 ${existingCount} 条记录。\n点击"确定"覆盖，点击"取消"追加（相同问题自动合并去重）`);
+                        if (!action) finalData = issueDedupMerge(dataCache, normalized);
                     }
                     await saveData(finalData); await updateStorage();
                     window.finishProgress('✅ 成功导入 ' + imported.length + ' 条检查记录');
@@ -661,8 +669,8 @@
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     const existingCount = dataCache.length; let finalData = newData;
                     if (existingCount > 0) {
-                        const action = confirm('当前已有 ' + existingCount + ' 条记录。\n点击"确定"覆盖，点击"取消"追加');
-                        if (!action) finalData = [...dataCache, ...newData];
+                        const action = confirm('当前已有 ' + existingCount + ' 条记录。\n点击"确定"覆盖，点击"取消"追加（相同问题自动合并去重）');
+                        if (!action) finalData = issueDedupMerge(dataCache, newData);
                     }
                     window.showProgress(70, '正在保存到数据库…');
                     document.getElementById('issue-importStatus').textContent = '正在保存...';
@@ -723,6 +731,89 @@
             window.issueConfirmClear = async function() {
                 try { await clearAllData(); dataCache = []; await updateStorage(); closeModal('issue-clearModal'); document.getElementById('issue-results').innerHTML = ''; document.getElementById('issue-lowMatchResults').innerHTML = ''; document.getElementById('issue-statsBar').style.display = 'none'; alert('所有数据已清空'); } catch (e) { alert('清空失败: ' + e.message); }
             };
+
+            // ========== 结果卡片：展开/收起 ==========
+            window.issueToggleExpand = function(btn) {
+                const txt = btn.previousElementSibling;
+                if (!txt) return;
+                const collapsed = txt.style.maxHeight && txt.style.maxHeight !== 'none';
+                if (collapsed) { txt.style.maxHeight = 'none'; btn.textContent = '收起 ▲'; }
+                else { txt.style.maxHeight = '4.8em'; btn.textContent = '展开全文 ▼'; }
+            };
+
+            // ========== 相关性反馈闭环 ==========
+            // 用「问题描述」作稳定键（同一条问题描述即同一问题），反馈存入 localStorage 供排序加权
+            function issueFeedbackKey(item) { return (item.content || '').trim(); }
+            function issueGetFeedback(item) {
+                try { const m = JSON.parse(localStorage.getItem('issue_feedback') || '{}'); return m[issueFeedbackKey(item)] || ''; } catch (e) { return ''; }
+            }
+            function issueFeedbackScore(item) {
+                try { const m = JSON.parse(localStorage.getItem('issue_feedback') || '{}'); const v = m[issueFeedbackKey(item)]; return v === 'good' ? 1 : v === 'bad' ? -1 : 0; } catch (e) { return 0; }
+            }
+            // 在匹配率/模糊分之后追加反馈维度：👍置顶、👎沉底
+            function issueApplyFeedbackSort(results) {
+                results.sort(function(a, b) {
+                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
+                    const fa = issueFeedbackScore(a), fb = issueFeedbackScore(b);
+                    if (fa !== fb) return fb - fa;
+                    if ((b.fuseScore || 0) !== (a.fuseScore || 0)) return (b.fuseScore || 0) - (a.fuseScore || 0);
+                    return new Date(b.datetime || 0) - new Date(a.datetime || 0);
+                });
+            }
+            window.issueMarkRelevance = function(btn, type) {
+                const card = btn.closest('.result-card');
+                if (!card) return;
+                const key = decodeURIComponent(card.dataset.rawContent || '');
+                if (!key) return;
+                let m = {};
+                try { m = JSON.parse(localStorage.getItem('issue_feedback') || '{}'); } catch (e) {}
+                if (m[key] === type) delete m[key]; else m[key] = type; // 再次点同类型取消
+                try { localStorage.setItem('issue_feedback', JSON.stringify(m)); } catch (e) {}
+                const goodBtn = card.querySelector('.result-content-header .btn-copy[title="相关/准确"]');
+                const badBtn = card.querySelector('.result-content-header .btn-copy[title="不相关/不准"]');
+                if (goodBtn) goodBtn.classList.toggle('fb-good', m[key] === 'good');
+                if (badBtn) badBtn.classList.toggle('fb-bad', m[key] === 'bad');
+                // 重新渲染当前结果以应用排序
+                if (allFilteredResults.length > 0) {
+                    const high = allFilteredResults.filter(r => r.matchRate >= MATCH_THRESHOLD);
+                    const low = allFilteredResults.filter(r => r.matchRate < MATCH_THRESHOLD);
+                    issueDisplayResults(high, low, currentKeywords);
+                }
+            };
+
+            // ========== 导出当前搜索结果 ==========
+            window.issueExportCurrentResults = function() {
+                const src = allFilteredResults.length ? allFilteredResults : dataCache;
+                if (!src.length) { alert('暂无可导出的结果（请先搜索或导入数据）'); return; }
+                window.showProgress(30, '正在导出当前结果…');
+                const exportData = src.map(item => ({
+                    '性质': getXingzhi(item), '时间': item.datetime || '', '类别': item.category || '待分类',
+                    '问题描述': item.content || '', '规章依据': item.regulation || '', '单位': item.unit || ''
+                }));
+                window.showProgress(60, '正在打包文件…');
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                const suffix = allFilteredResults.length ? ('_当前结果' + allFilteredResults.length + '条') : ('_' + dataCache.length + '条');
+                a.download = '铁路检查信息' + suffix + '_' + new Date().toISOString().slice(0, 10) + '.json';
+                a.click(); URL.revokeObjectURL(url);
+                window.finishProgress('✅ 导出成功（' + exportData.length + ' 条）');
+            };
+
+            // ========== 导入追加去重（相同问题自动合并，导入覆盖） ==========
+            function issueStableKey(item) { return (item.content || '').trim() + '|' + (item.unit || '').trim(); }
+            function issueDedupMerge(existing, incoming) {
+                const map = new Map();
+                existing.forEach(function(d) { map.set(issueStableKey(d), d); });
+                let dup = 0;
+                incoming.forEach(function(d) {
+                    const k = issueStableKey(d);
+                    if (map.has(k)) dup++;
+                    map.set(k, d); // 导入的覆盖已有的
+                });
+                if (dup > 0) console.log('[issue] 追加导入已合并 ' + dup + ' 条重复问题');
+                return Array.from(map.values());
+            }
 
             window.addEventListener('load', async function() {
                 // 始终绑定文件导入事件（不依赖 IndexedDB 初始化成功）

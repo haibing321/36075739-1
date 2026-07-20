@@ -493,6 +493,8 @@
 }
 .btn-copy:hover { background: var(--primary-light); }
 .btn-copy.copied { background: var(--success); }
+.btn-copy.fb-good { background: var(--success); }
+.btn-copy.fb-bad { background: #ef4444; }
 .result-text { line-height: 1.8; color: var(--text); font-size: 0.95rem; }
 .highlight { background: #fef3c7; color: var(--accent); font-weight: 600; padding: 1px 3px; border-radius: 3px; }
 

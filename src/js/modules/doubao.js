@@ -2024,6 +2024,7 @@
             if (unit) userMsg += '- 限定责任单位：' + unit + '\n';
             userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
             userMsg += '- 输出格式：' + formatDesc + '\n';
+            userMsg += '- 可参考下方【事故专业案例】中的真实事故案例，结合检查信息开展研判，使结论更具针对性。\n';
             userMsg += '\n请开始分析。';
 
             messages = [
@@ -2194,6 +2195,48 @@
             });
           }
         } catch(e) {}
+
+        // ---------- 读取规章制度库中的事故专业案例（按专业归类） ----------
+        try {
+          var riskFocus = (document.getElementById('risk-focus') ? document.getElementById('risk-focus').value : '') || '';
+          var ruleDb;
+          try { ruleDb = await window.dbManager.getDB('RailwayRuleDB'); }
+          catch(e) { ruleDb = await new Promise(function(res, rej) { var r = indexedDB.open('RailwayRuleDB', 3); r.onerror = function(){ rej(r.error); }; r.onsuccess = function(){ res(r.result); }; }); }
+          var allRules = await new Promise(function(res) {
+            var tx = ruleDb.transaction('ruleCollection', 'readonly');
+            var s = tx.objectStore('ruleCollection');
+            s.getAll().onsuccess = function(e){ res(e.target.result || []); };
+          });
+          if (!window.dbManager || typeof window.dbManager.getDB !== 'function') { try { ruleDb.close(); } catch(e){} }
+          if (allRules.length) {
+            var caseKw = /事故|案例|事件|通报|险情|故障|险性/;
+            var matched = allRules.filter(function(r){
+              return caseKw.test((r.title || '') + '\n' + (r.content || ''));
+            });
+            if (matched.length) {
+              var rf = (riskFocus || '').trim();
+              matched.sort(function(a, b){
+                var sa = ((a.title||'')+'\n'+(a.content||'')).indexOf(rf) >= 0 ? 1 : 0;
+                var sb = ((b.title||'')+'\n'+(b.content||'')).indexOf(rf) >= 0 ? 1 : 0;
+                return sb - sa;
+              });
+              var topCases = matched.slice(0, 10);
+              parts.push('\n【事故专业案例（来自规章制度库，按专业归类）】共匹配 ' + matched.length + ' 条，展示前 ' + topCases.length + ' 条：');
+              var byTrade = {};
+              topCases.forEach(function(r){ var tr = r.trade || '通用'; (byTrade[tr] = byTrade[tr] || []).push(r); });
+              Object.keys(byTrade).forEach(function(tr){
+                parts.push('\n▪ 专业：' + tr);
+                byTrade[tr].forEach(function(r){
+                  var c = (r.content || '').replace(/\s+/g, ' ').trim();
+                  var snippet = c.length > 120 ? c.slice(0, 120) + '…' : c;
+                  parts.push('  - 《' + (r.title || '未命名') + '》' + (snippet ? '：' + snippet : ''));
+                });
+              });
+            } else {
+              parts.push('\n【事故专业案例】规章制度库中未匹配到事故/案例类资料（可导入事故通报、事故案例后使用）。');
+            }
+          }
+        } catch(e) { parts.push('\n【事故专业案例】读取失败'); console.error('风险研判: 规章库读取异常', e); }
 
         return parts.join('\n');
       }

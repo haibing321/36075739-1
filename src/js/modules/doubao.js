@@ -1764,6 +1764,7 @@
 
       // ---------- 风险研判：一键汇总本地数据 → AI分析 ----------
       window._riskCtx = null; // 存储上下文供追问
+      window._lastRiskReportId = null; // 最近一次保存的风险报告 id（追问时更新同一条）
       var RISK_CONFIG_KEY = 'risk_config_v1';
 
       function saveRiskConfig() {
@@ -1794,7 +1795,7 @@
         } catch(e) {}
       }
 
-      async function saveRiskReportToWriter(title, html) {
+      async function saveRiskReportToWriter(title, html, isFollowUp) {
         try {
           var now = new Date();
           var plainText = html.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -1817,35 +1818,48 @@
             dbReq.onsuccess = function() {
               var db = dbReq.result;
               var tx = db.transaction('writing_reports', 'readwrite');
-              tx.objectStore('writing_reports').add(report);
-              tx.oncomplete = function() { db.close(); resolve(); };
-              tx.onerror = function() { reject(tx.error); };
+              var store = tx.objectStore('writing_reports');
+              var op;
+              if (isFollowUp && window._lastRiskReportId != null) {
+                // 追问：更新同一条记录，避免报告堆积
+                report.id = window._lastRiskReportId;
+                op = store.put(report);
+              } else {
+                op = store.add(report);
+              }
+              op.onsuccess = function(e2) {
+                if (!isFollowUp) window._lastRiskReportId = e2.target.result;
+                db.close(); resolve();
+              };
+              tx.onerror = function() { db.close(); reject(tx.error); };
             };
             dbReq.onerror = function() { reject(dbReq.error); };
           });
           console.log('风险报告已存入写作历史');
-          // 同时存到 writing_materials，供附件选择器读取
-          try {
-            var dbReq2 = indexedDB.open('railway_writer_db', 2);
-            await new Promise(function(resolve, reject) {
-              dbReq2.onsuccess = function() {
-                var db = dbReq2.result;
-                if (!db.objectStoreNames.contains('writing_materials')) { db.close(); resolve(); return; }
-                var tx = db.transaction('writing_materials', 'readwrite');
-                tx.objectStore('writing_materials').add({
-                  title: report.title,
-                  content: plainText,
-                  type: 'report',
-                  date: report.date,
-                  createdAt: report.createdAt,
-                  source: '风险研判'
-                });
-                tx.oncomplete = function() { db.close(); resolve(); };
-                tx.onerror = function() { resolve(); };
-              };
-              dbReq2.onerror = function() { resolve(); };
-            });
-          } catch(e2) { console.warn('同步到写作资料库失败:', e2); }
+          // 仅首次生成同步到 writing_materials（供附件选择器读取），追问不再重复新增
+          if (!isFollowUp) {
+            try {
+              var dbReq2 = indexedDB.open('railway_writer_db', 2);
+              await new Promise(function(resolve, reject) {
+                dbReq2.onsuccess = function() {
+                  var db = dbReq2.result;
+                  if (!db.objectStoreNames.contains('writing_materials')) { db.close(); resolve(); return; }
+                  var tx = db.transaction('writing_materials', 'readwrite');
+                  tx.objectStore('writing_materials').add({
+                    title: report.title,
+                    content: plainText,
+                    type: 'report',
+                    date: report.date,
+                    createdAt: report.createdAt,
+                    source: '风险研判'
+                  });
+                  tx.oncomplete = function() { db.close(); resolve(); };
+                  tx.onerror = function() { resolve(); };
+                };
+                dbReq2.onerror = function() { resolve(); };
+              });
+            } catch(e2) { console.warn('同步到写作资料库失败:', e2); }
+          }
         } catch(e) {
           console.warn('保存风险报告到写作历史失败:', e);
         }
@@ -1931,6 +1945,50 @@
         } catch(e) {}
       }
 
+      // ---------- 风险报告：操作按钮辅助函数 ----------
+      function _riskBtn(label, color, onclick) {
+        var b = document.createElement('button');
+        b.textContent = label;
+        b.style.cssText = 'background:none;border:1px solid #d1d5db;border-radius:14px;padding:3px 10px;font-size:0.75rem;cursor:pointer;color:#6b7280;transition:all 0.15s;';
+        b.onmouseover = function(){ this.style.borderColor = color; this.style.color = color; };
+        b.onmouseout = function(){ this.style.borderColor = '#d1d5db'; this.style.color = '#6b7280'; };
+        b.onclick = onclick;
+        return b;
+      }
+      function _riskFallbackCopy(txt) {
+        var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        if (typeof window.Toast !== 'undefined') window.Toast.success('已复制到剪贴板');
+      }
+      function riskCopyReport(txt) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(function(){ if (typeof window.Toast !== 'undefined') window.Toast.success('已复制到剪贴板'); }).catch(function(){ _riskFallbackCopy(txt); });
+        } else { _riskFallbackCopy(txt); }
+      }
+      function riskDownloadReport(txt) {
+        var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = '风险研判_' + new Date().toISOString().slice(0,10) + '.txt'; a.click();
+        if (typeof URL.revokeObjectURL === 'function') setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+      }
+      function riskSpeak(btn) {
+        if (typeof window.speechSynthesis === 'undefined') return;
+        var text = window._riskLastReportText || '';
+        if (window._riskSpeaking) {
+          window.speechSynthesis.cancel(); window._riskSpeaking = false;
+          if (btn) btn.textContent = '🔊 朗读';
+          return;
+        }
+        if (!text) return;
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN'; u.rate = 1.0;
+        u.onend = function(){ window._riskSpeaking = false; if (btn) btn.textContent = '🔊 朗读'; };
+        u.onerror = u.onend;
+        window.speechSynthesis.speak(u);
+        window._riskSpeaking = true;
+        if (btn) btn.textContent = '⏹ 停止';
+      }
+
       window.runRiskAnalysis = async function(followUp) {
         var container = document.getElementById('risk-results');
         var refineArea = document.getElementById('risk-refine');
@@ -1947,6 +2005,7 @@
           var model   = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
 
           var messages = [];
+          var noIssueData = false;
           if (!followUp) {
             // 读取研判条件
             var dateStart = document.getElementById('risk-date-start')?.value || '';
@@ -1958,6 +2017,7 @@
             var formatDesc = { full: '完整报告：总体概况 + 风险分级 + 预警措施', brief: '简要摘要：只输出关键风险点和数量统计', actions: '整改措施清单：仅列出3-5条可执行的整改措施' }[format] || '完整报告';
 
             var summary = await _buildRiskDataSummary(dateStart, dateEnd, unit);
+            noIssueData = summary.indexOf('【检查信息】总计') === -1;
             var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
             userMsg += '研判要求：\n';
             if (dateStart || dateEnd) userMsg += '- 时间范围：' + (dateStart||'不限') + ' 至 ' + (dateEnd||'不限') + '\n';
@@ -1982,32 +2042,50 @@
           var resp = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-            body: JSON.stringify({ model: model, messages: messages, temperature: 0.3, max_tokens: 3000, stream: false })
+            body: JSON.stringify({ model: model, messages: messages, temperature: 0.3, max_tokens: 6000, stream: false })
           });
 
           if (!resp.ok) throw new Error('HTTP ' + resp.status);
           var data = await resp.json();
           var report = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '无响应';
 
-          // 保存上下文供追问
+          // 保存上下文供追问（截断：保留 system + 首条汇总 + 最近 6 条对话，避免无限累积）
           window._riskCtx = messages;
           window._riskCtx.push({ role: 'assistant', content: report });
+          if (window._riskCtx.length > 8) {
+            window._riskCtx = window._riskCtx.slice(0, 2).concat(window._riskCtx.slice(-6));
+          }
 
-          // 渲染结果（简单markdown → HTML，保证换行）
-          var html = report
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/## (.*)/g, '<h3 style="margin:14px 0 8px;color:var(--primary);font-size:1.05rem;">## $1</h3>')
-            .replace(/### (.*)/g, '<h4 style="margin:10px 0 6px;color:#1e40af;">$1</h4>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\n- /g, '\n<li>').replace(/\n\d+\. /g, '\n<li>')
-            .replace(/\n/g, '<br>')
-            .replace(/<li>/g, '<li style="margin:4px 0 4px 20px;">');
-
+          // 渲染结果（统一使用 dsMarkdown：支持表格/引用/列表/链接，并修复 ## 前缀 bug）
+          var html = (typeof window.dsMarkdown === 'function')
+            ? window.dsMarkdown(report)
+            : '<pre style="white-space:pre-wrap;">' + report.replace(/</g, '&lt;') + '</pre>';
           container.innerHTML = html;
+          window._riskLastReportText = report;
           container.scrollTop = 0;
-          // 保存配置，并将报告存入智能写作资料库
+
+          // 无本地检查信息时提示横幅
+          if (noIssueData) {
+            var warn = document.createElement('div');
+            warn.style.cssText = 'padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;font-size:0.8rem;margin-bottom:10px;';
+            warn.textContent = '⚠️ 本地暂无检查信息数据，本次分析缺乏实际数据支撑，结论仅供参考。';
+            container.insertBefore(warn, container.firstChild);
+          }
+
+          // 操作按钮栏：复制 / 下载 / 🔊朗读 / 🔄重生成
+          var bar = document.createElement('div');
+          bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0;';
+          bar.appendChild(_riskBtn('📋 复制', '#10b981', function(){ riskCopyReport(report); }));
+          bar.appendChild(_riskBtn('📥 下载', '#8b5cf6', function(){ riskDownloadReport(report); }));
+          if (typeof window.speechSynthesis !== 'undefined') {
+            bar.appendChild(_riskBtn('🔊 朗读', '#f59e0b', function(){ riskSpeak(this); }));
+          }
+          bar.appendChild(_riskBtn('🔄 重生成', '#3b82f6', function(){ window.runRiskAnalysis(false); }));
+          container.appendChild(bar);
+
+          // 保存配置，并将报告存入智能写作资料库（追问时更新同一条记录，避免堆积）
           saveRiskConfig();
-          saveRiskReportToWriter(null, html);
+          saveRiskReportToWriter(null, html, !!followUp);
 
           if (refineArea) {
             refineArea.style.display = 'flex';

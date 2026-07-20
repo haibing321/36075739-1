@@ -1656,6 +1656,96 @@
                 await window.autoCheckAI_force();
             };
 
+            // ── 对规反馈学习闭环：读取历史反馈，影响候选排序与AI选择 ──
+            function acNormKey(title, fileNumber, article) {
+                return [title || '', fileNumber || '', article || ''].join('|').trim().toLowerCase();
+            }
+            function acExtractTitlesFromCorrection(text) {
+                var out = [];
+                if (!text) return out;
+                var re = /《([^》]+)》/g, m;
+                while ((m = re.exec(text)) !== null) out.push(m[1]);
+                return out;
+            }
+            function getACFeedbackProfile() {
+                var records = [];
+                try { records = JSON.parse(localStorage.getItem('ac_feedback_records') || '[]'); } catch (e) { records = []; }
+                var boost = new Map();
+                var correctedTitles = [];
+                var wrongTitles = [];
+                var addBoost = function (title, fileNumber, article, w) {
+                    var k = acNormKey(title, fileNumber, article);
+                    if (!k) return;
+                    boost.set(k, (boost.get(k) || 0) + w);
+                };
+                records.forEach(function (rec) {
+                    var sel = rec.selectedRules || [];
+                    if (rec.verdict === 'correct') {
+                        sel.forEach(function (r) { addBoost(r.title, r.fileNumber, r.article, 3); });
+                    } else if (rec.verdict === 'wrong') {
+                        sel.forEach(function (r) { addBoost(r.title, r.fileNumber, r.article, -3); });
+                        wrongTitles.push.apply(wrongTitles, acExtractTitlesFromCorrection(rec.correction));
+                    } else if (rec.verdict === 'partial') {
+                        sel.forEach(function (r) { addBoost(r.title, r.fileNumber, r.article, 1); });
+                        if (rec.correction) correctedTitles.push.apply(correctedTitles, acExtractTitlesFromCorrection(rec.correction));
+                    }
+                });
+                return { boost: boost, correctedTitles: correctedTitles, wrongTitles: wrongTitles };
+            }
+
+            // ── 选中条款查看规章库全文 ──
+            window.acRuleViewByRef = function (title, fileNumber, article) {
+                var rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                var idx = rules.findIndex(function (r) {
+                    if ((r.title || '') !== (title || '')) return false;
+                    if (fileNumber && (r.fileNumber || '') !== fileNumber) return false;
+                    return true;
+                });
+                if (idx !== -1 && typeof ruleViewFullText === 'function') ruleViewFullText(idx);
+                else alert('未在规章库中找到该条款原文，可能尚未导入。');
+            };
+
+            // ── 结论操作：复制 / 下载 / 朗读 / 重新对规 ──
+            window.acCopyConclusion = function (btn) {
+                var card = document.getElementById('ac-conclusion-card');
+                var text = card ? card.getAttribute('data-conclusion') || '' : '';
+                if (!text) return;
+                var done = function () { btn.textContent = '✅ 已复制'; setTimeout(function () { btn.textContent = '📋 复制'; }, 1500); };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done, function () { acFallbackCopy(text, btn); });
+                } else acFallbackCopy(text, btn);
+            };
+            function acFallbackCopy(text, btn) {
+                try {
+                    var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+                    document.execCommand('copy'); document.body.removeChild(ta);
+                    var b = btn; b.textContent = '✅ 已复制'; setTimeout(function () { b.textContent = '📋 复制'; }, 1500);
+                } catch (e) { alert('复制失败，请手动选择文本复制'); }
+            }
+            window.acDownloadConclusion = function () {
+                var card = document.getElementById('ac-conclusion-card');
+                var text = card ? card.getAttribute('data-conclusion') || '' : '';
+                if (!text) return;
+                var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = '对规结论_' + new Date().toISOString().slice(0, 10) + '.txt';
+                a.click(); URL.revokeObjectURL(url);
+            };
+            window.acSpeak = function (btn) {
+                if (typeof window.speechSynthesis === 'undefined') { alert('当前浏览器不支持语音朗读'); return; }
+                var card = document.getElementById('ac-conclusion-card');
+                var text = card ? card.getAttribute('data-conclusion') || '' : '';
+                if (!text) return;
+                if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); btn.textContent = '🔊 朗读'; return; }
+                var utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'zh-CN'; utter.rate = 1.0;
+                utter.onend = function () { btn.textContent = '🔊 朗读'; };
+                utter.onerror = function () { btn.textContent = '🔊 朗读'; };
+                btn.textContent = '⏹ 停止';
+                window.speechSynthesis.speak(utter);
+            };
+
             window.autoCheckAI_force = async function() {
                 const input = document.getElementById('autoCheck-input');
                 const query = input.value.trim();
@@ -1800,19 +1890,37 @@
                     allCandidates.push(id);
                 });
 
-                // ── 阶段3：专业推断 + 重排候选 + AI挑选ID ──
+                // ── 阶段3：专业推断 + 历史反馈加权 + 重排候选 + AI挑选ID ──
                 const _aiTrade = patchInferTrade(query);
-                // 同专业的规章库候选排到前面（直接用 trade 字段）
-                if (_aiTrade) {
-                    ruleCandidates.sort(function(a, b) {
-                        const aMatch = a.trade === _aiTrade;
-                        const bMatch = b.trade === _aiTrade;
+
+                // 历史反馈学习闭环：读取用户标注，影响候选排序与AI选择
+                const _fb = getACFeedbackProfile();
+                const _fbAllTitles = _fb.correctedTitles.concat(_fb.wrongTitles);
+                allCandidates.forEach(function (id) {
+                    const c = _globalCandidatesMap[id];
+                    let w = _fb.boost.get(acNormKey(c.title, c.fileNumber, c.article)) || 0;
+                    if (c.title && _fbAllTitles.indexOf(c.title) !== -1) w += 4; // 用户明确纠正过的条款优先
+                    c._fbWeight = w;
+                });
+                // 反馈偏好提示（注入 system prompt，引导 AI 偏向用户确认过的条款）
+                let fbHint = '';
+                if (_fb.correctedTitles.length || _fb.wrongTitles.length) {
+                    fbHint = '\n【用户历史对规反馈偏好】';
+                    if (_fb.correctedTitles.length) fbHint += '\n· 用户曾确认以下条款更准确，请优先选用：' + _fb.correctedTitles.map(function (t) { return '《' + t + '》'; }).join('、');
+                    if (_fb.wrongTitles.length) fbHint += '\n· 用户曾指出以下条款不正确，请避免选用：' + _fb.wrongTitles.map(function (t) { return '《' + t + '》'; }).join('、');
+                }
+
+                // 综合排序：先按反馈权重，再按专业匹配（同专业优先）
+                allCandidates.sort(function (a, b) {
+                    const ca = _globalCandidatesMap[a], cb = _globalCandidatesMap[b];
+                    if ((cb._fbWeight || 0) !== (ca._fbWeight || 0)) return (cb._fbWeight || 0) - (ca._fbWeight || 0);
+                    if (_aiTrade) {
+                        const aMatch = ca.trade === _aiTrade, bMatch = cb.trade === _aiTrade;
                         if (aMatch && !bMatch) return -1;
                         if (!aMatch && bMatch) return 1;
-                        return 0;
-                    });
-                    console.log('[专业指引] 推断专业:', _aiTrade, '已对规章库候选按 trade 字段重排');
-                }
+                    }
+                    return 0;
+                });
 
                 const sysPrompt = [
                     '你是铁路安监对规专家。请从以下候选条款列表中，挑选与检查问题最相关的1-3个条款ID。',
@@ -1833,7 +1941,8 @@
                         return line;
                     }).join('\n'),
                     '',
-                    '如果所有候选均不相关，selectedIds 返回空数组 []。'
+                    '如果所有候选均不相关，selectedIds 返回空数组 []。',
+                    fbHint
                 ].join('\n');
 
                 container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>🤖 AI 正在筛选最佳条款（强约束模式）…</span></div>';
@@ -1957,6 +2066,7 @@
                                     + '<div style="background:#e8f5e9;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#1b5e20;">'
                                     + '"' + acEscHtml(c.clause) + '"'
                                     + '</div>'
+                                    + '<div style="margin-top:6px;"><button class="btn btn-info btn-small" style="font-size:0.72rem;padding:2px 10px;" onclick="window.acRuleViewByRef(\'' + acEscHtml(c.title) + '\',\'' + acEscHtml(c.fileNumber || '') + '\',\'' + acEscHtml(c.article || '') + '\')">📄 查看全文</button></div>'
                                     + '</div>';
                             });
                         }
@@ -2055,7 +2165,7 @@
                     // ── 生成反馈ID（用于DOM定位） ──
                     const feedbackId = 'ac-fb-' + Date.now();
 
-                    container.innerHTML = '<div style="background:#f0f9ff;padding:16px;border-radius:12px;border-left:5px solid #2563eb;">'
+                    container.innerHTML = '<div id="ac-conclusion-card" style="background:#f0f9ff;padding:16px;border-radius:12px;border-left:5px solid #2563eb;">'
                         + '<h3 style="color:#1e3a5f;margin-bottom:12px;">⚖️ 对规结论 <span style="font-size:0.75rem;font-weight:400;color:#64748b;">（强约束模式·条款来自本地库）</span></h3>'
                         + '<p style="margin-bottom:12px;"><strong>📌 校核后问题：</strong>' + acEscHtml(correctedQuery || query) + '</p>'
                         + sourceTipHtml
@@ -2065,6 +2175,12 @@
                         // ── 参考区域（结论卡片外部）──
                         + issueRefHtml
                         + ruleRefHtml
+                        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed #cbd5e1;">'
+                        + '<button class="btn btn-small" style="background:#eff6ff;color:#1e40af;border:1px solid #93c5fd;padding:5px 14px;border-radius:18px;font-size:0.8rem;cursor:pointer;" onclick="window.acCopyConclusion(this)">📋 复制</button>'
+                        + '<button class="btn btn-small" style="background:#f0f9ff;color:#0c4a6e;border:1px solid #7dd3fc;padding:5px 14px;border-radius:18px;font-size:0.8rem;cursor:pointer;" onclick="window.acDownloadConclusion()">📥 下载</button>'
+                        + '<button class="btn btn-small" id="ac-speak-btn" style="background:#f5f3ff;color:#6d28d9;border:1px solid #c4b5fd;padding:5px 14px;border-radius:18px;font-size:0.8rem;cursor:pointer;" onclick="window.acSpeak(this)">🔊 朗读</button>'
+                        + '<button class="btn btn-small" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:5px 14px;border-radius:18px;font-size:0.8rem;cursor:pointer;" onclick="window.autoCheckAI_force()">🔄 重新对规</button>'
+                        + '</div>'
                         // ── 对规反馈区域 ──
                         + '<div id="' + feedbackId + '" style="margin-top:14px;padding:12px 14px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;">'
                         + '<div style="font-size:0.85rem;font-weight:600;color:#475569;margin-bottom:8px;">📝 本次对规结果是否正确？</div>'
@@ -2075,6 +2191,15 @@
                         + '</div>'
                         + '</div>'
                         + '</div>';
+
+                    // 组装纯文本结论（供复制/下载/朗读）
+                    var conclusionPlain = '【对规结论】\n校核后问题：' + (correctedQuery || query) + '\n\n'
+                        + issueSelected.map(function (id) { var c = _globalCandidatesMap[id]; return '📋 历史案例条款：不符合/违反《' + (c.title || '') + '》' + (c.fileNumber ? '（' + c.fileNumber + '）' : '') + (c.article ? ' 第' + c.article + '条' : '') + '\n  ' + (c.clause || ''); }).join('\n')
+                        + '\n'
+                        + ruleSelected.map(function (id) { var c = _globalCandidatesMap[id]; return '⚖️ 规章库条款：不符合/违反《' + (c.title || '') + '》' + (c.fileNumber ? '（' + c.fileNumber + '）' : '') + (c.article ? ' 第' + c.article + '条' : '') + '\n  ' + (c.clause || ''); }).join('\n')
+                        + (reason ? ('\n\n选择理由：' + reason) : '');
+                    var _cardEl = document.getElementById('ac-conclusion-card');
+                    if (_cardEl) _cardEl.setAttribute('data-conclusion', conclusionPlain);
 
                     // 保存供后续使用
                     window._lastACRules = validIds.map(id => {

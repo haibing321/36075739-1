@@ -281,18 +281,13 @@
                     doubao: document.getElementById('ds-sub-doubao')
                 };
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
-                // 防智能体运行锁死：离开时中止请求，进入时重置状态
-                if (_dsCurrentSub === 'agent' && tab !== 'agent' && _agentRunning) {
-                    if (window.__agentAbort && typeof window.__agentAbort.abort === 'function') {
-                        try { window.__agentAbort.abort(); } catch (_) {}
-                    }
-                    _agentRunning = false;
-                    var stopBtn = document.getElementById('ds-agent-stop');
-                    var runBtn = document.getElementById('ds-agent-run');
-                    if (stopBtn) stopBtn.style.display = 'none';
-                    if (runBtn) runBtn.style.display = '';
+                // 防智能体运行锁死（通过 window 函数跨 IIFE 通信）
+                if (_dsCurrentSub === 'agent' && tab !== 'agent' && typeof window.clearAgentRunning === 'function') {
+                    window.clearAgentRunning();
                 }
-                if (tab === 'agent') _agentRunning = false;
+                if (tab === 'agent' && typeof window.clearAgentRunning === 'function') {
+                    window.clearAgentRunning();
+                }
                 var panel = panels[tab];
                 if (panel) panel.style.display = 'flex';
                 _dsCurrentSub = tab;
@@ -2231,6 +2226,18 @@
         if (runBtn) runBtn.style.display = '';
         var historyEl = document.getElementById('ds-agent-history');
         if (historyEl) historyEl.innerHTML += '<div style="color:#dc2626;font-size:0.85rem;margin:6px 0;">⏹️ 已手动停止</div>';
+      };
+
+      // 供 Part A dsSwitchSub 调用：切换子模块时重置智能体状态（不含 UI 提示）
+      window.clearAgentRunning = function() {
+        _agentRunning = false;
+        if (window.__agentAbort && typeof window.__agentAbort.abort === 'function') {
+          try { window.__agentAbort.abort(); } catch (_) {}
+        }
+        var stopBtn = document.getElementById('ds-agent-stop');
+        var runBtn = document.getElementById('ds-agent-run');
+        if (stopBtn) stopBtn.style.display = 'none';
+        if (runBtn) runBtn.style.display = '';
       };
 
       // A#2: 查看历史任务记录（解决"只写不读"）

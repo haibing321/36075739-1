@@ -281,6 +281,18 @@
                     doubao: document.getElementById('ds-sub-doubao')
                 };
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
+                // 防智能体运行锁死：离开时中止请求，进入时重置状态
+                if (_dsCurrentSub === 'agent' && tab !== 'agent' && _agentRunning) {
+                    if (window.__agentAbort && typeof window.__agentAbort.abort === 'function') {
+                        try { window.__agentAbort.abort(); } catch (_) {}
+                    }
+                    _agentRunning = false;
+                    var stopBtn = document.getElementById('ds-agent-stop');
+                    var runBtn = document.getElementById('ds-agent-run');
+                    if (stopBtn) stopBtn.style.display = 'none';
+                    if (runBtn) runBtn.style.display = '';
+                }
+                if (tab === 'agent') _agentRunning = false;
                 var panel = panels[tab];
                 if (panel) panel.style.display = 'flex';
                 _dsCurrentSub = tab;
@@ -291,7 +303,7 @@
             };
             function updateModeStatus() {
                 var sub = _dsCurrentSub || 'chat';
-                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };
+                var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', agent: '🧠 智能体', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };
                 var modeLabel = document.getElementById('ds-current-mode-label');
                 if (modeLabel) modeLabel.textContent = labelMap[sub] || '智能对话';
                 var roleSelect = document.getElementById('expertRole');
@@ -2141,9 +2153,15 @@
         if (stopBtn) stopBtn.style.display = '';
         if (runBtn) runBtn.style.display = 'none';
         historyEl.innerHTML += '<div style="margin-bottom:8px;color:var(--primary);font-weight:600;">🧑 ' + dsEsc(msg) + '</div>';
+        // 加载提示（LLM 请求耗时较长时给用户反馈）
+        var loadingId = 'ds-loading-' + Date.now();
+        historyEl.innerHTML += '<div id="' + loadingId + '" style="color:#6b7280;font-size:0.85rem;margin:4px 0;">⏳ 思考中…</div>';
 
         try {
           var result = await window._agentRun(msg);
+          // 移除加载提示
+          var ld = document.getElementById(loadingId);
+          if (ld) ld.remove();
           if (result && result.messages) {
             result.messages.forEach(function(m) {
               if (m.role === 'agent-plan') {
@@ -2157,6 +2175,9 @@
             });
           }
         } catch(e) {
+          // 移除加载提示
+          var ld = document.getElementById(loadingId);
+          if (ld) ld.remove();
           historyEl.innerHTML += '<div style="color:#dc2626">❌ 执行错误: ' + dsEsc(e.message || '未知') + '</div>';
         }
 

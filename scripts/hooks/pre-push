@@ -1,0 +1,35 @@
+#!/bin/sh
+# pre-push 钩子（模板，与 .git/hooks/pre-push 一致）：
+#   仅对所有被跟踪的 JS 文件跑 node --check 语法门禁（不通过则拦截 push）。
+#   注意：SW CACHE_VERSION 的自动 bump 已移至 pre-commit 钩子，
+#         以避免原来在 pre-push 阶段 bump 只被暂存、需补推一次的滞后问题。
+# 迁移：换机/克隆后，把本文件与 pre-commit 复制到 .git/hooks/ 并去掉 .sample 后缀即可。
+
+NODE_BIN=""
+if command -v node >/dev/null 2>&1; then
+  NODE_BIN=node
+elif [ -f "/c/Users/asus/.workbuddy/binaries/node/versions/22.12.0/node.exe" ]; then
+  NODE_BIN="/c/Users/asus/.workbuddy/binaries/node/versions/22.12.0/node.exe"
+elif [ -f "/c/Users/asus/.workbuddy/binaries/node/versions/22.22.2/node.exe" ]; then
+  NODE_BIN="/c/Users/asus/.workbuddy/binaries/node/versions/22.22.2/node.exe"
+fi
+
+if [ -n "$NODE_BIN" ]; then
+  fail=0
+  for f in $(git ls-files '*.js' | grep -v node_modules); do
+    if ! "$NODE_BIN" --check "$f" 2>/tmp/_chk_err; then
+      echo "JS 语法错误: $f"
+      cat /tmp/_chk_err
+      fail=1
+    fi
+  done
+  if [ "$fail" -ne 0 ]; then
+    echo "push 被拦截：存在 JS 语法错误，请修复后再推送。"
+    exit 1
+  fi
+  echo "全部 JS 语法检查通过"
+else
+  echo "未找到 node，跳过语法检查（请确认 node 在 PATH 中）"
+fi
+
+exit 0

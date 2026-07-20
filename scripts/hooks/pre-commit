@@ -1,0 +1,35 @@
+#!/bin/sh
+# pre-commit 钩子（模板，与 .git/hooks/pre-commit 一致）：
+#   自动把 sw.js 的 CACHE_VERSION 提升为单调版本，让 SW 版本号随功能提交一起进入同一 commit。
+#   仅当本次提交暂存区里含非 sw.js 改动时才 bump，防止“只 bump 自身”造成死循环。
+# 迁移：换机/克隆后，把本文件与 pre-push 复制到 .git/hooks/ 并去掉 .sample 后缀即可。
+
+NODE_BIN=""
+if command -v node >/dev/null 2>&1; then
+  NODE_BIN=node
+elif [ -f "/c/Users/asus/.workbuddy/binaries/node/versions/22.12.0/node.exe" ]; then
+  NODE_BIN="/c/Users/asus/.workbuddy/binaries/node/versions/22.12.0/node.exe"
+elif [ -f "/c/Users/asus/.workbuddy/binaries/node/versions/22.22.2/node.exe" ]; then
+  NODE_BIN="/c/Users/asus/.workbuddy/binaries/node/versions/22.22.2/node.exe"
+fi
+
+SW="sw.js"
+if [ -f "$SW" ]; then
+  STAGED=$(git diff --cached --name-only | grep -v node_modules || true)
+  NON_SW=$(printf "%s\n" "$STAGED" | grep -v '^sw\.js$' || true)
+  if [ -n "$NON_SW" ]; then
+    if [ -n "$NODE_BIN" ]; then
+      NEW_VER=$("$NODE_BIN" scripts/bump-sw.js)
+      if [ "$NEW_VER" != "0" ] && [ -n "$NEW_VER" ]; then
+        git add "$SW"
+        echo "SW CACHE_VERSION 已更新为 $NEW_VER（将随本次提交一起提交/推送）"
+      fi
+    else
+      echo "未找到 node，跳过 SW 版本自动 bump"
+    fi
+  else
+    echo "本次提交仅含 sw.js（纯 bump 提交），跳过重复 bump"
+  fi
+fi
+
+exit 0

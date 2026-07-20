@@ -385,11 +385,18 @@
                         </div>
                     </div>
 
-                    <!-- 查询视图：日历 + 日期详情 -->
+                    <!-- 查询视图：搜索 + 今日记录 + 日历 + 日期详情 -->
                     <div id="diary-history-view" class="diary-view-panel" style="display:none;">
                         <div class="diary-view-header">
                             <span class="diary-view-title">📅 历史查询</span>
                         </div>
+                        <!-- 关键词搜索 -->
+                        <div class="diary-search-bar" style="display:flex;gap:8px;margin:10px 0;align-items:center;">
+                            <input type="text" id="diary-search-input" placeholder="🔍 搜索工作内容 / 问题描述…" oninput="diarySearch(this.value)" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;">
+                            <button class="btn btn-secondary btn-small" onclick="document.getElementById('diary-search-input').value='';diarySearch('')">清空</button>
+                        </div>
+                        <!-- 今日记录 / 搜索结果 -->
+                        <div id="diary-records-list"></div>
                         <div id="diary-calendar" class="diary-calendar"></div>
                         <div id="diary-date-detail" class="diary-date-detail" style="display:none;"></div>
                     </div>

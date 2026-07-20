@@ -10,6 +10,11 @@
             let isEditMode = false; // 标记是否为编辑模式
             let currentEditDate = null; // 记录编辑时的原始日期
 
+            // 本地日期字符串（避免 toISOString 的 UTC 时区错位：东8区凌晨会取到昨天）
+            function getLocalDateStr(d) {
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+
             function loadDiaries() { try { const data = localStorage.getItem(STORAGE_KEY); if (data) { diaries = JSON.parse(data); diaries.forEach(d => { if (!d.regulations) d.regulations = []; if (d.issues && d.issues.length > d.regulations.length) { while (d.regulations.length < d.issues.length) d.regulations.push(''); } }); } } catch (e) { diaries = []; } }
             function saveDiaries() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries)); } catch (e) { alert('保存失败：' + e.message); } }
 
@@ -137,7 +142,12 @@
                     // 追加到已有记录
                     if (!existing.issues) existing.issues = [];
                     if (!existing.regulations) existing.regulations = [];
-                    existing.issues.push(content.trim());
+                    const c = content.trim();
+                    // 去重：当日已存在完全相同的问题则不重复记入
+                    if (existing.issues.some(function(x) { return x === c; })) {
+                        return;
+                    }
+                    existing.issues.push(c);
                     existing.regulations.push((regulation || '').trim());
                 } else {
                     // 创建新记录
@@ -275,6 +285,7 @@
                 saveDiaries();
                 updateDiaryCount();
                 if (diaryFilterMode === 'history') {
+                    renderTodayRecords();
                     renderCalendar();
                     document.getElementById('diary-date-detail').style.display = 'none';
                 }
@@ -362,10 +373,31 @@
                 document.getElementById('diary-count').textContent = diaries.length + ' 条';
             }
 
+            // 生成单条日记卡片 HTML（供今日记录与搜索结果共用）
+            function buildDiaryCardHtml(diary) {
+                const dateObj = new Date(diary.date);
+                const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
+                const dateStr = (dateObj.getMonth() + 1) + '月' + dateObj.getDate() + '日 ' + weekDay;
+
+                let html = '<div class="diary-card">';
+                html += '<div class="diary-card-header"><div class="diary-card-date">' + dateStr + '</div><div class="diary-card-actions"><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button><button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div></div>';
+                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
+
+                if (diary.issues && diary.issues.length > 0) {
+                    html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
+                    diary.issues.forEach((issue, idx) => {
+                        html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+                return html;
+            }
+
             // 渲染今日记录列表
             function renderTodayRecords() {
                 const container = document.getElementById('diary-records-list');
-                const today = new Date().toISOString().slice(0, 10);
+                const today = getLocalDateStr(new Date());
                 const todayRecords = diaries.filter(d => d.date === today);
 
                 if (todayRecords.length === 0) {
@@ -374,26 +406,31 @@
                 }
 
                 let html = '';
-                todayRecords.forEach((diary) => {
-                    const dateObj = new Date(diary.date);
-                    const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
-                    const dateStr = (dateObj.getMonth() + 1) + '月' + dateObj.getDate() + '日 ' + weekDay;
-
-                    html += '<div class="diary-card">';
-                    html += '<div class="diary-card-header"><div class="diary-card-date">' + dateStr + '</div><div class="diary-card-actions"><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button><button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div></div>';
-                    html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
-
-                    if (diary.issues && diary.issues.length > 0) {
-                        html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
-                        diary.issues.forEach((issue, idx) => {
-                            html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
-                        });
-                        html += '</div>';
-                    }
-                    html += '</div>';
+                todayRecords.forEach(function(diary) {
+                    html += buildDiaryCardHtml(diary);
                 });
                 container.innerHTML = html;
             }
+
+            // 关键词搜索：检索工作内容 / 问题 / 规章依据全文
+            window.diarySearch = function(keyword) {
+                const container = document.getElementById('diary-records-list');
+                const kw = (keyword || '').trim().toLowerCase();
+                if (!kw) { renderTodayRecords(); return; }
+                const matched = diaries.filter(function(d) {
+                    if ((d.work || '').toLowerCase().indexOf(kw) !== -1) return true;
+                    if (d.issues && d.issues.some(function(x) { return (x || '').toLowerCase().indexOf(kw) !== -1; })) return true;
+                    if (d.regulations && d.regulations.some(function(x) { return (x || '').toLowerCase().indexOf(kw) !== -1; })) return true;
+                    return false;
+                });
+                if (matched.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>未找到与「' + escapeHtml(keyword) + '」相关的记录</p></div>';
+                    return;
+                }
+                let html = '<div style="padding:6px 4px;color:#64748b;font-size:0.8rem;">搜索「' + escapeHtml(keyword) + '」命中 ' + matched.length + ' 条</div>';
+                matched.forEach(function(diary) { html += buildDiaryCardHtml(diary); });
+                container.innerHTML = html;
+            };
 
             // 日历相关变量
             let _calendarYear = new Date().getFullYear();
@@ -424,7 +461,7 @@
 
                 // 获取该月的所有日期记录
                 const datesWithRecords = new Set(diaries.map(d => d.date));
-                const today = new Date().toISOString().slice(0, 10);
+                const today = getLocalDateStr(new Date());
 
                 let html = '<div class="diary-calendar-header">';
                 html += '<span class="diary-calendar-title">' + _calendarYear + '年 ' + monthNames[_calendarMonth] + '</span>';
@@ -586,8 +623,9 @@
                 document.getElementById('diary-input-btn').classList.remove('btn-info');
                 document.getElementById('diary-history-btn').classList.add('btn-info');
                 document.getElementById('diary-history-btn').classList.remove('btn-secondary');
-                // 渲染日历并显示
+                // 渲染今日记录与日历
                 _selectedDate = null;
+                renderTodayRecords();
                 renderCalendar();
                 document.getElementById('diary-calendar').style.display = 'block';
                 document.getElementById('diary-date-detail').style.display = 'none';
@@ -903,68 +941,161 @@
                 el.innerHTML = html;
             }
 
-            // 导出日记数据
-            window.exportDiary = function() {
-                if (diaries.length === 0) { alert('没有数据可导出'); return; }
-                window.showProgress(50, '正在导出工作日志…');
-                const dataStr = JSON.stringify(diaries, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
+            // 本地文件下载
+            function _downloadBlob(blob, filename) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = '工作写实_' + new Date().toISOString().slice(0,10) + '.json';
+                a.download = filename;
                 a.click();
                 URL.revokeObjectURL(url);
-                window.finishProgress('✅ 工作日志导出成功');
+            }
+
+            // 根据媒体类型取扩展名
+            function _mediaExt(type) {
+                if (!type) return 'jpg';
+                if (type.indexOf('png') !== -1) return 'png';
+                if (type.indexOf('gif') !== -1) return 'gif';
+                if (type.indexOf('webp') !== -1) return 'webp';
+                if (type.indexOf('mp4') !== -1 || type.indexOf('video') !== -1) return 'mp4';
+                if (type.indexOf('audio') !== -1 || type.indexOf('mp3') !== -1 || type.indexOf('wav') !== -1 || type.indexOf('ogg') !== -1) return 'mp3';
+                return 'jpg';
+            }
+
+            // 导出日记数据（含媒体则打包 ZIP，否则纯 JSON）
+            window.exportDiary = async function() {
+                if (diaries.length === 0) { alert('没有数据可导出'); return; }
+                window.showProgress(50, '正在导出工作日志…');
+                const stamp = getLocalDateStr(new Date());
+                // 收集全部媒体 id
+                const allMediaIds = [];
+                diaries.forEach(function(d) {
+                    if (d.mediaIds && d.mediaIds.length) d.mediaIds.forEach(function(id) {
+                        if (allMediaIds.indexOf(id) === -1) allMediaIds.push(id);
+                    });
+                });
+                try {
+                    if (allMediaIds.length === 0) {
+                        _downloadBlob(new Blob([JSON.stringify(diaries, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
+                        window.finishProgress('✅ 工作日志导出成功');
+                        return;
+                    }
+                    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                    if (typeof JSZip === 'undefined') {
+                        // 降级：纯 JSON（不含媒体）
+                        _downloadBlob(new Blob([JSON.stringify(diaries, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
+                        window.finishProgress('⚠️ JSZip 未加载，已导出纯文本（不含媒体），请联网后重试以打包图片');
+                        return;
+                    }
+                    const zip = new JSZip();
+                    let mediaCount = 0;
+                    for (let i = 0; i < allMediaIds.length; i++) {
+                        const rec = await getMediaFromDB(allMediaIds[i]);
+                        if (rec && rec.blob) {
+                            const type = rec.type || 'image/jpeg';
+                            zip.file('images/' + allMediaIds[i] + '.' + _mediaExt(type), new Blob([rec.blob], { type: type }));
+                            mediaCount++;
+                        }
+                    }
+                    zip.file('diary.json', JSON.stringify(diaries, null, 2));
+                    zip.file('manifest.json', JSON.stringify({ version: 2, exportDate: new Date().toISOString(), count: diaries.length, hasMedia: mediaCount > 0 }, null, 2));
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+                    _downloadBlob(new Blob([zipBlob], { type: 'application/zip' }), '工作写实_' + stamp + '.zip');
+                    window.finishProgress('✅ 工作日志导出成功（含 ' + mediaCount + ' 个媒体）');
+                } catch (err) {
+                    window.hideProgress();
+                    alert('导出失败：' + err.message);
+                }
             };
 
-            // 导入日记数据
+            // 导入日记数据（支持 .json / .zip）
             window.importDiary = function() {
                 window.showProgress(10, '正在导入工作日志…');
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.json';
+                input.accept = '.json,.zip';
                 input.onchange = function(e) {
                     const file = e.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = function(evt) {
-                        try {
-                            const imported = JSON.parse(evt.target.result);
-                            if (!Array.isArray(imported)) {
-                                window.hideProgress();
-                                alert('导入数据格式错误：需要数组格式');
-                                return;
-                            }
-                            const valid = imported.every(item => 
-                                item && (item.date || item.work || item.issues)
-                            );
-                            if (!valid) {
-                                window.hideProgress();
-                                alert('导入数据格式错误：部分数据缺少必要字段');
-                                return;
-                            }
-                            const existingDates = new Set(diaries.map(d => d.date));
-                            let addedCount = 0;
-                            imported.forEach(item => {
-                                if (!existingDates.has(item.date)) {
-                                    diaries.push(item);
-                                    addedCount++;
-                                }
-                            });
-                            window.showProgress(60, '正在保存…');
-                            saveDiaries();
-                            updateDiaryCount();
-                            window.finishProgress('✅ 成功导入 ' + addedCount + ' 条' + (imported.length - addedCount > 0 ? '（跳过' + (imported.length - addedCount) + '条重复）' : ''));
-                        } catch (err) {
-                            window.hideProgress();
-                            alert('解析文件失败：' + err.message);
-                        }
-                    };
-                    reader.readAsText(file);
+                    if (!file) { window.hideProgress(); return; }
+                    if (/\.zip$/i.test(file.name)) { importDiaryFromZip(file); return; }
+                    importDiaryFromJson(file);
                 };
                 input.click();
             };
+
+            // 从 JSON 导入（保持原有逻辑）
+            function importDiaryFromJson(file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    try {
+                        const imported = JSON.parse(evt.target.result);
+                        _mergeDiaries(imported);
+                    } catch (err) {
+                        window.hideProgress();
+                        alert('解析文件失败：' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            // 从 ZIP 导入（含媒体重建 ID 映射）
+            async function importDiaryFromZip(file) {
+                try {
+                    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                    if (typeof JSZip === 'undefined') { window.hideProgress(); alert('JSZip 库未加载，无法导入 ZIP，请联网后重试'); return; }
+                    const zip = await JSZip.loadAsync(file);
+                    if (!zip.file('diary.json')) { window.hideProgress(); alert('ZIP 文件缺少 diary.json'); return; }
+                    const jsonStr = await zip.file('diary.json').async('string');
+                    const imported = JSON.parse(jsonStr);
+                    // 建立旧媒体 ID -> 新 ID 映射
+                    const idMap = {};
+                    const imageFiles = zip.file(/^images\//);
+                    for (const zf of imageFiles) {
+                        const oldId = parseInt(zf.name.replace(/^images\//, '').replace(/\.[^.]+$/, ''), 10);
+                        const blob = await zf.async('blob');
+                        const id = await saveMediaToDB(blob, '');
+                        if (id !== null) idMap[oldId] = id;
+                    }
+                    // 重映射 mediaIds
+                    imported.forEach(function(d) {
+                        if (d.mediaIds && d.mediaIds.length) {
+                            d.mediaIds = d.mediaIds.map(function(id) { return idMap[id] !== undefined ? idMap[id] : id; });
+                        }
+                    });
+                    _mergeDiaries(imported);
+                } catch (err) {
+                    window.hideProgress();
+                    alert('ZIP 导入失败：' + err.message);
+                }
+            }
+
+            // 合并导入数据（按日期去重）
+            function _mergeDiaries(imported) {
+                if (!Array.isArray(imported)) {
+                    window.hideProgress();
+                    alert('导入数据格式错误：需要数组格式');
+                    return;
+                }
+                const valid = imported.every(function(item) { return item && (item.date || item.work || item.issues); });
+                if (!valid) {
+                    window.hideProgress();
+                    alert('导入数据格式错误：部分数据缺少必要字段');
+                    return;
+                }
+                const existingDates = new Set(diaries.map(function(d) { return d.date; }));
+                let addedCount = 0;
+                imported.forEach(function(item) {
+                    if (!existingDates.has(item.date)) {
+                        diaries.push(item);
+                        addedCount++;
+                    }
+                });
+                window.showProgress(60, '正在保存…');
+                saveDiaries();
+                updateDiaryCount();
+                renderTodayRecords();
+                window.finishProgress('✅ 成功导入 ' + addedCount + ' 条' + (imported.length - addedCount > 0 ? '（跳过' + (imported.length - addedCount) + '条重复）' : ''));
+            }
 
             document.addEventListener('DOMContentLoaded', () => {
                 loadDiaries();

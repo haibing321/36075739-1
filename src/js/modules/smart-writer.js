@@ -2100,19 +2100,32 @@
             }
 
             // ---- 导出 DOCX（使用 html-docx-js） ----
+            // 把 Markdown 渲染为带语义标签的 HTML，确保标题/表格/列表/粗体/引用在 Word 中正确呈现
+            function wrMdToDocxHtml(md) {
+                md = String(md || '');
+                // 若已是结构化 HTML（理论上 content 均存 Markdown，此处兜底防重复转义）
+                if (/<(p|h[1-6]|ul|ol|table|blockquote)\b/i.test(md)) return md;
+                return (typeof window.dsMarkdown === 'function') ? window.dsMarkdown(md) : md;
+            }
             window.wrDownloadDocxFromTemplate = async function() {
                 const modal = document.getElementById('wr-report-modal');
-                const report = modal._currentReport;
-                if (!report) {
-                    // 如果没有打开模态框，尝试使用当前生成的报告
-                    if (!window._wrCurrentReportContent) {
-                        alert('没有可导出的报告');
-                        return;
-                    }
-                    await exportDocxFromHtml(window._wrCurrentReportContent, '报告');
+                const report = modal && modal._currentReport;
+                if (report) {
+                    await exportDocxFromHtml(wrMdToDocxHtml(report.content), report.title || '报告');
                     return;
                 }
-                await exportDocxFromHtml(report.content, report.title);
+                if (window._wrCurrentReportContent) {
+                    await exportDocxFromHtml(wrMdToDocxHtml(window._wrCurrentReportContent), '报告');
+                    return;
+                }
+                alert('没有可导出的报告');
+            };
+            // 资料库查看弹窗：导出当前资料/报告为 DOCX
+            window.wrDownloadDocxFromMaterial = async function() {
+                const modal = document.getElementById('wr-mat-view-modal');
+                if (!modal || !modal._content) { alert('没有可导出的内容'); return; }
+                const title = (document.getElementById('wr-mat-view-title') && document.getElementById('wr-mat-view-title').textContent) || '资料';
+                await exportDocxFromHtml(wrMdToDocxHtml(modal._content), title);
             };
 
             async function exportDocxFromHtml(htmlContent, fileName) {
@@ -2134,26 +2147,31 @@
                     });
                 }
                 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-                let cleanHtml = htmlContent || '';
-                // 手机端：极简 HTML，零样式，确保 mobile Word 兼容
+                // 去除 dsMarkdown 代码块内的「下载」按钮（Word 中无意义）
+                let cleanHtml = String(htmlContent || '').replace(/<button\b[^>]*>[\s\S]*?<\/button>/gi, '');
+                var hasBlockHtml = /<(p|h[1-6]|ul|ol|li|table|thead|tbody|tr|td|th|blockquote|strong|em)\b/i.test(cleanHtml);
+                // 手机端：若已是结构化 HTML（来自 dsMarkdown），原样保留；否则极简纯文本化
                 if (isMobile) {
-                    // 先保留换行结构，再剥 HTML
-                    var textOnly = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<p[^>]*>/gi, '\n').replace(/<\/p>/gi, '').replace(/<[^>]+>/g, '');
-                    var lines = textOnly.split(/\n+/);
-                    var simpleBody = '';
-                    for (var i = 0; i < lines.length; i++) {
-                        var line = lines[i].trim();
-                        if (line) simpleBody += '<p>' + _exportEsc(line) + '</p>';
+                    if (hasBlockHtml) {
+                        // 已是结构化 HTML，原样使用，确保手机 Word 能显示标题/表格/列表
+                        cleanHtml = cleanHtml;
+                    } else {
+                        var textOnly = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<p[^>]*>/gi, '\n').replace(/<\/p>/gi, '').replace(/<[^>]+>/g, '');
+                        var lines = textOnly.split(/\n+/);
+                        var simpleBody = '';
+                        for (var i = 0; i < lines.length; i++) {
+                            var line = lines[i].trim();
+                            if (line) simpleBody += '<p>' + _exportEsc(line) + '</p>';
+                        }
+                        if (cleanHtml.indexOf('<table') !== -1) {
+                            var tableMatch = cleanHtml.match(/<table[\s\S]*?<\/table>/gi);
+                            if (tableMatch) simpleBody += tableMatch.join('');
+                        }
+                        cleanHtml = simpleBody || '<p>（无内容）</p>';
                     }
-                    // 保留表格
-                    if (cleanHtml.indexOf('<table') !== -1) {
-                        var tableMatch = cleanHtml.match(/<table[\s\S]*?<\/table>/gi);
-                        if (tableMatch) simpleBody += tableMatch.join('');
-                    }
-                    cleanHtml = simpleBody || '<p>（无内容）</p>';
                 } else {
-                    // 电脑端：规范 HTML 化
-                    if (!/<[ph][>\s]|<h[1-6]/.test(cleanHtml)) {
+                    // 电脑端：若已是结构化 HTML（来自 dsMarkdown），原样使用；否则用基础 Markdown 转换器兜底
+                    if (!hasBlockHtml) {
                         cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
                         const blocks = cleanHtml.split(/\n\n+/);
                         cleanHtml = blocks.map(function(b) {
@@ -2176,9 +2194,13 @@
                     fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + _exportEsc(fileName) + '</title>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
                 } else {
                     fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + _exportEsc(fileName) + '</title>\n<style>\n' +
-                        'body{margin:20pt;padding:0;background:#fff;color:#000;font-family:"Times New Roman",SimSun,"宋体",serif;font-size:12pt;line-height:1.5;}\n' +
+                        'body{margin:20pt;padding:0;background:#fff;color:#000;font-family:"Times New Roman",SimSun,"宋体",serif;font-size:12pt;line-height:1.6;}\n' +
+                        'h1{font-size:22pt;margin:16pt 0 6pt;}h2{font-size:18pt;margin:14pt 0 6pt;}h3{font-size:16pt;margin:12pt 0 6pt;}h4{font-size:14pt;margin:10pt 0 4pt;}\n' +
+                        'p{margin:0 0 8pt 0;}\n' +
                         'table{border-collapse:collapse;width:100%;margin:8pt 0;}td,th{border:1px solid #aaa;padding:4pt 6pt;vertical-align:top;}\n' +
-                        'h3{font-size:16pt;margin:12pt 0 6pt;}p{margin:0 0 8pt 0;}\n</style>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
+                        'ul,ol{margin:0 0 8pt 0;padding-left:22pt;}li{margin:2pt 0;}\n' +
+                        'blockquote{margin:0 0 8pt 0;padding:6pt 10pt;border-left:3pt solid #ccc;color:#555;}\n' +
+                        'strong{font-weight:bold;}em{font-style:italic;}a{color:#2563eb;}\n</style>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
                 }
                 const blob = window.htmlDocx.asBlob(fullHtml);
                 if (typeof downloadBlob === 'function') {
@@ -2804,6 +2826,7 @@
                             <div id="wr-mat-view-content" style="flex:1;overflow-y:auto;font-size:0.83rem;line-height:1.75;white-space:pre-wrap;background:#f8fafc;border-radius:8px;padding:12px;border:1px solid var(--border);min-height:200px;max-height:65vh;word-break:break-word;"></div>
                             <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
                                 <button onclick="wrCopyMaterialContent()" style="padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.82rem;cursor:pointer;">📋 复制内容</button>
+                                <button onclick="wrDownloadDocxFromMaterial()" style="padding:7px 14px;border:1px solid #2b6cb0;color:#2b6cb0;border-radius:var(--radius-sm);background:#fff;font-size:0.82rem;cursor:pointer;">📄 导出DOCX</button>
                                 <button onclick="document.getElementById('wr-mat-view-modal').style.display='none'" style="padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">关闭</button>
                             </div>
                         </div>`;

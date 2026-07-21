@@ -1795,15 +1795,13 @@
         } catch(e) {}
       }
 
-      async function saveRiskReportToWriter(title, html, isFollowUp) {
+      async function saveRiskReportToWriter(title, markdown, isFollowUp) {
         try {
           var now = new Date();
-          var plainText = html.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
           var report = {
             title: title || ('风险研判 ' + now.toLocaleString('zh-CN').replace(/\//g, '-')),
             category: '风险研判',
-            content: plainText,
-            rawHtml: html,
+            content: markdown,
             date: now.toISOString(),
             createdAt: now.getTime()
           };
@@ -1847,7 +1845,7 @@
                   var tx = db.transaction('writing_materials', 'readwrite');
                   tx.objectStore('writing_materials').add({
                     title: report.title,
-                    content: plainText,
+                    content: markdown,
                     type: 'report',
                     date: report.date,
                     createdAt: report.createdAt,
@@ -2086,7 +2084,7 @@
 
           // 保存配置，并将报告存入智能写作资料库（追问时更新同一条记录，避免堆积）
           saveRiskConfig();
-          saveRiskReportToWriter(null, html, !!followUp);
+          saveRiskReportToWriter(null, report, !!followUp);
 
           if (refineArea) {
             refineArea.style.display = 'flex';

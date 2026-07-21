@@ -1900,10 +1900,7 @@
                 const text = r ? r.content : '';
                 if (!text) return alert('内容为空');
                 const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = ((r && r.title) || '报告') + '.txt'; a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, ((r && r.title) || '报告') + '.txt');
             };
 
             // ================================================================
@@ -2028,10 +2025,7 @@
                 const templates = await wrDbGetAll(WR_TPL_STORE);
                 if (!templates.length) { alert('暂无模板可导出'); return; }
                 const blob = new Blob([JSON.stringify({ templates, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = '写作模板备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '写作模板备份_' + new Date().toISOString().slice(0,10) + '.json');
             };
 
             // ================================================================
@@ -2133,18 +2127,21 @@
                     alert('报告内容为空，无法导出');
                     return;
                 }
+                // 尝试加载 html-docx-js（国内手机网络可能失败，故用 try/catch 兜底，不抛出）
                 if (typeof window.htmlDocx === 'undefined') {
-                    await loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js');
+                    try { await window.loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js'); }
+                    catch (e) { /* 忽略，走下方离线兜底 */ }
                 }
                 if (typeof window.htmlDocx === 'undefined') {
-                    // 二次检查：loadScript 失败后的 fallback
-                    await new Promise((resolve, reject) => {
-                        const script = document.createElement('script');
-                        script.src = 'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js';
-                        script.onload = resolve;
-                        script.onerror = () => reject(new Error('加载 html-docx-js 失败'));
-                        document.head.appendChild(script);
-                    });
+                    try {
+                        await new Promise((resolve) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js';
+                            script.onload = resolve;
+                            script.onerror = resolve; // 失败也继续，走兜底
+                            document.head.appendChild(script);
+                        });
+                    } catch (e) {}
                 }
                 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
                 // 去除 dsMarkdown 代码块内的「下载」按钮（Word 中无意义）
@@ -2202,19 +2199,35 @@
                         'blockquote{margin:0 0 8pt 0;padding:6pt 10pt;border-left:3pt solid #ccc;color:#555;}\n' +
                         'strong{font-weight:bold;}em{font-style:italic;}a{color:#2563eb;}\n</style>\n</head>\n<body>\n' + cleanHtml + '\n</body>\n</html>';
                 }
-                const blob = window.htmlDocx.asBlob(fullHtml);
-                if (typeof downloadBlob === 'function') {
-                    downloadBlob(blob, fileName + '.docx');
-                } else {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = fileName + '.docx';
-                    a.click();
-                    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+                // 优先生成 .docx；若 html-docx-js 不可用/异常，则离线兜底生成 .doc（Word/WPS 均可打开）
+                var isFallbackDoc = false;
+                var blob = null;
+                if (typeof window.htmlDocx !== 'undefined') {
+                    try { blob = window.htmlDocx.asBlob(fullHtml); } catch (e) { blob = null; }
                 }
-                if (typeof Toast !== 'undefined') Toast.success('DOCX 已生成');
-                else alert('DOCX 已生成，请根据提示保存文件');
+                if (!blob) {
+                    isFallbackDoc = true;
+                    blob = _buildWordHtmlBlob(cleanHtml, fileName);
+                }
+                window.downloadBlob(blob, (fileName || '报告') + (isFallbackDoc ? '.doc' : '.docx'));
+                if (isFallbackDoc) {
+                    if (typeof Toast !== 'undefined') Toast.success('已生成 Word 文档(.doc)，可离线打开');
+                    else alert('已生成 Word 文档(.doc)，可离线打开；如需 .docx 请在电脑端导出。');
+                } else {
+                    if (typeof Toast !== 'undefined') Toast.success('DOCX 已生成');
+                    else alert('DOCX 已生成，请根据提示保存文件');
+                }
+            }
+            function _buildWordHtmlBlob(htmlBody, fileName) {
+                // 离线兜底：生成 Word/WPS 均可打开的 HTML 文档(.doc)，无需外部库，手机端兼容
+                var doc = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
+                    + '<head><meta charset="utf-8"><title>' + _exportEsc(fileName || '报告') + '</title>'
+                    + '<style>body{font-family:"Microsoft YaHei",SimSun,"宋体",serif;font-size:12pt;line-height:1.6;margin:20pt;}'
+                    + 'h1{font-size:20pt;margin:16pt 0 6pt;}h2{font-size:17pt;margin:14pt 0 6pt;}h3{font-size:15pt;margin:12pt 0 6pt;}'
+                    + 'p{margin:0 0 8pt 0;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #999;padding:4pt 6pt;vertical-align:top;}'
+                    + 'ul,ol{margin:0 0 8pt 0;padding-left:22pt;}li{margin:2pt 0;}blockquote{margin:0 0 8pt 0;padding:6pt 10pt;border-left:3pt solid #ccc;color:#555;}</style>'
+                    + '</head><body>' + (htmlBody || '<p>（无内容）</p>') + '</body></html>';
+                return new Blob(['﻿' + doc], { type: 'application/msword' });
             }
             function _exportEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -2275,8 +2288,8 @@
                 const modal = document.getElementById('wr-report-modal');
                 const r = modal._currentReport;
                 if (!r) return;
-                try { await navigator.clipboard.writeText(r.content); alert('已复制到剪贴板！'); }
-                catch(e) { alert('复制失败，请手动选中内容复制。'); }
+                const ok = await window.copyTextToClipboard(r.content);
+                alert(ok ? '已复制到剪贴板！' : '复制失败，请长按报告内容手动选中复制。');
             };
 
             // 从查看弹窗进入修改
@@ -2293,9 +2306,7 @@
                 const r = modal._currentReport;
                 if (!r) return;
                 const blob = new Blob([r.content], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = (r.title||'报告') + '.txt'; a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, (r.title || '报告') + '.txt');
             };
 
             window.wrDeleteReport = async function(id) {
@@ -2356,10 +2367,7 @@
                 const reports = await wrDbGetAll(WR_RPT_STORE);
                 if (!reports.length) { alert('暂无报告可导出'); return; }
                 const blob = new Blob([JSON.stringify({ reports, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = '历史报告备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '历史报告备份_' + new Date().toISOString().slice(0,10) + '.json');
             };
 
             // ================================================================
@@ -2844,8 +2852,8 @@
             window.wrCopyMaterialContent = async function() {
                 const modal = document.getElementById('wr-mat-view-modal');
                 if (!modal || !modal._content) return;
-                try { await navigator.clipboard.writeText(modal._content); alert('已复制到剪贴板！'); }
-                catch(e) { alert('复制失败，请手动选中内容复制。'); }
+                const ok = await window.copyTextToClipboard(modal._content);
+                alert(ok ? '已复制到剪贴板！' : '复制失败，请长按内容手动选中复制。');
             };
 
             /**
@@ -2961,10 +2969,7 @@ ${details || '(无)'}
                 const exportMaterials = all.map(m => ({ ...m, sheets: undefined }));
                 const exportData = { materials: exportMaterials, reports: reports, exportDate: new Date().toISOString() };
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = '智能写作备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '智能写作备份_' + new Date().toISOString().slice(0,10) + '.json');
             };
 
         // ---- 将内部函数暴露到全局（供 HTML onclick 调用）----

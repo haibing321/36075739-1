@@ -688,6 +688,97 @@
                 });
             };
 
+            // ========== 通用文件下载（移动端兼容，单点实现）==========
+            // 桌面端：标准 a.click()；移动端复杂格式(.docx/.zip/.xlsx)：data URL + 显式可点按钮
+            window.downloadBlob = function(blob, filename) {
+                if (!blob) return;
+                // 旧 IE / EdgeHTML / 部分华为内核
+                if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+                    try { window.navigator.msSaveOrOpenBlob(blob, filename); return; } catch (e) {}
+                }
+                if (window.navigator && window.navigator.msSaveBlob) {
+                    try { window.navigator.msSaveBlob(blob, filename); return; } catch (e) {}
+                }
+                var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+                var isComplex = /\.(zip|docx|xlsx|pptx)$/i.test(filename);
+                if (isMobile && isComplex) {
+                    // 手机端复杂文件：blob URL 常被拦截，改用 data URL + 真实 <a download> 按钮
+                    var reader = new FileReader();
+                    reader.onload = function() { _showMobileDownloadBtn(reader.result, filename, true); };
+                    reader.onerror = function() {
+                        var url = URL.createObjectURL(blob);
+                        _showMobileDownloadBtn(url, filename, false);
+                    };
+                    reader.readAsDataURL(blob);
+                    return;
+                }
+                var a = document.createElement('a');
+                var dlUrl = URL.createObjectURL(blob);
+                a.href = dlUrl;
+                a.download = filename;
+                a.style.display = 'none';
+                document.body.appendChild(a); // 华为等浏览器要求元素在 DOM 树中
+                a.click();
+                setTimeout(function() {
+                    if (a.parentNode) document.body.removeChild(a);
+                    setTimeout(function() { URL.revokeObjectURL(dlUrl); }, 60000);
+                }, isMobile ? 2000 : 500);
+            };
+
+            function _showMobileDownloadBtn(url, filename, isDataUrl) {
+                var old = document.getElementById('_mobile_dl_btn');
+                if (old && old.parentNode) old.parentNode.removeChild(old);
+                var displayName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
+                var btn = document.createElement('a');
+                btn.id = '_mobile_dl_btn';
+                btn.href = url;
+                btn.download = filename;
+                btn.innerHTML = '<span style="font-size:1.3rem;vertical-align:middle;">📥</span> 点击下载: ' + displayName;
+                btn.style.cssText = [
+                    'display:block;position:fixed;bottom:80px;left:50%;',
+                    'transform:translateX(-50%);',
+                    'background:linear-gradient(135deg,#059669,#10b981);',
+                    'color:#fff;padding:14px 28px;border-radius:25px;',
+                    'text-decoration:none;font-size:0.95rem;font-weight:600;',
+                    'z-index:99999;box-shadow:0 4px 20px rgba(5,150,105,0.4);',
+                    'white-space:nowrap;animation:_mbdlFadeIn .3s ease;cursor:pointer;'
+                ].join('');
+                if (!document.getElementById('_mobile_dl_style')) {
+                    var s = document.createElement('style');
+                    s.id = '_mobile_dl_style';
+                    s.textContent = '@keyframes _mbdlFadeIn{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}';
+                    document.head.appendChild(s);
+                }
+                document.body.appendChild(btn);
+                setTimeout(function() {
+                    if (btn.parentNode) btn.parentNode.removeChild(btn);
+                    if (!isDataUrl) setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
+                }, 15000);
+            }
+
+            // ========== 复制文本（移动端 webview 兜底）==========
+            window.copyTextToClipboard = async function(text) {
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                    }
+                } catch (e) {}
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.top = '-9999px';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    var ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return ok;
+                } catch (e) { return false; }
+            };
+
             // ========== 防抖工具 ==========
             window.debounce = function(fn, delay) {
                 delay = delay || 300;

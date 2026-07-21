@@ -24,13 +24,42 @@
 
             try {
                 if (ext === 'txt' || ext === 'md' || ext === 'json' || ext === 'csv') {
-                    text = await window.dsReadTextFile(file);
+                    text = await window.dsReadTextFileAutoEnc(file);
                 } else if (ext === 'doc' || ext === 'docx') {
-                    text = await window.dsReadWordFile(file);
+                    if (ext === 'doc') {
+                        // 老版 Word 二进制格式(.doc) mammoth 不支持，明确提示并跳过
+                        alert('文件「' + file.name + '」为旧版 Word(.doc) 格式，暂不支持。\n请另存为 .docx 后重新上传。');
+                        continue;
+                    }
+                    if (typeof mammoth === 'undefined') {
+                        try { await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js'); }
+                        catch (e) { /* 交给下面判空 */ }
+                    }
+                    if (typeof mammoth === 'undefined') {
+                        text = 'Word 解析库(mammoth)加载失败，请检查网络后重试。';
+                    } else {
+                        text = await window.dsReadWordFile(file);
+                    }
                 } else if (ext === 'xls' || ext === 'xlsx') {
-                    text = await window.dsReadExcelFile(file);
+                    if (typeof XLSX === 'undefined') {
+                        try { await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); }
+                        catch (e) { /* 交给下面判空 */ }
+                    }
+                    if (typeof XLSX === 'undefined') {
+                        text = 'Excel 解析库(XLSX)加载失败，请检查网络后重试。';
+                    } else {
+                        text = await window.dsReadExcelFile(file);
+                    }
                 } else if (ext === 'pdf') {
-                    text = await window.dsReadPdfFile(file);
+                    if (typeof pdfjsLib === 'undefined') {
+                        try { await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js'); }
+                        catch (e) { /* 交给下面判空 */ }
+                    }
+                    if (typeof pdfjsLib === 'undefined') {
+                        text = 'PDF 解析库(pdf.js)加载失败，请检查网络后重试。';
+                    } else {
+                        text = await window.dsReadPdfFile(file);
+                    }
                 } else {
                     text = '暂不支持该文件格式：' + ext;
                 }
@@ -147,6 +176,31 @@
             reader.onload = e => resolve(e.target.result || '');
             reader.onerror = () => reject(new Error('文件读取失败'));
             reader.readAsText(file, 'UTF-8');
+        });
+    };
+
+    // 文本文件读取：自动识别 UTF-8 / GBK(GB2312)，避免中文 Windows 导出的 .txt/.csv 读成乱码
+    window.dsReadTextFileAutoEnc = function(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const buf = new Uint8Array(e.target.result);
+                let utf8;
+                try { utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf); }
+                catch (e) { utf8 = ''; }
+                // 若 UTF-8 解码出现大量替换字符(乱码特征)，尝试 GBK 回退
+                const utf8Bad = (utf8.match(/�/g) || []).length;
+                if (utf8Bad > 0) {
+                    try {
+                        const gbk = new TextDecoder('gbk').decode(buf);
+                        const gbkBad = (gbk.match(/�/g) || []).length;
+                        if (gbkBad < utf8Bad) { resolve(gbk); return; }
+                    } catch (e) { /* 忽略，使用 utf8 */ }
+                }
+                resolve(utf8);
+            };
+            reader.onerror = () => reject(new Error('文件读取失败'));
+            reader.readAsArrayBuffer(file);
         });
     };
 

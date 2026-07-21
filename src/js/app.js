@@ -508,15 +508,17 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v2.6'; // 与 about 面板、version.json 保持一致；发版时三者需同步更新
+const APP_VERSION = 'v2.6'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取已部署在 GitHub Pages 上的 version.json（无需打 GitHub Release，适配纯 Pages 部署）
 // 注意：version.json 在 SW 中走网络策略（不读缓存），可拿到最新部署版本
 const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';
 
-// 页面加载时显示版本号，不再自动检查更新（改为手动）
+// 页面加载时注入版本号（设置面板 + 关于面板均从 APP_VERSION 动态取，避免 HTML 写死陈旧值）
 document.addEventListener('DOMContentLoaded', function() {
     const verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
+    const aboutVer = document.getElementById('about-app-version');
+    if (aboutVer) aboutVer.textContent = APP_VERSION;
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）

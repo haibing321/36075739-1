@@ -102,6 +102,7 @@
     gap: 8px;
     position: relative;
 }
+.nav-btn span { flex-shrink: 0; width: 1.1em; text-align: center; line-height: 1; }
 .nav-btn:hover { color: white; background: rgba(255,255,255,0.1); }
 .nav-btn.active { color: white; background: rgba(255,255,255,0.2); }
 .nav-btn.active::after {

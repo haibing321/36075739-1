@@ -2244,7 +2244,7 @@
                 document.getElementById('wr-report-modal-meta').textContent =
                     '类型：' + wrCatName(r.category) + '　生成时间：' + wrFmtDate(r.date)
                     + (r.materialCount ? '　引用台账：' + r.materialCount.issues + '条，规章：' + r.materialCount.rules + '条' : '');
-                document.getElementById('wr-report-modal-content').textContent = r.content || '';
+                document.getElementById('wr-report-modal-content').innerHTML = (window.dsMarkdown ? window.dsMarkdown(r.content || '') : (r.content || ''));
                 modal._currentReport = r;
                 modal.style.display = 'flex';
             };
@@ -2813,7 +2813,7 @@
                 document.getElementById('wr-mat-view-meta').textContent =
                     '类型：' + typeInfo.label + '　文件：' + (m.fileName||'') + '　导入：' + wrFmtDate(m.importAt)
                     + (m.rowCount ? '　' + m.rowCount + '条记录' : '') + (m.fileSize ? '　' + Math.round(m.fileSize/1024) + 'KB' : '');
-                document.getElementById('wr-mat-view-content').textContent = String(m.content || '（内容为空）');
+                document.getElementById('wr-mat-view-content').innerHTML = (window.dsMarkdown ? window.dsMarkdown(String(m.content || '')) : String(m.content || '（内容为空）'));
                 modal._content = String(m.content || '');
                 modal.style.display = 'flex';
             };

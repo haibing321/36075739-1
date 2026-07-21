@@ -264,20 +264,6 @@
                 URL.revokeObjectURL(url);
                 window.finishProgress('✅ 应急电话导出成功');
             };
-            // 仅导出当前搜索结果（非全量）
-            window.phoneExportCurrentResults = function() {
-                const data = (phoneLastResults && phoneLastResults.length) ? phoneLastResults : phoneData;
-                if (data.length === 0) { alert('没有可导出的结果'); return; }
-                window.showProgress(50, '正在导出当前结果…');
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = '应急电话_结果_' + new Date().toISOString().slice(0,10) + '.json';
-                a.click();
-                URL.revokeObjectURL(url);
-                window.finishProgress('✅ 已导出 ' + data.length + ' 条当前结果');
-            };
             window.phoneDownloadTemplate = async function() {
                 await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
                 if (typeof XLSX === 'undefined') { alert('XLSX 库未加载，请检查网络连接后重试'); return; }

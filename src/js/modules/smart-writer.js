@@ -439,35 +439,17 @@
 
             // ---- 子面板切换（gen/materials两个tab）----
             window.wrSwitchTab = function(tab) {
-                const tabs = ['gen', 'materials'];
-                tabs.forEach(t => {
-                    const btn = document.getElementById('wr-tab-btn-' + t);
-                    const panel = document.getElementById('wr-panel-' + t);
-                    if (!panel) return; // 按钮可能不存在，继续处理面板
-                    if (t === tab) {
-                        if (btn) {
-                            btn.style.background = 'var(--primary)';
-                            btn.style.color = '#fff';
-                            btn.style.borderColor = 'var(--primary)';
-                        }
-                        panel.style.display = 'flex';
-                    } else {
-                        if (btn) {
-                            btn.style.background = '#f8fafc';
-                            btn.style.color = 'var(--text)';
-                            btn.style.borderColor = 'var(--border)';
-                        }
-                        panel.style.display = 'none';
-                    }
-                });
-                if (tab === 'materials') {
-                    // 默认显示普通资料列表，恢复上次 filter
-                    const histZone = document.getElementById('wr-mat-history-zone');
-                    const matList  = document.getElementById('wr-mat-list');
-                    if (histZone) histZone.style.display = 'none';
-                    if (matList)  matList.style.display = 'flex';
-                    wrRenderMaterials();
-                }
+                // 资料管理已提升为顶级「资料中心」标签，点此直接跳转
+                if (tab === 'materials') { if (window.switchTab) window.switchTab('material'); return; }
+                // 仅剩「生成报告」视图留在智能写作内
+                const gen = document.getElementById('wr-panel-gen');
+                if (gen) gen.style.display = 'flex';
+            };
+
+            // 资料中心标签被打开时刷新列表（由 utils.js 中 switchTab 的 onShow 钩子调用）
+            window.onShow_material = function() {
+                try { wrMaterialFilter('all'); } catch (e) {}
+                try { wrRenderHistory(); } catch (e) {}
             };
 
             // ---- 撰写报告（三步流程：选择模板→选择资料→确认形成报告）----
@@ -2239,7 +2221,7 @@
                         <div style="flex:1;min-width:0;cursor:pointer;" onclick="wrViewReport(${r.id})">
                             <div style="font-weight:700;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">${wrEsc(r.title||'未命名报告')}</div>
                             <div style="font-size:0.75rem;color:var(--text-secondary);margin:3px 0;">
-                                <span style="background:#f0fdf4;color:#15803d;padding:1px 8px;border-radius:10px;margin-right:6px;">${wrEsc(wrCatName(r.category))}</span>
+                                ${r.source ? '<span style="background:#e0e7ff;color:#3730a3;padding:1px 8px;border-radius:10px;margin-right:6px;">📍 ' + wrEsc(r.source) + '</span>' : ''}<span style="background:#f0fdf4;color:#15803d;padding:1px 8px;border-radius:10px;margin-right:6px;">${wrEsc(wrCatName(r.category))}</span>
                                 ${wrFmtDate(r.date)}
                                 <span style="margin-left:6px;">约${Math.round((r.content||'').length/2)}字</span>
                             </div>
@@ -2776,6 +2758,7 @@
                             <div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(m.title||m.fileName)}</div>
                             <div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
                                 <span style="background:${typeInfo.badge};color:${typeInfo.text};padding:1px 8px;border-radius:10px;">${typeInfo.label}</span>
+                                ${m.source ? '<span style="background:#e0e7ff;color:#3730a3;padding:1px 8px;border-radius:10px;">📍 ' + wrEsc(m.source) + '</span>' : ''}
                                 <span>${wrFmtDate(m.importAt).slice(0,10)}</span>
                                 ${sizeStr ? '<span>'+sizeStr+'</span>' : ''}
                                 ${rowStr ? '<span>'+rowStr+'</span>' : ''}
@@ -2981,6 +2964,7 @@ ${details || '(无)'}
                     title: title,
                     content: content,
                     type: 'history',
+                    source: '智能体',
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 };

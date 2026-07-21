@@ -27,6 +27,7 @@
             rule: '📋 规章制度',
             diary: '📝 工作日志',
             phone: '📞 应急电话',
+            material: '📚 资料中心',
             doubao: '🤖 智能助手'
         };
 
@@ -44,7 +45,7 @@
         };
 
         // ===== 模块切换历史记录（最近5次）=====
-        const TAB_ORDER = ['handbook','issue','rule','diary','phone','doubao'];
+        const TAB_ORDER = ['handbook','issue','rule','diary','phone','material','doubao'];
         const _tabHistory = []; // 最近5次切换记录 [{from, to, label}]
 
         window.switchTab = function(tab, fromSwipe) {
@@ -91,6 +92,10 @@
             // if (fromSwipe) {
             //     _showSwipeToast(tab);
             // }
+            // 模块专属刷新钩子（如资料中心打开时渲染列表）
+            if (typeof window['onShow_' + tab] === 'function') {
+                try { window['onShow_' + tab](); } catch (e) { console.warn('onShow_' + tab + ' 失败', e); }
+            }
             if (window.perfMonitor) perfMonitor.end('tab_switch', { targetTab: tab });
         };
 

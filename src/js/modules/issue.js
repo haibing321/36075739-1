@@ -781,24 +781,6 @@
                 }
             };
 
-            // ========== 导出当前搜索结果 ==========
-            window.issueExportCurrentResults = function() {
-                const src = allFilteredResults.length ? allFilteredResults : dataCache;
-                if (!src.length) { alert('暂无可导出的结果（请先搜索或导入数据）'); return; }
-                window.showProgress(30, '正在导出当前结果…');
-                const exportData = src.map(item => ({
-                    '性质': getXingzhi(item), '时间': item.datetime || '', '类别': item.category || '待分类',
-                    '问题描述': item.content || '', '规章依据': item.regulation || '', '单位': item.unit || ''
-                }));
-                window.showProgress(60, '正在打包文件…');
-                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url;
-                const suffix = allFilteredResults.length ? ('_当前结果' + allFilteredResults.length + '条') : ('_' + dataCache.length + '条');
-                a.download = '铁路检查信息' + suffix + '_' + new Date().toISOString().slice(0, 10) + '.json';
-                a.click(); URL.revokeObjectURL(url);
-                window.finishProgress('✅ 导出成功（' + exportData.length + ' 条）');
-            };
 
             // ========== 导入追加去重（相同问题自动合并，导入覆盖） ==========
             function issueStableKey(item) { return (item.content || '').trim() + '|' + (item.unit || '').trim(); }

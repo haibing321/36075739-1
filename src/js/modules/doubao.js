@@ -1265,11 +1265,7 @@
                 var mimeMap = { html:'text/html', css:'text/css', js:'application/javascript', json:'application/json', xml:'application/xml', svg:'image/svg+xml' };
                 var mime = mimeMap[ext] || 'text/plain';
                 var blob = new Blob([code], {type: mime + ';charset=utf-8'});
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = 'code.' + ext;
-                a.click();
-                setTimeout(function() { URL.revokeObjectURL(a.href); }, 100);
+                window.downloadBlob(blob, 'code.' + ext);
             };
 
             // ---- 增强 Markdown 渲染 ----
@@ -1965,9 +1961,7 @@
       }
       function riskDownloadReport(txt) {
         var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = '风险研判_' + new Date().toISOString().slice(0,10) + '.txt'; a.click();
-        if (typeof URL.revokeObjectURL === 'function') setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+        window.downloadBlob(blob, '风险研判_' + new Date().toISOString().slice(0,10) + '.txt');
       }
       function riskSpeak(btn) {
         if (typeof window.speechSynthesis === 'undefined') return;
@@ -2285,11 +2279,7 @@
         // 下载本消息
         fbDiv.querySelector('.feedback-download').onclick = function(){
           var blob = new Blob([assistantContent], {type: 'text/plain;charset=utf-8'});
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = '智能对话_' + new Date().toISOString().slice(0,10) + '.txt';
-          a.click();
-          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 100);
+          window.downloadBlob(blob, '智能对话_' + new Date().toISOString().slice(0,10) + '.txt');
         };
         fbDiv.querySelector('.feedback-good').onclick = function(){ saveFeedback('good', assistantContent); };
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };

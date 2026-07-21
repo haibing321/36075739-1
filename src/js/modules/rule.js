@@ -147,43 +147,12 @@
             }
 
             // 通用文件下载函数，兼容所有浏览器（含华为/Edge/Safari/微信/iOS等）
+            // 统一走全局移动端兼容下载（utils.js: window.downloadBlob），避免多套实现
             function downloadBlob(blob, filename) {
-                // 确保ZIP文件有正确的MIME类型（华为等浏览器对此更严格）
                 if (filename.endsWith('.zip') && (!blob.type || blob.type === '' || blob.type === 'application/octet-stream')) {
                     blob = new Blob([blob], { type: 'application/zip' });
                 }
-                
-                // 方案1: msSaveOrOpenBlob（EdgeHTML / 新版Edge部分版本）
-                if (window.navigator && window.navigator.msSaveOrOpenBlob) {
-                    window.navigator.msSaveOrOpenBlob(blob, filename);
-                    return;
-                }
-                // 方案2: msSaveBlob（IE / 旧Edge）
-                if (window.navigator && window.navigator.msSaveBlob) {
-                    window.navigator.msSaveBlob(blob, filename);
-                    return;
-                }
-                
-                const url = URL.createObjectURL(blob);
-                const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-                const isComplex = filename.endsWith('.zip') || filename.endsWith('.docx');
-                
-                if (isMobile && isComplex) {
-                    // === 手机端 + ZIP/DOCX：await 后手势已丢失，直接显示下载按钮 ===
-                    showMobileDownloadBtn(url, filename);
-                } else {
-                    // === 桌面端 / 手机端同步文件（JSON等）：标准 a.click() ===
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    a.style.display = 'none';
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => {
-                        document.body.removeChild(a);
-                        setTimeout(() => URL.revokeObjectURL(url), 60000);
-                    }, isMobile ? 2000 : 500);
-                }
+                window.downloadBlob(blob, filename);
             }
             
             function showMobileDownloadBtn(url, filename) {

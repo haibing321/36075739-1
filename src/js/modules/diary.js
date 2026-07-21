@@ -941,14 +941,9 @@
                 el.innerHTML = html;
             }
 
-            // 本地文件下载
+            // 本地文件下载（统一走全局移动端兼容下载）
             function _downloadBlob(blob, filename) {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, filename);
             }
 
             // 根据媒体类型取扩展名

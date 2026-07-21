@@ -1727,10 +1727,7 @@
                 var text = card ? card.getAttribute('data-conclusion') || '' : '';
                 if (!text) return;
                 var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url; a.download = '对规结论_' + new Date().toISOString().slice(0, 10) + '.txt';
-                a.click(); URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '对规结论_' + new Date().toISOString().slice(0, 10) + '.txt');
             };
             window.acSpeak = function (btn) {
                 if (typeof window.speechSynthesis === 'undefined') { alert('当前浏览器不支持语音朗读'); return; }
@@ -2476,12 +2473,7 @@
                 });
                 const payload = { terms: sorted, count: sorted.length, exportDate: new Date().toISOString(), version: 2 };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = '铁路专业词库_' + new Date().toISOString().slice(0, 10) + '.json';
-                a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '铁路专业词库_' + new Date().toISOString().slice(0, 10) + '.json');
             };
 
             // 暴露给全局，供智能助手使用

@@ -723,12 +723,7 @@
                 window.showProgress(50, '正在导出检查手册…');
                 var dataStr = JSON.stringify(handbookData, null, 2);
                 var blob = new Blob([dataStr], { type: 'application/json' });
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = '安全检查手册_' + new Date().toISOString().slice(0,10) + '.json';
-                a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '安全检查手册_' + new Date().toISOString().slice(0,10) + '.json');
                 window.finishProgress('✅ 检查手册导出成功');
             };
         })();

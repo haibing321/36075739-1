@@ -335,7 +335,7 @@
                     var fileExts = { html:'html', css:'css', js:'js', javascript:'js', ts:'ts', typescript:'ts', json:'json', py:'py', python:'py', sh:'sh', bash:'sh', sql:'sql', md:'md', xml:'xml', svg:'svg', txt:'txt' };
                     var fileExt = fileExts[ext] || ext;
                     return '<div style="position:relative;margin:6px 0;">' +
-                        '<button onclick="(window.dsDownloadCode||function(b){var p=b.parentElement.querySelector(\'pre\');if(!p)return;var a=document.createElement(\'a\');a.href=URL.createObjectURL(new Blob([p.textContent],{type:\'text/plain;charset=utf-8\'}));a.download=\'code.' + fileExt + '\';a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},100)})(this)" data-ext="' + fileExt + '" ' +
+                        '<button onclick="(window.dsDownloadCode||function(b){var p=b.parentElement.querySelector(\'pre\');if(!p)return;window.downloadBlob(new Blob([p.textContent],{type:\'text/plain;charset=utf-8\'}),\'code.' + fileExt + '\')})(this)" data-ext="' + fileExt + '" ' +
                         'style="position:absolute;top:6px;right:6px;background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
                         'onmouseover="this.style.background=\'#2563eb\'" onmouseout="this.style.background=\'#3b82f6\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
                         '<pre style="background:#1e293b;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';

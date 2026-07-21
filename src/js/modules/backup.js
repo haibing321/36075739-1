@@ -209,52 +209,8 @@
         if (filename.endsWith('.zip') && (!blob.type || blob.type === '' || blob.type === 'application/octet-stream')) {
             blob = new Blob([blob], { type: 'application/zip' });
         }
-
-        // 方案1: msSaveOrOpenBlob（EdgeHTML / 新版Edge部分版本 / 华为部分旧版内核）
-        if (window.navigator && window.navigator.msSaveOrOpenBlob) {
-            try { window.navigator.msSaveOrOpenBlob(blob, filename); return; } catch(e) {}
-        }
-        // 方案2: msSaveBlob（IE / 旧Edge）
-        if (window.navigator && window.navigator.msSaveBlob) {
-            try { window.navigator.msSaveBlob(blob, filename); return; } catch(e) {}
-        }
-
-        var isHuaweiMobile = _isHuaweiMobile();
-        var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-        var isComplex = filename.endsWith('.zip') || filename.endsWith('.docx') || filename.endsWith('.xlsx');
-
-        if (isHuaweiMobile && isComplex) {
-            // === 华为移动设备 + 复杂文件：转成 Base64 Data URL 后再显示下载按钮 ===
-            // blob URL 在华为浏览器中常被拦截，data URL 配合真实 <a download> 更可靠
-            _blobToDataURL(blob, function(err, dataUrl) {
-                if (!err && dataUrl) {
-                    showMobileDownloadBtn(dataUrl, filename, true);
-                } else {
-                    var url = URL.createObjectURL(blob);
-                    showMobileDownloadBtn(url, filename, false);
-                }
-            });
-            return;
-        }
-
-        if (isMobile && isComplex) {
-            // === 其他手机端 + ZIP/DOCX/XLSX：显示手动点击的下载按钮 ===
-            var url = URL.createObjectURL(blob);
-            showMobileDownloadBtn(url, filename, false);
-        } else {
-            // === 桌面端 / 手机端简单格式（JSON/TXT）：标准 a.click() ===
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.style.display = 'none';
-            document.body.appendChild(a);   // 必须：华为浏览器要求元素在DOM树中才能触发下载
-            a.click();
-            setTimeout(function() {
-                if (a.parentNode) document.body.removeChild(a);
-                setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
-            }, isMobile ? 2000 : 500);
-        }
+        // 统一走全局移动端兼容下载（utils.js: window.downloadBlob），避免多套实现
+        window.downloadBlob(blob, filename);
     }
 
     /**

@@ -256,12 +256,7 @@
                 if (phoneData.length === 0) { alert('没有数据可导出'); return; }
                 window.showProgress(50, '正在导出应急电话…');
                 const blob = new Blob([JSON.stringify(phoneData, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = '应急电话_' + new Date().toISOString().slice(0,10) + '.json';
-                a.click();
-                URL.revokeObjectURL(url);
+                window.downloadBlob(blob, '应急电话_' + new Date().toISOString().slice(0,10) + '.json');
                 window.finishProgress('✅ 应急电话导出成功');
             };
             window.phoneDownloadTemplate = async function() {
@@ -271,7 +266,8 @@
                 const ws = XLSX.utils.json_to_sheet(template);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, '模板');
-                XLSX.writeFile(wb, '电话导入模板.xlsx');
+                const tplOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                window.downloadBlob(new Blob([tplOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), '电话导入模板.xlsx');
             };
             window.phoneShowClear = function() {
                 if (phoneData.length === 0) { alert('没有数据可清空'); return; }

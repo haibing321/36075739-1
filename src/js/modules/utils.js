@@ -45,7 +45,7 @@
         };
 
         // ===== 模块切换历史记录（最近5次）=====
-        const TAB_ORDER = ['handbook','issue','rule','diary','phone','material','doubao'];
+        const TAB_ORDER = ['handbook','issue','rule','diary','phone','doubao'];
         const _tabHistory = []; // 最近5次切换记录 [{from, to, label}]
 
         window.switchTab = function(tab, fromSwipe) {

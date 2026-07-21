@@ -2975,7 +2975,7 @@ ${details || '(无)'}
         // Agent 桥接：保存报告到写作资料库
         window.wrAgentSaveMaterial = async function(title, content) {
             try {
-                await wrInitDB();
+                await wrOpenDB();
                 var item = {
                     id: 'agent_' + Date.now(),
                     title: title,

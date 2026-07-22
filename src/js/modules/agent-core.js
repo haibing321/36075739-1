@@ -344,9 +344,11 @@
     system += '规则：\n';
     system += '1. 先用一句话说明计划（如："我将先查数据再生成报告"）\n';
     system += '2. 需要真实数据时，调用对应 function（每次可调用一个或多个）\n';
-    system += '3. 列表结果较精简，需要全文时调用对应的 get_*_detail(id)\n';
-    system += '4. 拿到结果后继续推理，直到能给出「最终自然语言回答」，此时不要调用 function\n';
-    system += '5. 不需要工具时直接回答\n';
+    system += '3. 搜索结果较精简（含摘要），通常可直接用于回答；仅当确实需要看完整细节时才调用 get_*_detail(id)\n';
+    system += '4. 一轮搜索后如已获取足够数据，直接总结回答，不要逐条 detail（浪费轮次）\n';
+    system += '5. 拿到结果后继续推理，直到能给出「最终自然语言回答」，此时不要调用 function\n';
+    system += '6. 不需要工具时直接回答\n';
+    system += '7. 整个任务控制在 5 轮以内完成\n';
 
     try {
       var ctx = await window.getRecentAgentContext();
@@ -358,7 +360,7 @@
       { role: 'user', content: userMessage }
     ];
     var renderMsgs = [{ role: 'agent-plan', content: '🧠 智能体·启动', plan: [] }];
-    var maxLoops = 8; // B#6: 上限 8，复杂任务更从容
+    var maxLoops = 15; // B#6: 上限 15，复杂任务更从容（含搜索+detail+分析+report）
     var planShown = false;
     var lastCallKey = '', repeatCount = 0;
 
@@ -415,7 +417,7 @@
     }
 
     if (!taskRecord.finalOutput) {
-      taskRecord.finalOutput = '任务执行步骤过多，请简化需求后重试。';
+      taskRecord.finalOutput = '任务执行步骤过多（超' + maxLoops + '轮），请简化需求后重试。提示：尝试指定具体范围，如「查兰州西站消防问题」而非「分析全部数据」。';
       renderMsgs.push({ role: 'assistant', content: taskRecord.finalOutput });
     }
 

@@ -7,28 +7,34 @@
   var TOOLS = [
     {
       name: 'search_issues',
-      description: '搜索检查信息数据库，按关键词模糊查找问题记录（支持单位/类别筛选）。返回精简列表(id+性质+时间+单位+摘要)，需要全文请用 get_issue_detail(id)',
+      description: '搜索检查信息数据库，按关键词模糊查找问题记录（支持单位/类别/日期/性质筛选）。返回精简列表(id=全量数据中的下标+性质+时间+单位+摘要)，需要全文请用 get_issue_detail(id)',
       parameters: {
         type: 'object',
         properties: {
           keyword: { type: 'string', description: '搜索关键词，可多词用空格分隔' },
           unit: { type: 'string', description: '责任单位筛选(可选)' },
           category: { type: 'string', description: '类别筛选，如 消防安全/规章制度/设备管理等(可选)' },
+          dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD(可选)' },
+          dateTo: { type: 'string', description: '截止日期 YYYY-MM-DD(可选)' },
+          nature: { type: 'string', description: '问题性质筛选：A类/B类/C类/红线/空白(可选)' },
           limit: { type: 'integer', description: '返回条数上限，默认30' }
         },
-        required: []
+        required: ['keyword']
       },
       handler: async function(args) {
-        var all = window._agentGetIssues(args.keyword || '', args.unit || '', args.category || '', args.limit || 30);
-        return { total: all.length, items: all.map(function(i, idx) {
-          return { id: idx, 性质: i['性质']||'', 时间: i.datetime||'', 类别: i.category||'', 单位: i.unit||'', 摘要: (i.content||'').slice(0,60) };
+        var all = window._agentGetIssues(args.keyword || '', args.unit || '', args.category || '', args.limit || 30, args.dateFrom || '', args.dateTo || '', args.nature || '');
+        var full = [];
+        try { if (typeof window.getIssueData === 'function') full = window.getIssueData(); } catch(e) {}
+        return { total: all.length, items: all.map(function(i) {
+          var realIdx = full.indexOf(i);
+          return { id: (realIdx >= 0 ? realIdx : -1), 性质: i['性质']||'', 时间: i.datetime||'', 类别: i.category||'', 单位: i.unit||'', 摘要: (i.content||'').slice(0,120) };
         })};
       }
     },
     {
       name: 'get_issue_detail',
-      description: '根据 search_issues 返回的 id 获取单条检查信息完整内容(含问题描述全文、规章依据)',
-      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_issues 返回的 id'} }, required:['id'] },
+      description: '根据 search_issues 返回的 id 获取单条检查信息完整内容(含问题描述全文、规章依据)。id 已经是全量数据中的真实下标，可直接索引',
+      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_issues 返回的 id(全量下标)'} }, required:['id'] },
       handler: async function(args) {
         var r = window._agentGetIssueDetail(args.id);
         return r ? { 性质:r['性质']||'', 时间:r.datetime||'', 类别:r.category||'', 单位:r.unit||'', 问题描述:r.content||'', 规章依据:r.regulation||'' } : { error:'未找到 id=' + args.id };
@@ -36,19 +42,22 @@
     },
     {
       name: 'search_rules',
-      description: '搜索规章制度数据库，查找与关键词匹配的规章条款。返回精简列表(id+标题+专业+摘要)，需要全文请用 get_rule_detail(id)',
-      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:['keyword'] },
+      description: '搜索规章制度数据库，按关键词查找规章条款。keyword 可选(不传则返回最近条目)。返回精简列表(id=全量下标+标题+专业+摘要)，需要全文请用 get_rule_detail(id)',
+      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词(可选，不传返回最近条目)'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:[] },
       handler: async function(args) {
         var results = window._agentGetRules(args.keyword || '', args.limit || 10);
-        return { total: results.length, items: results.map(function(r, idx) {
-          return { id: idx, 标题: r.title||'', 专业: r.trade||'', 摘要: (r.content||'').replace(/<[^>]+>/g,'').slice(0,80) };
+        var full = [];
+        try { if (typeof window.getRulesData === 'function') full = window.getRulesData(); } catch(e) {}
+        return { total: results.length, items: results.map(function(r) {
+          var realIdx = full.indexOf(r);
+          return { id: (realIdx >= 0 ? realIdx : -1), 标题: r.title||'', 专业: r.trade||'', 摘要: (r.content||'').replace(/<[^>]+>/g,'').slice(0,150) };
         })};
       }
     },
     {
       name: 'get_rule_detail',
-      description: '根据 search_rules 返回的 id 获取单条规章完整条款内容',
-      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_rules 返回的 id'} }, required:['id'] },
+      description: '根据 search_rules 返回的 id(全量下标) 获取单条规章完整条款内容',
+      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_rules 返回的 id(全量下标)'} }, required:['id'] },
       handler: async function(args) {
         var r = window._agentGetRuleDetail(args.id);
         return r ? { 标题:r.title||'', 专业:r.trade||'', 全文:(r.content||'').replace(/<[^>]+>/g,'') } : { error:'未找到 id=' + args.id };
@@ -56,19 +65,22 @@
     },
     {
       name: 'search_handbook',
-      description: '查询检查手册，按关键词模糊搜索检查项点。返回精简列表(id+标题+摘要)，需要全文请用 get_handbook_detail(id)',
+      description: '查询检查手册，按关键词模糊搜索检查项点。返回精简列表(id=全量下标+标题+摘要)，需要全文请用 get_handbook_detail(id)',
       parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:['keyword'] },
       handler: async function(args) {
         var results = window._agentGetHandbook(args.keyword || '', args.limit || 10);
-        return { total: results.length, items: results.map(function(h, idx) {
-          return { id: idx, 标题: (h.chapter||'')+(h.section?(' / '+h.section):'')+(h.item?(' / '+h.item):''), 摘要: ((h.content||h.rules||'')).slice(0,60) };
+        var full = [];
+        try { if (typeof window.getHandbookData === 'function') full = window.getHandbookData(); } catch(e) {}
+        return { total: results.length, items: results.map(function(h) {
+          var realIdx = full.indexOf(h);
+          return { id: (realIdx >= 0 ? realIdx : -1), 标题: (h.chapter||'')+(h.section?(' / '+h.section):'')+(h.item?(' / '+h.item):''), 摘要: ((h.content||h.rules||'')).slice(0,120) };
         })};
       }
     },
     {
       name: 'get_handbook_detail',
-      description: '根据 search_handbook 返回的 id 获取单条手册项点完整内容',
-      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_handbook 返回的 id'} }, required:['id'] },
+      description: '根据 search_handbook 返回的 id(全量下标) 获取单条手册项点完整内容',
+      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_handbook 返回的 id(全量下标)'} }, required:['id'] },
       handler: async function(args) {
         var r = window._agentGetHandbookDetail(args.id);
         return r ? { 章节:(r.chapter||'')+(r.section?('/'+r.section):'')+(r.item?('/'+r.item):''), 内容:(r.content||r.rules||'') } : { error:'未找到 id=' + args.id };
@@ -76,19 +88,19 @@
     },
     {
       name: 'write_diary',
-      description: '在工作日志模块新增一条记录，可指定日期(默认今天)',
-      parameters: { type:'object', properties:{ content:{type:'string',description:'日志内容'}, issues:{type:'string',description:'检查发现的问题(可选)'}, date:{type:'string',description:'日期 YYYY-MM-DD，留空默认今天(可选)'} }, required:['content'] },
-      handler: async function(args) { return window._agentWriteDiary(args.content || '', args.issues || '', args.date || ''); }
+      description: '在工作日志模块新增一条记录。issueIds 接收 search_issues 返回的 id 数组，自动提取性质/摘要/单位并结构化写入',
+      parameters: { type:'object', properties:{ content:{type:'string',description:'日志正文内容'}, issues:{type:'string',description:'检查发现的问题描述(可选，自由文本)'}, date:{type:'string',description:'日期 YYYY-MM-DD，留空默认今天(可选)'}, issueIds:{type:'array',items:{type:'integer'},description:'关联的检查信息 id 数组(可选，search_issues 返回的 id)'} }, required:['content'] },
+      handler: async function(args) { return window._agentWriteDiary(args.content || '', args.issues || '', args.date || '', args.issueIds || []); }
     },
     {
       name: 'save_report',
-      description: '将分析报告保存到写作资料库',
-      parameters: { type:'object', properties:{ title:{type:'string',description:'报告标题'}, content:{type:'string',description:'报告全文内容'} }, required:['title','content'] },
+      description: '将分析报告保存到写作资料库。若已存在同名报告，自动追加版本号(v2/v3...)，不会覆盖旧版',
+      parameters: { type:'object', properties:{ title:{type:'string',description:'报告标题'}, content:{type:'string',description:'报告全文内容(Markdown)'} }, required:['title','content'] },
       handler: async function(args) { return window._agentSaveReport(args.title || 'Agent报告', args.content || ''); }
     },
     {
       name: 'get_weather',
-      description: '获取指定车站的实时天气',
+      description: '获取指定车站的实时天气(优先在线查询，超时5s；离线时使用内置兰州局主要车站坐标)',
       parameters: { type:'object', properties:{ stationName:{type:'string',description:'车站名称'} }, required:['stationName'] },
       handler: async function(args) {
         var stationName = args.stationName || '';
@@ -99,21 +111,43 @@
             station = phoneData[i]; break;
           }
         }
-        if (!station) return { ok: false, error: '未找到车站' + stationName };
+        // 内置兰州局主要车站经纬度字典（离线/反查失败时的兜底）
+        var staticCoords = {
+          '兰州':[36.06,103.83],'兰州西':[36.07,103.75],'兰州东':[36.05,103.88],'武威':[37.93,102.64],
+          '武威南':[37.91,102.68],'张掖':[38.93,100.45],'嘉峪关':[39.77,98.29],'酒泉':[39.74,98.52],
+          '天水':[34.58,105.72],'陇西':[35.00,104.65],'定西':[35.58,104.62],'白银':[36.54,104.17],
+          '金昌':[38.50,102.19],'敦煌':[40.14,94.66],'玉门':[39.82,97.58],'平凉':[35.54,106.67],
+          '银川':[38.47,106.27],'中卫':[37.51,105.19],'固原':[36.01,106.28],'西宁':[36.62,101.78]
+        };
+        if (!station) {
+          // 直接从字典取坐标
+          var match = staticCoords[stationName] || (function() {
+            for (var k in staticCoords) { if (k.indexOf(stationName) !== -1) return staticCoords[k]; }
+            return null;
+          })();
+          if (match) station = { 站名:stationName, 纬度:match[0], 经度:match[1] };
+        }
+        if (!station) return { ok: false, error: '未找到车站 ' + stationName + '（不在电话簿或内置字典中）' };
         if (!station.纬度 && typeof window.phoneGeocode === 'function') {
           try {
             var geo = await window.phoneGeocode(stationName, station.线名 || station.线路 || '');
             if (geo) { station.纬度 = geo.lat; station.经度 = geo.lon; }
           } catch (_) {}
         }
-        if (!station.纬度) return { ok: false, error: '车站无坐标，无法定位（可能不在兰州局辖区或网络受限）' };
+        if (!station.纬度) return { ok: false, error: '车站无坐标，无法定位' };
         try {
-          var r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + station.纬度 + '&longitude=' + station.经度 + '&current=temperature_2m,weather_code,wind_speed_10m&timezone=Asia/Shanghai');
-          if (!r.ok) throw new Error('weather http ' + r.status);
+          var ctrl = new AbortController();
+          var timer = setTimeout(function() { ctrl.abort(); }, 5000);
+          var r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + station.纬度 + '&longitude=' + station.经度 + '&current=temperature_2m,weather_code,wind_speed_10m&timezone=Asia/Shanghai', { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!r.ok) throw new Error('http ' + r.status);
           var w = await r.json();
           var wmo = { 0:'晴',1:'少云',2:'多云',3:'阴',45:'雾',48:'雾凇',51:'毛毛雨',53:'小雨',55:'中雨',56:'冻毛雨',57:'冻雨',61:'小雨',63:'中雨',65:'大雨',66:'冻小雨',67:'冻中雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'阵雨',81:'强阵雨',82:'暴雨',85:'阵雪',86:'强阵雪',95:'雷暴',96:'雷暴伴冰雹',99:'强雷暴伴冰雹' };
           return { ok: true, station: stationName, temp: w.current.temperature_2m + '°C', weather: wmo[w.current.weather_code] || ('代码' + w.current.weather_code), wind: w.current.wind_speed_10m + 'km/h' };
-        } catch(e) { return { ok: false, error: '天气查询失败：' + (e.message || '') }; }
+        } catch(e) {
+          if (e.name === 'AbortError') return { ok: false, error: '天气查询超时（5s），请稍后重试或检查网络' };
+          return { ok: false, error: '天气查询失败：' + (e.message || '') };
+        }
       }
     }
   ];
@@ -137,12 +171,20 @@
     }
   }
 
-  // ========== 解析文本 JSON 兜底（仅当模型未用标准 tool_calls 时）==========
+  // ========== 解析文本 JSON 兜底（仅当模型未用标准 tool_calls 且内容顶格为 JSON 块时）==========
   function _parseToolCall(content) {
     if (!content) return null;
-    var m2 = content.match(/```json\s*([\s\S]*?)```/);
-    if (m2) { try { var p = JSON.parse(m2[1]); if (p && p.tool) return p; } catch(e) {} }
-    var start = content.indexOf('{');
+    // 严格约束：仅匹配独立成块的 ```json``` 代码块，不匹配内联 JSON
+    var m2 = content.match(/^\s*```json\s*\n([\s\S]*?)\n```\s*$/m);
+    if (!m2) m2 = content.match(/\n```json\s*\n([\s\S]*?)\n```/);
+    if (m2) { try { var p = JSON.parse(m2[1]); if (p && p.tool && typeof p.tool==='string') return p; } catch(e) {} }
+    // 仅解析顶格或独立行出现的 JSON（避免匹配代码示例中的内联 JSON）
+    var start = -1;
+    var lines = content.split('\n');
+    for (var l = 0; l < lines.length; l++) {
+      var stripped = lines[l].trim();
+      if (stripped === '{' || (stripped.indexOf('{"tool"') === 0)) { start = content.indexOf(lines[l]); break; }
+    }
     if (start === -1) return null;
     var depth = 0, inStr = false, esc = false, end = -1;
     for (var i = start; i < content.length; i++) {
@@ -150,7 +192,7 @@
       if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; }
       else { if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } } }
     }
-    if (end !== -1) { try { var p2 = JSON.parse(content.slice(start, end + 1)); if (p2 && p2.tool) return p2; } catch(e) {} }
+    if (end !== -1) { try { var p2 = JSON.parse(content.slice(start, end + 1)); if (p2 && p2.tool && typeof p2.tool==='string') return p2; } catch(e) {} }
     return null;
   }
 
@@ -165,17 +207,25 @@
     var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 4000 };
     if (withTools) body.tools = _toolsParam();
     var resp;
+    var timeoutTimer;
     try {
-      resp = await fetch(apiUrl, {
+      // 60s 超时：自动中断长时间无响应的请求
+      var timeoutPromise = new Promise(function(_, reject) {
+        timeoutTimer = setTimeout(function() { controller.abort(); reject(new Error('请求超时（60s），请稍后重试')); }, 60000);
+      });
+      var fetchPromise = fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify(body),
         signal: controller.signal
       });
+      resp = await Promise.race([fetchPromise, timeoutPromise]);
     } catch(e) {
+      clearTimeout(timeoutTimer);
       if (e.name === 'AbortError') throw new Error('已手动停止');
-      throw new Error('网络错误，无法连接 API：' + (e.message || ''));
+      throw e;
     }
+    clearTimeout(timeoutTimer);
     if (!resp.ok) {
       var detail = '';
       try { var ed = await resp.json(); detail = (ed.error && ed.error.message) || ''; } catch(_) {}
@@ -206,6 +256,25 @@
     };
 
     var system = '你是铁路安监智能体，可调用下方 functions 操作本地数据（检查信息/规章制度/检查手册/工作日志/天气）。\n';
+    // P1-9: 注入当前数据概览，减少盲搜轮次
+    try {
+      var issCount = window.getIssueData ? window.getIssueData().length : 0;
+      var ruleCount = window.getRulesData ? window.getRulesData().length : 0;
+      var hbCount = window.getHandbookData ? window.getHandbookData().length : 0;
+      var phoneCount = window.getPhoneData ? window.getPhoneData().length : 0;
+      var issDates = '';
+      if (issCount > 0 && window.getIssueData) {
+        var all = window.getIssueData(); all.sort(function(a,b){ return (a.datetime||'').localeCompare(b.datetime||''); });
+        issDates = '，日期范围 ' + (all[0] ? (all[0].datetime||'').slice(0,10) : '?') + ' ~ ' + (all[all.length-1] ? (all[all.length-1].datetime||'').slice(0,10) : '?');
+      }
+      system += '当前数据：检查信息 ' + issCount + '条' + issDates + '，规章制度 ' + ruleCount + '条，检查手册 ' + hbCount + '条，应急电话 ' + phoneCount + '个。\n';
+      if (issCount > 0) {
+        var uniqUnits = {}; var issues = window.getIssueData();
+        issues.forEach(function(i){ if(i.unit) uniqUnits[i.unit]=1; });
+        var unitList = Object.keys(uniqUnits);
+        if (unitList.length > 0 && unitList.length <= 20) system += '涉及单位：' + unitList.join('、') + '。\n';
+      }
+    } catch(e) { system += '数据量获取失败，请自行搜索。\n'; }
     system += '规则：\n';
     system += '1. 先用一句话说明计划（如："我将先查数据再生成报告"）\n';
     system += '2. 需要真实数据时，调用对应 function（每次可调用一个或多个）\n';
@@ -247,8 +316,12 @@
         }
         // 把 assistant 消息原样加入（含 tool_calls），供 API 配对
         messages.push(assistantMsg);
-        // B#6: 连续两次相同调用即提前终止，避免无效循环浪费 token
-        var keys = toolCalls.map(function(tc) { return tc.function.name + '|' + tc.function.arguments; });
+        // B#6: 连续两次相同调用即提前终止；对 detail 工具只看 id
+        var keys = toolCalls.map(function(tc) {
+          var args = {}; try { args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e) {}
+          if (/^get_/.test(tc.function.name)) return tc.function.name + '|id=' + (args.id || '');
+          return tc.function.name + '|' + tc.function.arguments;
+        });
         var callKey = keys.join('@@');
         if (callKey === lastCallKey) {
           repeatCount++;

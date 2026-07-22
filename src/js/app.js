@@ -107,7 +107,17 @@ document.addEventListener('DOMContentLoaded', function() {
 // Agent 桥接函数（供 agent-core.js 工具调用）
 // ============================================================
 (function() {
-    // ---- 智能体搜索辅助：模糊匹配(复用全局 Fuse) + 子串降级 ----
+    // ---- 智能体搜索辅助：模糊匹配(复用全局 Fuse，缓存实例) + 子串降级 ----
+    var _fuseCache = {};
+    function _getFuse(data, keys) {
+        var cacheKey = keys.join(',');
+        var entry = _fuseCache[cacheKey];
+        // 缓存命中：同一数据集引用不重建 Fuse 索引（节省 3-5ms/次）
+        if (entry && entry.data === data) return entry.fuse;
+        var fuse = new window.Fuse(data, { keys: keys, threshold: 0.4, ignoreLocation: true, includeScore: true, minMatchCharLength: 1 });
+        _fuseCache[cacheKey] = { data: data, fuse: fuse };
+        return fuse;
+    }
     function _fuzzyFilter(data, keyword, keys, limit) {
         limit = limit || 10;
         if (!keyword) return data.slice(0, limit);
@@ -115,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!kws.length) return data.slice(0, limit);
         if (typeof window.Fuse !== 'undefined') {
             try {
-                var fuse = new window.Fuse(data, { keys: keys, threshold: 0.4, ignoreLocation: true, includeScore: true, minMatchCharLength: 1 });
+                var fuse = _getFuse(data, keys);
                 var map = {};
                 kws.forEach(function(kw) {
                     fuse.search(kw).forEach(function(h) {
@@ -136,8 +146,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }).slice(0, limit);
     }
-    /** 搜索检查信息 */
-    window._agentGetIssues = function(keyword, unit, category, limit) {
+    /** 搜索检查信息（支持日期/性质筛选 + 模糊搜索） */
+    window._agentGetIssues = function(keyword, unit, category, limit, dateFrom, dateTo, nature) {
         var data = [];
         try {
             if (typeof window.getIssueData === 'function') data = window.getIssueData();
@@ -146,6 +156,11 @@ document.addEventListener('DOMContentLoaded', function() {
         var filtered = data;
         if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
         if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
+        // 日期范围过滤（datetime 字段，前缀匹配即可）
+        if (dateFrom) filtered = filtered.filter(function(i) { return (i.datetime||'') >= dateFrom; });
+        if (dateTo)   filtered = filtered.filter(function(i) { return (i.datetime||'') <= dateTo + ' 23:59:59'; });
+        // 性质筛选（A类/B类/C类/红线/空白）
+        if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
         return _fuzzyFilter(filtered, keyword, ['性质','category','content','regulation','unit'], limit || 30);
     };
 
@@ -159,16 +174,19 @@ document.addEventListener('DOMContentLoaded', function() {
         return _fuzzyFilter(rules, keyword, ['title','content','trade'], limit || 10);
     };
 
-    /** 写入工作日志
-     *  agent 工具签名：write_diary(content=日志内容, issues=检查发现的问题)
-     *  diary 模块签名：addIssueToDiary(content=问题描述, regulation=规章依据, date)
-     *  修正：issues 不应误存为"规章依据"，合并进问题描述；content 作为正文
-     */
-    window._agentWriteDiary = async function(content, issues, date) {
+    /** 写入工作日志（支持结构化 issueIds） */
+    window._agentWriteDiary = async function(content, issues, date, issueIds) {
         try {
             if (typeof window.addIssueToDiary !== 'function') return { ok: false, error: '日志模块未就绪' };
             var fullContent = (content || '').trim();
-            if (issues && String(issues).trim()) {
+            if (issueIds && Array.isArray(issueIds) && issueIds.length) {
+                var issueData = window.getIssueData ? window.getIssueData() : [];
+                issueIds.forEach(function(id) {
+                    var iss = issueData[id];
+                    if (!iss) return;
+                    fullContent += '\n  · [' + (iss['性质']||'') + '] ' + (iss.content||'').slice(0,80) + '（' + (iss.unit||'') + '）';
+                });
+            } else if (issues && String(issues).trim()) {
                 fullContent += (fullContent ? '｜' : '') + '发现问题：' + String(issues).trim();
             }
             var ok = window.addIssueToDiary(fullContent, '', date || '');
@@ -176,12 +194,19 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch(e) { return { ok: false, error: e.message }; }
     };
 
-    /** 保存报告到写作资料库 */
+    /** 保存报告到写作资料库（同名自动追加 vN 防覆盖） */
     window._agentSaveReport = async function(title, content) {
         try {
             if (typeof window.wrAgentSaveMaterial !== 'function') return { ok: false, error: '写作模块未就绪' };
-            var ok = window.wrAgentSaveMaterial(title, content);
-            return { ok: !!ok, message: ok ? '报告已保存' : '保存失败' };
+            // 查重：若同名已存在，自动追加版本号
+            var existing = [];
+            try {
+                if (typeof window.getWrMatList === 'function') existing = await window.getWrMatList();
+            } catch(e) { existing = []; }
+            var sameCount = existing.filter(function(m) { return (m.title||'').trim() === (title||'').trim(); }).length;
+            var finalTitle = sameCount > 0 ? (title + '（v' + (sameCount + 1) + '）') : title;
+            var ok = window.wrAgentSaveMaterial(finalTitle, content);
+            return { ok: !!ok, message: ok ? '报告已保存' : '保存失败', title: finalTitle };
         } catch(e) { return { ok: false, error: e.message }; }
     };
 

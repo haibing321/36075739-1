@@ -83,13 +83,20 @@
     });
   };
 
-  /** 取最近 3 条任务摘要用于提示词上下文 */
+  /** 取最近 3 条任务摘要（含实际数据，非原始工具调用链） */
   window.getRecentAgentContext = async function() {
     var tasks = await window.getAgentTasks(3);
     if (!tasks || !tasks.length) return '';
     return tasks.map(function(t) {
-      var steps = (t.steps || []).map(function(s) { return s.tool + '=' + (s.ok ? '✓' : '✗'); }).join(',');
-      return '[' + t.id + '] ' + t.userIntent + ' → ' + steps + ' (' + t.timestamp + ')';
+      // 从步骤中提取工具调用结果的关键信息
+      var toolResults = [];
+      (t.steps || []).forEach(function(s) {
+        if (s.ok && s.summary) {
+          var m = s.summary.match(/共(\d+)条/);
+          if (m) toolResults.push((m[1] === '0' ? '无' : m[1] + '条') + '(' + s.tool + ')');
+        }
+      });
+      return '上次任务：' + t.userIntent + (toolResults.length > 0 ? ' [' + toolResults.join(', ') + ']' : '') + ' (' + t.timestamp + ')';
     }).join('\n');
   };
 })();

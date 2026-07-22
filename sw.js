@@ -1,11 +1,12 @@
 /**
  * 安监智能辅助系统 - Service Worker v1
- * 策略: AppShell precache + CDN runtime cache + NetworkFirst for HTML
+ * 策略: AppShell precache + 离线优先(CacheFirst)。导航/本地模块/CDN 均优先返回缓存，
+ *       默认不联网轮询；新版本仅由用户点击「设置→检查更新」时通过 reg.update() 拉取。
  */
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260723074040';
+var CACHE_VERSION = '20260723075529';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -152,88 +153,65 @@ self.addEventListener('fetch', function(event) {
 
   // --- 策略选择 ---
 
-  // 1. 导航请求（HTML 页面）：NetworkFirst → CacheFallback
+  // 1. 导航请求（HTML 页面）：CacheFirst（离线优先，默认不联网，秒开）
+  //    仅缓存缺失时回退网络；不主动轮询网络，更新由「检查更新」按钮触发。
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req).then(function(resp) {
-        // 成功获取后缓存一份
-        if (resp.ok) {
-          var clone = resp.clone();
-          caches.open(CACHE_NAME).then(function(cache) {
-            cache.put(req, clone);
-          });
-        }
-        return resp;
-      }).catch(function() {
-        // 网络不可用时返回缓存的 index.html
-        return caches.match('./index.html').then(function(cached) {
-          return cached || new Response('离线模式 - 请检查网络连接', {
-            status: 503,
-            statusText: 'Service Unavailable'
-          });
-        });
-      })
-    );
-    return;
-  }
-
-  // 2. CDN 资源：CacheFirst（7天过期，跳过缓存的非200响应）
-  if (isCDN(url)) {
-    event.respondWith(
       caches.match(req).then(function(cached) {
-        // 有缓存时检查：状态码必须为 2xx 且未过期
-        if (cached && cached.ok) {
-          var dateHeader = cached.headers.get('sw-cache-time');
-          if (dateHeader) {
-            var age = Date.now() - parseInt(dateHeader, 10);
-            if (age < 7 * 24 * 60 * 60 * 1000) {
-              return cached;
-            }
-            // 已过期，下面走网络重新获取
-          } else {
-            return cached; // 无时间标记且状态正常则直接使用
-          }
-        }
-        // 缓存未命中 / 已过期 / 缓存是错误响应 → 走网络
+        if (cached) return cached;
         return fetch(req).then(function(resp) {
           if (resp.ok) {
-            var respToCache = resp.clone();
-            var headers = new Headers(respToCache.headers);
-            headers.set('sw-cache-time', Date.now().toString());
-            var modifiedResp = new Response(respToCache.body, {
-              status: respToCache.status,
-              statusText: respToCache.statusText,
-              headers: headers
-            });
+            var clone = resp.clone();
             caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(req, modifiedResp);
+              cache.put(req, clone);
             });
           }
           return resp;
         }).catch(function() {
-          // 网络失败：只有缓存是正常响应时才降级返回
-          return (cached && cached.ok) ? cached : new Response('', { status: 404 });
+          return caches.match('./index.html').then(function(c) {
+            return c || new Response('离线模式 - 请检查网络连接', {
+              status: 503,
+              statusText: 'Service Unavailable'
+            });
+          });
         });
       })
     );
     return;
   }
 
-  // 3. 本地 JS/CSS 模块：StaleWhileRevalidate（缓存优先，后台更新）
+  // 2. CDN 资源：CacheFirst（离线优先，默认不联网轮询）
+  if (isCDN(url)) {
+    event.respondWith(
+      caches.match(req).then(function(cached) {
+        if (cached) return cached;
+        return fetch(req).then(function(resp) {
+          if (resp.ok) {
+            var clone = resp.clone();
+            caches.open(CACHE_NAME).then(function(cache) {
+              cache.put(req, clone);
+            });
+          }
+          return resp;
+        });
+      })
+    );
+    return;
+  }
+
+  // 3. 本地 JS/CSS 模块：CacheFirst（离线优先，不后台轮询网络）
   if (isLocalModule(url)) {
     event.respondWith(
-      caches.open(CACHE_NAME).then(function(cache) {
-        return cache.match(req).then(function(cached) {
-          var fetchPromise = fetch(req).then(function(networkResp) {
-            if (networkResp.ok) {
-              // 克隆 response，因为 body 只能消费一次
-              cache.put(req, networkResp.clone());
-            }
-            return networkResp;
-          }).catch(function() { return null; });
-
-          // 有缓存先返回，无缓存等网络
-          return cached || fetchPromise;
+      caches.match(req).then(function(cached) {
+        if (cached) return cached;
+        return fetch(req).then(function(resp) {
+          if (resp.ok) {
+            var clone = resp.clone();
+            caches.open(CACHE_NAME).then(function(cache) {
+              cache.put(req, clone);
+            });
+          }
+          return resp;
         });
       })
     );

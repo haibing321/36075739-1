@@ -328,38 +328,56 @@ window.onclick = function(e) {
     var _installBtn = null;
     var _installBtnAdded = false;
 
-    // SW 使用 NetworkFirst + StaleWhileRevalidate 策略，HTML 永远走网络，
-    // JS/CSS 缓存优先但后台持续检查更新，版本号基于日期，部署后自动更新。
-    // 注意：注册后需刷新一次页面（关闭所有标签页）才会完全激活新 SW。
-    console.log('[PWA] SW 注册中...');
+    var _manualUpdateCheck = false;  // 仅手动「检查更新」时才弹新版本提示
+    var _pendingReload = false;      // 手动更新后，新 SW 接管即刷新
 
-    // 先清理旧 Service Worker，再注册新版本
-    navigator.serviceWorker.getRegistrations().then(function(regs) {
-        var promises = [];
-        regs.forEach(function(reg) {
-            promises.push(reg.unregister().then(function() {
-                console.log('[PWA] 已注销旧 SW:', reg.scope);
-            }));
-        });
-        return Promise.all(promises);
-    }).then(function() {
-        return navigator.serviceWorker.register('sw.js');
-    }).then(function(reg) {
+    // 离线优先策略：SW 默认直接从缓存秒开页面，打开时不联网拉取 HTML/JS/CSS，
+    // 也不在打开时自动检查更新。新版本仅由用户点击「设置→检查更新」触发下载。
+    console.log('[PWA] SW 注册中(离线优先)...');
+
+    navigator.serviceWorker.register('sw.js').then(function(reg) {
         console.log('[PWA] SW 注册成功');
 
-        // 检测新版本更新
+        // 检测新版本：仅手动检查时才提示，避免打开即打扰
         reg.addEventListener('updatefound', function() {
             var sw = reg.installing;
             sw.addEventListener('statechange', function() {
                 if (sw.state === 'installed' && navigator.controller) {
-                    // 新 SW 已安装完毕，提示用户刷新
-                    showUpdateToast();
+                    if (_manualUpdateCheck) showUpdateToast();
                 }
             });
         });
     }).catch(function(err) {
         console.warn('[PWA] SW 注册失败:', err);
     });
+
+    // 新 SW 接管页面后，若本次为手动更新则刷新以应用新版本
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+        if (_pendingReload) {
+            _pendingReload = false;
+            window.location.reload();
+        }
+    });
+
+    // 暴露给「检查更新」按钮：拉取并预备最新版本（离线优先下更新唯一入口）
+    function triggerApplyUpdate() {
+        _manualUpdateCheck = true;
+        navigator.serviceWorker.getRegistration().then(function(reg) {
+            if (!reg) { _manualUpdateCheck = false; return; }
+            // 浏览器已自动检测到等待中的新 SW：直接提示应用
+            if (reg.waiting) { showUpdateToast(); return; }
+            var done = false;
+            var onReady = function(r) { if (r && r.waiting && !done) { done = true; showUpdateToast(); } };
+            reg.update().then(function() {
+                // updatefound 会处理；兜底 2s 后再查一次 waiting 状态
+                setTimeout(function() { navigator.serviceWorker.getRegistration().then(onReady); }, 2000);
+            }).catch(function(e) {
+                console.warn('[PWA] SW 更新检查失败:', e);
+                _manualUpdateCheck = false;
+            });
+        });
+    }
+    window.triggerApplyUpdate = triggerApplyUpdate;
 
     // SW 更新提示 Toast
     function showUpdateToast() {
@@ -383,7 +401,8 @@ window.onclick = function(e) {
         });
         document.body.appendChild(toast);
         document.getElementById('_sw_update_btn').onclick = function() {
-            // 通知 SW skipWaiting 并刷新页面
+            // 通知 SW 立即接管并刷新以应用新版本
+            _pendingReload = true;
             if (navigator.serviceWorker.controller) {
                 navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
             }
@@ -598,6 +617,8 @@ async function checkForUpdate() {
     statusEl.textContent = '⏳ 正在检查...';
     statusEl.style.color = '#3b82f6';
     await performUpdateCheck(UPDATE_CHECK_URL, true);
+    // 同时触发 SW 实际拉取并预备新版本（离线优先策略下，更新只在此时发生）
+    if (window.triggerApplyUpdate) window.triggerApplyUpdate();
 }
 
 // 静默检查
@@ -647,12 +668,11 @@ async function performUpdateCheck(url, showStatus) {
             document.getElementById('tab-settings')?.classList.add('has-update-badge');
             localStorage.setItem('_has_update', 'true');
             if (showStatus) {
-                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '');
+                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已下载，点击下方「立即更新」或重新打开即可生效';
                 statusEl.style.color = '#dc2626';
-                if (confirm('发现新版本 ' + remoteVersion + '，是否查看更新详情？')) {
-                    window.open(downloadUrl, '_blank');
-                }
             }
+            // 自动预备 SW 更新（离线优先策略下，更新仅在此触发）
+            if (window.triggerApplyUpdate) window.triggerApplyUpdate();
         } else {
             document.getElementById('tab-settings')?.classList.remove('has-update-badge');
             localStorage.removeItem('_has_update');

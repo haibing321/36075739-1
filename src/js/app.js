@@ -558,17 +558,36 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v2.6'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v2.7'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取已部署在 GitHub Pages 上的 version.json（无需打 GitHub Release，适配纯 Pages 部署）
 // 注意：version.json 在 SW 中走网络策略（不读缓存），可拿到最新部署版本
 const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';
+// 12 位 SW 缓存版本号（YYYYMMDDHHMMSS），从 sw.js 提取后注入设置/关于面板
+var _SW_VERSION = '';
 
 // 页面加载时注入版本号（设置面板 + 关于面板均从 APP_VERSION 动态取，避免 HTML 写死陈旧值）
-document.addEventListener('DOMContentLoaded', function() {
-    const verSpan = document.getElementById('setting-current-version');
+// 同时异步获取 SW 12 位缓存版本号并二次注入
+document.addEventListener('DOMContentLoaded', async function() {
+    var verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
-    const aboutVer = document.getElementById('about-app-version');
+    var aboutVer = document.getElementById('about-app-version');
     if (aboutVer) aboutVer.textContent = APP_VERSION;
+    // 异步获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
+    fetch('sw.js?v=' + Date.now(), { cache: 'no-store' })
+        .then(function(r) { return r.text(); })
+        .then(function(txt) {
+            var m = txt.match(/CACHE_VERSION\s*=\s*'(\d{12})'/);
+            if (m && m[1]) {
+                _SW_VERSION = m[1];
+                if (verSpan && !verSpan.textContent.includes('·')) {
+                    verSpan.textContent = APP_VERSION + ' · ' + _SW_VERSION;
+                }
+                if (aboutVer && !aboutVer.textContent.includes('·')) {
+                    aboutVer.textContent = APP_VERSION + ' · ' + _SW_VERSION;
+                }
+            }
+        })
+        .catch(function() {});
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）

@@ -1,5 +1,5 @@
 {
-  "version": "v2.6",
-  "releaseNotes": "智能体重命名（原自主模式）、SW 缓存版本升级为12位时间戳（YYYYMMDDHHMMSS）",
+  "version": "v2.7",
+  "releaseNotes": "智能体全面革新的 ReAct 逻辑（官方 function-calling+P0 id错位修复+15项审计优化）、147站天气字典、HTML兜底备份、版本号12位显示",
   "downloadUrl": "https://haibing321.github.io/36075739-2/"
 }

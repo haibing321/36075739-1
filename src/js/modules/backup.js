@@ -284,8 +284,6 @@
     }
 
     window.oneClickBackup = async function() {
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
-        if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
         window.showProgress(5, '正在收集检查信息…');
         var backup = { version: 3, exportDate: new Date().toISOString(), modules: {} };
         var errors = [];
@@ -341,20 +339,116 @@
                 backup.modules.diaryMedia = converted;
             }
 
-            window.showProgress(70, '正在压缩打包…');
-            var zip = new JSZip();
-            zip.file('full_backup.json', JSON.stringify(backup, null, 2));
-            var blob = await zip.generateAsync({ type: 'blob' });
+            var fileNameBase = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-');
+            var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+            var shareSupported = false;
+            if (isMobile && navigator.share && typeof navigator.canShare === 'function') {
+                try {
+                    var _probe = new File([new Blob(['x'])], 'x.txt', { type: 'text/plain' });
+                    shareSupported = navigator.canShare({ files: [_probe] });
+                } catch (e) { shareSupported = false; }
+            }
+
+            // 桌面端 或 移动端支持系统分享 → 优先 ZIP 打包 + 分享/下载
+            if (!isMobile || shareSupported) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                if (typeof JSZip !== 'undefined') {
+                    window.showProgress(75, '正在压缩打包…');
+                    var zip = new JSZip();
+                    zip.file('full_backup.json', JSON.stringify(backup, null, 2));
+                    var blob = await zip.generateAsync({ type: 'blob' });
+                    window.showProgress(90, '正在下载…');
+                    await window.downloadBlob(blob, fileNameBase + '.zip');
+                    window.finishProgress('✅ 备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') +
+                           (errors.length > 0 ? ' ⚠️ 部分模块失败' : ''));
+                    return;
+                }
+                // JSZip 加载失败（如断网）→ 落 HTML 兜底
+            }
+
+            // 移动端系统分享不可用（或 JSZip 加载失败）→ HTML 单文件兜底（不依赖 ZIP，手机直接打开看图文）
+            window.showProgress(75, '正在生成 HTML 备份…');
+            var html = buildBackupHtml(backup);
+            var htmlBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
             window.showProgress(90, '正在下载…');
-            var fileName = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.zip';
-
-            // 使用兼容性下载函数（移动端优先系统分享 / 简洁重试按钮）
-            await window.downloadBlob(blob, fileName);
-
-            window.finishProgress('✅ 备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') +
+            await window.downloadBlob(htmlBlob, fileNameBase + '.html');
+            window.finishProgress('✅ 备份完成（HTML 格式·系统分享不可用时的兜底，浏览器直接打开可读）' +
+                   (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') +
                    (errors.length > 0 ? ' ⚠️ 部分模块失败' : ''));
         } catch(e) { window.hideProgress(); _toast('备份失败：' + e.message, true); }
     };
+
+    /**
+     * 生成 HTML 单文件备份（不依赖 ZIP / JSZip），用于移动端系统分享不可用时的兜底。
+     * 内嵌完整备份数据为 JSON，并用自包含脚本渲染为结构化、可阅读、含图片的页面。
+     */
+    function buildBackupHtml(backup) {
+        var inner = JSON.stringify(backup);
+        // 双重转义：作为 JS 字符串字面量，并防止数据中的 </script> 提前闭合标签
+        var payload = JSON.stringify(inner).replace(/<\/script/gi, '<\\/script');
+        var parts = [
+            '<!DOCTYPE html>',
+            '<html lang="zh-CN"><head><meta charset="utf-8">',
+            '<meta name="viewport" content="width=device-width,initial-scale=1">',
+            '<title>安监系统数据备份</title>',
+            '<style>',
+            'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;padding:16px;background:#f8fafc;color:#1e293b;line-height:1.6;}',
+            'h1{font-size:1.4rem;margin:0 0 4px;color:#0f172a;}',
+            '.meta{color:#64748b;font-size:.85rem;margin:0 0 16px;}',
+            '.sec{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);}',
+            '.sec h2{font-size:1.05rem;margin:0 0 10px;color:#1d4ed8;border-bottom:2px solid #dbeafe;padding-bottom:6px;}',
+            'table{width:100%;border-collapse:collapse;font-size:.82rem;}',
+            'th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;vertical-align:top;word-break:break-word;}',
+            'th{background:#f1f5f9;}',
+            '.item{border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px;}',
+            '.item .t{font-weight:600;color:#0f172a;margin-bottom:4px;}',
+            '.item .m{color:#64748b;font-size:.78rem;margin-bottom:4px;}',
+            'img{max-width:100%;border-radius:6px;margin-top:6px;border:1px solid #e2e8f0;}',
+            'details{margin-top:8px;}summary{cursor:pointer;color:#2563eb;font-size:.82rem;}',
+            'pre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:.78rem;max-height:240px;overflow:auto;}',
+            '.empty{color:#94a3b8;font-size:.82rem;}',
+            '</style></head><body>',
+            '<h1>安监智能辅助系统 · 数据备份</h1>',
+            '<p class="meta">导出时间：' + (backup.exportDate||'') + ' ｜ 版本：' + (backup.version||'') + '</p>',
+            '<div id="root"></div>',
+            '<script>var D=JSON.parse(' + payload + ');(function(){',
+            'var M=(D.modules)||{};',
+            'function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return c==="&"?"&amp;":c==="<"?"&lt;":c===">"?"&gt;":c===String.fromCharCode(34)?"&quot;":c;});}',
+            'function sec(title,count){var d=document.createElement("div");d.className="sec";var h=document.createElement("h2");h.textContent=title+(count!=null?"（"+count+"）":"");d.appendChild(h);return d;}',
+            'function detailsJson(obj){var de=document.createElement("details");var su=document.createElement("summary");su.textContent="查看原始 JSON";de.appendChild(su);var pre=document.createElement("pre");pre.textContent=JSON.stringify(obj,null,2);de.appendChild(pre);return de;}',
+            'function table(headers,rows){var t=document.createElement("table");var thead=document.createElement("thead");var tr=document.createElement("tr");headers.forEach(function(h){var th=document.createElement("th");th.textContent=h;tr.appendChild(th);});thead.appendChild(tr);t.appendChild(thead);var tb=document.createElement("tbody");rows.forEach(function(r){var tr2=document.createElement("tr");r.forEach(function(c){var td=document.createElement("td");td.innerHTML=c;tr2.appendChild(td);});tb.appendChild(tr2);});t.appendChild(tb);return t;}',
+            'var root=document.getElementById("root");',
+            '(function(){var a=M.issues||[];var s=sec("检查信息",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'var rows=a.map(function(i){return [esc(i["性质"]||i.nature||""),esc(i.datetime||i["时间"]||""),esc(i.category||i["类别"]||""),esc(i.content||i["问题描述"]||""),esc(i.regulation||i["规章依据"]||""),esc(i.unit||i["单位"]||"")];});',
+            's.appendChild(table(["性质","时间","类别","问题描述","规章依据","单位"],rows));root.appendChild(s);})();',
+            '(function(){var a=M.rules||[];var arr=[];if(a.length===1&&a[0]&&a[0].data)arr=a[0].data;else arr=a;var s=sec("规章制度",arr.length);if(!arr.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'arr.forEach(function(r){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=r.title||"（无标题）";it.appendChild(t);if(r.content){var c=document.createElement("div");c.innerHTML=esc(r.content);it.appendChild(c);}',
+            'if(r.images){r.images.forEach(function(im){if(im&&(im.base64||(im.data&&im.data.base64))){var img=document.createElement("img");img.src="data:image/jpeg;base64,"+(im.base64||im.data.base64);it.appendChild(img);}});}',
+            'it.appendChild(detailsJson(r));s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.diary||[];var s=sec("工作日志",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(d){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=(d.date||"")+(d.weather?"（"+d.weather+"）":"");it.appendChild(t);var c=document.createElement("div");c.textContent=d.content||"";it.appendChild(c);s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.phone||[];var s=sec("应急电话",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'var rows=a.map(function(p){return [esc(p.name||p.contact||""),esc(p.phone||p.number||""),esc(p.dept||p.unit||"")];});s.appendChild(table(["名称","电话","单位/部门"],rows));root.appendChild(s);})();',
+            '(function(){var a=M.handbook||[];var s=sec("安全检查手册",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(h){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=[h.chapter,h.section,h.item,h.subitem].filter(Boolean).join(" / ");it.appendChild(t);if(h.content){var c=document.createElement("div");c.textContent=h.content;it.appendChild(c);}s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.writingMaterials||[];var s=sec("写作资料库",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(m){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=m.title||"（无标题）";it.appendChild(t);if(m.content){var c=document.createElement("div");c.innerHTML=esc(String(m.content||"").slice(0,500));it.appendChild(c);}it.appendChild(detailsJson(m));s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.writingReports||[];var s=sec("历史报告",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(r){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=r.title||"（无标题）";it.appendChild(t);if(r.content){var c=document.createElement("div");c.innerHTML=esc(String(r.content||"").slice(0,500));it.appendChild(c);}it.appendChild(detailsJson(r));s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var arr=[];if(Array.isArray(M.dsConversations))arr=arr.concat(M.dsConversations);if(Array.isArray(M.dsChatHistory))arr=arr.concat(M.dsChatHistory);var s=sec("对话记录",arr.length);if(!arr.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'arr.forEach(function(cv){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=(cv.title||cv.name||"会话 "+(cv.id||""));it.appendChild(t);it.appendChild(detailsJson(cv));s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.termLibrary||[];var s=sec("铁路专业术语库",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(tm){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=(tm.term||tm.name||"")+(tm.category?"（"+tm.category+"）":"");it.appendChild(t);if(tm.definition||tm.desc){var c=document.createElement("div");c.textContent=tm.definition||tm.desc;it.appendChild(c);}s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.memos||[];var s=sec("备忘录",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(mo){var it=document.createElement("div");it.className="item";var c=document.createElement("div");c.textContent=(mo.content||mo.text||JSON.stringify(mo));it.appendChild(c);s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=M.diaryMedia||[];var s=sec("多媒体附件",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'a.forEach(function(m){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="m";t.textContent=(m.type||"")+" · "+(m.captureTime||"");it.appendChild(t);var b64=m.blobBase64||(m.blob&&m.blob.base64);if(b64){var img=document.createElement("img");img.src="data:"+(m.type||"image/jpeg")+";base64,"+b64;it.appendChild(img);}s.appendChild(it);});root.appendChild(s);})();',
+            '})();',
+            '<\/script>',
+            '</body></html>'
+        ];
+        return parts.join('\n');
+    }
 
     // ---- 全局导入进度条（使用全局 showProgress） ----
     function _showRestoreProgress(show) { if (!show) window.hideProgress(); }

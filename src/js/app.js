@@ -201,7 +201,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // 查重：若同名已存在，自动追加版本号
             var existing = [];
             try {
-                if (typeof window.getWrMatList === 'function') existing = await window.getWrMatList();
+                if (typeof window._wrGetAllReports === 'function') existing = await window._wrGetAllReports();
+                else if (typeof window.getWrMatList === 'function') existing = await window.getWrMatList();
             } catch(e) { existing = []; }
             var sameCount = existing.filter(function(m) { return (m.title||'').trim() === (title||'').trim(); }).length;
             var finalTitle = sameCount > 0 ? (title + '（v' + (sameCount + 1) + '）') : title;

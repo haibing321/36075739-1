@@ -377,7 +377,7 @@
                     rectify:'整改通知书', summary:'年度总结', custom:'自定义',
                     template:'写作模版', history:'历史报告', inspect:'检查信息',
                     fault:'故障报告', stats:'故障统计', dispatch:'通报文电',
-                    meeting:'会议纪要', other:'其它'
+                    meeting:'会议纪要', other:'其它', agent:'智能体报告'
                 };
                 return m[c] || c || '未分类';
             }
@@ -3048,42 +3048,48 @@ ${details || '(无)'}
         window.getWrRptCount = async function() { try { var all = await wrDbGetAll(WR_RPT_STORE); return all.length; } catch(e) { return 0; } };
 
         // Agent 桥接：保存报告到写作资料库
+        // 智能体报告统一存到「报告库」(WR_RPT_STORE, 数字自增 id)，与其它模块报告走同一通路，
+        // 用已验证可正常打开的 wrViewReport 查看（此前存资料库且用字符串 id，部分浏览器打不开）
         window.wrAgentSaveMaterial = async function(title, content) {
             try {
                 await wrOpenDB();
                 var item = {
-                    id: 'agent_' + Date.now(),
                     title: title,
                     content: content,
-                    type: 'history',
-                    matType: 'other',
+                    category: 'agent',
                     source: '智能体',
-                    importAt: Date.now(),
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
+                    date: Date.now(),
+                    materialCount: { issues: 0, rules: 0, reports: 0 }
                 };
-                await wrDbPut(WR_MAT_STORE, item);
-                return true;
+                var savedId = await wrDbPut(WR_RPT_STORE, item);
+                return savedId || true;
             } catch(e) { console.warn('[writer] agent save failed:', e.message); return false; }
         };
 
-        // 数据迁移：补齐旧智能体报告缺失的 matType / importAt（一次性，幂等）
+        // 数据迁移：将旧版存于「资料库」(WR_MAT_STORE, 字符串 id) 的智能体报告迁到「报告库」(WR_RPT_STORE)，
+        // 使它们与其它模块报告一样可正常打开。一次性、幂等：迁移成功后即从资料库删除。
         window.wrMigrateAgentMaterials = async function() {
             try {
                 await wrOpenDB();
                 var all = await wrDbGetAll(WR_MAT_STORE);
-                var need = (all || []).filter(function(m){ return m && m.source === '智能体' && !m.matType; });
-                for (var i = 0; i < need.length; i++) {
-                    var m = need[i];
-                    m.matType = 'other';
-                    var t = Date.now();
-                    if (m.createdAt) { var d = new Date(m.createdAt); if (!isNaN(d.getTime())) t = d.getTime(); }
-                    else if (m.updatedAt) { var d2 = new Date(m.updatedAt); if (!isNaN(d2.getTime())) t = d2.getTime(); }
-                    m.importAt = t;
-                    await wrDbPut(WR_MAT_STORE, m);
+                var agents = (all || []).filter(function(m){ return m && m.source === '智能体'; });
+                for (var i = 0; i < agents.length; i++) {
+                    var m = agents[i];
+                    var rep = {
+                        title: m.title || '智能体报告',
+                        content: m.content || '',
+                        category: 'agent',
+                        source: '智能体',
+                        date: (m.importAt || m.createdAt || Date.now()),
+                        materialCount: { issues: 0, rules: 0, reports: 0 }
+                    };
+                    var savedId = await wrDbPut(WR_RPT_STORE, rep);
+                    if (savedId != null) {
+                        try { await wrDbDelete(WR_MAT_STORE, m.id); } catch(e) {}
+                    }
                 }
-                if (need.length) console.log('[writer] 已迁移 ' + need.length + ' 条旧智能体记录(matType/importAt)');
-            } catch(e) { console.warn('[writer] 迁移智能体记录失败:', e.message); }
+                if (agents.length) console.log('[writer] 已迁移 ' + agents.length + ' 条旧智能体报告到报告库');
+            } catch(e) { console.warn('[writer] 迁移智能体报告失败:', e.message); }
         };
         // 模块加载即触发一次迁移（fire-and-forget，不阻塞）
         wrMigrateAgentMaterials();

@@ -689,113 +689,82 @@
             };
 
             // ========== 通用文件下载（移动端兼容，单点实现）==========
-            // 桌面端：标准 a.click()；移动端复杂格式(.docx/.zip/.xlsx)：data URL + 显式可点按钮
-            window.downloadBlob = function(blob, filename) {
+            // 桌面端：标准 a.click()；移动端：优先系统分享(navigator.share 带文件)，失败则简洁「点击下载」按钮(真实手势内重试)
+            window.__lastDownload = null;
+
+            window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
-                // 旧 IE / EdgeHTML / 部分华为内核
+                window.__lastDownload = { blob: blob, filename: filename };
+                // 旧 IE / EdgeHTML：直接调系统 API
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {
                     try { window.navigator.msSaveOrOpenBlob(blob, filename); return; } catch (e) {}
                 }
-                if (window.navigator && window.navigator.msSaveBlob) {
-                    try { window.navigator.msSaveBlob(blob, filename); return; } catch (e) {}
-                }
                 var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-                var isComplex = /\.(zip|docx|xlsx|pptx)$/i.test(filename);
-                if (isMobile && isComplex) {
-                    // 手机端复杂文件：blob URL 常被拦截，改用 data URL + 真实 <a download> 按钮
-                    var reader = new FileReader();
-                    reader.onload = function() { _showMobileDownloadBtn(reader.result, filename, true); };
-                    reader.onerror = function() {
-                        var url = URL.createObjectURL(blob);
-                        _showMobileDownloadBtn(url, filename, false);
-                    };
-                    reader.readAsDataURL(blob);
+
+                // 桌面端：标准下载
+                if (!isMobile) {
+                    var dlUrl = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = dlUrl; a.download = filename; a.style.display = 'none';
+                    document.body.appendChild(a); a.click();
+                    setTimeout(function () {
+                        if (a.parentNode) a.parentNode.removeChild(a);
+                        setTimeout(function () { URL.revokeObjectURL(dlUrl); }, 60000);
+                    }, 500);
                     return;
                 }
-                var a = document.createElement('a');
-                var dlUrl = URL.createObjectURL(blob);
-                a.href = dlUrl;
-                a.download = filename;
-                a.style.display = 'none';
-                document.body.appendChild(a); // 华为等浏览器要求元素在 DOM 树中
-                a.click();
-                setTimeout(function() {
-                    if (a.parentNode) document.body.removeChild(a);
-                    setTimeout(function() { URL.revokeObjectURL(dlUrl); }, 60000);
-                }, isMobile ? 2000 : 500);
+
+                // 移动端：优先系统分享（Web Share API 带文件，华为/Edge 新版均支持，可调起系统存文件）
+                if (navigator.share && typeof navigator.canShare === 'function') {
+                    try {
+                        var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+                        if (navigator.canShare({ files: [file] })) {
+                            await navigator.share({ files: [file], title: filename });
+                            return;
+                        }
+                    } catch (e) {
+                        if (e && e.name === 'AbortError') return; // 用户取消分享
+                        // 其它错误（含激活过期 NotAllowedError）落到简洁兜底
+                    }
+                }
+
+                // 移动端兜底：简洁「点击下载」按钮（在真实用户手势内重试 share / a.click，逻辑干净不绕）
+                _showMobileRetryBtn(filename);
             };
 
-            function _showMobileDownloadBtn(url, filename, isDataUrl) {
-                var old = document.getElementById('_mobile_dl_btn');
+            function _showMobileRetryBtn(filename) {
+                var old = document.getElementById('_mb_dl_tip');
                 if (old && old.parentNode) old.parentNode.removeChild(old);
-                var oldTip = document.getElementById('_mobile_dl_tip');
-                if (oldTip && oldTip.parentNode) oldTip.parentNode.removeChild(oldTip);
-                var displayName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
-
-                // 点击触发：华为等浏览器会静默忽略 <a download>，所以多重兜底
-                function triggerDownload() {
-                    // 1) 新标签打开（点击手势内，多数移动浏览器对已知类型会直接下载）
-                    try {
-                        var w = window.open(url, '_blank');
-                        if (w) return;
-                    } catch (e) {}
-                    // 2) 标准 a.download 兜底（仍在用户手势内）
-                    try {
-                        var a = document.createElement('a');
-                        a.href = url;
-                        a.download = filename;
-                        a.style.display = 'none';
-                        document.body.appendChild(a);
-                        a.click();
-                        setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 1000);
-                        return;
-                    } catch (e2) {}
-                    // 3) 最后尝试直接导航兜底
-                    try { window.location.href = url; } catch (e3) {}
-                }
-
-                var btn = document.createElement('a');
-                btn.id = '_mobile_dl_btn';
-                btn.href = url;
-                btn.setAttribute('download', filename);
-                btn.innerHTML = '<span style="font-size:1.3rem;vertical-align:middle;">📥</span> 点击下载: ' + displayName;
-                btn.style.cssText = [
-                    'display:block;position:fixed;bottom:80px;left:50%;',
-                    'transform:translateX(-50%);',
-                    'background:linear-gradient(135deg,#059669,#10b981);',
-                    'color:#fff;padding:14px 28px;border-radius:25px;',
-                    'text-decoration:none;font-size:0.95rem;font-weight:600;',
-                    'z-index:99999;box-shadow:0 4px 20px rgba(5,150,105,0.4);',
-                    'white-space:nowrap;animation:_mbdlFadeIn .3s ease;cursor:pointer;'
-                ].join('');
-                btn.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    triggerDownload();
-                });
-                if (!document.getElementById('_mobile_dl_style')) {
-                    var s = document.createElement('style');
-                    s.id = '_mobile_dl_style';
-                    s.textContent = '@keyframes _mbdlFadeIn{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}';
-                    document.head.appendChild(s);
-                }
-                document.body.appendChild(btn);
-
-                // 兜底提示：长按链接 / 系统浏览器打开
                 var tip = document.createElement('div');
-                tip.id = '_mobile_dl_tip';
-                tip.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);max-width:92%;background:rgba(0,0,0,0.78);color:#fff;font-size:0.8rem;padding:8px 14px;border-radius:14px;z-index:99999;text-align:center;line-height:1.5;';
-                if (isDataUrl) {
-                    tip.innerHTML = '若点击仍无反应，请在手机<b>系统浏览器</b>中打开本页再下载';
-                } else {
-                    tip.innerHTML = '若点击无反应，可<b>长按下方链接</b>选择「保存」：<br><a id="_mobile_dl_link" href="' + url + '" style="color:#7dd3fc;word-break:break-all;">' + displayName + '</a>';
-                }
+                tip.id = '_mb_dl_tip';
+                tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:12px 14px;border-radius:12px;font-size:0.85rem;max-width:92vw;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
+                var shortName = filename.length > 26 ? filename.slice(0, 23) + '…' : filename;
+                tip.innerHTML = '<div style="margin-bottom:8px;">当前浏览器需手动触发下载</div>'
+                    + '<button id="_mb_dl_retry" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:0.9rem;font-weight:600;cursor:pointer;">📥 点击下载：' + shortName + '</button>'
+                    + '<div style="margin-top:8px;font-size:0.72rem;opacity:.85;">如仍无效，请用手机系统浏览器打开本页</div>';
                 document.body.appendChild(tip);
-
-                setTimeout(function() {
-                    if (btn.parentNode) btn.parentNode.removeChild(btn);
-                    if (tip.parentNode) tip.parentNode.removeChild(tip);
-                    if (!isDataUrl) setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
-                }, 15000);
+                document.getElementById('_mb_dl_retry').addEventListener('click', async function () {
+                    tip.remove();
+                    var d = window.__lastDownload; if (!d) return;
+                    // 新手势内再尝试系统分享
+                    if (navigator.share && typeof navigator.canShare === 'function') {
+                        try {
+                            var file = new File([d.blob], d.filename, { type: d.blob.type || 'application/octet-stream' });
+                            if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: d.filename }); return; }
+                        } catch (e) { if (e && e.name === 'AbortError') return; }
+                    }
+                    // 最后尝试 a.download（真实手势内，部分浏览器可用）
+                    try {
+                        var url = URL.createObjectURL(d.blob);
+                        var a = document.createElement('a');
+                        a.href = url; a.download = d.filename; a.style.display = 'none';
+                        document.body.appendChild(a); a.click();
+                        setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); }, 1500);
+                    } catch (e2) {
+                        alert('自动下载失败，请复制文件名并用电脑访问本页下载：\n' + d.filename);
+                    }
+                });
+                setTimeout(function () { if (tip && tip.parentNode) tip.remove(); }, 12000);
             }
 
             // ========== 复制文本（移动端 webview 兜底）==========

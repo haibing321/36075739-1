@@ -204,15 +204,6 @@
         reader.readAsDataURL(blob);
     }
 
-    function downloadBlob(blob, filename) {
-        // 确保ZIP文件有正确的MIME类型（华为等浏览器对此更严格）
-        if (filename.endsWith('.zip') && (!blob.type || blob.type === '' || blob.type === 'application/octet-stream')) {
-            blob = new Blob([blob], { type: 'application/zip' });
-        }
-        // 统一走全局移动端兼容下载（utils.js: window.downloadBlob），避免多套实现
-        window.downloadBlob(blob, filename);
-    }
-
     /**
      * 显示移动端下载按钮（使用真实 <a download> 标签，比 div.onclick 更可靠）
      * @param {string} url - 下载链接（blob URL 或 data URL）
@@ -357,8 +348,8 @@
             window.showProgress(90, '正在下载…');
             var fileName = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.zip';
 
-            // 使用兼容性下载函数（替代原来的简单 a.click()）
-            downloadBlob(blob, fileName);
+            // 使用兼容性下载函数（移动端优先系统分享 / 简洁重试按钮）
+            await window.downloadBlob(blob, fileName);
 
             window.finishProgress('✅ 备份完成' + (mediaFileCount > 0 ? ' · 含' + mediaFileCount + '个附件' : '') +
                    (errors.length > 0 ? ' ⚠️ 部分模块失败' : ''));

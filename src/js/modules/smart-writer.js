@@ -3002,4 +3002,25 @@ ${details || '(无)'}
                 return true;
             } catch(e) { console.warn('[writer] agent save failed:', e.message); return false; }
         };
+
+        // 数据迁移：补齐旧智能体报告缺失的 matType / importAt（一次性，幂等）
+        window.wrMigrateAgentMaterials = async function() {
+            try {
+                await wrOpenDB();
+                var all = await wrDbGetAll(WR_MAT_STORE);
+                var need = (all || []).filter(function(m){ return m && m.source === '智能体' && !m.matType; });
+                for (var i = 0; i < need.length; i++) {
+                    var m = need[i];
+                    m.matType = 'other';
+                    var t = Date.now();
+                    if (m.createdAt) { var d = new Date(m.createdAt); if (!isNaN(d.getTime())) t = d.getTime(); }
+                    else if (m.updatedAt) { var d2 = new Date(m.updatedAt); if (!isNaN(d2.getTime())) t = d2.getTime(); }
+                    m.importAt = t;
+                    await wrDbPut(WR_MAT_STORE, m);
+                }
+                if (need.length) console.log('[writer] 已迁移 ' + need.length + ' 条旧智能体记录(matType/importAt)');
+            } catch(e) { console.warn('[writer] 迁移智能体记录失败:', e.message); }
+        };
+        // 模块加载即触发一次迁移（fire-and-forget，不阻塞）
+        wrMigrateAgentMaterials();
     })();

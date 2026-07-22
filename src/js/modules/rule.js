@@ -1020,12 +1020,56 @@
                     const tradeSuffix = selectedTrade ? '_' + selectedTrade : '_全部';
                     downloadBlob(typedZipBlob, '铁路规章' + tradeSuffix + '_' + new Date().toISOString().slice(0, 10) + '.zip');
                     
-                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '\n\n【手机端】请点击屏幕底部「📥 下载」按钮完成下载。' : '';
-                    alert('导出成功！共 ' + exportRules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : '') + mobileMsg);
+                    alert('导出成功！共 ' + exportRules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : ''));
                 } catch (err) {
                     console.error('ZIP导出失败:', err);
                     alert('导出失败: ' + err.message);
                 }
+            };
+
+            // 单条规章导出为 HTML（含图片，base64 内联，单文件，不依赖 ZIP/JSZip，手机端直接打开即看图）
+            window.ruleExportSingleHtml = async function(idx) {
+                var rule = rules[idx];
+                if (!rule) { alert('未找到该规章'); return; }
+                try {
+                    var imgHtml = '';
+                    if (rule.imageIds && rule.imageIds.length) {
+                        for (var i = 0; i < rule.imageIds.length; i++) {
+                            try {
+                                var blob = await getImageFromDB(rule.imageIds[i]);
+                                if (blob) {
+                                    var b64 = await new Promise(function(res) {
+                                        var r = new FileReader();
+                                        r.onload = function() { res(r.result); };
+                                        r.onerror = function() { res(''); };
+                                        r.readAsDataURL(blob);
+                                    });
+                                    imgHtml += '<p style="text-align:center;"><img src="' + b64 + '" style="max-width:100%;border:1px solid #ddd;border-radius:6px;"></p>';
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    var title = rule.title || '规章';
+                    var safeTitle = title.replace(/[\\/:*?"<>|]/g, '_');
+                    var html = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
+                        + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                        + '<title>' + escapeHtml(title) + '</title>'
+                        + '<style>body{font-family:-apple-system,"Microsoft YaHei",sans-serif;line-height:1.9;padding:24px;color:#222;max-width:900px;margin:auto}'
+                        + 'h1{font-size:1.4rem;border-bottom:3px solid #2563eb;padding-bottom:8px}'
+                        + '.meta{color:#666;font-size:.85rem;margin:6px 0 16px}'
+                        + '.content{white-space:pre-wrap;word-break:break-word}'
+                        + 'img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:8px 0}</style></head><body>'
+                        + '<h1>' + escapeHtml(title) + '</h1>'
+                        + '<div class="meta">专业：' + escapeHtml(rule.trade || '') + '</div>'
+                        + '<div class="content">' + escapeHtml(rule.content || '') + '</div>'
+                        + imgHtml
+                        + '</body></html>';
+                    var outBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                    window.downloadBlob(outBlob, safeTitle + '.html');
+                    if (!/Mobi|Android/i.test(navigator.userAgent)) {
+                        alert('已导出：' + title + '.html（含 ' + (rule.imageIds ? rule.imageIds.length : 0) + ' 张图片）');
+                    }
+                } catch (e) { alert('导出失败：' + e.message); }
             };
 
             // ========== ZIP 导出/导入功能 ==========
@@ -1465,6 +1509,7 @@
 
             window.ruleViewFullText = async function(idx) {
                 const rule = rules[idx];
+                window.__ruleFvIdx = idx;
                 if (!rule) return;
                 const keywords = getKeywords().filter(k => k.trim() !== '');
 

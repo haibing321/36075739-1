@@ -353,6 +353,7 @@ window.onclick = function(e) {
 
     // 新 SW 接管页面后，若本次为手动更新则刷新以应用新版本
     navigator.serviceWorker.addEventListener('controllerchange', function() {
+        _fetchSwVersion(); // 刷新离线获取的 12 位版本号
         if (_pendingReload) {
             _pendingReload = false;
             window.location.reload();
@@ -586,28 +587,36 @@ const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';
 var _SW_VERSION = '';
 
 // 页面加载时注入版本号（设置面板 + 关于面板均从 APP_VERSION 动态取，避免 HTML 写死陈旧值）
-// 同时异步获取 SW 12 位缓存版本号并二次注入
-document.addEventListener('DOMContentLoaded', async function() {
+function _applySwVersion() {
+    if (!_SW_VERSION) return;
+    var verSpan = document.getElementById('setting-current-version');
+    if (verSpan && !verSpan.textContent.includes('·')) verSpan.textContent = APP_VERSION + ' · ' + _SW_VERSION;
+    var aboutVer = document.getElementById('about-app-version');
+    if (aboutVer && !aboutVer.textContent.includes('·')) aboutVer.textContent = APP_VERSION + ' · ' + _SW_VERSION;
+}
+
+// 通过 SW 消息(完全离线)获取 12 位缓存版本号，避免打开时联网 fetch sw.js
+function _fetchSwVersion() {
+    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+    try {
+        var ch = new MessageChannel();
+        ch.port1.onmessage = function(e) {
+            if (e.data && e.data.type === 'SW_VERSION' && e.data.version) {
+                _SW_VERSION = e.data.version;
+                _applySwVersion();
+            }
+        };
+        navigator.serviceWorker.controller.postMessage({ type: 'GET_SW_VERSION' }, [ch.port2]);
+    } catch (e) {}
+}
+
+document.addEventListener('DOMContentLoaded', function() {
     var verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
     var aboutVer = document.getElementById('about-app-version');
     if (aboutVer) aboutVer.textContent = APP_VERSION;
-    // 异步获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
-    fetch('sw.js?v=' + Date.now(), { cache: 'no-store' })
-        .then(function(r) { return r.text(); })
-        .then(function(txt) {
-            var m = txt.match(/CACHE_VERSION\s*=\s*'(\d{12})'/);
-            if (m && m[1]) {
-                _SW_VERSION = m[1];
-                if (verSpan && !verSpan.textContent.includes('·')) {
-                    verSpan.textContent = APP_VERSION + ' · ' + _SW_VERSION;
-                }
-                if (aboutVer && !aboutVer.textContent.includes('·')) {
-                    aboutVer.textContent = APP_VERSION + ' · ' + _SW_VERSION;
-                }
-            }
-        })
-        .catch(function() {});
+    // 离线获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
+    _fetchSwVersion();
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）

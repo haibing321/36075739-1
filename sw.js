@@ -6,7 +6,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260723075529';
+var CACHE_VERSION = '20260723075700';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -245,6 +245,12 @@ self.addEventListener('message', function(event) {
   switch (data.type) {
     case 'SKIP_WAITING':
       self.skipWaiting();
+      break;
+    case 'GET_SW_VERSION':
+      // 离线回传 12 位缓存版本号，避免页面打开时联网 fetch sw.js
+      if (event.ports && event.ports[0]) {
+        event.ports[0].postMessage({ type: 'SW_VERSION', version: CACHE_VERSION });
+      }
       break;
     case 'CACHE_STATUS':
       caches.open(CACHE_NAME).then(function(cache) {

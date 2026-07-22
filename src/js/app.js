@@ -107,6 +107,35 @@ document.addEventListener('DOMContentLoaded', function() {
 // Agent 桥接函数（供 agent-core.js 工具调用）
 // ============================================================
 (function() {
+    // ---- 智能体搜索辅助：模糊匹配(复用全局 Fuse) + 子串降级 ----
+    function _fuzzyFilter(data, keyword, keys, limit) {
+        limit = limit || 10;
+        if (!keyword) return data.slice(0, limit);
+        var kws = String(keyword).split(/[\s,，、]+/).filter(Boolean);
+        if (!kws.length) return data.slice(0, limit);
+        if (typeof window.Fuse !== 'undefined') {
+            try {
+                var fuse = new window.Fuse(data, { keys: keys, threshold: 0.4, ignoreLocation: true, includeScore: true, minMatchCharLength: 1 });
+                var map = {};
+                kws.forEach(function(kw) {
+                    fuse.search(kw).forEach(function(h) {
+                        var i = data.indexOf(h.item);
+                        if (i === -1) return;
+                        if (!map[i]) map[i] = { item: h.item, n: 0 };
+                        map[i].n++;
+                    });
+                });
+                return Object.keys(map).map(function(k) { return map[k].item; }).slice(0, limit);
+            } catch (e) {}
+        }
+        var lower = kws.map(function(k) { return k.toLowerCase(); });
+        return data.filter(function(d) {
+            return keys.some(function(k) {
+                var v = (d[k] || '').toLowerCase();
+                return lower.some(function(kw) { return v.indexOf(kw) !== -1; });
+            });
+        }).slice(0, limit);
+    }
     /** 搜索检查信息 */
     window._agentGetIssues = function(keyword, unit, category, limit) {
         var data = [];
@@ -115,17 +144,9 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch(e) { return []; }
         if (!data.length) return [];
         var filtered = data;
-        if (keyword) {
-            var kw = keyword.toLowerCase();
-            filtered = filtered.filter(function(i) {
-                return ['性质','category','content','regulation','unit'].some(function(f) {
-                    return (i[f] || '').toLowerCase().indexOf(kw) !== -1;
-                });
-            });
-        }
         if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
         if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
-        return filtered.slice(0, limit || 30);
+        return _fuzzyFilter(filtered, keyword, ['性质','category','content','regulation','unit'], limit || 30);
     };
 
     /** 搜索规章制度 */
@@ -134,11 +155,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             if (typeof window.getRulesData === 'function') rules = window.getRulesData();
         } catch(e) { return []; }
-        if (!rules.length || !keyword) return rules.slice(0, limit || 10);
-        var kw = keyword.toLowerCase();
-        return rules.filter(function(r) {
-            return ((r.title||'') + ' ' + (r.content||'')).toLowerCase().indexOf(kw) !== -1;
-        }).slice(0, limit || 10);
+        if (!rules.length) return [];
+        return _fuzzyFilter(rules, keyword, ['title','content','trade'], limit || 10);
     };
 
     /** 写入工作日志
@@ -146,14 +164,14 @@ document.addEventListener('DOMContentLoaded', function() {
      *  diary 模块签名：addIssueToDiary(content=问题描述, regulation=规章依据, date)
      *  修正：issues 不应误存为"规章依据"，合并进问题描述；content 作为正文
      */
-    window._agentWriteDiary = async function(content, issues) {
+    window._agentWriteDiary = async function(content, issues, date) {
         try {
             if (typeof window.addIssueToDiary !== 'function') return { ok: false, error: '日志模块未就绪' };
             var fullContent = (content || '').trim();
             if (issues && String(issues).trim()) {
                 fullContent += (fullContent ? '｜' : '') + '发现问题：' + String(issues).trim();
             }
-            var ok = window.addIssueToDiary(fullContent, '');
+            var ok = window.addIssueToDiary(fullContent, '', date || '');
             return { ok: !!ok, message: ok ? '日志已写入' : '写入失败' };
         } catch(e) { return { ok: false, error: e.message }; }
     };
@@ -173,12 +191,19 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             if (typeof window.getHandbookData === 'function') hb = window.getHandbookData();
         } catch(e) { return []; }
-        if (!hb.length || !keyword) return hb.slice(0, limit || 10);
-        var kw = keyword.toLowerCase();
-        return hb.filter(function(h) {
-            var hay = [h.chapter, h.section, h.item, h.subitem, h.content].filter(Boolean).join(' ').toLowerCase();
-            return hay.indexOf(kw) !== -1;
-        }).slice(0, limit || 10);
+        if (!hb.length) return [];
+        return _fuzzyFilter(hb, keyword, ['chapter','section','item','subitem','content'], limit || 10);
+    };
+
+    /** 按 id(数组下标) 取单条完整记录，供智能体按需获取全文 */
+    window._agentGetIssueDetail = function(id) {
+        try { return (window.getIssueData() || [])[id] || null; } catch(e) { return null; }
+    };
+    window._agentGetRuleDetail = function(id) {
+        try { return (window.getRulesData() || [])[id] || null; } catch(e) { return null; }
+    };
+    window._agentGetHandbookDetail = function(id) {
+        try { return (window.getHandbookData() || [])[id] || null; } catch(e) { return null; }
     };
 })();
 

@@ -632,6 +632,8 @@
             }
             window.showInputView = showInputView;
             window.showQuery = showQuery;
+            // 切入工作日志模块时默认刷新「查询视图」（当日日志 + 日历）
+            window.onShow_diary = function() { showQuery(); };
             
             // ---- 多媒体采集与处理 ----
             let _mediaFiles = [];          // 暂存的文件对象（含已加载的旧文件）
@@ -1097,7 +1099,7 @@
                 document.getElementById('diary-date').valueAsDate = new Date();
                 renderIssueFields([]);
                 updateDiaryCount();
-                showInputView(); // 默认显示输入视图
+                showQuery(); // 默认显示查询视图（当日日志 + 日历）
             });
             // 暴露数据获取接口（供联动数据使用）
             window.getDiaryData = function() { return diaries; };

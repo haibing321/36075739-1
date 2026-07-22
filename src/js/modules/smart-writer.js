@@ -2811,9 +2811,16 @@
              * 查看资料详情（弹窗）
              */
             window.wrViewMaterial = async function(id) {
-                const all = await wrDbGetAll(WR_MAT_STORE);
-                const m = all.find(x => x.id === id);
-                if (!m) return;
+                try {
+                    var db = await wrOpenDB();
+                    var m = await new Promise(function(resolve) {
+                        var tx = db.transaction(WR_MAT_STORE, 'readonly');
+                        var req = tx.objectStore(WR_MAT_STORE).get(id);
+                        req.onsuccess = function(e) { resolve(e.target.result); };
+                        req.onerror = function() { resolve(null); };
+                    });
+                    if (!m) return;
+                } catch(e) { return; }
                 const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
 
                 // 复用报告弹窗，或创建独立弹窗
@@ -2821,7 +2828,7 @@
                 if (!modal) {
                     modal = document.createElement('div');
                     modal.id = 'wr-mat-view-modal';
-                    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;';
+                    modal.style.cssText = 'display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;';
                     modal.innerHTML = `
                         <div style="background:#fff;border-radius:14px;padding:18px;width:min(700px,96vw);max-height:88vh;display:flex;flex-direction:column;gap:10px;overflow:hidden;">
                             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
@@ -2860,12 +2867,19 @@
              * 修改资料类型
              */
             window.wrChangeMaterialType = async function(id, newType) {
-                const all = await wrDbGetAll(WR_MAT_STORE);
-                const m = all.find(x => x.id === id);
-                if (!m) return;
-                m.matType = newType;
-                await wrDbPut(WR_MAT_STORE, m);
-                wrRenderMaterials();
+                try {
+                    var db = await wrOpenDB();
+                    var m = await new Promise(function(resolve) {
+                        var tx = db.transaction(WR_MAT_STORE, 'readonly');
+                        var req = tx.objectStore(WR_MAT_STORE).get(id);
+                        req.onsuccess = function(e) { resolve(e.target.result); };
+                        req.onerror = function() { resolve(null); };
+                    });
+                    if (!m) return;
+                    m.matType = newType;
+                    await wrDbPut(WR_MAT_STORE, m);
+                    wrRenderMaterials();
+                } catch(e) { console.warn('[wr] changeMaterialType failed:', e.message); }
             };
 
             /**
@@ -2937,25 +2951,32 @@ ${details || '(无)'}
              * 将资料设为写作模板
              */
             window.wrSetAsTemplate = async function(id) {
-                const all = await wrDbGetAll(WR_MAT_STORE);
-                const m = all.find(x => x.id === id);
-                if (!m) return;
+                try {
+                    var db = await wrOpenDB();
+                    var m = await new Promise(function(resolve) {
+                        var tx = db.transaction(WR_MAT_STORE, 'readonly');
+                        var req = tx.objectStore(WR_MAT_STORE).get(id);
+                        req.onsuccess = function(e) { resolve(e.target.result); };
+                        req.onerror = function() { resolve(null); };
+                    });
+                    if (!m) return;
 
-                // 如果已经是模板类型，提示用户
-                if (m.matType === 'template') {
-                    alert('该资料已经是写作模版类型');
-                    return;
-                }
+                    // 如果已经是模板类型，提示用户
+                    if (m.matType === 'template') {
+                        alert('该资料已经是写作模版类型');
+                        return;
+                    }
 
-                // 确认对话框
-                const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
-                if (!confirm('确定将【' + typeInfo.label + '】《' + (m.title || m.fileName) + '》设为写作模版吗？')) return;
+                    // 确认对话框
+                    const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
+                    if (!confirm('确定将【' + typeInfo.label + '】《' + (m.title || m.fileName) + '》设为写作模版吗？')) return;
 
-                // 更新类型为template
-                m.matType = 'template';
-                await wrDbPut(WR_MAT_STORE, m);
-                wrRenderMaterials();
-                alert('已成功设为写作模版！您可以在「撰写报告」时选择此模版使用。');
+                    // 更新类型为template
+                    m.matType = 'template';
+                    await wrDbPut(WR_MAT_STORE, m);
+                    wrRenderMaterials();
+                    alert('已成功设为写作模版！您可以在「撰写报告」时选择此模版使用。');
+                } catch(e) { console.warn('[wr] setAsTemplate failed:', e.message); }
             };
 
             /**

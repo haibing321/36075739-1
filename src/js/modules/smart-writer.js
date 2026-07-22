@@ -2253,7 +2253,7 @@
 
                 listEl.innerHTML = filtered.map(r => `
                     <div class="wr-mat-card">
-                        <div style="flex:1;min-width:0;cursor:pointer;" onclick="wrViewReport(${r.id})">
+                        <div style="flex:1;min-width:0;cursor:pointer;" onclick="wrViewReport(${JSON.stringify(r.id)})">
                             <div style="font-weight:700;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">${wrEsc(r.title||'未命名报告')}</div>
                             <div style="font-size:0.75rem;color:var(--text-secondary);margin:3px 0;">
                                 ${r.source ? '<span style="background:#e0e7ff;color:#3730a3;padding:1px 8px;border-radius:10px;margin-right:6px;">📍 ' + wrEsc(r.source) + '</span>' : ''}<span style="background:#f0fdf4;color:#15803d;padding:1px 8px;border-radius:10px;margin-right:6px;">${wrEsc(wrCatName(r.category))}</span>
@@ -2263,9 +2263,9 @@
                             <div style="font-size:0.78rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc((r.content||'').replace(/\n/g,' ').slice(0,80))}…</div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-                            <button onclick="wrViewReport(${r.id})" class="wr-mat-btn wr-mat-btn-view">查看</button>
-                            <button onclick="wrModifyHistoryReport(${r.id})" class="wr-mat-btn wr-mat-btn-template">✏️ 修改</button>
-                            <button onclick="wrDeleteReport(${r.id})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
+                            <button onclick="wrViewReport(${JSON.stringify(r.id)})" class="wr-mat-btn wr-mat-btn-view">查看</button>
+                            <button onclick="wrModifyHistoryReport(${JSON.stringify(r.id)})" class="wr-mat-btn wr-mat-btn-template">✏️ 修改</button>
+                            <button onclick="wrDeleteReport(${JSON.stringify(r.id)})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
                         </div>
                     </div>`).join('');
             };
@@ -2796,12 +2796,12 @@
                             <div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(preview)}…</div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-                            <button onclick="wrViewMaterial(${m.id})" class="wr-mat-btn wr-mat-btn-view">查看</button>
-                            ${!isTemplate ? `<button onclick="wrSetAsTemplate(${m.id})" class="wr-mat-btn wr-mat-btn-template" title="设为写作模版">⭐ 设模版</button>` : '<button disabled class="wr-mat-btn" style="background:#f1f5f9;color:#94a3b8;cursor:not-allowed;border:1px solid #e2e8f0;">✓ 已是模版</button>'}
-                            <select onchange="wrChangeMaterialType(${m.id},this.value)" class="wr-mat-select" title="修改类型">
+                            <button onclick="wrViewMaterial(${JSON.stringify(m.id)})" class="wr-mat-btn wr-mat-btn-view">查看</button>
+                            ${!isTemplate ? `<button onclick="wrSetAsTemplate(${JSON.stringify(m.id)})" class="wr-mat-btn wr-mat-btn-template" title="设为写作模版">⭐ 设模版</button>` : '<button disabled class="wr-mat-btn" style="background:#f1f5f9;color:#94a3b8;cursor:not-allowed;border:1px solid #e2e8f0;">✓ 已是模版</button>'}
+                            <select onchange="wrChangeMaterialType(${JSON.stringify(m.id)},this.value)" class="wr-mat-select" title="修改类型">
                                 ${Object.entries(WR_MAT_TYPES).map(([k,v])=>'<option value="'+k+'"'+(k===m.matType?' selected':'')+'>'+v.label+'</option>').join('')}
                             </select>
-                            <button onclick="wrDeleteMaterial(${m.id})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
+                            <button onclick="wrDeleteMaterial(${JSON.stringify(m.id)})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
                         </div>
                     </div>`;
                 }).join('');
@@ -2992,7 +2992,9 @@ ${details || '(无)'}
                     title: title,
                     content: content,
                     type: 'history',
+                    matType: 'other',
                     source: '智能体',
+                    importAt: Date.now(),
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 };

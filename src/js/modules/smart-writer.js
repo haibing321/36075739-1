@@ -130,9 +130,23 @@
             function wrDbGetAll(store) {
                 return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
                     const tx = db.transaction(store, 'readonly');
-                    const req = tx.objectStore(store).getAll();
-                    req.onsuccess = e => res(e.target.result);
-                    req.onerror   = e => rej(e.target.error);
+                    const os = tx.objectStore(store);
+                    // 用游标遍历：把真实主键(keyPath=id)挂回对象，
+                    // 兼容部分浏览器(如华为) getAll() 不返回 keyPath 导致 m.id 为 undefined 的问题
+                    const req = os.openCursor();
+                    const out = [];
+                    req.onsuccess = e => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            const v = cursor.value;
+                            if (v && v.id == null) v.id = cursor.key;
+                            out.push(v);
+                            cursor.continue();
+                        } else {
+                            res(out);
+                        }
+                    };
+                    req.onerror = e => rej(e.target.error);
                 })));
             }
 
@@ -2272,8 +2286,24 @@
 
             window.wrViewReport = async function(id) {
                 const reports = await wrDbGetAll(WR_RPT_STORE);
-                const r = reports.find(x => x.id === id);
-                if (!r) return;
+                let r = reports.filter(x => x && x.id === id)[0];
+                // 兜底：直接按主键取（兼容 getAll 不返回 keyPath 的浏览器）
+                if (!r) {
+                    try {
+                        var db = await wrOpenDB();
+                        r = await new Promise(function(resolve) {
+                            var tx = db.transaction(WR_RPT_STORE, 'readonly');
+                            var req = tx.objectStore(WR_RPT_STORE).get(id);
+                            req.onsuccess = function(e) { resolve(e.target.result); };
+                            req.onerror = function() { resolve(null); };
+                        });
+                    } catch(e) {}
+                }
+                if (!r) {
+                    console.warn('[wr] 未找到报告 id=', id);
+                    alert('未找到该报告，可能已被删除或数据异常。');
+                    return;
+                }
                 const modal = document.getElementById('wr-report-modal');
                 document.getElementById('wr-report-modal-title').textContent = r.title || '未命名报告';
                 document.getElementById('wr-report-modal-meta').textContent =
@@ -2819,8 +2849,21 @@
                         req.onsuccess = function(e) { resolve(e.target.result); };
                         req.onerror = function() { resolve(null); };
                     });
-                    if (!m) return;
-                } catch(e) { return; }
+                    // 兜底：get 未命中时再用 getAll + 主键匹配（兼容极端情况）
+                    if (!m) {
+                        const all = await wrDbGetAll(WR_MAT_STORE);
+                        m = (all || []).filter(function(x){ return x && x.id === id; })[0];
+                    }
+                    if (!m) {
+                        console.warn('[wr] 未找到资料 id=', id);
+                        alert('未找到该资料，可能已被删除或数据异常。');
+                        return;
+                    }
+                } catch(e) {
+                    console.warn('[wr] viewMaterial failed:', e && e.message);
+                    alert('打开资料失败：' + (e && e.message ? e.message : e));
+                    return;
+                }
                 const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
 
                 // 复用报告弹窗，或创建独立弹窗

@@ -607,11 +607,6 @@
 .ds-welcome-icon { display: none; }
 .ds-welcome-title { margin: 4px 0 6px; font-size: 1.1rem; color: var(--primary, #2563eb); }
 .ds-welcome-sub { font-size: 0.82rem; color: var(--text-secondary, #64748b); line-height: 1.5; margin: 0 0 14px; }
-/* 欢迎页角色选择器（与工具栏 expertRole 同步） */
-.ds-welcome-role { display: inline-flex; align-items: center; gap: 8px; margin: 0 auto; padding: 8px 12px; background: #fff; border: 1px solid var(--border, #e2e8f0); border-radius: 24px; max-width: 100%; }
-.ds-welcome-role-label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary, #475569); white-space: nowrap; }
-.ds-welcome-role-select { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 18px; padding: 6px 14px; font-size: 0.85rem; color: var(--text, #334155); cursor: pointer; max-width: 240px; min-width: 0; }
-.ds-welcome-role-select:focus { outline: none; border-color: var(--primary, #2563eb); }
 
 /* ===== 智能助手模块响应式布局 ===== */
 /* 手机（≤600px）*/

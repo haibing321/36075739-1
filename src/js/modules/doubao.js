@@ -1202,25 +1202,8 @@
                     box.style.display = 'flex';
                     box.innerHTML = '<div class="ds-welcome">' +
                         '<h3 class="ds-welcome-title">铁路安全 AI 对话助手</h3>' +
-                        '<p class="ds-welcome-sub">选择对话角色，在下方输入问题即可开始。可聊铁路安全（规章查询 · 隐患分析 · 文书起草 · 风险研判）并能调用本地资料库辅助作答，也能聊铁路以外的任何话题。</p>' +
-                        '<div class="ds-welcome-role">' +
-                            '<span class="ds-welcome-role-label">🎭 对话角色</span>' +
-                            '<select id="ds-welcome-role" class="ds-welcome-role-select"></select>' +
-                        '</div>' +
+                        '<p class="ds-welcome-sub">选择对话角色（下方「角色选择」），在下方输入问题即可开始。可聊铁路安全（规章查询 · 隐患分析 · 文书起草 · 风险研判）并能调用本地资料库辅助作答，也能聊铁路以外的任何话题。</p>' +
                         '</div>';
-                    // 欢迎页角色选择：克隆工具栏 expertRole 选项并同步、记忆
-                    (function() {
-                        var wr = document.getElementById('ds-welcome-role');
-                        var er = document.getElementById('expertRole');
-                        if (!wr || !er) return;
-                        wr.innerHTML = er.innerHTML;
-                        wr.value = er.value;
-                        wr.addEventListener('change', function() {
-                            er.value = wr.value;
-                            try { localStorage.setItem('ds_role_v1', wr.value); } catch (e) {}
-                            if (typeof updateModeStatus === 'function') updateModeStatus();
-                        });
-                    })();
                     return;
                 }
                 // 有内容时显示对话区

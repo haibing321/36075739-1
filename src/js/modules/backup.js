@@ -304,6 +304,11 @@
             window.showProgress(50, '正在收集对话记录…');
             backup.modules.dsConversations = getLocal('ds_conversations_v1', []);
             backup.modules.dsChatHistory = getLocal('ds_chat_history_v1', []);
+            window.showProgress(52, '正在收集AI记忆与配置…');
+            // 智能助手长期记忆 + 关联数据「记住」选择 + 记忆开关（换浏览器不丢）
+            backup.modules.dsMemory = getLocal('assistant_memory_v1', []);
+            backup.modules.dsDataSource = getLocal('ds_datasource_v1', null);
+            backup.modules.memoryEnabled = getLocal('memory_enabled', null);
             window.showProgress(55, '正在收集术语库…');
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
@@ -478,6 +483,9 @@
                     if (!backup.modules.termLibrary) backup.modules.termLibrary = [];
                     if (!backup.modules.memos) backup.modules.memos = [];
                     if (!backup.modules.diaryMedia) backup.modules.diaryMedia = [];
+                    if (!backup.modules.dsMemory) backup.modules.dsMemory = [];
+                    if (backup.modules.dsDataSource === undefined) backup.modules.dsDataSource = null;
+                    if (backup.modules.memoryEnabled === undefined) backup.modules.memoryEnabled = null;
                 }
 
                 _showRestoreProgress(true);
@@ -568,6 +576,11 @@
                 _setRestoreProgress(65, '正在恢复对话记录…');
                 if (bm.dsConversations) localStorage.setItem('ds_conversations_v1', JSON.stringify(bm.dsConversations));
                 if (bm.dsChatHistory) localStorage.setItem('ds_chat_history_v1', JSON.stringify(bm.dsChatHistory));
+                _setRestoreProgress(66, '正在恢复AI记忆与配置…');
+                // 智能助手长期记忆 + 关联数据「记住」选择 + 记忆开关
+                if (bm.dsMemory) localStorage.setItem('assistant_memory_v1', JSON.stringify(bm.dsMemory));
+                if (bm.dsDataSource) localStorage.setItem('ds_datasource_v1', JSON.stringify(bm.dsDataSource));
+                if (bm.memoryEnabled != null) localStorage.setItem('memory_enabled', bm.memoryEnabled);
                 _setRestoreProgress(70, '正在恢复术语库…');
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));

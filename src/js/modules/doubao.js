@@ -580,10 +580,6 @@
             })();
             function showDataSourceSelector() {
                 return new Promise(function(resolve) {
-                    if (_sessionDataSource && _sessionDataSource.remember) {
-                        resolve(_sessionDataSource);
-                        return;
-                    }
                     var modal = document.getElementById('ds-datasource-modal');
                     if (!modal) { resolve({ rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false }); return; }
                     var defCfg = _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
@@ -619,6 +615,7 @@
                             try { localStorage.setItem('ds_datasource_v1', JSON.stringify(config)); } catch(e) {}
                         } else {
                             try { localStorage.removeItem('ds_datasource_v1'); } catch(e) {}
+                            _sessionDataSource = config;
                         }
                         modal.style.display = 'none';
                         confirmBtn.removeEventListener('click', handleConfirm);

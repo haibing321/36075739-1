@@ -338,6 +338,10 @@ window.onclick = function(e) {
     navigator.serviceWorker.register('sw.js').then(function(reg) {
         console.log('[PWA] SW 注册成功');
 
+        // 静默检查 SW 更新（不弹提示）：加速新版本在已安装 PWA 上生效，
+        // 避免已安装应用长期停留在旧的缓存壳（可能含外部 CDN 脚本，致移动端卡在启动图标）。
+        try { reg.update(); } catch(e) {}
+
         // 检测新版本：仅手动检查时才提示，避免打开即打扰
         reg.addEventListener('updatefound', function() {
             var sw = reg.installing;

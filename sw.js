@@ -1,12 +1,15 @@
 /**
  * 安监智能辅助系统 - Service Worker v1
- * 策略: AppShell precache + 离线优先(CacheFirst)。导航/本地模块/CDN 均优先返回缓存，
- *       默认不联网轮询；新版本仅由用户点击「设置→检查更新」时通过 reg.update() 拉取。
+ * 策略: AppShell precache + 混合缓存。
+ *   - 导航(HTML): 在线时「网络优先」(NetworkFirst)，确保已安装 PWA 不会一直使用
+ *     旧的、含外部 CDN <script> 的缓存壳，从而避免移动端弱网/被墙时该脚本挂起、
+ *     页面卡在启动图标界面(load 永不触发)。离线时直接返回缓存(秒开)。
+ *   - 本地模块/CSS/图片: CacheFirst(离线优先, 不轮询网络)。
  */
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260723231729';
+var CACHE_VERSION = '20260723234721';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -172,28 +175,42 @@ self.addEventListener('fetch', function(event) {
 
   // --- 策略选择 ---
 
-  // 1. 导航请求（HTML 页面）：CacheFirst（离线优先，默认不联网，秒开）
-  //    仅缓存缺失时回退网络；不主动轮询网络，更新由「检查更新」按钮触发。
+  // 1. 导航请求（HTML 页面）：在线时「网络优先」(NetworkFirst) 获取最新页面，
+  //    确保已安装的 PWA 不会一直使用旧的、含外部 CDN <script> 的缓存壳，
+  //    从而避免移动端弱网/被墙时该脚本挂起、页面卡在启动图标界面(load 永不触发)。
+  //    离线时直接返回缓存(秒开)，不联网等待。
   if (req.mode === 'navigate') {
-    event.respondWith(
-      caches.match(req).then(function(cached) {
-        if (cached) return cached;
-        return fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {
-          if (resp.ok) {
-            var clone = resp.clone();
-            caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(req, clone);
+    // 离线：直接返回缓存中的页面，避免无网络时长时间等待/白屏
+    if (self.navigator && self.navigator.onLine === false) {
+      event.respondWith(
+        caches.match(req, { cacheName: CACHE_NAME })
+          .then(function(c) { return c || caches.match('./index.html', { cacheName: CACHE_NAME }); })
+          .then(function(c) {
+            return c || new Response('离线模式 - 请检查网络连接', {
+              status: 503,
+              statusText: 'Service Unavailable'
             });
-          }
-          return resp;
-        }).catch(function() {
-          return caches.match('./index.html').then(function(c) {
+          })
+      );
+      return;
+    }
+    // 在线：优先联网获取最新页面（带超时，避免永久挂起），失败再回退缓存
+    event.respondWith(
+      fetchWithTimeout(req, 5000).then(function(resp) {
+        if (resp.ok) {
+          var clone = resp.clone();
+          caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
+        }
+        return resp;
+      }).catch(function() {
+        return caches.match(req, { cacheName: CACHE_NAME })
+          .then(function(c) { return c || caches.match('./index.html', { cacheName: CACHE_NAME }); })
+          .then(function(c) {
             return c || new Response('离线模式 - 请检查网络连接', {
               status: 503,
               statusText: 'Service Unavailable'
             });
           });
-        });
       })
     );
     return;

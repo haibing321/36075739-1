@@ -1118,13 +1118,8 @@
                     if (_finalBubble) _finalBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content);
                     dsSaveHistory();
                     dsRenderHistoryList();
-
-                    setTimeout(function(){
-                        var lastBubble = _finalChatBox.querySelector('.ds-bubble-assistant:last-of-type');
-                        if (lastBubble && !lastBubble.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
-                            window._addFeedbackButtons(lastBubble, lastBubble.innerText);
-                        }
-                    }, 50);
+                    // 统一重渲染，确保每条 AI 回复下方都带上操作按钮（复制/下载/有用/无用/重生成/朗读）
+                    dsRenderAll();
 
                     // ---- 主动建议 ----
                     var aiContent = dsHistory[assistantIdx].content;
@@ -1158,6 +1153,8 @@
                         if (chatBox2) {
                             var cursors2 = chatBox2.querySelectorAll('.ds-cursor');
                             cursors2.forEach(function(c) { c.remove(); });
+                            // 统一重渲染，恢复操作按钮
+                            dsRenderAll();
                             setTimeout(function(){
                                 var lastBubble2 = chatBox2.querySelector('.ds-bubble-assistant:last-of-type');
                                 if (lastBubble2 && !lastBubble2.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
@@ -1234,13 +1231,23 @@
                         if (!msg.content) {
                             html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant"><span class="ds-typing">思考中<span class="ds-dot">.</span><span class="ds-dot">.</span><span class="ds-dot">.</span></span></div></div>';
                         } else {
-                            html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant">' + dsMarkdown(msg.content) + '</div></div>';
+                            html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant" data-ds-idx="' + i + '">' + dsMarkdown(msg.content) + '</div></div>';
                         }
                     } else {
                         html += '<div class="ds-row-system"><div class="ds-bubble-system">' + dsEsc(msg.content) + '</div></div>';
                     }
                 });
                 box.innerHTML = html;
+                // 给每个 AI 回复气泡追加操作按钮（复制/下载/有用/无用/重生成/朗读），
+                // 使按钮成为消息渲染的固有部分，任何 dsRenderAll 重渲染后都稳定保留。
+                if (typeof window._addFeedbackButtons === 'function') {
+                    box.querySelectorAll('.ds-bubble-assistant').forEach(function(bubble){
+                        if (bubble.querySelector('.ds-typing')) return; // 跳过"思考中"占位气泡
+                        var _idx = parseInt(bubble.getAttribute('data-ds-idx'), 10);
+                        var _content = (dsHistory[_idx] && dsHistory[_idx].content) ? dsHistory[_idx].content : bubble.innerText;
+                        window._addFeedbackButtons(bubble, _content);
+                    });
+                }
                 dsScrollBottom();
             }
 

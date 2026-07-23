@@ -1183,7 +1183,19 @@
                 window._dsRunStream(lastUser.content);
             };
 
-            // ---- 快捷提问 ----
+            // ---- 快捷提问（豆包风格卡片） ----
+            // 仅保存图标 + 标题，渲染时按序号绑定，避免内联 onclick 引号冲突导致打不开
+            const DS_QUICK_PROMPTS = [
+                { icon: '📋', title: '查询《技规》调车作业规定' },
+                { icon: '⚠️', title: '分析近期安全隐患原因' },
+                { icon: '📝', title: '写安全隐患整改通知书' },
+                { icon: '📊', title: '生成本月风险研判报告' }
+            ];
+
+            window.dsQuickByIndex = function(i) {
+                const q = DS_QUICK_PROMPTS[i];
+                if (q) dsQuick(q.title);
+            };
 
             window.dsQuick = function(text) {
                 document.getElementById('ds-user-input').value = text;
@@ -1200,23 +1212,19 @@
                 const box = document.getElementById('ds-chat-box');
                 if (!box) return;
                 if (dsHistory.length === 0) {
-                    // 空对话时显示欢迎引导页（含快捷提问）
+                    // 空对话时显示欢迎引导页（含快捷提问卡片）
                     box.style.display = 'flex';
-                    const quick = [
-                        '📋 查询《技规》中关于调车作业的规定',
-                        '⚠️ 分析近期典型安全隐患及原因',
-                        '📝 帮我写一份安全隐患整改通知书',
-                        '📊 生成本月安全风险研判报告'
-                    ];
+                    const chips = DS_QUICK_PROMPTS.map(function(q, i) {
+                        return '<button type="button" class="ds-chip" onclick="dsQuickByIndex(' + i + ')">' +
+                            '<span class="ds-chip-ico">' + q.icon + '</span>' +
+                            '<span class="ds-chip-txt">' + q.title + '</span>' +
+                            '</button>';
+                    }).join('');
                     box.innerHTML = '<div class="ds-welcome">' +
-                        '<div class="ds-welcome-icon">🤖</div>' +
                         '<h3 class="ds-welcome-title">铁路安全监察智能助手</h3>' +
-                        '<p class="ds-welcome-sub">可回答规章、对规、风险研判等铁路安全问题，也支持通用问答。在下方输入问题开始对话，或选择快捷提问：</p>' +
-                        '<div class="ds-quick-chips">' +
-                        quick.map(function(q) {
-                            return '<button class="ds-chip" onclick="dsQuick(' + JSON.stringify(q) + ')">' + q + '</button>';
-                        }).join('') +
-                        '</div></div>';
+                        '<p class="ds-welcome-sub">点击下方快捷提问，或直接输入问题开始对话：</p>' +
+                        '<div class="ds-quick-chips">' + chips + '</div>' +
+                        '</div>';
                     return;
                 }
                 // 有内容时显示对话区

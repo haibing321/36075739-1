@@ -596,23 +596,27 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* 空状态欢迎页 */
+/* 空状态欢迎页（精简，突出快捷提问） */
 .ds-welcome {
   margin: auto;
   text-align: center;
-  max-width: 460px;
-  padding: 24px 16px;
+  max-width: 520px;
+  padding: 18px 16px;
   color: var(--text, #1e293b);
 }
-.ds-welcome-icon { font-size: 2.4rem; }
-.ds-welcome-title { margin: 8px 0 4px; font-size: 1.15rem; color: var(--primary, #2563eb); }
-.ds-welcome-sub { font-size: 0.85rem; color: var(--text-secondary, #64748b); line-height: 1.6; margin: 0 0 16px; }
-.ds-quick-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.ds-welcome-icon { display: none; }
+.ds-welcome-title { margin: 4px 0 6px; font-size: 1.1rem; color: var(--primary, #2563eb); }
+.ds-welcome-sub { font-size: 0.82rem; color: var(--text-secondary, #64748b); line-height: 1.5; margin: 0 0 14px; }
+/* 快捷提问：豆包风格两列卡片网格，自动换行，文字可换行 */
+.ds-quick-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .ds-chip {
-  background: #fff; border: 1px solid var(--border, #e2e8f0); border-radius: 16px;
-  padding: 7px 14px; font-size: 0.82rem; cursor: pointer; color: var(--text, #334155);
-  transition: all .15s;
+  display: flex; align-items: center; gap: 8px; text-align: left;
+  background: #fff; border: 1px solid var(--border, #e2e8f0); border-radius: 12px;
+  padding: 12px 14px; cursor: pointer; color: var(--text, #334155);
+  font-size: 0.85rem; line-height: 1.35; transition: all .15s;
 }
+.ds-chip-ico { font-size: 1.2rem; flex: 0 0 auto; line-height: 1; }
+.ds-chip-txt { flex: 1 1 auto; min-width: 0; word-break: break-word; }
 .ds-chip:hover { border-color: var(--primary, #2563eb); color: var(--primary, #2563eb); background: #f0f7ff; }
 
 /* ===== 智能助手模块响应式布局 ===== */

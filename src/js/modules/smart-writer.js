@@ -462,7 +462,8 @@
 
             // 资料中心标签被打开时刷新列表（由 utils.js 中 switchTab 的 onShow 钩子调用）
             window.onShow_material = function() {
-                try { wrRenderMaterialCenter('all'); } catch (e) { console.warn('[center] onShow渲染失败', e); }
+                try { wrMaterialFilter('all'); } catch (e) {}
+                try { wrRenderHistory(); } catch (e) {}
             };
 
             // ========== 资料中心：多源只读聚合（方案C）==========
@@ -2914,8 +2915,8 @@
              */
             window.wrMaterialFilter = function(type) {
                 _wrMatFilter = type;
-                // 更新按钮样式（合并后6种：all/template/history/inspect/fault/dispatch/other）
-                ['all','template','history','inspect','fault','dispatch','other'].forEach(t => {
+                // 更新按钮样式（含「全模块数据」聚合入口）
+                ['all','template','history','inspect','fault','dispatch','other','allmodule'].forEach(t => {
                     const btn = document.getElementById('wr-mat-filter-' + t);
                     if (!btn) return;
                     if (t === type) {
@@ -2924,21 +2925,35 @@
                         btn.classList.remove('active');
                     }
                 });
-                // 故障报告同时包含故障统计（stats），通报文电同时包含会议纪要（meeting）
                 const histZone = document.getElementById('wr-mat-history-zone');
                 const matList  = document.getElementById('wr-mat-list');
                 const matSearch = document.getElementById('wr-mat-search');
+                // 全模块聚合只读视图（检查信息/规章/日志/写作/报告）
+                if (type === 'allmodule') {
+                    if (histZone) histZone.style.display = 'none';
+                    if (matList)  matList.style.display = 'flex';
+                    if (matSearch) { matSearch.style.display = ''; matSearch.placeholder = '🔍 搜索全部来源...'; }
+                    wrRenderMaterialCenter('all');
+                    return;
+                }
+                // 故障报告同时包含故障统计（stats），通报文电同时包含会议纪要（meeting）
                 if (histZone) histZone.style.display = 'none';
                 if (matList)  matList.style.display = 'flex';
-                // 显示主搜索框
-                if (matSearch) matSearch.style.display = '';
+                if (matSearch) { matSearch.style.display = ''; matSearch.placeholder = '🔍 搜索...'; }
                 wrRenderMaterials();
+            };
+
+            // 搜索框统一调度：根据当前分类决定刷新哪类列表
+            window.wrMaterialSearch = function() {
+                if (_wrMatFilter === 'allmodule') { wrRenderMaterialCenter(_wrCenterGroup || 'all'); }
+                else if (_wrMatFilter === 'history') { wrRenderHistory(); }
+                else { wrRenderMaterials(); }
             };
 
             // 历史报告 Tab 点击：显示历史报告子区域，隐藏普通资料列表
             window.wrMatFilterHistory = function() {
                 // 高亮历史报告按钮
-                ['all','template','history','inspect','fault','dispatch','other'].forEach(t => {
+                ['all','template','history','inspect','fault','dispatch','other','allmodule'].forEach(t => {
                     const btn = document.getElementById('wr-mat-filter-' + t);
                     if (!btn) return;
                     if (t === 'history') {
@@ -3288,6 +3303,6 @@ ${details || '(无)'}
 
         // 资料中心统一渲染后，原有「资料库列表 / 历史报告」刷新函数改为委托到统一渲染器，
         // 保留函数名以兼容所有旧调用点（导入 / 删除 / 设模版 / 改类型 / 报告增删改），避免重复渲染冲突。
-        window.wrRenderMaterials = function() { return window.wrRenderMaterialCenter(_wrCenterGroup || 'all'); };
-        window.wrRenderHistory  = function() { return window.wrRenderMaterialCenter(_wrCenterGroup || 'all'); };
+        // 注：wrRenderMaterials / wrRenderHistory 的原始实现（含查看/修改/删除/设模版按钮）定义在上方，
+        // 此处不再委托到多源聚合，避免覆盖导致资料中心丢失查看/修改/删除功能。
     })();

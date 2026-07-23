@@ -86,7 +86,7 @@
     text-align: center;
 }
 
-.nav { display: flex; gap: 8px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 .nav-btn {
     padding: 12px 24px;
     color: rgba(255,255,255,0.85);
@@ -102,6 +102,7 @@
     gap: 8px;
     position: relative;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 .nav-btn span { flex-shrink: 0; width: 1.2em; text-align: center; line-height: 1; }
 .nav-btn:hover { color: white; background: rgba(255,255,255,0.1); }

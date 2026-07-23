@@ -54,6 +54,7 @@
     .nav {
         width: 100%;
         flex-direction: column;
+        flex-wrap: nowrap;
         gap: 0;
         max-height: 0;
         overflow: hidden;

@@ -1201,8 +1201,8 @@
                     // 空对话时显示欢迎引导页
                     box.style.display = 'flex';
                     box.innerHTML = '<div class="ds-welcome">' +
-                        '<h3 class="ds-welcome-title">铁路安全监察智能助手</h3>' +
-                        '<p class="ds-welcome-sub">在下方输入铁路安全相关问题，如规章查询、隐患分析、文书起草、风险研判等，即可开始对话。</p>' +
+                        '<h3 class="ds-welcome-title">铁路安全 AI 对话助手</h3>' +
+                        '<p class="ds-welcome-sub">在下方输入问题即可开始对话，可查询规章、分析隐患、起草文书、研判风险，并能调用本地资料库（检查信息 · 规章制度 · 工作日志）辅助作答。</p>' +
                         '</div>';
                     return;
                 }

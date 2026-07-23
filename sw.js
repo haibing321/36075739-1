@@ -6,7 +6,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260723225634';
+var CACHE_VERSION = '20260723231729';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -26,6 +26,7 @@ var PRECACHE_URLS = [
   // ==== 本地JS模块（离线时功能可用）====
   './src/js/app.js',
   './src/js/modules/utils.js',
+  './src/js/vendor/purify.min.js',
   './src/js/modules/errorMonitor.js',
   './src/js/modules/perfMonitor.js',
   './src/js/modules/pinyin.js',
@@ -47,7 +48,8 @@ var PRECACHE_URLS = [
 // 本地 CSS/JS 模块（构建时需更新，此处用通配匹配）
 var LOCAL_PATTERNS = [
   /\/src\/css\//,
-  /\/src\/js\/modules\//
+  /\/src\/js\/modules\//,
+  /\/src\/js\/vendor\//
 ];
 
 // CDN 域名
@@ -114,6 +116,23 @@ function isCDN(url) {
   }
 }
 
+// 带超时的 fetch：弱网/被墙资源若长时间无响应，超时后主动失败，
+// 避免 <script defer> 等请求永久 pending 导致页面卡在启动图标界面（load 永不触发）。
+var FETCH_TIMEOUT = 8000;
+function fetchWithTimeout(req, ms) {
+  return new Promise(function(resolve, reject) {
+    var settled = false;
+    var timer = setTimeout(function() {
+      if (!settled) { settled = true; reject(new Error('fetch-timeout')); }
+    }, ms);
+    fetch(req).then(function(resp) {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(resp); }
+    }, function(err) {
+      if (!settled) { settled = true; clearTimeout(timer); reject(err); }
+    });
+  });
+}
+
 // ========== 事件监听 ==========
 
 // 安装：预缓存核心资源
@@ -159,7 +178,7 @@ self.addEventListener('fetch', function(event) {
     event.respondWith(
       caches.match(req).then(function(cached) {
         if (cached) return cached;
-        return fetch(req).then(function(resp) {
+        return fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {
           if (resp.ok) {
             var clone = resp.clone();
             caches.open(CACHE_NAME).then(function(cache) {
@@ -185,7 +204,7 @@ self.addEventListener('fetch', function(event) {
     event.respondWith(
       caches.match(req).then(function(cached) {
         if (cached) return cached;
-        return fetch(req).then(function(resp) {
+        return fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {
           if (resp.ok) {
             var clone = resp.clone();
             caches.open(CACHE_NAME).then(function(cache) {
@@ -193,6 +212,8 @@ self.addEventListener('fetch', function(event) {
             });
           }
           return resp;
+        }).catch(function() {
+          return new Response('', { status: 504, statusText: 'Gateway Timeout' });
         });
       })
     );
@@ -204,7 +225,7 @@ self.addEventListener('fetch', function(event) {
     event.respondWith(
       caches.match(req).then(function(cached) {
         if (cached) return cached;
-        return fetch(req).then(function(resp) {
+        return fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {
           if (resp.ok) {
             var clone = resp.clone();
             caches.open(CACHE_NAME).then(function(cache) {
@@ -212,6 +233,8 @@ self.addEventListener('fetch', function(event) {
             });
           }
           return resp;
+        }).catch(function() {
+          return new Response('', { status: 504, statusText: 'Gateway Timeout' });
         });
       })
     );
@@ -222,13 +245,15 @@ self.addEventListener('fetch', function(event) {
   if (url.match(/\.(png|jpg|svg|ico|woff|woff2|ttf|eot)(\?.*)?$/i)) {
     event.respondWith(
       caches.match(req).then(function(cached) {
-        return cached || fetch(req).then(function(resp) {
+        return cached || fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {
           if (resp.ok) {
             caches.open(CACHE_NAME).then(function(cache) {
               cache.put(req, resp.clone());
             });
           }
           return resp;
+        }).catch(function() {
+          return new Response('', { status: 504, statusText: 'Gateway Timeout' });
         });
       })
     );

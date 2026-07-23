@@ -1203,7 +1203,7 @@
       首屏只需加载 ~50KB 的核心 JS，无需等待 ~2MB 的大型库
       保留 DOMPurify 确保安全防护随时可用
     -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer onerror="console.warn('[CDN] DOMPurify 加载失败')"></script>
+    <script src="src/js/vendor/purify.min.js" defer onerror="window.DOMPurify={sanitize:function(s){return s==null?'':String(s);}};console.warn('[Local] DOMPurify 加载失败，已启用兜底')"></script>
     <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
     <!-- 本地模块（defer: 并行下载，DOM 解析后按顺序执行） -->
     <script src="src/js/modules/utils.js" defer></script>
@@ -1700,6 +1700,13 @@
                 });
             }
             if (typeof updateModeStatus === 'function') updateModeStatus();
+
+            // 兜底：若没有任何主面板被激活（例如某模块脚本加载失败导致 switchTab 未定义），
+            // 强制显示默认面板，避免整页空白/卡在启动界面
+            if (!document.querySelector('.panel.active')) {
+                var _def = document.getElementById('panel-issue') || document.querySelector('.panel');
+                if (_def) _def.classList.add('active');
+            }
         }
 
         // 如果 DOM 已就绪，立即执行；否则等待 DOMContentLoaded

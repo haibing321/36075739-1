@@ -1684,9 +1684,18 @@
                 window.switchTab(currentModule);
             }
 
-            // 绑定角色切换按钮
+            // 绑定角色切换按钮（含记忆）
             var _roleSelect = document.getElementById('expertRole');
-            if (_roleSelect) { _roleSelect.addEventListener('change', function() { if (typeof updateModeStatus === 'function') updateModeStatus(); }); }
+            if (_roleSelect) {
+                var _savedRole = localStorage.getItem('ds_role_v1');
+                if (_savedRole && _roleSelect.querySelector('option[value="' + _savedRole + '"]')) {
+                    _roleSelect.value = _savedRole;
+                }
+                _roleSelect.addEventListener('change', function() {
+                    try { localStorage.setItem('ds_role_v1', _roleSelect.value); } catch (e) {}
+                    if (typeof updateModeStatus === 'function') updateModeStatus();
+                });
+            }
             if (typeof updateModeStatus === 'function') updateModeStatus();
         }
 

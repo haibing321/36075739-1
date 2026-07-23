@@ -575,7 +575,9 @@
             bindApiModalEvents();
 
             // ---- 数据源选择模块 ----
-            var _sessionDataSource = null;
+            var _sessionDataSource = (function(){
+                try { var s = localStorage.getItem('ds_datasource_v1'); return s ? JSON.parse(s) : null; } catch(e){ return null; }
+            })();
             function showDataSourceSelector() {
                 return new Promise(function(resolve) {
                     if (_sessionDataSource && _sessionDataSource.remember) {
@@ -592,6 +594,12 @@
                     document.getElementById('ds-dialog-phone').checked = defCfg.phone;
                     document.getElementById('ds-dialog-diary').checked = defCfg.diary;
                     document.getElementById('ds-dialog-remember').checked = defCfg.remember;
+                    var _dsAllBox = document.getElementById('ds-dialog-all');
+                    if (_dsAllBox) {
+                        _dsAllBox.checked = ['rules','issue','handbook','wr-all','phone','diary'].every(function(k){
+                            var el = document.getElementById('ds-dialog-' + k); return el && el.checked;
+                        });
+                    }
                     modal.style.display = 'flex';
                     var confirmBtn = document.getElementById('ds-dialog-confirm');
                     var reject = null;
@@ -606,7 +614,12 @@
                             diary: document.getElementById('ds-dialog-diary').checked,
                             remember: document.getElementById('ds-dialog-remember').checked
                         };
-                        if (config.remember) _sessionDataSource = config;
+                        if (config.remember) {
+                            _sessionDataSource = config;
+                            try { localStorage.setItem('ds_datasource_v1', JSON.stringify(config)); } catch(e) {}
+                        } else {
+                            try { localStorage.removeItem('ds_datasource_v1'); } catch(e) {}
+                        }
                         modal.style.display = 'none';
                         confirmBtn.removeEventListener('click', handleConfirm);
                         resolve(config);
@@ -634,6 +647,13 @@
                         window._tempDataSrc = null;
                         if (!result.remember) _sessionDataSource = null;
                     }
+                };
+                var _allBox = document.getElementById('ds-dialog-all');
+                if (_allBox) _allBox.onchange = function() {
+                    var v = _allBox.checked;
+                    ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
+                        var el = document.getElementById('ds-dialog-' + k); if (el) el.checked = v;
+                    });
                 };
             }, 300);
 
@@ -1000,7 +1020,7 @@
 
                 // ---- 4.6 系统提示 ----
                 var _tempSrc = window._tempDataSrc || null;
-                var _dataSrc = _tempSrc || _sessionDataSource || { rules: false, issue: false, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
+                var _dataSrc = _tempSrc || _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
                 var hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
                 var baseSystem = hasAnySource
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)

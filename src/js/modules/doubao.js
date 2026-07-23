@@ -1183,20 +1183,6 @@
                 window._dsRunStream(lastUser.content);
             };
 
-            // ---- 快捷提问（豆包风格卡片） ----
-            // 仅保存图标 + 标题，渲染时按序号绑定，避免内联 onclick 引号冲突导致打不开
-            const DS_QUICK_PROMPTS = [
-                { icon: '📋', title: '查询《技规》调车作业规定' },
-                { icon: '⚠️', title: '分析近期安全隐患原因' },
-                { icon: '📝', title: '写安全隐患整改通知书' },
-                { icon: '📊', title: '生成本月风险研判报告' }
-            ];
-
-            window.dsQuickByIndex = function(i) {
-                const q = DS_QUICK_PROMPTS[i];
-                if (q) dsQuick(q.title);
-            };
-
             window.dsQuick = function(text) {
                 document.getElementById('ds-user-input').value = text;
                 dsSendMsg();
@@ -1212,18 +1198,11 @@
                 const box = document.getElementById('ds-chat-box');
                 if (!box) return;
                 if (dsHistory.length === 0) {
-                    // 空对话时显示欢迎引导页（含快捷提问卡片）
+                    // 空对话时显示欢迎引导页
                     box.style.display = 'flex';
-                    const chips = DS_QUICK_PROMPTS.map(function(q, i) {
-                        return '<button type="button" class="ds-chip" onclick="dsQuickByIndex(' + i + ')">' +
-                            '<span class="ds-chip-ico">' + q.icon + '</span>' +
-                            '<span class="ds-chip-txt">' + q.title + '</span>' +
-                            '</button>';
-                    }).join('');
                     box.innerHTML = '<div class="ds-welcome">' +
                         '<h3 class="ds-welcome-title">铁路安全监察智能助手</h3>' +
-                        '<p class="ds-welcome-sub">点击下方快捷提问，或直接输入问题开始对话：</p>' +
-                        '<div class="ds-quick-chips">' + chips + '</div>' +
+                        '<p class="ds-welcome-sub">在下方输入铁路安全相关问题，如规章查询、隐患分析、文书起草、风险研判等，即可开始对话。</p>' +
                         '</div>';
                     return;
                 }

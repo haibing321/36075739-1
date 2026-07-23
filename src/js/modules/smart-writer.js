@@ -462,8 +462,200 @@
 
             // 资料中心标签被打开时刷新列表（由 utils.js 中 switchTab 的 onShow 钩子调用）
             window.onShow_material = function() {
-                try { wrMaterialFilter('all'); } catch (e) {}
-                try { wrRenderHistory(); } catch (e) {}
+                try { wrRenderMaterialCenter('all'); } catch (e) { console.warn('[center] onShow渲染失败', e); }
+            };
+
+            // ========== 资料中心：多源只读聚合（方案C）==========
+            // 把「写作资料 / 检查信息 / 规章制度 / 工作日志 / 报告」统一在资料中心一处查阅、一处搜索。
+            // 只读聚合：不改各模块落库逻辑，编辑仍跳回原模块，零数据迁移风险。
+            var _wrCenterGroup = 'all';
+            var _wrCenterItems = [];
+
+            // 通用：经 dbManager 共享连接读取任意 IndexedDB store 全部记录
+            async function wrReadStore(dbName, storeName) {
+                try {
+                    var db = await window.dbManager.getDB(dbName);
+                    return await new Promise(function(resolve) {
+                        var tx = db.transaction([storeName], 'readonly');
+                        var req = tx.objectStore(storeName).getAll();
+                        req.onsuccess = function() { resolve(req.result || []); };
+                        req.onerror = function() { resolve([]); };
+                    });
+                } catch (e) { console.warn('[writer] 读取 ' + dbName + '.' + storeName + ' 失败:', e); return []; }
+            }
+
+            // 工作日志聚合：localStorage 文本日志 + IndexedDB 多媒体附件
+            async function wrLoadDiaryCenter() {
+                var items = [];
+                try {
+                    var diaries = (typeof window.getDiaryData === 'function') ? window.getDiaryData() : [];
+                    (diaries || []).forEach(function(d) {
+                        var work = d.work || d.content || '';
+                        items.push({ kind: 'text', date: d.date, title: (d.date ? ('工作日志 ' + d.date) : '工作日志'),
+                            work: work, issueCount: (d.issues || []).length });
+                    });
+                } catch (e) {}
+                try {
+                    var media = await wrReadStore('DiaryMediaDB', 'media');
+                    (media || []).forEach(function(m) {
+                        var t = m.type || '';
+                        var label = t.indexOf('image') >= 0 ? '图片' : (t.indexOf('video') >= 0 ? '视频' : (t.indexOf('audio') >= 0 ? '音频' : '附件'));
+                        items.push({ kind: 'media', id: m.id, name: m.name || label, timestamp: m.timestamp, typeLabel: label });
+                    });
+                } catch (e) {}
+                return items;
+            }
+
+            // 各来源 adapter：load() 取原始数组，norm() 映射为统一卡片项
+            var WR_CENTER_SOURCES = {
+                material: {
+                    label: '写作资料', icon: '📄',
+                    load: function() { return wrDbGetAll(WR_MAT_STORE); },
+                    norm: function(m) {
+                        return {
+                            source: 'material', id: m.id,
+                            title: m.title || m.fileName || '未命名资料',
+                            sub: [ (WR_MAT_TYPES[m.matType] || {}).label, wrFmtDate(m.importAt).slice(0, 10),
+                                   (m.fileSize ? Math.round(m.fileSize / 1024) + 'KB' : '') ].filter(Boolean).join(' · '),
+                            summary: String(m.content || '').replace(/\n/g, ' ').slice(0, 90),
+                            badge: (WR_MAT_TYPES[m.matType] || {}).label || '资料',
+                            open: function() { wrViewMaterial(m.id); }
+                        };
+                    }
+                },
+                issue: {
+                    label: '检查信息', icon: '📊',
+                    load: function() { return wrReadStore('RailwayIssueDB_v2', 'issues'); },
+                    norm: function(it) {
+                        return {
+                            source: 'issue', id: it.id,
+                            title: (String(it.content || '检查记录').replace(/\n/g, ' ').trim()).slice(0, 42) || '检查记录',
+                            sub: [ it['性质'], it.category, it.unit, it.datetime ].filter(Boolean).join(' · '),
+                            summary: String(it.content || '').replace(/\n/g, ' ').slice(0, 90),
+                            badge: it['性质'] || '检查',
+                            open: function() { if (window.switchTab) window.switchTab('issue'); }
+                        };
+                    }
+                },
+                rule: {
+                    label: '规章制度', icon: '📋',
+                    load: function() {
+                        return wrReadStore('RailwayRuleDB', 'ruleCollection').then(function(arr) {
+                            if (arr.length === 1 && arr[0] && arr[0].id === 1 && Array.isArray(arr[0].data)) return arr[0].data;
+                            return arr;
+                        });
+                    },
+                    norm: function(r) {
+                        return {
+                            source: 'rule', id: r.id,
+                            title: r.title || '未命名规章',
+                            sub: [ r.trade, r.category, r.source ].filter(Boolean).join(' · '),
+                            summary: String(r.content || '').replace(/<[^>]+>/g, '').replace(/\n/g, ' ').slice(0, 90),
+                            badge: r.trade || '规章',
+                            open: function() { if (window.switchTab) window.switchTab('rule'); }
+                        };
+                    }
+                },
+                diary: {
+                    label: '工作日志', icon: '📝',
+                    load: function() { return wrLoadDiaryCenter(); },
+                    norm: function(d) {
+                        if (d.kind === 'media') {
+                            return {
+                                source: 'diary', id: d.id, media: true,
+                                title: d.name,
+                                sub: [ d.typeLabel, d.timestamp ? wrFmtDate(d.timestamp).slice(0, 10) : '' ].filter(Boolean).join(' · '),
+                                summary: '工作日志多媒体附件',
+                                badge: d.typeLabel,
+                                open: function() { if (window.switchTab) window.switchTab('diary'); }
+                            };
+                        }
+                        return {
+                            source: 'diary', id: d.date,
+                            title: d.title,
+                            sub: [ '日志', d.issueCount ? (d.issueCount + '条问题') : '' ].filter(Boolean).join(' · '),
+                            summary: String(d.work || '').replace(/\n/g, ' ').slice(0, 90),
+                            badge: '日志',
+                            open: function() { if (window.switchTab) window.switchTab('diary'); }
+                        };
+                    }
+                },
+                report: {
+                    label: '报告', icon: '📑',
+                    load: function() { return wrDbGetAll(WR_RPT_STORE); },
+                    norm: function(r) {
+                        return {
+                            source: 'report', id: r.id,
+                            title: r.title || '未命名报告',
+                            sub: [ r.source, wrCatName(r.category), wrFmtDate(r.date).slice(0, 10) ].filter(Boolean).join(' · '),
+                            summary: String(r.content || '').replace(/\n/g, ' ').slice(0, 90),
+                            badge: wrCatName(r.category),
+                            open: function() { wrViewReport(r.id); }
+                        };
+                    }
+                }
+            };
+            var WR_CENTER_ORDER = ['material', 'issue', 'rule', 'diary', 'report'];
+
+            // 资料中心统一渲染（聚合全部来源 + 跨源搜索 + 来源分组）
+            window.wrRenderMaterialCenter = async function(group) {
+                if (group) _wrCenterGroup = group;
+                ['all'].concat(WR_CENTER_ORDER).forEach(function(g) {
+                    var b = document.getElementById('wr-center-tab-' + g);
+                    if (b) b.classList.toggle('active', g === _wrCenterGroup);
+                });
+                var listEl = document.getElementById('wr-mat-list');
+                if (!listEl) return;
+                var q = ((document.getElementById('wr-mat-search') || {}).value || '').toLowerCase().trim();
+                listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">加载中…</div>';
+                try {
+                    var groups = _wrCenterGroup === 'all' ? WR_CENTER_ORDER.slice() : [_wrCenterGroup];
+                    var tasks = groups.map(function(g) {
+                        return Promise.resolve(WR_CENTER_SOURCES[g].load())
+                            .then(function(arr) {
+                                return (arr || []).map(function(it) { try { return WR_CENTER_SOURCES[g].norm(it); } catch (e) { return null; } }).filter(Boolean);
+                            })
+                            .catch(function() { return []; });
+                    });
+                    var results = await Promise.all(tasks);
+                    var items = [];
+                    results.forEach(function(arr) { items = items.concat(arr); });
+                    if (q) items = items.filter(function(it) {
+                        return (it.title || '').toLowerCase().includes(q) || (it.summary || '').toLowerCase().includes(q)
+                            || (it.sub || '').toLowerCase().includes(q) || (it.badge || '').toLowerCase().includes(q);
+                    });
+                    var total = items.length;
+                    if (items.length > 400) items = items.slice(0, 400);
+                    var countEl = document.getElementById('wr-mat-count');
+                    if (countEl) countEl.textContent = (total > 400 ? '显示前400/' : '') + total + ' 条';
+                    if (!items.length) {
+                        listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">' + (q ? '无匹配结果' : '暂无可查看的数据') + '</div>';
+                        return;
+                    }
+                    _wrCenterItems = items;
+                    listEl.innerHTML = items.map(function(it, i) {
+                        var icon = (WR_CENTER_SOURCES[it.source] || {}).icon || '📄';
+                        return '<div class="wr-mat-card">'
+                            + '<div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">' + icon + '</div>'
+                            + '<div style="flex:1;min-width:0;cursor:pointer;" onclick="wrCenterOpen(' + i + ')">'
+                            +   '<div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">' + wrEsc(it.title) + '</div>'
+                            +   '<div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
+                            +     '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 8px;border-radius:10px;">' + wrEsc(it.badge || '') + '</span>'
+                            +     (it.sub ? '<span>' + wrEsc(it.sub) + '</span>' : '')
+                            +   '</div>'
+                            +   '<div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(it.summary || '') + (it.summary ? '…' : '') + '</div>'
+                            + '</div>'
+                            + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
+                            +   '<button onclick="wrCenterOpen(' + i + ')" class="wr-mat-btn wr-mat-btn-view">打开</button>'
+                            + '</div></div>';
+                    }).join('');
+                } catch (e) {
+                    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#b91c1c;font-size:0.85rem;">加载失败：' + wrEsc(e && e.message ? e.message : String(e)) + '</div>';
+                }
+            };
+            window.wrCenterOpen = function(i) {
+                var it = _wrCenterItems && _wrCenterItems[i];
+                if (it && it.open) { try { it.open(); } catch (e) { console.warn('[center] 打开失败', e); } }
             };
 
             // ---- 撰写报告（三步流程：选择模板→选择资料→确认形成报告）----
@@ -3093,4 +3285,9 @@ ${details || '(无)'}
         };
         // 模块加载即触发一次迁移（fire-and-forget，不阻塞）
         wrMigrateAgentMaterials();
+
+        // 资料中心统一渲染后，原有「资料库列表 / 历史报告」刷新函数改为委托到统一渲染器，
+        // 保留函数名以兼容所有旧调用点（导入 / 删除 / 设模版 / 改类型 / 报告增删改），避免重复渲染冲突。
+        window.wrRenderMaterials = function() { return window.wrRenderMaterialCenter(_wrCenterGroup || 'all'); };
+        window.wrRenderHistory  = function() { return window.wrRenderMaterialCenter(_wrCenterGroup || 'all'); };
     })();

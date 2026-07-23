@@ -505,7 +505,7 @@
                         <div class="card-title-icon">📚</div>
                         资料中心
                     </div>
-                    <div class="card-subtitle">写作资料 · 历史报告 · 各模块生成报告统一查阅</div>
+                    <div class="card-subtitle">写作资料 · 检查信息 · 规章制度 · 工作日志 · 各模块报告，一处统一查阅</div>
                 </div>
                 <div class="card-body">
                     <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -521,37 +521,25 @@
                                 <span id="wr-mat-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;"></span>
                             </div>
                             <!-- 说明栏 -->
-                            <div style="padding:8px 12px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;font-size:0.8rem;color:#92400e;line-height:1.6;">
-                                <strong>📌 资料类型：</strong>写作模版、历史报告、检查信息、故障报告、通报文电、其它<br>
-                                <strong>📎 导入格式：</strong>DOCX · PDF · Excel · JSON · TXT，导入时手动选择类别存放。
+                            <div style="padding:8px 12px;background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe;font-size:0.8rem;color:#1e3a8a;line-height:1.6;">
+                                <strong>📚 资料中心：</strong>一处查阅全模块数据——写作资料、检查信息、规章制度、工作日志、各模块生成的报告。<br>
+                                <strong>🔍 搜索：</strong>输入关键词跨全部来源检索；点击卡片「打开」跳转到对应模块查看/编辑原文。
                             </div>
-                            <!-- 子类分类Tab（合并后） -->
+                            <!-- 来源分组Tab -->
                             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-bottom:2px solid var(--border);padding-bottom:8px;">
-                                <span style="font-size:0.8rem;color:var(--text-secondary);margin-right:4px;font-weight:500;">分类：</span>
-                                <button onclick="wrMaterialFilter('all')" id="wr-mat-filter-all" class="btn-chip wr-mat-tab-active">全部</button>
-                                <button onclick="wrMaterialFilter('template')" id="wr-mat-filter-template" class="btn-chip">📝 写作模版</button>
-                                <button onclick="wrMatFilterHistory()" id="wr-mat-filter-history" class="btn-chip">📊 历史报告</button>
-                                <button onclick="wrMaterialFilter('inspect')" id="wr-mat-filter-inspect" class="btn-chip">🔍 检查信息</button>
-                                <button onclick="wrMaterialFilter('fault')" id="wr-mat-filter-fault" class="btn-chip">⚡ 故障报告</button>
-                                <button onclick="wrMaterialFilter('dispatch')" id="wr-mat-filter-dispatch" class="btn-chip">📨 通报文电</button>
-                                <button onclick="wrMaterialFilter('other')" id="wr-mat-filter-other" class="btn-chip">📄 其它</button>
-                                <input id="wr-mat-search" placeholder="🔍 搜索..." type="text" oninput="wrRenderMaterials()"
+                                <span style="font-size:0.8rem;color:var(--text-secondary);margin-right:4px;font-weight:500;">来源：</span>
+                                <button onclick="wrRenderMaterialCenter('all')" id="wr-center-tab-all" class="btn-chip wr-mat-tab-active">全部</button>
+                                <button onclick="wrRenderMaterialCenter('material')" id="wr-center-tab-material" class="btn-chip">📄 写作资料</button>
+                                <button onclick="wrRenderMaterialCenter('issue')" id="wr-center-tab-issue" class="btn-chip">📊 检查信息</button>
+                                <button onclick="wrRenderMaterialCenter('rule')" id="wr-center-tab-rule" class="btn-chip">📋 规章制度</button>
+                                <button onclick="wrRenderMaterialCenter('diary')" id="wr-center-tab-diary" class="btn-chip">📝 工作日志</button>
+                                <button onclick="wrRenderMaterialCenter('report')" id="wr-center-tab-report" class="btn-chip">📑 报告</button>
+                                <input id="wr-mat-search" placeholder="🔍 搜索全部来源..." type="text" oninput="wrRenderMaterialCenter()"
                                     style="margin-left:auto;padding:6px 12px;border:1px solid var(--border);border-radius:20px;font-size:0.82rem;min-width:120px;background:#f8fafc;transition:all 0.2s ease;">
                             </div>
-                            <!-- 资料列表（普通模式） -->
+                            <!-- 统一列表（多源聚合） -->
                             <div id="wr-mat-list" style="display:flex;flex-direction:column;gap:8px;">
-                                <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无资料，点击「导入资料」上传文件</div>
-                            </div>
-                            <!-- 历史报告子区域（点击「历史报告」Tab 时显示） -->
-                            <div id="wr-mat-history-zone" style="display:none;flex-direction:column;gap:8px;flex:1;min-height:0;">
-                                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                                    <span id="wr-hist-count" style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;">0 篇</span>
-                                </div>
-                                <input id="wr-hist-search" placeholder="搜索历史报告..." type="text" oninput="wrRenderHistory()"
-                                    style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
-                                <div id="wr-history-list" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;">
-                                    <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">暂无历史报告</div>
-                                </div>
+                                <div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:0.85rem;">加载中…</div>
                             </div>
                         </div>                </div>
             </div>

@@ -1473,7 +1473,7 @@
                     tags.push('<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📄 ' + wrEsc(window._wrSelectedTemplate.title) + '</span>');
                 }
                 if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
-                    tags.push('<span style="background:#fff7ed;color:#9a3412;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📁 已选' + window._wrSelectedMaterialIds.length + '份资料</span>');
+                    tags.push('<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📁 已选' + window._wrSelectedMaterialIds.length + '份资料</span>');
                 }
                 if (!window._wrSelectedTemplate && (!window._wrSelectedMaterialIds || window._wrSelectedMaterialIds.length === 0)) {
                     tags.push('<span style="color:#d97706;font-size:0.78rem;">⚠️ 尚未选择模板和资料，请点击「开始写作」选择</span>');
@@ -1733,7 +1733,7 @@
                 } catch(err) {
                     if (err.name === 'AbortError') {
                         if (streamBubbleContent) {
-                            streamBubbleContent.style.background = '#fff7ed';
+                            streamBubbleContent.style.background = '#eff6ff';
                             streamBubbleContent.textContent = '⏹️ 已停止生成';
                         }
                         if (aiBubble) wrAppendRetryBtn(aiBubble);

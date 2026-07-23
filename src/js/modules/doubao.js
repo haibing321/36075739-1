@@ -2471,16 +2471,28 @@
         var runBtn = document.getElementById('ds-agent-run');
         if (stopBtn) stopBtn.style.display = 'none';
         if (runBtn) runBtn.style.display = '';
+        // 切换子模块时收起历史面板
+        var panel = document.getElementById('ds-agent-history-panel');
+        if (panel) { panel.style.display = 'none'; panel.dataset.open = '0'; }
       };
 
       // A#2: 查看历史任务记录（解决"只写不读"）
       window.dsAgentShowHistory = async function() {
-        var el = document.getElementById('ds-agent-history');
-        if (!el) return;
+        var panel = document.getElementById('ds-agent-history-panel');
+        if (!panel) return;
+        // toggle：已打开则关闭，不重新渲染（修复「关闭不了」）
+        if (panel.style.display !== 'none' && panel.dataset.open === '1') {
+          panel.style.display = 'none';
+          panel.dataset.open = '0';
+          return;
+        }
+        panel.style.display = 'block';
+        panel.dataset.open = '1';
+        panel.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">⏳ 加载中…</div>';
         try {
           var tasks = await window.getAgentTasks(20);
           if (!tasks || !tasks.length) {
-            el.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">暂无历史任务记录</div>';
+            panel.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">暂无历史任务记录</div>';
             return;
           }
           var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
@@ -2496,9 +2508,9 @@
               + '<div style="font-size:0.8rem;color:#059669;">' + dsEsc(steps) + '</div>'
               + '</div>';
           });
-          el.innerHTML = html;
+          panel.innerHTML = html;
         } catch(e) {
-          el.innerHTML = '<div style="color:#dc2626;font-size:0.85rem;">加载历史失败：' + dsEsc(e.message || '') + '</div>';
+          panel.innerHTML = '<div style="color:#dc2626;font-size:0.85rem;">加载历史失败：' + dsEsc(e.message || '') + '</div>';
         }
       };
 
@@ -2517,8 +2529,8 @@
             tx.oncomplete = function() { res(); };
             tx.onerror = function() { rej(tx.error); };
           });
-          var el = document.getElementById('ds-agent-history');
-          if (el) el.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">历史已清空</div>';
+          var panel = document.getElementById('ds-agent-history-panel');
+          if (panel) panel.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:8px;">历史已清空</div>';
         } catch(e) { alert('清空失败：' + (e.message || '')); }
       };
 

@@ -725,6 +725,9 @@
                             </div>
                             AI 可调用本地数据（检查信息、规章、日志、手册），自动规划并执行多步骤任务。
                         </div>
+                        <!-- 历史记录面板（默认隐藏，点「📜 历史」toggle 显示，独立于下方实时输出区） -->
+                        <div id="ds-agent-history-panel" style="display:none;flex:1 1 auto;overflow-y:auto;min-height:160px;border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;max-height:50vh;"></div>
+                        <!-- 实时任务输出区（始终跟随任务执行，不被历史覆盖） -->
                         <div id="ds-agent-history" style="flex:1;overflow-y:auto;min-height:200px;border:1px solid var(--border);border-radius:8px;padding:12px;background:#fff;max-height:55vh;"></div>
                         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                             <input id="ds-agent-input" type="text" placeholder="描述任务目标，如：生成本周安全检查月报…" style="flex:1;padding:10px 14px;border:2px solid var(--border);border-radius:10px;font-size:0.9rem;"

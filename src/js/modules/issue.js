@@ -184,26 +184,18 @@
                 }
             }
 
-            // ========== 分组统计：按专业 / 部专业 / 单位 ==========
-            // 部专业 = 把现有细专业归并成几个「部」（按用户确认的分组）
-            var DEPARTMENT_MAP = {
-                '工务': '工务部', '高铁基础设施': '工务部',
-                '电务': '电务部',
-                '车务': '运输部', '客运': '运输部', '货运': '运输部',
-                '机务': '机辆供电部', '车辆': '机辆供电部', '供电': '机辆供电部', '房建': '机辆供电部',
-                '建设': '其他', '辅业': '其他'
-            };
-            function extractDepartmentFromUnit(unitName) {
-                var trade = extractTradeFromUnit(unitName);
-                return DEPARTMENT_MAP[trade] || trade || '其他';
+            // ========== 分组统计：按专业 / 单位 ==========
+            // 单位维度取「~」前第一段（如「兰州电务段~河口南信号车间~车间管理人员」→「兰州电务段」）
+            function issueUnitFirstSegment(unit) {
+                if (!unit) return '';
+                return String(unit).split('~')[0].trim();
             }
             function issueComputeBreakdown(dim) {
                 var counts = {};
                 dataCache.forEach(function(d) {
                     var key = '';
                     if (dim === 'trade') key = d.unit ? extractTradeFromUnit(d.unit) : '未分类';
-                    else if (dim === 'dept') key = d.unit ? extractDepartmentFromUnit(d.unit) : '未分类';
-                    else if (dim === 'unit') key = d.unit ? String(d.unit).trim() : '未分类';
+                    else if (dim === 'unit') key = d.unit ? issueUnitFirstSegment(d.unit) : '未分类';
                     if (!key) key = '未分类';
                     counts[key] = (counts[key] || 0) + 1;
                 });
@@ -231,7 +223,7 @@
                 var container = document.getElementById('issue-breakdownContent');
                 if (!container) return;
                 var entries = issueComputeBreakdown(dim);
-                var title = dim === 'trade' ? '🛠 按专业统计' : dim === 'dept' ? '🏛 按部专业统计' : '🏢 按单位统计';
+                var title = dim === 'trade' ? '🛠 按专业统计' : '🏢 按单位统计';
                 container.innerHTML = issueBreakdownChartHtml(title, entries, dataCache.length);
                 issueSetActiveDimBtn(dim);
                 setTimeout(function() {
@@ -276,8 +268,7 @@
                 html += '<div style="width:100%;margin-top:8px;">';
                 html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;"><span style="font-weight:700;font-size:0.85rem;color:#1e293b;margin-right:4px;">📈 分组统计：</span>'
                       + '<button class="issue-dim-btn" data-dim="trade" onclick="issueRenderBreakdown(\'trade\')" style="background:var(--primary);border:1px solid var(--primary);color:#fff;border-radius:8px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">按专业</button>'
-                      + '<button class="issue-dim-btn" data-dim="dept" onclick="issueRenderBreakdown(\'dept\')" style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:8px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">按部专业</button>'
-                      + '<button class="issue-dim-btn" data-dim="unit" onclick="issueRenderBreakdown(\'unit\')" style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:8px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">按单位</button>'
+                      + '<button class="issue-dim-btn" data-dim="unit" onclick="issueRenderBreakdown(\'unit\')" style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:8px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">按单位（一级）</button>'
                       + '</div>';
                 html += '<div id="issue-breakdownContent"></div>';
                 html += '</div>';

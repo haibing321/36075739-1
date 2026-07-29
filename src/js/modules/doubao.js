@@ -63,11 +63,101 @@
                 return '';
             }
 
+            // ===== 多模型（多 API Key）管理 =====
+            const DS_PROVIDERS_STORAGE       = 'ds_providers_v1';
+            const DS_ACTIVE_PROVIDER_STORAGE = 'ds_active_provider_v1';
+            function _genPid() { return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+            function getProviders() {
+                try {
+                    var arr = JSON.parse(localStorage.getItem(DS_PROVIDERS_STORAGE) || '[]');
+                    return Array.isArray(arr) ? arr : [];
+                } catch(e) { return []; }
+            }
+            function saveProviders(arr) { localStorage.setItem(DS_PROVIDERS_STORAGE, JSON.stringify(arr || [])); }
+            function getActiveId() { return localStorage.getItem(DS_ACTIVE_PROVIDER_STORAGE) || ''; }
+            function getActiveProvider() {
+                var arr = getProviders(), id = getActiveId();
+                return arr.filter(function(p){ return p.id === id; })[0] || arr[0] || null;
+            }
+            // 同步回旧版单配置键，供 agent-core / smart-check / smart-writer / risk 等读取点自动生效
+            function syncLegacyKeys(p) {
+                if (!p) return;
+                localStorage.setItem(DS_API_KEY_STORAGE, p.apiKey || '');
+                localStorage.setItem(DS_API_URL_STORAGE, p.apiUrl || DS_DEFAULT_API_URL);
+                localStorage.setItem(DS_MODEL_STORAGE, p.model || DS_DEFAULT_MODEL);
+                dsApiKey = p.apiKey || ''; dsApiUrl = p.apiUrl || DS_DEFAULT_API_URL; dsModel = p.model || DS_DEFAULT_MODEL;
+            }
+            function setActiveProvider(id) {
+                var arr = getProviders();
+                if (!arr.some(function(p){ return p.id === id; })) return;
+                localStorage.setItem(DS_ACTIVE_PROVIDER_STORAGE, id);
+                syncLegacyKeys(getActiveProvider());
+                updateApiStatusBadge();
+                if (typeof renderChatModelSelect === 'function') renderChatModelSelect();
+            }
+            // 兼容旧版：仅存在 ds_api_key_v1 等单配置时，构造一个默认模型条目
+            function migrateLegacyApiConfig() {
+                if (getProviders().length) return;
+                var oldKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
+                if (!oldKey) return; // 无 Key 视为未配置，不迁移
+                var oldUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
+                var oldModel = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
+                var p = { id: _genPid(), name: '默认模型 (' + oldModel + ')', apiUrl: oldUrl, model: oldModel, apiKey: oldKey };
+                saveProviders([p]);
+                localStorage.setItem(DS_ACTIVE_PROVIDER_STORAGE, p.id);
+            }
+            function addOrUpdateProvider(p) {
+                var arr = getProviders();
+                if (p.id) {
+                    var idx = -1;
+                    arr.forEach(function(x, i){ if (x.id === p.id) idx = i; });
+                    if (idx >= 0) { arr[idx] = Object.assign({}, arr[idx], p); }
+                    else arr.push(p);
+                } else {
+                    p.id = _genPid();
+                    arr.push(p);
+                }
+                saveProviders(arr);
+                if (!getActiveId() || !arr.some(function(x){ return x.id === getActiveId(); })) {
+                    localStorage.setItem(DS_ACTIVE_PROVIDER_STORAGE, p.id);
+                }
+                syncLegacyKeys(getActiveProvider());
+                updateApiStatusBadge();
+                if (typeof renderChatModelSelect === 'function') renderChatModelSelect();
+                if (typeof renderModelManager === 'function') renderModelManager();
+            }
+            function deleteProvider(id) {
+                var arr = getProviders().filter(function(p){ return p.id !== id; });
+                saveProviders(arr);
+                if (getActiveId() === id) {
+                    localStorage.setItem(DS_ACTIVE_PROVIDER_STORAGE, arr.length ? arr[0].id : '');
+                }
+                syncLegacyKeys(getActiveProvider());
+                updateApiStatusBadge();
+                if (typeof renderChatModelSelect === 'function') renderChatModelSelect();
+                if (typeof renderModelManager === 'function') renderModelManager();
+            }
+            // chat 工具栏模型选择下拉
+            function renderChatModelSelect() {
+                var sel = document.getElementById('ds-model-select');
+                if (!sel) return;
+                var arr = getProviders();
+                var activeId = getActiveId();
+                var html = '';
+                arr.forEach(function(p){
+                    html += '<option value="' + p.id + '"' + (p.id === activeId ? ' selected' : '') + '>' + dsEsc(p.name || p.model) + '</option>';
+                });
+                if (!arr.length) html += '<option value="">（未配置模型）</option>';
+                sel.innerHTML = html;
+                sel.onchange = function(){ setActiveProvider(sel.value); };
+            }
+
             // ---- 初始化 ----
             function dsInit() {
-                dsApiKey = localStorage.getItem(DS_API_KEY_STORAGE) || '';
-                dsApiUrl = localStorage.getItem(DS_API_URL_STORAGE) || DS_DEFAULT_API_URL;
-                dsModel  = localStorage.getItem(DS_MODEL_STORAGE) || DS_DEFAULT_MODEL;
+                migrateLegacyApiConfig();
+                var ap = getActiveProvider();
+                if (ap) { dsApiKey = ap.apiKey || ''; dsApiUrl = ap.apiUrl || DS_DEFAULT_API_URL; dsModel = ap.model || DS_DEFAULT_MODEL; }
+                else { dsApiKey = ''; dsApiUrl = DS_DEFAULT_API_URL; dsModel = DS_DEFAULT_MODEL; }
                 
                 updateApiStatusBadge();
                 // 加载多对话历史
@@ -104,6 +194,8 @@
                 });
                 // 根据 API Key 状态切换豆包网页版/本地模块
                 toggleDoubaoMode();
+                // 渲染 chat 工具栏模型选择下拉
+                renderChatModelSelect();
             }
 
             // ---- 多对话管理 ----
@@ -483,14 +575,111 @@
                 }
             }
 
+            // ---- 多模型管理 UI ----
+            function renderModelManager() {
+                var box = document.getElementById('ds-model-manager');
+                if (!box) return;
+                var arr = getProviders();
+                var activeId = getActiveId();
+                var html = '';
+                // 当前模型下拉
+                html += '<div style="margin-bottom:12px;">';
+                html += '<label style="font-weight:600;display:block;margin-bottom:6px;">当前使用模型</label>';
+                html += '<select id="ds-active-model-select" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;">';
+                arr.forEach(function(p){
+                    html += '<option value="' + p.id + '"' + (p.id === activeId ? ' selected' : '') + '>' + dsEsc(p.name || p.model) + '</option>';
+                });
+                if (!arr.length) html += '<option value="">（暂无模型，请新增）</option>';
+                html += '</select></div>';
+                html += '<div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.76rem;color:#1e40af;line-height:1.6;">智能助手（对话 / 对规 / 写作 / 风险 / 智能体）统一使用「当前使用模型」，切换后立即对所有模块生效。</div>';
+                // 模型列表
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:600;">已配置模型（' + arr.length + '）</span><button onclick="dsNewProvider()" style="padding:5px 12px;border:1px solid #3b82f6;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:0.8rem;cursor:pointer;">＋ 新增模型</button></div>';
+                html += '<div id="ds-provider-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">';
+                arr.forEach(function(p){
+                    var isActive = p.id === activeId;
+                    html += '<div style="border:1px solid ' + (isActive ? '#3b82f6' : '#e2e8f0') + ';border-radius:8px;padding:8px 10px;background:' + (isActive ? '#eff6ff' : '#fff') + ';">';
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">';
+                    html += '<div style="min-width:0;"><div style="font-weight:600;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsEsc(p.name || p.model) + (isActive ? ' <span style="color:#1d4ed8;">●当前</span>' : '') + '</div>';
+                    html += '<div style="font-size:0.72rem;color:#718096;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsEsc(p.model) + ' · ' + dsEsc(p.apiUrl) + '</div></div>';
+                    html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
+                    if (!isActive) html += '<button onclick="dsSetActiveProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #86efac;border-radius:6px;background:#f0fdf4;color:#166534;font-size:0.72rem;cursor:pointer;">设为当前</button>';
+                    html += '<button onclick="dsEditProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#475569;font-size:0.72rem;cursor:pointer;">编辑</button>';
+                    html += '<button onclick="dsDeleteProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #fca5a5;border-radius:6px;background:#fef2f2;color:#dc2626;font-size:0.72rem;cursor:pointer;">删除</button>';
+                    html += '</div></div></div>';
+                });
+                if (!arr.length) html += '<div style="font-size:0.78rem;color:#94a3b8;padding:8px 0;">尚未配置任何模型，点击右上「＋ 新增模型」</div>';
+                html += '</div>';
+                // 编辑表单（默认隐藏）
+                html += '<div id="ds-provider-edit" style="display:none;border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;">';
+                html += '<div style="font-weight:600;margin-bottom:8px;" id="ds-provider-edit-title">编辑模型</div>';
+                html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+                html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">名称（显示用）</label><input id="ds-pe-name" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="如：DeepSeek V4"></div>';
+                html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API 地址</label><input id="ds-pe-url" list="api-url-list" onchange="if(window.dsAutoDetectModel)dsAutoDetectModel()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="https://api.deepseek.com/chat/completions"></div>';
+                html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-chat"></div>';
+                html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
+                html += '</div>';
+                html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
+                html += '</div>';
+                box.innerHTML = html;
+                var sel = document.getElementById('ds-active-model-select');
+                if (sel) sel.onchange = function(){ setActiveProvider(sel.value); renderModelManager(); };
+            }
+            function dsNewProvider() {
+                var f = document.getElementById('ds-provider-edit');
+                if (!f) return;
+                f.style.display = 'block';
+                document.getElementById('ds-pe-name').value = '';
+                document.getElementById('ds-pe-url').value = DS_DEFAULT_API_URL;
+                document.getElementById('ds-pe-model').value = DS_DEFAULT_MODEL;
+                document.getElementById('ds-pe-key').value = '';
+                document.getElementById('ds-provider-edit-title').textContent = '新增模型';
+                f.dataset.pid = '';
+            }
+            function dsEditProvider(id) {
+                var arr = getProviders(), p = arr.filter(function(x){ return x.id === id; })[0];
+                if (!p) return;
+                var f = document.getElementById('ds-provider-edit');
+                f.style.display = 'block';
+                document.getElementById('ds-pe-name').value = p.name || '';
+                document.getElementById('ds-pe-url').value = p.apiUrl || '';
+                document.getElementById('ds-pe-model').value = p.model || '';
+                document.getElementById('ds-pe-key').value = p.apiKey ? '****************' : '';
+                document.getElementById('ds-provider-edit-title').textContent = '编辑模型：' + (p.name || p.model);
+                f.dataset.pid = id;
+            }
+            function dsCancelEditProvider() {
+                var f = document.getElementById('ds-provider-edit');
+                if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
+            }
+            function dsSaveProviderFromForm() {
+                var f = document.getElementById('ds-provider-edit');
+                var name = document.getElementById('ds-pe-name').value.trim();
+                var url = document.getElementById('ds-pe-url').value.trim();
+                var model = document.getElementById('ds-pe-model').value.trim();
+                var key = document.getElementById('ds-pe-key').value.trim();
+                if (!url) { alert('请输入 API 地址'); return; }
+                if (!model) { alert('请输入模型名称'); return; }
+                var pid = f ? f.dataset.pid : '';
+                var existing = pid ? getProviders().filter(function(p){ return p.id === pid; })[0] : null;
+                if (!key) {
+                    if (existing && existing.apiKey) key = existing.apiKey;
+                    else { alert('请输入 API Key'); return; }
+                } else if (key === '****************') {
+                    key = existing ? existing.apiKey : '';
+                }
+                if (!name) name = model;
+                addOrUpdateProvider({ id: pid || undefined, name: name, apiUrl: url, model: model, apiKey: key });
+                if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
+                renderModelManager();
+            }
+            function dsSetActiveProvider(id) { setActiveProvider(id); }
+            function dsDeleteProvider(id) {
+                if (!confirm('确定删除该模型配置？')) return;
+                deleteProvider(id);
+            }
+
             function showApiConfigModal() {
-                document.getElementById('modal-apiurl').value = dsApiUrl;
-                document.getElementById('modal-model').value = dsModel;
-                // 已有 Key 时用星号掩码显示，避免泄露
-                var currentKey = dsApiKey || '';
-                document.getElementById('modal-apikey').value = currentKey ? '****************' : '';
-                document.getElementById('modal-apikey').type = 'password';
-                document.getElementById('modal-apikey').placeholder = currentKey ? '已配置（如需修改请重新输入）' : 'sk-...';
+                renderModelManager();
                 document.getElementById('api-config-modal').style.display = 'block';
             }
 
@@ -516,61 +705,34 @@
                 }
             }
 
-            async function saveApiConfigFromModal() {
-                var url = document.getElementById('modal-apiurl').value.trim();
-                var model = document.getElementById('modal-model').value.trim();
-                var key = document.getElementById('modal-apikey').value.trim();
-                // 星号掩码表示用户未修改，保留原 Key
-                if (key === '****************') key = dsApiKey;
-                if (!url) { alert('请输入 API 地址'); return; }
-                if (!model) { alert('请输入模型名称'); return; }
-                if (key) {
-                    localStorage.setItem(DS_API_KEY_STORAGE, key);
-                    dsApiKey = key;
-                } else if (!dsApiKey) {
-                    alert('请输入 API Key');
-                    return;
-                }
-                dsApiUrl = url; dsModel = model;
-                localStorage.setItem(DS_API_URL_STORAGE, url);
-                localStorage.setItem(DS_MODEL_STORAGE, model);
-                updateApiStatusBadge();
-                document.getElementById('api-config-modal').style.display = 'none';
-                toggleDoubaoMode();
+            function saveApiConfigFromModal() {
+                // 多模型模式下保存入口已改为 dsSaveProviderFromForm（模型管理弹窗内编辑表单）
+                if (typeof dsSaveProviderFromForm === 'function') dsSaveProviderFromForm();
             }
 
             function clearApiConfig() {
-                dsApiKey = ''; dsApiUrl = DS_DEFAULT_API_URL; dsModel = DS_DEFAULT_MODEL;
-                localStorage.removeItem(DS_API_KEY_STORAGE);
-                localStorage.removeItem(DS_API_URL_STORAGE);
-                localStorage.removeItem(DS_MODEL_STORAGE);
-                document.getElementById('modal-apiurl').value = DS_DEFAULT_API_URL;
-                document.getElementById('modal-model').value = DS_DEFAULT_MODEL;
-                document.getElementById('modal-apikey').value = '';
+                // 清除当前模型的 Key（其余配置保留）
+                var ap = getActiveProvider();
+                if (ap) { ap.apiKey = ''; addOrUpdateProvider(ap); }
                 updateApiStatusBadge();
-                document.getElementById('api-config-modal').style.display = 'none';
-                if (typeof toggleDoubaoMode === 'function') toggleDoubaoMode();
+                alert('已清除当前模型的 API Key');
             }
 
             function resetDefaultApiConfig() {
-                document.getElementById('modal-apiurl').value = DS_DEFAULT_API_URL;
-                document.getElementById('modal-model').value = DS_DEFAULT_MODEL;
+                document.getElementById('api-config-modal').style.display = 'none';
             }
 
             function bindApiModalEvents() {
                 var cfgBtn = document.getElementById('ds-api-config-btn');
                 if (cfgBtn) cfgBtn.onclick = showApiConfigModal;
                 var saveBtn = document.getElementById('modal-save-config');
-                if (saveBtn) saveBtn.onclick = saveApiConfigFromModal;
+                if (saveBtn) saveBtn.onclick = dsSaveProviderFromForm;
                 var clearBtn = document.getElementById('modal-clear-key');
                 if (clearBtn) clearBtn.onclick = clearApiConfig;
                 var resetBtn = document.getElementById('modal-reset-default');
                 if (resetBtn) resetBtn.onclick = resetDefaultApiConfig;
                 var quickBtn = document.getElementById('quick-config-btn');
                 if (quickBtn) quickBtn.onclick = showApiConfigModal;
-                // API 地址变更时自动建议模型名称
-                var urlInput = document.getElementById('modal-apiurl');
-                if (urlInput) urlInput.onchange = _autoDetectModel;
             }
             bindApiModalEvents();
 
@@ -1431,6 +1593,16 @@
         window.showApiConfigModal     = typeof showApiConfigModal !== 'undefined' ? showApiConfigModal : function(){};
         window.saveApiConfigFromModal = typeof saveApiConfigFromModal !== 'undefined' ? saveApiConfigFromModal : function(){ console.warn('[doubao] saveApiConfigFromModal 未定义'); };
         window.bindApiModalEvents     = typeof bindApiModalEvents !== 'undefined' ? bindApiModalEvents : function(){};
+        // 多模型管理（供弹窗内联 onclick 调用）
+        window.dsNewProvider            = typeof dsNewProvider !== 'undefined' ? dsNewProvider : function(){};
+        window.dsEditProvider           = typeof dsEditProvider !== 'undefined' ? dsEditProvider : function(){};
+        window.dsDeleteProvider         = typeof dsDeleteProvider !== 'undefined' ? dsDeleteProvider : function(){};
+        window.dsSetActiveProvider      = typeof dsSetActiveProvider !== 'undefined' ? dsSetActiveProvider : function(){};
+        window.dsCancelEditProvider     = typeof dsCancelEditProvider !== 'undefined' ? dsCancelEditProvider : function(){};
+        window.dsSaveProviderFromForm   = typeof dsSaveProviderFromForm !== 'undefined' ? dsSaveProviderFromForm : function(){};
+        window.renderModelManager       = typeof renderModelManager !== 'undefined' ? renderModelManager : function(){};
+        window.renderChatModelSelect    = typeof renderChatModelSelect !== 'undefined' ? renderChatModelSelect : function(){};
+        window.dsAutoDetectModel        = typeof _autoDetectModel !== 'undefined' ? _autoDetectModel : function(){};
         // dsInit 在 IIFE 开头定义，也需暴露
         window.dsInit                 = typeof dsInit !== 'undefined' ? dsInit : function(){};
         // Part B 增强功能（agent 等）依赖的 Part A 内部函数

@@ -309,6 +309,9 @@
             backup.modules.dsMemory = getLocal('assistant_memory_v1', []);
             backup.modules.dsDataSource = getLocal('ds_datasource_v1', null);
             backup.modules.memoryEnabled = getLocal('memory_enabled', null);
+            // 多模型（多 API Key）配置：换浏览器/重装不丢
+            backup.modules.dsProviders = getLocal('ds_providers_v1', null);
+            backup.modules.dsActiveProvider = getLocal('ds_active_provider_v1', null);
             window.showProgress(55, '正在收集术语库…');
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
@@ -581,6 +584,19 @@
                 if (bm.dsMemory) localStorage.setItem('assistant_memory_v1', JSON.stringify(bm.dsMemory));
                 if (bm.dsDataSource) localStorage.setItem('ds_datasource_v1', JSON.stringify(bm.dsDataSource));
                 if (bm.memoryEnabled != null) localStorage.setItem('memory_enabled', bm.memoryEnabled);
+                // 多模型配置恢复，并同步回旧版单配置键（供各模块读取点生效）
+                if (bm.dsProviders != null) {
+                    var provs = bm.dsProviders;
+                    localStorage.setItem('ds_providers_v1', JSON.stringify(provs));
+                    var aid = bm.dsActiveProvider != null ? bm.dsActiveProvider : (provs[0] && provs[0].id);
+                    if (aid != null) localStorage.setItem('ds_active_provider_v1', aid);
+                    var active = (provs.filter(function(p){ return p.id === aid; })[0]) || provs[0];
+                    if (active) {
+                        localStorage.setItem('ds_api_key_v1', active.apiKey || '');
+                        localStorage.setItem('ds_api_url_v1', active.apiUrl || '');
+                        localStorage.setItem('ds_model_v1', active.model || '');
+                    }
+                }
                 _setRestoreProgress(70, '正在恢复术语库…');
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));

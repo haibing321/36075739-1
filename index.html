@@ -689,6 +689,8 @@
                             <option value="frontend">💻 前端工程师</option>
                             <option value="riskanalyst">🔍 风险分析专家</option>
                           </select>
+                          <span style="font-size:0.75rem;font-weight:600;color:#475569;margin-left:6px;">模型</span>
+                          <select id="ds-model-select" style="background: white; border: 1px solid #cbd5e1; border-radius: 20px; padding: 5px 12px; font-size: 0.85rem; max-width: 130px;"></select>
                           <div style="flex:1"></div>
                           <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;">📊 关联数据</button>
                         </div>
@@ -1600,41 +1602,12 @@
                 <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-close">✕</button>
             </div>
             <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 2px 0 0;">
-                <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:0.78rem;color:#1e40af;line-height:1.6;">
-                    <div style="font-weight:600;margin-bottom:4px;">💡 为什么需要配置 API？</div>
-                    智能助手（AI对话、智能对规、智能写作、风险研判）需调用大语言模型处理。 配置后即可使用全部 AI 功能，不配置则只能使用豆包网页版。
-                </div>
-                <div style="display:flex;flex-direction:column;gap:16px;">
-                <div><label style="font-weight:600;display:block;margin-bottom:6px;">API 地址 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-apiurl" list="api-url-list" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="选择或输入 API 地址" value="https://api.deepseek.com/chat/completions" onchange="window._updateModelList&&window._updateModelList()"><datalist id="api-url-list"><option value="https://api.deepseek.com/chat/completions">DeepSeek (V4系列)</option><option value="https://api.openai.com/v1/chat/completions">OpenAI (GPT-5系列)</option><option value="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions">通义千问 (Qwen3系列)</option><option value="https://open.bigmodel.cn/api/paas/v4/chat/completions">智谱 (GLM-5系列)</option><option value="https://api.moonshot.cn/v1/chat/completions">Moonshot (Kimi K2系列)</option><option value="https://api.baichuan-ai.com/v1/chat/completions">百川 (Baichuan4)</option><option value="https://api.minimax.chat/v1/text/chatcompletion_v2">MiniMax (abab7系列)</option><option value="https://api.stepfun.com/v1/chat/completions">阶跃星辰 (Step-2)</option></datalist><div style="font-size:0.7rem;color:#718096;margin-top:4px;">支持 OpenAI 兼容格式，可从下拉列表选择或手动输入</div></div>
-                <div><label style="font-weight:600;display:block;margin-bottom:6px;">模型名称 <span style="color:#e53e3e;">*</span></label><input type="text" id="modal-model" list="api-model-list" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="选择或输入模型名" value="deepseek-v4-flash"><datalist id="api-model-list"><option value="deepseek-v4-pro">DeepSeek V4 Pro (旗舰推理)</option><option value="deepseek-v4-flash">DeepSeek V4 Flash (轻量高速)</option><option value="gpt-5.1">OpenAI GPT-5.1</option><option value="gpt-5-mini">OpenAI GPT-5 Mini</option><option value="qwen3-max">通义千问 Qwen3 Max</option><option value="qwen3-plus">通义千问 Qwen3 Plus</option><option value="qwen3-turbo">通义千问 Qwen3 Turbo</option><option value="GLM-5">智谱 GLM-5 (旗舰)</option><option value="GLM-5-Flash">智谱 GLM-5 Flash (轻量)</option><option value="kimi-k2.5">Kimi K2.5 (长文本)</option><option value="kimi-k2-turbo">Kimi K2 Turbo</option><option value="Baichuan4">百川 Baichuan4</option><option value="Baichuan4-Turbo">百川 Baichuan4 Turbo</option><option value="abab7">MiniMax abab7</option><option value="step-2-16k">阶跃星辰 Step-2 16K</option></datalist><div style="font-size:0.7rem;color:#718096;margin-top:4px;">2026年6月最新模型，可从下拉列表选择或手动输入</div></div>
-                <div><label style="font-weight:600;display:block;margin-bottom:6px;">API Key <span style="color:#e53e3e;">*</span></label><input type="password" id="modal-apikey" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem;" placeholder="sk-..."><div style="font-size:0.7rem;color:#718096;margin-top:4px;">请前往模型平台获取（如 platform.deepseek.com）</div></div>
-                <details style="background:#f8fafc;border-radius:8px;padding:8px 12px;border:1px solid #e2e8f0;">
-                    <summary style="font-weight:600;cursor:pointer;color:#3b82f6;">📘 如何注册并获取 API Key？</summary>
-                    <div style="margin-top:10px;font-size:0.8rem;line-height:1.6;color:var(--text);">
-                        <p><strong>推荐使用 DeepSeek（性价比高，国内可用）：</strong></p>
-                        <ol style="margin-left:20px;padding-left:0;">
-                            <li>访问 <a href="https://platform.deepseek.com/" target="_blank" style="color:var(--info);">https://platform.deepseek.com/</a> 注册账号。</li>
-                            <li>登录后进入「API Keys」页面，点击「创建 API Key」。</li>
-                            <li>复制生成的 Key（格式：sk-xxxxxxxx），粘贴到上方输入框。</li>
-                            <li>API 地址和模型名称保持默认，点击「保存」即可。</li>
-                        </ol>
-                        <p><strong>其他兼容平台：</strong></p>
-                        <ul style="margin-left:20px;">
-                            <li>OpenAI: <code>https://api.openai.com/v1/chat/completions</code>，模型 <code>gpt-3.5-turbo</code></li>
-                            <li>通义千问: <code>https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions</code>，模型 <code>qwen-turbo</code></li>
-                            <li>智谱: <code>https://open.bigmodel.cn/api/paas/v4/chat/completions</code>，模型 <code>glm-4</code></li>
-                        </ul>
-                        <p style="margin-top:8px;">💡 配置保存后立即生效。如需切回豆包网页版，点击「清除配置」。</p>
-                    </div>
-                </details>
-                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:0.75rem;color:#166534;">💡 保存后立即启用本地智能助手，清除配置则返回豆包网页版。</div>
-                </div>
+                <div id="ds-model-manager"></div>
             </div>
             <div class="modal-footer" style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">
-                <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-outline">取消</button>
-                <button id="modal-reset-default" style="padding:8px 16px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:0.85rem;cursor:pointer;">🔄 恢复默认</button>
-                <button id="modal-clear-key" style="padding:8px 16px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:0.85rem;cursor:pointer;">🗑️ 清除</button>
-                <button id="modal-save-config" class="btn-primary-sm">💾 保存</button>
+                <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-outline">关闭</button>
+                <button id="modal-clear-key" style="padding:8px 16px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:0.85rem;cursor:pointer;">🗑️ 清除当前Key</button>
+                <button id="modal-save-config" class="btn-primary-sm">💾 保存模型</button>
             </div>
         </div>
     </div>

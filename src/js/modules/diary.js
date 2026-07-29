@@ -976,11 +976,22 @@
                 return 'jpg';
             }
 
-            // 导出日记数据（含媒体则打包 ZIP，否则纯 JSON）
+            // 导出日记数据（含媒体与考勤记录则打包 ZIP，否则纯 JSON）
+            // 考勤记录(attendance_v1)与工作日志同时导出，方便整体迁移
             window.exportDiary = async function() {
                 if (diaries.length === 0) { alert('没有数据可导出'); return; }
                 window.showProgress(50, '正在导出工作日志…');
                 const stamp = getLocalDateStr(new Date());
+                const attMap = getAttendance();
+                const attCount = attMap ? Object.keys(attMap).length : 0;
+                // 统一封装：新格式含 diary 数组 + attendance 映射（旧版纯数组仍兼容）
+                const payload = {
+                    version: 2,
+                    type: 'diary_export',
+                    exportDate: new Date().toISOString(),
+                    diary: diaries,
+                    attendance: attMap || {}
+                };
                 // 收集全部媒体 id
                 const allMediaIds = [];
                 diaries.forEach(function(d) {
@@ -990,15 +1001,15 @@
                 });
                 try {
                     if (allMediaIds.length === 0) {
-                        _downloadBlob(new Blob([JSON.stringify(diaries, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
-                        window.finishProgress('✅ 工作日志导出成功');
+                        _downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
+                        window.finishProgress('✅ 工作日志导出成功' + (attCount > 0 ? '（含 ' + attCount + ' 天考勤）' : ''));
                         return;
                     }
                     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
                     if (typeof JSZip === 'undefined') {
                         // 降级：纯 JSON（不含媒体）
-                        _downloadBlob(new Blob([JSON.stringify(diaries, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
-                        window.finishProgress('⚠️ JSZip 未加载，已导出纯文本（不含媒体），请联网后重试以打包图片');
+                        _downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
+                        window.finishProgress('⚠️ JSZip 未加载，已导出纯文本（不含媒体），请联网后重试以打包图片' + (attCount > 0 ? '（含 ' + attCount + ' 天考勤）' : ''));
                         return;
                     }
                     const zip = new JSZip();
@@ -1011,11 +1022,11 @@
                             mediaCount++;
                         }
                     }
-                    zip.file('diary.json', JSON.stringify(diaries, null, 2));
-                    zip.file('manifest.json', JSON.stringify({ version: 2, exportDate: new Date().toISOString(), count: diaries.length, hasMedia: mediaCount > 0 }, null, 2));
+                    zip.file('diary.json', JSON.stringify(payload, null, 2));
+                    zip.file('manifest.json', JSON.stringify({ version: 2, exportDate: new Date().toISOString(), count: diaries.length, hasMedia: mediaCount > 0, hasAttendance: attCount > 0 }, null, 2));
                     const zipBlob = await zip.generateAsync({ type: 'blob' });
                     _downloadBlob(new Blob([zipBlob], { type: 'application/zip' }), '工作写实_' + stamp + '.zip');
-                    window.finishProgress('✅ 工作日志导出成功（含 ' + mediaCount + ' 个媒体）');
+                    window.finishProgress('✅ 工作日志导出成功（含 ' + mediaCount + ' 个媒体' + (attCount > 0 ? ' · ' + attCount + ' 天考勤' : '') + '）');
                 } catch (err) {
                     window.hideProgress();
                     alert('导出失败：' + err.message);
@@ -1042,8 +1053,8 @@
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     try {
-                        const imported = JSON.parse(evt.target.result);
-                        _mergeDiaries(imported);
+                        const parsed = JSON.parse(evt.target.result);
+                        _applyDiaryImport(parsed);
                     } catch (err) {
                         window.hideProgress();
                         alert('解析文件失败：' + err.message);
@@ -1060,7 +1071,10 @@
                     const zip = await JSZip.loadAsync(file);
                     if (!zip.file('diary.json')) { window.hideProgress(); alert('ZIP 文件缺少 diary.json'); return; }
                     const jsonStr = await zip.file('diary.json').async('string');
-                    const imported = JSON.parse(jsonStr);
+                    const parsed = JSON.parse(jsonStr);
+                    const ext = _extractDiaryExport(parsed);
+                    if (!ext || !Array.isArray(ext.diary)) { window.hideProgress(); alert('导入数据格式错误：缺少日记数组'); return; }
+                    const imported = ext.diary;
                     // 建立旧媒体 ID -> 新 ID 映射
                     const idMap = {};
                     const imageFiles = zip.file(/^images\//);
@@ -1076,11 +1090,54 @@
                             d.mediaIds = d.mediaIds.map(function(id) { return idMap[id] !== undefined ? idMap[id] : id; });
                         }
                     });
-                    _mergeDiaries(imported);
+                    _applyDiaryImport(parsed);
                 } catch (err) {
                     window.hideProgress();
                     alert('ZIP 导入失败：' + err.message);
                 }
+            }
+
+            // 解析导入文件：兼容新格式 {type:'diary_export', diary:[], attendance:{}} 与旧版纯数组
+            function _extractDiaryExport(parsed) {
+                if (parsed && typeof parsed === 'object' && Array.isArray(parsed.diary)) {
+                    return {
+                        diary: parsed.diary,
+                        attendance: (parsed.attendance && typeof parsed.attendance === 'object') ? parsed.attendance : null
+                    };
+                }
+                if (Array.isArray(parsed)) {
+                    return { diary: parsed, attendance: null };
+                }
+                return null;
+            }
+
+            // 合并考勤记录（导入值覆盖同日期已有值）
+            function _mergeAttendance(att) {
+                if (!att || typeof att !== 'object') return;
+                const cur = getAttendance();
+                let changed = false;
+                Object.keys(att).forEach(function(date) {
+                    if (att[date]) { cur[date] = att[date]; changed = true; }
+                });
+                if (changed) {
+                    try { localStorage.setItem('attendance_v1', JSON.stringify(cur)); } catch (e) {}
+                    // 若日历可见则刷新角标
+                    try { if (typeof renderCalendar === 'function') renderCalendar(); } catch (e) {}
+                }
+            }
+
+            // 统一入口：解析后合并日记 + 考勤
+            function _applyDiaryImport(parsed) {
+                const ext = _extractDiaryExport(parsed);
+                if (!ext || !Array.isArray(ext.diary)) {
+                    window.hideProgress();
+                    alert('导入数据格式错误：需要日记数组或 diary_export 结构');
+                    return;
+                }
+                // 先合并考勤（不影响日记的去重计数提示）
+                if (ext.attendance) _mergeAttendance(ext.attendance);
+                // 再合并日记
+                _mergeDiaries(ext.diary);
             }
 
             // 合并导入数据（按日期去重）

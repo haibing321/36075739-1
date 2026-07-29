@@ -293,6 +293,8 @@
             try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); backup.modules.rules = []; }
             window.showProgress(25, '正在收集工作日志…');
             backup.modules.diary = getLocal('railway_work_diary_v2', []);
+            window.showProgress(27, '正在收集考勤记录…');
+            backup.modules.attendance = getLocal('attendance_v1', {});
             window.showProgress(30, '正在收集应急电话…');
             backup.modules.phone = getLocal('railway_phone_db_v1', []);
             window.showProgress(35, '正在收集检查手册…');
@@ -435,6 +437,8 @@
             'it.appendChild(detailsJson(r));s.appendChild(it);});root.appendChild(s);})();',
             '(function(){var a=M.diary||[];var s=sec("工作日志",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
             'a.forEach(function(d){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=(d.date||"")+(d.weather?"（"+d.weather+"）":"");it.appendChild(t);var c=document.createElement("div");c.textContent=d.content||"";it.appendChild(c);s.appendChild(it);});root.appendChild(s);})();',
+            '(function(){var a=(M.attendance&&typeof M.attendance==="object")?M.attendance:{};var keys=Object.keys(a);var s=sec("考勤记录",keys.length);if(!keys.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
+            'var rows=keys.slice().sort().map(function(k){return [esc(k),esc(a[k]||"")];});s.appendChild(table(["日期","考勤码"],rows));root.appendChild(s);})();',
             '(function(){var a=M.phone||[];var s=sec("应急电话",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
             'var rows=a.map(function(p){return [esc(p.name||p.contact||""),esc(p.phone||p.number||""),esc(p.dept||p.unit||"")];});s.appendChild(table(["名称","电话","单位/部门"],rows));root.appendChild(s);})();',
             '(function(){var a=M.handbook||[];var s=sec("安全检查手册",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
@@ -562,6 +566,11 @@
                 }
                 _setRestoreProgress(35, '正在恢复工作日志…');
                 if (bm.diary) localStorage.setItem('railway_work_diary_v2', JSON.stringify(bm.diary));
+                // 考勤记录与工作日志同包恢复（旧备份无此字段则跳过，安全兼容）
+                if (bm.attendance && typeof bm.attendance === 'object' && Object.keys(bm.attendance).length) {
+                    localStorage.setItem('attendance_v1', JSON.stringify(bm.attendance));
+                    console.log('已恢复 ' + Object.keys(bm.attendance).length + ' 条考勤记录');
+                }
                 _setRestoreProgress(40, '正在恢复应急电话…');
                 if (bm.phone) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
                 _setRestoreProgress(45, '正在恢复检查手册…');
@@ -657,7 +666,7 @@ window.clearAllGlobalData = function() {
         'railway_work_diary_v2', 'railway_phone_db_v1', 'handbook_fourlevel_v1',
         'railway_memo_v1', 'patch_term_library_v2', 'ds_conversations_v1',
         'ds_chat_history_v1', 'railway_rules_v1', 'railway_terms_custom',
-        'patch_term_library_v1'
+        'patch_term_library_v1', 'attendance_v1'
     ];
     lsKeys.forEach(function(k) { try { localStorage.removeItem(k); } catch(e) {} });
     window.showProgress(30, '正在清空 IndexedDB 数据…');

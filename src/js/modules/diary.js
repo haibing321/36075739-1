@@ -437,6 +437,29 @@
             let _calendarMonth = new Date().getMonth();
             let _selectedDate = null;
 
+            // 个人考勤（手动标记，localStorage 持久化）
+            function getAttendance() {
+                try { return JSON.parse(localStorage.getItem('attendance_v1') || '{}'); } catch (e) { return {}; }
+            }
+            window.setAttendance = function(dateStr, code) {
+                const m = getAttendance();
+                if (code) m[dateStr] = code; else delete m[dateStr];
+                localStorage.setItem('attendance_v1', JSON.stringify(m));
+                if (_selectedDate === dateStr) renderDateDetail(dateStr);
+                renderCalendar();
+            };
+            const ATT_CODES = ['日', '差', '公休', '假', '休', '培'];
+            function attButtonsHtml(dateStr) {
+                const cur = getAttendance()[dateStr] || '';
+                let h = '<div class="att-set-row"><span class="att-set-label">考勤：</span>';
+                ATT_CODES.forEach(function(c) {
+                    h += '<button class="att-btn' + (c === cur ? ' att-active' : '') + '" onclick="setAttendance(\'' + dateStr + '\',\'' + c + '\')">' + c + '</button>';
+                });
+                h += '<button class="att-btn att-clear' + (cur === '' ? ' att-active' : '') + '" onclick="setAttendance(\'' + dateStr + '\',\'\')">清除</button>';
+                h += '</div>';
+                return h;
+            }
+
             // 复制日记中的工作内容
             window.copyDiaryWork = function(date, btnEl) {
                 const diary = diaries.find(d => d.date === date);
@@ -461,6 +484,7 @@
 
                 // 获取该月的所有日期记录
                 const datesWithRecords = new Set(diaries.map(d => d.date));
+                const attMap = getAttendance();
                 const today = getLocalDateStr(new Date());
 
                 let html = '<div class="diary-calendar-header">';
@@ -500,10 +524,23 @@
                     if (hasRecord) classes += ' has-record';
                     if (isSelected) classes += ' selected';
 
-                    html += '<div class="' + classes + '" onclick="selectDate(\'' + dateStr + '\')">' + day + '</div>';
+                    const attCode = attMap[dateStr];
+                    html += '<div class="' + classes + '" onclick="selectDate(\'' + dateStr + '\')">' + day;
+                    if (attCode) html += '<span class="att-badge att-' + attCode + '">' + attCode + '</span>';
+                    html += '</div>';
                 }
 
                 html += '</div>';
+
+                const attCnt = {'日':0,'差':0,'公休':0,'假':0,'休':0,'培':0};
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const ds = _calendarYear + '-' + String(_calendarMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+                    const c = attMap[ds];
+                    if (c && attCnt[c] !== undefined) attCnt[c]++;
+                }
+                const attTotal = attCnt['日'] + attCnt['差'] + attCnt['公休'] + attCnt['假'] + attCnt['休'] + attCnt['培'];
+                html += '<div class="att-summary">本月考勤：日' + attCnt['日'] + ' 差' + attCnt['差'] + ' 公休' + attCnt['公休'] + ' 假' + attCnt['假'] + ' 休' + attCnt['休'] + ' 培' + attCnt['培'] + ' ＝ ' + attTotal + '/' + daysInMonth + '天</div>';
+
                 container.innerHTML = html;
             }
 
@@ -543,7 +580,7 @@
                 const diary = diaries.find(d => d.date === dateStr);
 
                 if (!diary) {
-                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p>';
+                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p>' + attButtonsHtml(dateStr);
                     container.style.display = 'block';
                     return;
                 }
@@ -572,6 +609,7 @@
                     html += '</div>';
                 }
 
+                html += attButtonsHtml(dateStr);
                 container.innerHTML = html;
                 container.style.display = 'block';
                 // 渲染多媒体内容（替换标签为实际图片/视频）

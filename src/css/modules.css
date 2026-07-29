@@ -226,6 +226,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    overflow: visible;
 }
 .diary-calendar-day:hover:not(.empty):not(.has-record) {
     background: #e2e8f0;
@@ -247,6 +249,54 @@
 .diary-calendar-day.selected {
     background: var(--success) !important;
     color: white !important;
+}
+.diary-calendar-day .att-badge {
+    position: absolute;
+    bottom: 1px;
+    right: 2px;
+    font-size: 0.55rem;
+    line-height: 1;
+    padding: 1px 2px;
+    border-radius: 4px;
+    color: #fff;
+}
+.att-日 { background: #2563eb; }
+.att-差 { background: #d97706; }
+.att-公休 { background: #64748b; }
+.att-假 { background: #dc2626; }
+.att-休 { background: #0891b2; }
+.att-培 { background: #7c3aed; }
+.att-set-row {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed #e2e8f0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.att-set-label { font-size: 0.85rem; color: var(--text-secondary); }
+.att-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.att-btn:hover { background: #e2e8f0; }
+.att-btn.att-active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.att-btn.att-clear { color: #94a3b8; }
+.att-summary {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: #475569;
+    text-align: center;
 }
 /* 日期详情 */
 .diary-date-detail {

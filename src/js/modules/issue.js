@@ -132,7 +132,7 @@
                 if (!unitName) return '';
                 var name = String(unitName).trim();
                 // 铁路单位常见专业关键词（按长度降序，优先匹配更具体的）
-                var tradeKeys = ['高铁基础设施','综合维修','基础设施','客运','货运','车务','机务','工务','电务','供电','车辆','通信','信号','房建','给水','供电'];
+                var tradeKeys = ['高铁基础设施','综合维修','基础设施','客运','货运','车务','机务','工务','电务','供电','车辆','房建','给水','供电'];
                 // 显式单位名 → 专业映射（优先于关键词匹配，支持子串匹配）
                 var unitTradeMap = [
                     { keywords: ['天水车站','兰州车站','迎水桥车站','兰州北车站','调度所','银川车站'], trade: '车务' },
@@ -149,6 +149,8 @@
                 for (var i = 0; i < tradeKeys.length; i++) {
                     if (name.indexOf(tradeKeys[i]) !== -1) return tradeKeys[i];
                 }
+                // 通信、信号专业归并到电务（兜底，置于 tradeKeys 之后避免误判"高铁基础设施段…信号工区"等）
+                if (name.indexOf('通信') !== -1 || name.indexOf('信号') !== -1) return '电务';
                 // 无匹配时返回单位名本身（方便排查未归类的单位）
                 return name;
             }
@@ -160,7 +162,7 @@
                 // 从 dataCache 的 单位 字段提取专业
                 var trades = new Set();
                 // 默认添加常见专业，确保下拉框始终完整
-                var defaultTrades = ['车务','货运','建设','辅业','工务','电务','供电','车辆','机务','通信','信号','房建','客运'];
+                var defaultTrades = ['车务','货运','建设','辅业','工务','电务','供电','车辆','机务','房建','客运'];
                 defaultTrades.forEach(function(t) { trades.add(t); });
                 dataCache.forEach(function(item) {
                     if (item.unit) {

@@ -1,6 +1,6 @@
         // ========== Issue System ==========
         (function() {
-            const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 2;
+            const DB_NAME = 'RailwayIssueDB_v2', STORE_NAME = 'issues', DB_VERSION = 3;
             let db = null, dataCache = [], keywordNum = 0, MAX_KEYWORDS = 4;
             let showLowMatch = false, currentResults = [], currentKeywords = [];
             const MATCH_THRESHOLD = 75;
@@ -9,7 +9,8 @@
             let currentPage = 1, pageSize = 20, totalPages = 1, allFilteredResults = [];
 
             // 立即注册 DB schema（模块加载时，确保 backup.js writeIndexedDB 调用前 schema 已就绪）
-            window.dbManager.register('RailwayIssueDB_v2', 2, function(database, e) {
+            // 第4参 [STORE_NAME] 声明所需 store，使 dbManager 在“版本已达标但缺 store”的遗留库上自动重建
+            window.dbManager.register('RailwayIssueDB_v2', 3, function(database, e) {
                 if (!database.objectStoreNames.contains(STORE_NAME)) {
                     const store = database.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
                     store.createIndex('性质', '性质', { unique: false });
@@ -17,11 +18,11 @@
                     store.createIndex('category', 'category', { unique: false });
                     store.createIndex('unit', 'unit', { unique: false });
                 }
-            });
+            }, [STORE_NAME]);
 
             async function initDB() {
-                // 确保数据库以版本2打开（保证 issues store 存在）
-                db = await window.dbManager.getDB('RailwayIssueDB_v2', 2);
+                // 确保数据库以版本3打开（保证 issues store 存在；升级时会重建缺失的 store）
+                db = await window.dbManager.getDB('RailwayIssueDB_v2', 3);
                 return db;
             }
 

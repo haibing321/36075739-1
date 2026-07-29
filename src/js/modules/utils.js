@@ -265,8 +265,8 @@
              * @param {number} version - 版本号
              * @param {function} upgradeFn - onupgradeneeded 回调 (db, event) => void
              */
-            function register(name, version, upgradeFn) {
-                _upgrades[name] = { version: version, fn: upgradeFn };
+            function register(name, version, upgradeFn, stores) {
+                _upgrades[name] = { version: version, fn: upgradeFn, stores: Array.isArray(stores) ? stores : null };
                 // 如已有缓存的低版本连接，清除让下次 getDB 升级
                 if (_cache[name] && (!_cache[name].version || _cache[name].version < version)) {
                     if (_cache[name].db) { try { _cache[name].db.close(); } catch(e) {} }
@@ -297,69 +297,60 @@
                     return _cache[name].promise;
                 }
 
-                var info = _upgrades[name] || { version: 1, fn: null };
+                var info = _upgrades[name] || { version: 1, fn: null, stores: null };
                 // 如果调用方传了 forceVersion，优先使用
                 var baseVer = (forceVersion !== undefined) ? forceVersion : info.version;
+                var needStores = info.stores; // 声明所需的 store 名，用于缺 store 自动重建
 
-                // 先探测现有版本，避免 "requested version (N) is less than existing (M)" 报错
+                // 健壮打开：探测现有版本 → open(max) → onupgradeneeded 建 store →
+                // onsuccess 校验 store 是否齐全，缺失则提升版本递归重建（防止“版本已达标但无 store”的遗留库）
                 var p = new Promise(function(resolve, reject) {
-                    var probeReq = indexedDB.open(name);
-                    probeReq.onsuccess = function() {
-                        var existingVer = probeReq.result.version;
-                        probeReq.result.close();
-                        // 使用 max(注册版本, 已有版本) 打开，确保 >= 已有版本
-                        var targetVer = Math.max(baseVer, existingVer);
-                        if (targetVer < existingVer) targetVer = existingVer;
-                        var req = indexedDB.open(name, targetVer);
+                    var attempt = 0, MAX_ATTEMPTS = 4;
+                    var openAt = function(ver) {
+                        if (attempt >= MAX_ATTEMPTS) {
+                            reject(new Error('[dbManager] 无法为 ' + name + ' 确保 store 存在（已尝试 ' + attempt + ' 次）'));
+                            return;
+                        }
+                        attempt++;
+                        var req = indexedDB.open(name, ver);
                         req.onerror = function() { reject(req.error); };
                         req.onblocked = function() {
                             console.warn('[dbManager] 升级被阻塞:', name);
-                            if (_cache[name] && _cache[name].db) {
-                                try { _cache[name].db.close(); } catch(e) {}
-                                delete _cache[name];
+                            if (_cache[name] && _cache[name].db) { try { _cache[name].db.close(); } catch(e){} }
+                            delete _cache[name];
+                        };
+                        req.onupgradeneeded = function(e) {
+                            if (info.fn) { try { info.fn(e.target.result, e); } catch(upgradeErr){ console.error('[dbManager] upgrade 失败:', name, upgradeErr); } }
+                        };
+                        req.onsuccess = function() {
+                            var db = req.result;
+                            // 若声明了需要的 store，校验是否齐全
+                            var missing = needStores && needStores.length &&
+                                needStores.some(function(s){ return !db.objectStoreNames.contains(s); });
+                            if (missing) {
+                                try { db.close(); } catch(e){}
+                                // 提升版本以触发 onupgradeneeded 重建缺失的 store
+                                openAt(ver + 1);
+                                return;
                             }
-                        };
-                        req.onsuccess = function() {
-                            var db = req.result;
-                            db.onversionchange = function() {
-                                console.log('[dbManager] 版本变化，关闭连接:', name);
-                                db.close();
-                                delete _cache[name];
-                            };
-                            db.onclose = function() {
-                                console.log('[dbManager] 连接已关闭:', name);
-                                delete _cache[name];
-                            };
-                            _cache[name].db = db;
-                            _cache[name].version = targetVer;
-                            resolve(db);
-                        };
-                        if (info.fn && targetVer > existingVer) {
-                            req.onupgradeneeded = function(e) {
-                                try { info.fn(e.target.result, e); }
-                                catch(upgradeErr) { console.error('[dbManager] upgrade 失败:', name, upgradeErr); }
-                            };
-                        }
-                    };
-                    probeReq.onerror = function() {
-                        // 探测失败（可能是全新DB）→ 直接用注册版本打开
-                        var req = indexedDB.open(name, info.version);
-                        req.onerror = function() { reject(req.error); };
-                        req.onblocked = function() { console.warn('[dbManager] 升级被阻塞:', name); };
-                        req.onsuccess = function() {
-                            var db = req.result;
                             db.onversionchange = function() { db.close(); delete _cache[name]; };
                             db.onclose = function() { delete _cache[name]; };
                             _cache[name].db = db;
-                            _cache[name].version = info.version;
+                            _cache[name].version = ver;
                             resolve(db);
                         };
-                        if (info.fn) {
-                            req.onupgradeneeded = function(e) {
-                                try { info.fn(e.target.result, e); }
-                                catch(upgradeErr) { console.error('[dbManager] upgrade 失败:', name, upgradeErr); }
-                            };
-                        }
+                    };
+
+                    // 先探测现有版本，避免 "requested version (N) is less than existing (M)" 报错
+                    var probeReq = indexedDB.open(name);
+                    probeReq.onerror = function() {
+                        // 探测失败（可能是全新DB）→ 直接用基础版本打开
+                        openAt(baseVer);
+                    };
+                    probeReq.onsuccess = function() {
+                        var existingVer = probeReq.result.version;
+                        try { probeReq.result.close(); } catch(e){}
+                        openAt(Math.max(baseVer, existingVer));
                     };
                 });
 

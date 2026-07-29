@@ -166,7 +166,6 @@
 
             window.saveDiary = async function(opts) {
                 var noToast = opts && opts.noToast;
-                var btnEl = noToast ? null : opts;
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();
                 if (!date) { alert('请选择日期'); return; }
@@ -230,29 +229,7 @@
                     toast.style.opacity = '1';
                     clearTimeout(toast._timer);
                     toast._timer = setTimeout(function() { toast.style.opacity = '0'; }, 2000);
-                } else {
-                    document.getElementById('diary-work').value = '';
-                    renderIssueFields([]);
-                    document.getElementById('diary-date').valueAsDate = new Date();
-                    _mediaFiles = [];
-                    _mediaPreviews = [];
-                    _mediaCaptureTimes = [];
-                    _existingMediaIds = [];
-                    document.getElementById('media-preview').innerHTML = '';
-                    showQuery();
-                    if (btnEl) {
-                        var orig = btnEl.innerHTML;
-                        var origBg = btnEl.style.background;
-                        btnEl.innerHTML = '✓ 已保存';
-                        btnEl.style.background = '#276749';
-                        btnEl.disabled = true;
-                        setTimeout(function() {
-                            btnEl.innerHTML = orig;
-                            btnEl.style.background = origBg;
-                            btnEl.disabled = false;
-                    }, 2000);
                 }
-            }
             };
             window.clearDiaryForm = function() {
                 isEditMode = false;
@@ -643,6 +620,9 @@
                         renderIssueFields(existing.issues || [], existing.regulations || []);
                         // 加载已有媒体
                         await loadDiaryMedia(existing);
+                    } else {
+                        // 当日无记录：默认填入今天日期，保证自动保存有有效日期（不再依赖已删除的手动保存按钮）
+                        document.getElementById('diary-date').value = todayStr;
                     }
                 }
                 // 按钮状态

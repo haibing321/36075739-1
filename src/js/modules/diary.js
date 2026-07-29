@@ -426,16 +426,38 @@
                 renderCalendar();
             };
             const ATT_CODES = ['日', '差', '公休', '假', '休', '培'];
-            function attButtonsHtml(dateStr) {
+            let _attModalDate = null;
+            window.openAttendanceModal = function(dateStr) {
+                _attModalDate = dateStr;
+                const dateObj = new Date(dateStr);
+                const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
+                const titleEl = document.getElementById('att-modal-date');
+                if (titleEl) titleEl.textContent = (dateObj.getMonth() + 1) + '月' + dateObj.getDate() + '日 ' + weekDay;
                 const cur = getAttendance()[dateStr] || '';
-                let h = '<div class="att-set-row"><span class="att-set-label">考勤：</span>';
-                ATT_CODES.forEach(function(c) {
-                    h += '<button class="att-btn' + (c === cur ? ' att-active' : '') + '" onclick="setAttendance(\'' + dateStr + '\',\'' + c + '\')">' + c + '</button>';
+                const curEl = document.getElementById('att-modal-current');
+                if (curEl) curEl.textContent = cur ? ('当前考勤：' + cur) : '当前考勤：未设置';
+                const modalButtons = document.querySelectorAll('#attendance-modal .att-modal-btn');
+                modalButtons.forEach(function(b) {
+                    b.classList.toggle('att-active', b.getAttribute('data-code') === cur);
                 });
-                h += '<button class="att-btn att-clear' + (cur === '' ? ' att-active' : '') + '" onclick="setAttendance(\'' + dateStr + '\',\'\')">清除</button>';
-                h += '</div>';
-                return h;
-            }
+                const m = document.getElementById('attendance-modal');
+                if (m) m.style.display = 'flex';
+            };
+            window.closeAttendanceModal = function() {
+                const m = document.getElementById('attendance-modal');
+                if (m) m.style.display = 'none';
+                _attModalDate = null;
+            };
+            window.attModalPick = function(code) {
+                if (!_attModalDate) return;
+                setAttendance(_attModalDate, code);
+                closeAttendanceModal();
+            };
+            window.attModalViewDiary = function() {
+                const d = _attModalDate;
+                closeAttendanceModal();
+                if (d) selectDate(d);
+            };
 
             // 复制日记中的工作内容
             window.copyDiaryWork = function(date, btnEl) {
@@ -502,7 +524,7 @@
                     if (isSelected) classes += ' selected';
 
                     const attCode = attMap[dateStr];
-                    html += '<div class="' + classes + '" onclick="selectDate(\'' + dateStr + '\')">' + day;
+                    html += '<div class="' + classes + '" onclick="openAttendanceModal(\'' + dateStr + '\')">' + day;
                     if (attCode) html += '<span class="att-badge att-' + attCode + '">' + attCode + '</span>';
                     html += '</div>';
                 }
@@ -557,7 +579,7 @@
                 const diary = diaries.find(d => d.date === dateStr);
 
                 if (!diary) {
-                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p>' + attButtonsHtml(dateStr);
+                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p><div style="text-align:center;margin-top:12px;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 设置考勤</button></div>';
                     container.style.display = 'block';
                     return;
                 }
@@ -586,7 +608,7 @@
                     html += '</div>';
                 }
 
-                html += attButtonsHtml(dateStr);
+                html += '<div style="margin-top:14px;text-align:center;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 设置考勤</button></div>';
                 container.innerHTML = html;
                 container.style.display = 'block';
                 // 渲染多媒体内容（替换标签为实际图片/视频）

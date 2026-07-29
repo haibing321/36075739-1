@@ -520,8 +520,9 @@ window.toggleSettingsPanel = function() {
     if (!p) return;
     var isOpening = (p.style.display === 'none' || p.style.display === '');
     p.style.display = isOpening ? 'block' : 'none';
-    if (isOpening && window.updateDataManagementStats) {
-        window.updateDataManagementStats();
+    if (isOpening) {
+        if (window.updateDataManagementStats) window.updateDataManagementStats();
+        if (window.syncDarkModeToggle) window.syncDarkModeToggle();
     }
 };
 
@@ -560,6 +561,34 @@ window.showAboutPanel = function() {
     if (p) p.style.display = 'flex';
 };
 
+// 暗黑模式：切换并持久化
+window.toggleDarkMode = function(on) {
+    try {
+        if (on) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('darkMode', '1');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('darkMode', '0');
+        }
+    } catch (e) {}
+    var hint = document.getElementById('darkModeHint');
+    if (hint) hint.textContent = on ? '开启' : '关闭';
+    // 同步更新主题色（地址栏/状态栏）
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', on ? '#0f172a' : '#1a365d');
+};
+
+// 进入设置时同步暗黑模式开关状态
+window.syncDarkModeToggle = function() {
+    var t = document.getElementById('darkModeToggle');
+    if (!t) return;
+    var on = document.documentElement.getAttribute('data-theme') === 'dark';
+    t.checked = on;
+    var hint = document.getElementById('darkModeHint');
+    if (hint) hint.textContent = on ? '开启' : '关闭';
+};
+
 // API 配置：根据选中的 API 地址自动推荐模型
 window._updateModelList = function() {
     var urlEl = document.getElementById('modal-apiurl');
@@ -583,7 +612,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v2.7'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v2.8'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取已部署在 GitHub Pages 上的 version.json（无需打 GitHub Release，适配纯 Pages 部署）
 // 注意：version.json 在 SW 中走网络策略（不读缓存），可拿到最新部署版本
 const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';
@@ -615,6 +644,8 @@ function _fetchSwVersion() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 暗黑模式：同步开关与提示（主题已在 <head> 内联脚本中提前应用，避免闪烁）
+    if (window.syncDarkModeToggle) window.syncDarkModeToggle();
     var verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
     var aboutVer = document.getElementById('about-app-version');

@@ -1,5 +1,5 @@
 {
-  "version": "v2.7",
-  "releaseNotes": "智能体全面革新的 ReAct 逻辑（官方 function-calling+P0 id错位修复+15项审计优化）、147站天气字典、HTML兜底备份、版本号12位显示",
+  "version": "v2.8",
+  "releaseNotes": "暗黑模式（设置开关+记忆）、考勤随工作日志导入导出、检查信息统计按专业/单位分组、智能助手朗读仅读正文、工作日志自动保存",
   "downloadUrl": "https://haibing321.github.io/36075739-2/"
 }

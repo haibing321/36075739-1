@@ -2426,6 +2426,7 @@
       // ---------- 10. 反馈收集 ----------
       function addFeedbackButtons(messageDiv, assistantContent) {
         var fbDiv = document.createElement('div');
+        fbDiv.className = 'ds-feedback-bar';
         fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px; flex-wrap:wrap;';
         fbDiv.innerHTML = '<button class="feedback-copy" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#10b981\';this.style.color=\'#10b981\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="复制本条回复">📋 复制</button>' +
                           '<button class="feedback-download" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#8b5cf6\';this.style.color=\'#8b5cf6\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="下载本条回复">📥 下载</button>' +
@@ -2477,9 +2478,14 @@
           btn.textContent = '🔊 朗读';
           return;
         }
-        var bubble = btn.closest('.ds-bubble-assistant') || btn.parentElement.querySelector('.ds-bubble-assistant');
+        var bubble = btn.closest('.ds-bubble-assistant') || (btn.parentElement && btn.parentElement.closest('.ds-bubble-assistant'));
+        if (!bubble) bubble = btn.parentElement;
         if (!bubble) return;
-        var text = bubble.innerText || bubble.textContent || '';
+        // 仅朗读「回答正文」：克隆气泡并剔除底部操作按钮栏（📋复制/📥下载/👍有用/👎无用/🔄重生成/🔊朗读），避免把按钮文字也读出来
+        var clone = bubble.cloneNode(true);
+        var bar = clone.querySelector('.ds-feedback-bar');
+        if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+        var text = (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
         if (!text) return;
         var utter = new SpeechSynthesisUtterance(text);
         utter.lang = 'zh-CN'; utter.rate = 1.0;

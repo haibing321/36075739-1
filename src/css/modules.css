@@ -217,13 +217,14 @@
     padding: 8px 0;
 }
 .diary-calendar-day {
-    padding: 8px 4px;
+    padding: 3px 2px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.9rem;
     transition: all 0.2s;
-    min-height: 42px;
+    min-height: 50px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     position: relative;
@@ -250,27 +251,30 @@
     background: var(--success) !important;
     color: white !important;
 }
-.diary-calendar-day .att-badge {
-    position: absolute;
+/* 日历单元格改为竖向三行：日期 / 基本性质 / 附加项，避免窄屏重叠 */
+.att-date { font-size: 0.9rem; line-height: 1.2; font-weight: 600; }
+.att-nature-badge {
+    font-size: 0.6rem;
+    line-height: 1.2;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #fff;
+    font-weight: 700;
+    margin-top: 1px;
+}
+.att-sub-badges {
+    display: inline-flex;
+    gap: 2px;
+    margin-top: 1px;
+}
+.att-sub-char {
     font-size: 0.52rem;
-    line-height: 1;
-    padding: 1px 2px;
+    line-height: 1.2;
+    padding: 0 2px;
     border-radius: 3px;
     color: #fff;
     font-weight: 700;
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.55);
-    white-space: nowrap;
 }
-.att-badge.pos-0 { top: 0; left: 50%; transform: translateX(-50%); }
-.att-badge.pos-1 { top: 50%; right: 1px; transform: translateY(-50%); }
-.att-badge.pos-2 { bottom: 0; left: 50%; transform: translateX(-50%); }
-.att-badge.pos-3 { top: 50%; left: 1px; transform: translateY(-50%); }
-/* 基本性质：日期顶端中间 */
-.att-badge.att-nature { top: 1px; left: 50%; transform: translateX(-50%); font-size: 0.6rem; padding: 1px 3px; font-weight: 700; }
-/* 附加项：日期左右角 */
-.att-badge.att-sub { font-size: 0.52rem; padding: 0 2px; font-weight: 700; }
-.att-badge.att-sub.pos-l { top: 50%; left: 1px; transform: translateY(-50%); }
-.att-badge.att-sub.pos-r { top: 50%; right: 1px; transform: translateY(-50%); }
 .att-cat-日 { background: #2563eb; }
 .att-cat-差 { background: #d97706; }
 .att-cat-休 { background: #0d9488; }

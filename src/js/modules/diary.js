@@ -672,14 +672,16 @@
                     if (isSelected) classes += ' selected';
 
                     const attObj = getAttObj(dateStr);
-                    html += '<div class="' + classes + '" onclick="openAttendanceModal(\'' + dateStr + '\')">' + day;
+                    html += '<div class="' + classes + '" onclick="openAttendanceModal(\'' + dateStr + '\')">';
+                    html += '<span class="att-date">' + day + '</span>';
                     if (attObj) {
-                        html += '<span class="att-badge att-cat-' + attObj.n + ' att-nature">' + attObj.n + '</span>';
-                        if (attObj.s) {
-                            attObj.s.slice(0, ATT_MAX_SUB).forEach(function(ch, i) {
-                                const pos = (i === 0) ? 'pos-l' : 'pos-r';
-                                html += '<span class="att-badge att-cat-' + attObj.n + ' att-sub ' + pos + '">' + ch + '</span>';
+                        html += '<span class="att-nature-badge att-cat-' + attObj.n + '">' + attObj.n + '</span>';
+                        if (attObj.s && attObj.s.length) {
+                            html += '<span class="att-sub-badges att-cat-' + attObj.n + '">';
+                            attObj.s.slice(0, ATT_MAX_SUB).forEach(function(ch) {
+                                html += '<span class="att-sub-char">' + ch + '</span>';
                             });
+                            html += '</span>';
                         }
                     }
                     html += '</div>';

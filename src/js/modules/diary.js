@@ -415,97 +415,89 @@
             let _selectedDate = null;
 
             // 个人考勤（手动标记，localStorage 持久化）
-            // 工作性质分 日、差、休、公休、假、培 六类；日、差 各有子项（具体说明），日与差的子项存在重叠。
-            // 存储为复合串：日/差 类记为 "日·添乘"/"差·添乘"（带性质，便于区分同一子项归属），
-            // 休/公休/假/培 记为纯项名（休息/公休/请假/培训，性质唯一）。
-            // 每个日期最多选择 3 个工作属性（含性质）；日历角标取子项首字，按性质着色（日=蓝、差=橙）。
-            // 日 子项：添乘、值班、施工、夜查、室内；差 子项：添乘、施工、夜查（差不再含“出差”）。
-            const ATT_CATS = [
-                { cat: '日', items: ['添乘', '值班', '施工', '夜查', '室内'] },
-                { cat: '差', items: ['添乘', '施工', '夜查'] },
-                { cat: '休', items: ['休息'] },
-                { cat: '公休', items: ['公休'] },
-                { cat: '假', items: ['请假'] },
-                { cat: '培', items: ['培训'] }
-            ];
-            // 单字旧码 → 默认子项
-            const ATT_LEGACY_MAP = { '日': '日勤', '值': '值班', '差': '出差', '夜': '夜查', '添': '添乘', '公': '公休', '公休': '公休', '假': '请假', '休': '休息', '培': '培训' };
-            // 子项 → 默认性质（重叠子项取旧版归属：添乘原属差，其余原属日；日勤/出差为旧版保留项）
-            const ATT_ITEM_DEFAULT_CAT = {
-                '添乘': '差', '夜查': '日', '施工': '日', '值班': '日', '出差': '差', '日勤': '日', '室内': '日',
-                '休息': '休', '公休': '公休', '请假': '假', '培训': '培'
-            };
-            const ATT_MAX = 3;
-            function attCatOf(el) {
-                if (typeof el === 'string' && el.indexOf('·') !== -1) return el.split('·')[0];
-                for (let i = 0; i < ATT_CATS.length; i++) {
-                    if (ATT_CATS[i].items.indexOf(el) !== -1) return ATT_CATS[i].cat;
-                }
-                return ATT_ITEM_DEFAULT_CAT[el] || (el && el.length === 1 ? el : el);
-            }
-            // 将任意存储值归一化为合法复合/纯项串（兼容旧版单字、纯项、已复合串）
-            function canonicalAttEl(raw) {
-                if (raw == null) return null;
-                let s = String(raw).trim();
-                if (!s) return null;
-                // 已是复合串：校验合法性
-                if (s.indexOf('·') !== -1) {
-                    const idx = s.indexOf('·');
-                    const c = s.slice(0, idx), it = s.slice(idx + 1);
-                    const cat = ATT_CATS.find(function(x) { return x.cat === c; });
-                    if (cat && cat.items.indexOf(it) !== -1) return s;                       // 现行有效
-                    if ((c === '差' && it === '出差') || (c === '日' && it === '日勤')) return s; // 旧版保留项
-                    // 性质/项不合法，回落到下面的默认推导
-                }
-                // 旧版单字 → 默认子项
-                const item = ATT_LEGACY_MAP[s] || s;
-                const c = ATT_ITEM_DEFAULT_CAT[item];
-                if (c === '日' || c === '差') return c + '·' + item;  // 日/差 一律记为复合串（区分归属）
-                return item;                                          // 休/公休/假/培 记为纯项
-            }
+            // 基本性质（必选，显示在日期顶端中间）：日、差、休、公、培、假
+            // 附加项（仅 日/差 可选，显示在日期左右下角，最多 2 个）：室(室内)、值(值班)、添(添乘)、夜(夜查)、施(施工)
+            // 存储格式：{ 'YYYY-MM-DD': { n: '日'|'差'|'休'|'公'|'培'|'假', s: ['室','值'] } }，s 仅 日/差 存在
+            // 统计按基本性质（日、差、休、公、培、假）分组
+            const ATT_NATURES = ['日', '差', '休', '公', '培', '假'];
+            const ATT_HAS_SUB = { '日': true, '差': true };
+            const ATT_SUBS = ['室', '值', '添', '夜', '施'];
+            const ATT_MAX_SUB = 2;
             function getAttendance() {
                 try { return JSON.parse(localStorage.getItem('attendance_v1') || '{}'); } catch (e) { return {}; }
             }
-            // 归一化为当前模型的考勤数组
-            function getAttArray(dateStr) {
-                const m = getAttendance();
-                let v = m[dateStr];
-                if (v == null) return [];
-                if (typeof v === 'string') v = [v];
-                if (!Array.isArray(v)) return [];
-                const out = [];
-                v.forEach(function(s) {
-                    const el = canonicalAttEl(s);
-                    if (el) out.push(el);
+            // 旧数据（单字/复合串/旧数组）→ 新对象 {n, s}；无法识别返回 null
+            function migrateOneToObj(v) {
+                let arr = [];
+                if (typeof v === 'string') arr = [v];
+                else if (Array.isArray(v)) arr = v;
+                else if (v && typeof v === 'object' && typeof v.n === 'string') return { n: v.n, s: Array.isArray(v.s) ? v.s.slice() : [] };
+                let n = null, subs = [];
+                const LEGACY = {
+                    '值': '日·值', '添': '日·添', '夜': '日·夜', '施': '日·施', '室': '日·室',
+                    '差': '差', '休': '休', '公': '公', '公休': '公', '假': '假', '培': '培', '日': '日',
+                    '请假': '假', '培训': '培', '休息': '休', '出差': '差', '日勤': '日',
+                    '值班': '日·值', '夜查': '日·夜', '施工': '日·施', '添乘': '日·添', '室内': '日·室'
+                };
+                arr.forEach(function(s) {
+                    s = String(s).trim();
+                    if (!s) return;
+                    let m = (s.indexOf('·') !== -1) ? s : (LEGACY[s] || null);
+                    if (!m) return;
+                    if (m.indexOf('·') !== -1) {
+                        const p = m.split('·'); const c = p[0], it = p[1];
+                        if (!n) n = c;
+                        if ((c === '日' || c === '差') && ATT_SUBS.indexOf(it.charAt(0)) !== -1 && subs.length < ATT_MAX_SUB) subs.push(it.charAt(0));
+                    } else {
+                        if (!n) n = m;
+                    }
                 });
-                return out;
+                if (!n) return null;
+                return subs.length ? { n: n, s: subs } : { n: n };
             }
-            // 旧数据迁移（字符串/旧数组 → 复合串），仅首次加载执行
+            // 旧数据迁移（仅首次加载写回一次，统一为新对象格式）
             (function migrateAttendance() {
                 const m = getAttendance();
                 let changed = false;
                 Object.keys(m).forEach(function(k) {
-                    let v = m[k];
-                    if (v == null) { delete m[k]; changed = true; return; }
-                    if (typeof v === 'string') v = [v];
-                    if (!Array.isArray(v)) { delete m[k]; changed = true; return; }
-                    const nv = [];
-                    v.forEach(function(s) { const el = canonicalAttEl(s); if (el) nv.push(el); });
-                    if (nv.length) { if (JSON.stringify(nv) !== JSON.stringify(v)) { m[k] = nv; changed = true; } }
-                    else { delete m[k]; changed = true; }
+                    const obj = migrateOneToObj(m[k]);
+                    if (obj === null) delete m[k]; else m[k] = obj;
+                    changed = true;
                 });
                 if (changed) { try { localStorage.setItem('attendance_v1', JSON.stringify(m)); } catch (e) {} }
             })();
-            window.setAttendance = function(dateStr, arr) {
+            // 读取某日考勤（归一化为 {n, s}），旧格式即时迁移
+            function getAttObj(dateStr) {
                 const m = getAttendance();
-                if (arr && arr.length) m[dateStr] = arr; else delete m[dateStr];
+                const v = m[dateStr];
+                if (v == null) return null;
+                if (typeof v === 'object' && !Array.isArray(v) && typeof v.n === 'string') {
+                    return { n: v.n, s: Array.isArray(v.s) ? v.s.slice() : [] };
+                }
+                return migrateOneToObj(v);
+            }
+            function attLabelOf(obj) {
+                if (!obj) return '';
+                let t = obj.n;
+                if (obj.s && obj.s.length) t += ' + ' + obj.s.join('、');
+                return t;
+            }
+            window.setAttendance = function(dateStr, n, s) {
+                const m = getAttendance();
+                if (n) {
+                    const obj = { n: n };
+                    if (s && s.length) obj.s = s.slice();
+                    m[dateStr] = obj;
+                } else {
+                    delete m[dateStr];
+                }
                 localStorage.setItem('attendance_v1', JSON.stringify(m));
                 if (_selectedDate === dateStr) renderDateDetail(dateStr);
                 renderCalendar();
             };
             let _attModalDate = null;
-            let _attModalSel = [];
-            function _attLabel(code) { return code; }
+            let _attModalNature = null;
+            let _attModalSubs = [];
             function attToast(msg) {
                 let t = document.getElementById('att-toast');
                 if (!t) {
@@ -523,34 +515,39 @@
                 const wrap = document.getElementById('att-modal-codes');
                 if (!wrap) return;
                 let h = '';
-                ATT_CATS.forEach(function(c) {
-                    h += '<div class="att-modal-group">';
-                    h += '<div class="att-modal-group-label">' + c.cat + '</div>';
-                    h += '<div class="att-modal-group-btns">';
-                    c.items.forEach(function(item) {
-                        const code = (c.cat === '日' || c.cat === '差') ? (c.cat + '·' + item) : item;
-                        h += '<button type="button" class="att-modal-btn" data-code="' + code + '" onclick="attModalToggle(\'' + code + '\')">' + item + '</button>';
-                    });
-                    h += '</div></div>';
+                h += '<div class="att-nature-row">';
+                ATT_NATURES.forEach(function(n) {
+                    h += '<button type="button" class="att-nature-btn" data-n="' + n + '" onclick="attModalPickNature(\'' + n + '\')">' + n + '</button>';
                 });
-                h += '<button type="button" class="att-modal-btn att-clear" data-code="" onclick="attModalClear()">清除考勤</button>';
+                h += '</div>';
+                h += '<div class="att-sub-wrap" id="att-modal-subs" style="display:none;">';
+                h += '<div class="att-sub-label">附加项（日/差可选，最多' + ATT_MAX_SUB + '）</div>';
+                h += '<div class="att-sub-row">';
+                ATT_SUBS.forEach(function(ch) {
+                    h += '<button type="button" class="att-sub-btn" data-sub="' + ch + '" onclick="attModalToggleSub(\'' + ch + '\')">' + ch + '</button>';
+                });
+                h += '</div></div>';
                 wrap.innerHTML = h;
             }
             function _updateAttModalUI() {
-                const btns = document.querySelectorAll('#attendance-modal .att-modal-btn[data-code]');
-                btns.forEach(function(b) {
-                    const code = b.getAttribute('data-code');
-                    if (!code) return; // 清除按钮不参与选择/禁用逻辑
-                    b.classList.toggle('att-active', _attModalSel.indexOf(code) !== -1);
-                    b.disabled = (_attModalSel.length >= ATT_MAX && _attModalSel.indexOf(code) === -1);
+                document.querySelectorAll('#attendance-modal .att-nature-btn').forEach(function(b) {
+                    b.classList.toggle('att-active', b.getAttribute('data-n') === _attModalNature);
+                });
+                const subWrap = document.getElementById('att-modal-subs');
+                if (subWrap) subWrap.style.display = (_attModalNature === '日' || _attModalNature === '差') ? 'block' : 'none';
+                document.querySelectorAll('#attendance-modal .att-sub-btn').forEach(function(b) {
+                    const ch = b.getAttribute('data-sub');
+                    b.classList.toggle('att-active', _attModalSubs.indexOf(ch) !== -1);
+                    b.disabled = (_attModalSubs.length >= ATT_MAX_SUB && _attModalSubs.indexOf(ch) === -1);
                 });
                 const cur = document.getElementById('att-modal-current');
                 if (cur) {
-                    if (_attModalSel.length) {
-                        const labels = _attModalSel.map(_attLabel).join('、');
-                        cur.textContent = '当前考勤：' + labels + '（' + _attModalSel.length + '/' + ATT_MAX + '）';
+                    if (_attModalNature) {
+                        let txt = '考勤：' + _attModalNature;
+                        if (_attModalSubs.length) txt += ' + ' + _attModalSubs.join('、');
+                        cur.textContent = txt;
                     } else {
-                        cur.textContent = '当前考勤：未设置';
+                        cur.textContent = '请选择基本性质';
                     }
                 }
             }
@@ -560,7 +557,9 @@
                 const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
                 const titleEl = document.getElementById('att-modal-date');
                 if (titleEl) titleEl.textContent = (dateObj.getMonth() + 1) + '月' + dateObj.getDate() + '日 ' + weekDay;
-                _attModalSel = getAttArray(dateStr);
+                const obj = getAttObj(dateStr);
+                _attModalNature = obj ? obj.n : null;
+                _attModalSubs = obj && obj.s ? obj.s.slice() : [];
                 _updateAttModalUI();
                 const m = document.getElementById('attendance-modal');
                 if (m) m.style.display = 'flex';
@@ -569,26 +568,36 @@
                 const m = document.getElementById('attendance-modal');
                 if (m) m.style.display = 'none';
                 _attModalDate = null;
-                _attModalSel = [];
+                _attModalNature = null;
+                _attModalSubs = [];
             };
-            window.attModalToggle = function(code) {
+            window.attModalPickNature = function(n) {
                 if (!_attModalDate) return;
-                const idx = _attModalSel.indexOf(code);
+                _attModalNature = n;
+                if (n !== '日' && n !== '差') _attModalSubs = [];
+                _updateAttModalUI();
+            };
+            window.attModalToggleSub = function(ch) {
+                if (!_attModalDate) return;
+                if (_attModalNature !== '日' && _attModalNature !== '差') return;
+                const idx = _attModalSubs.indexOf(ch);
                 if (idx !== -1) {
-                    _attModalSel.splice(idx, 1);
+                    _attModalSubs.splice(idx, 1);
                 } else {
-                    if (_attModalSel.length >= ATT_MAX) { attToast('最多选择 ' + ATT_MAX + ' 个工作属性'); return; }
-                    _attModalSel.push(code);
+                    if (_attModalSubs.length >= ATT_MAX_SUB) { attToast('最多选择 ' + ATT_MAX_SUB + ' 个附加项'); return; }
+                    _attModalSubs.push(ch);
                 }
                 _updateAttModalUI();
             };
             window.attModalClear = function() {
-                _attModalSel = [];
-                _updateAttModalUI();
+                if (!_attModalDate) return;
+                setAttendance(_attModalDate, null, null);
+                closeAttendanceModal();
             };
             window.attModalConfirm = function() {
                 if (!_attModalDate) return;
-                setAttendance(_attModalDate, _attModalSel.slice());
+                if (!_attModalNature) { attToast('请先选择基本性质'); return; }
+                setAttendance(_attModalDate, _attModalNature, _attModalSubs.slice());
                 closeAttendanceModal();
             };
             window.attModalViewDiary = function() {
@@ -596,7 +605,7 @@
                 closeAttendanceModal();
                 if (d) selectDate(d);
             };
-            // 初始化考勤弹窗按钮（由 JS 生成，保证与 ATT_CATS 单一数据源一致）
+            // 初始化考勤弹窗按钮（由 JS 生成，保证与数据源一致）
             buildAttModalButtons();
 
             // 复制日记中的工作内容
@@ -662,40 +671,32 @@
                     if (hasRecord) classes += ' has-record';
                     if (isSelected) classes += ' selected';
 
-                    const attArr = getAttArray(dateStr);
+                    const attObj = getAttObj(dateStr);
                     html += '<div class="' + classes + '" onclick="openAttendanceModal(\'' + dateStr + '\')">' + day;
-                    attArr.slice(0, 4).forEach(function(el, i) {
-                        let cat, item;
-                        if (el.indexOf('·') !== -1) { const p = el.split('·'); cat = p[0]; item = p[1]; }
-                        else { item = el; cat = attCatOf(el); }
-                        const ch = item.charAt(0);
-                        html += '<span class="att-badge att-cat-' + cat + ' pos-' + i + '">' + ch + '</span>';
-                    });
+                    if (attObj) {
+                        html += '<span class="att-badge att-cat-' + attObj.n + ' att-nature">' + attObj.n + '</span>';
+                        if (attObj.s) {
+                            attObj.s.slice(0, ATT_MAX_SUB).forEach(function(ch, i) {
+                                const pos = (i === 0) ? 'pos-l' : 'pos-r';
+                                html += '<span class="att-badge att-cat-' + attObj.n + ' att-sub ' + pos + '">' + ch + '</span>';
+                            });
+                        }
+                    }
                     html += '</div>';
                 }
 
                 html += '</div>';
 
-                const catCnt = { '日': 0, '差': 0, '休': 0, '公休': 0, '假': 0, '培': 0 };
+                const catCnt = { '日': 0, '差': 0, '休': 0, '公': 0, '培': 0, '假': 0 };
                 let daysWithAtt = 0;
                 for (let d = 1; d <= daysInMonth; d++) {
                     const ds = _calendarYear + '-' + String(_calendarMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-                    const arr = getAttArray(ds);
-                    if (arr.length) {
-                        daysWithAtt++;
-                        const seen = {};
-                        arr.forEach(function(el) {
-                            const c = (el.indexOf('·') !== -1) ? el.split('·')[0] : attCatOf(el);
-                            if (catCnt[c] !== undefined) seen[c] = true;
-                        });
-                        Object.keys(seen).forEach(function(c) { catCnt[c]++; });
-                    }
+                    const obj = getAttObj(ds);
+                    if (obj && catCnt[obj.n] !== undefined) { daysWithAtt++; catCnt[obj.n]++; }
                 }
-                // 日、差 必须显示（即便为 0），其余性质有数据才显示
+                // 按基本性质统计（六项始终显示）
                 const summaryParts = [];
-                ['日', '差', '休', '公休', '假', '培'].forEach(function(c) {
-                    if (catCnt[c] || c === '日' || c === '差') summaryParts.push(c + (catCnt[c] || 0));
-                });
+                ATT_NATURES.forEach(function(n) { summaryParts.push(n + (catCnt[n] || 0)); });
                 html += '<div class="att-summary">本月考勤：' + summaryParts.join(' ') + ' ＝ ' + daysWithAtt + '/' + daysInMonth + '天</div>';
 
                 container.innerHTML = html;
@@ -737,8 +738,8 @@
                 const diary = diaries.find(d => d.date === dateStr);
 
                 if (!diary) {
-                    const _attArr0 = getAttArray(dateStr);
-                    const _attTxt0 = _attArr0.length ? ('考勤：' + _attArr0.map(_attLabel).join('、')) : '设置考勤';
+                    const _attObj0 = getAttObj(dateStr);
+                    const _attTxt0 = _attObj0 ? ('考勤：' + attLabelOf(_attObj0)) : '设置考勤';
                     container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p><div style="text-align:center;margin-top:12px;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 ' + _attTxt0 + '</button></div>';
                     container.style.display = 'block';
                     return;
@@ -768,8 +769,8 @@
                     html += '</div>';
                 }
 
-                const _attArr1 = getAttArray(dateStr);
-                const _attTxt1 = _attArr1.length ? ('考勤：' + _attArr1.map(_attLabel).join('、')) : '设置考勤';
+                const _attObj1 = getAttObj(dateStr);
+                const _attTxt1 = _attObj1 ? ('考勤：' + attLabelOf(_attObj1)) : '设置考勤';
                 html += '<div style="margin-top:14px;text-align:center;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 ' + _attTxt1 + '</button></div>';
                 container.innerHTML = html;
                 container.style.display = 'block';

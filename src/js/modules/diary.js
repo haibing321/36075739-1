@@ -415,42 +415,72 @@
             let _selectedDate = null;
 
             // 个人考勤（手动标记，localStorage 持久化）
-            // 工作性质分 日、差、休、公休、假、培 六类；日/差 各有具体说明（子项）。
-            // 每个日期最多选择 3 个工作属性，存储为子项数组；日历角标取子项首字（日勤→日、值班→值，二者区分）。
+            // 工作性质分 日、差、休、公休、假、培 六类；日、差 各有子项（具体说明），日与差的子项存在重叠。
+            // 存储为复合串：日/差 类记为 "日·添乘"/"差·添乘"（带性质，便于区分同一子项归属），
+            // 休/公休/假/培 记为纯项名（休息/公休/请假/培训，性质唯一）。
+            // 每个日期最多选择 3 个工作属性（含性质）；日历角标取子项首字，按性质着色（日=蓝、差=橙）。
+            // 日 子项：添乘、值班、施工、夜查、室内；差 子项：添乘、施工、夜查（差不再含“出差”）。
             const ATT_CATS = [
-                { cat: '日', items: ['日勤', '值班', '夜查', '施工'] },
-                { cat: '差', items: ['出差', '添乘'] },
+                { cat: '日', items: ['添乘', '值班', '施工', '夜查', '室内'] },
+                { cat: '差', items: ['添乘', '施工', '夜查'] },
                 { cat: '休', items: ['休息'] },
                 { cat: '公休', items: ['公休'] },
                 { cat: '假', items: ['请假'] },
                 { cat: '培', items: ['培训'] }
             ];
-            const ATT_ALL_ITEMS = [];
+            // 单字旧码 → 默认子项
             const ATT_LEGACY_MAP = { '日': '日勤', '值': '值班', '差': '出差', '夜': '夜查', '添': '添乘', '公': '公休', '公休': '公休', '假': '请假', '休': '休息', '培': '培训' };
-            ATT_CATS.forEach(function(c) { c.items.forEach(function(it) { ATT_ALL_ITEMS.push(it); }); });
-            function attCatOf(label) {
-                for (let i = 0; i < ATT_CATS.length; i++) {
-                    if (ATT_CATS[i].items.indexOf(label) !== -1) return ATT_CATS[i].cat;
-                }
-                return (label && label.length === 1) ? label : label;
-            }
+            // 子项 → 默认性质（重叠子项取旧版归属：添乘原属差，其余原属日；日勤/出差为旧版保留项）
+            const ATT_ITEM_DEFAULT_CAT = {
+                '添乘': '差', '夜查': '日', '施工': '日', '值班': '日', '出差': '差', '日勤': '日', '室内': '日',
+                '休息': '休', '公休': '公休', '请假': '假', '培训': '培'
+            };
             const ATT_MAX = 3;
+            function attCatOf(el) {
+                if (typeof el === 'string' && el.indexOf('·') !== -1) return el.split('·')[0];
+                for (let i = 0; i < ATT_CATS.length; i++) {
+                    if (ATT_CATS[i].items.indexOf(el) !== -1) return ATT_CATS[i].cat;
+                }
+                return ATT_ITEM_DEFAULT_CAT[el] || (el && el.length === 1 ? el : el);
+            }
+            // 将任意存储值归一化为合法复合/纯项串（兼容旧版单字、纯项、已复合串）
+            function canonicalAttEl(raw) {
+                if (raw == null) return null;
+                let s = String(raw).trim();
+                if (!s) return null;
+                // 已是复合串：校验合法性
+                if (s.indexOf('·') !== -1) {
+                    const idx = s.indexOf('·');
+                    const c = s.slice(0, idx), it = s.slice(idx + 1);
+                    const cat = ATT_CATS.find(function(x) { return x.cat === c; });
+                    if (cat && cat.items.indexOf(it) !== -1) return s;                       // 现行有效
+                    if ((c === '差' && it === '出差') || (c === '日' && it === '日勤')) return s; // 旧版保留项
+                    // 性质/项不合法，回落到下面的默认推导
+                }
+                // 旧版单字 → 默认子项
+                const item = ATT_LEGACY_MAP[s] || s;
+                const c = ATT_ITEM_DEFAULT_CAT[item];
+                if (c === '日' || c === '差') return c + '·' + item;  // 日/差 一律记为复合串（区分归属）
+                return item;                                          // 休/公休/假/培 记为纯项
+            }
             function getAttendance() {
                 try { return JSON.parse(localStorage.getItem('attendance_v1') || '{}'); } catch (e) { return {}; }
             }
-            // 将存储值（旧版字符串 / 新版数组）归一化为子项数组；旧单字映射为默认子项（日→日勤）
+            // 归一化为当前模型的考勤数组
             function getAttArray(dateStr) {
                 const m = getAttendance();
                 let v = m[dateStr];
                 if (v == null) return [];
                 if (typeof v === 'string') v = [v];
                 if (!Array.isArray(v)) return [];
-                return v.map(function(s) {
-                    s = String(s).trim();
-                    return ATT_LEGACY_MAP[s] || s;
-                }).filter(function(s) { return ATT_ALL_ITEMS.indexOf(s) !== -1; });
+                const out = [];
+                v.forEach(function(s) {
+                    const el = canonicalAttEl(s);
+                    if (el) out.push(el);
+                });
+                return out;
             }
-            // 旧数据迁移：字符串→数组，日→值（仅首次加载时执行）
+            // 旧数据迁移（字符串/旧数组 → 复合串），仅首次加载执行
             (function migrateAttendance() {
                 const m = getAttendance();
                 let changed = false;
@@ -459,10 +489,8 @@
                     if (v == null) { delete m[k]; changed = true; return; }
                     if (typeof v === 'string') v = [v];
                     if (!Array.isArray(v)) { delete m[k]; changed = true; return; }
-                    const nv = v.map(function(s) {
-                        s = String(s).trim();
-                        return ATT_LEGACY_MAP[s] || s;
-                    }).filter(function(s) { return ATT_ALL_ITEMS.indexOf(s) !== -1; });
+                    const nv = [];
+                    v.forEach(function(s) { const el = canonicalAttEl(s); if (el) nv.push(el); });
                     if (nv.length) { if (JSON.stringify(nv) !== JSON.stringify(v)) { m[k] = nv; changed = true; } }
                     else { delete m[k]; changed = true; }
                 });
@@ -500,7 +528,8 @@
                     h += '<div class="att-modal-group-label">' + c.cat + '</div>';
                     h += '<div class="att-modal-group-btns">';
                     c.items.forEach(function(item) {
-                        h += '<button type="button" class="att-modal-btn" data-code="' + item + '" onclick="attModalToggle(\'' + item + '\')">' + item + '</button>';
+                        const code = (c.cat === '日' || c.cat === '差') ? (c.cat + '·' + item) : item;
+                        h += '<button type="button" class="att-modal-btn" data-code="' + code + '" onclick="attModalToggle(\'' + code + '\')">' + item + '</button>';
                     });
                     h += '</div></div>';
                 });
@@ -635,9 +664,11 @@
 
                     const attArr = getAttArray(dateStr);
                     html += '<div class="' + classes + '" onclick="openAttendanceModal(\'' + dateStr + '\')">' + day;
-                    attArr.slice(0, 4).forEach(function(label, i) {
-                        const ch = label.charAt(0);
-                        const cat = attCatOf(label);
+                    attArr.slice(0, 4).forEach(function(el, i) {
+                        let cat, item;
+                        if (el.indexOf('·') !== -1) { const p = el.split('·'); cat = p[0]; item = p[1]; }
+                        else { item = el; cat = attCatOf(el); }
+                        const ch = item.charAt(0);
                         html += '<span class="att-badge att-cat-' + cat + ' pos-' + i + '">' + ch + '</span>';
                     });
                     html += '</div>';
@@ -647,26 +678,25 @@
 
                 const catCnt = { '日': 0, '差': 0, '休': 0, '公休': 0, '假': 0, '培': 0 };
                 let daysWithAtt = 0;
-                const _catOrder = ['日', '差', '休', '公休', '假', '培'];
                 for (let d = 1; d <= daysInMonth; d++) {
                     const ds = _calendarYear + '-' + String(_calendarMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
                     const arr = getAttArray(ds);
                     if (arr.length) {
                         daysWithAtt++;
                         const seen = {};
-                        arr.forEach(function(label) {
-                            const c = attCatOf(label);
+                        arr.forEach(function(el) {
+                            const c = (el.indexOf('·') !== -1) ? el.split('·')[0] : attCatOf(el);
                             if (catCnt[c] !== undefined) seen[c] = true;
                         });
                         Object.keys(seen).forEach(function(c) { catCnt[c]++; });
                     }
                 }
+                // 日、差 必须显示（即便为 0），其余性质有数据才显示
                 const summaryParts = [];
-                _catOrder.forEach(function(c) {
-                    const n = catCnt[c];
-                    if (n) summaryParts.push(c + n);
+                ['日', '差', '休', '公休', '假', '培'].forEach(function(c) {
+                    if (catCnt[c] || c === '日' || c === '差') summaryParts.push(c + (catCnt[c] || 0));
                 });
-                html += '<div class="att-summary">本月考勤：' + (summaryParts.length ? summaryParts.join(' ') : '暂无') + ' ＝ ' + daysWithAtt + '/' + daysInMonth + '天</div>';
+                html += '<div class="att-summary">本月考勤：' + summaryParts.join(' ') + ' ＝ ' + daysWithAtt + '/' + daysInMonth + '天</div>';
 
                 container.innerHTML = html;
             }

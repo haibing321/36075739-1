@@ -222,7 +222,7 @@
     cursor: pointer;
     font-size: 0.9rem;
     transition: all 0.2s;
-    min-height: 36px;
+    min-height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -252,20 +252,25 @@
 }
 .diary-calendar-day .att-badge {
     position: absolute;
-    bottom: 1px;
-    right: 2px;
-    font-size: 0.55rem;
+    font-size: 0.52rem;
     line-height: 1;
     padding: 1px 2px;
-    border-radius: 4px;
+    border-radius: 3px;
     color: #fff;
+    font-weight: 700;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.55);
+    white-space: nowrap;
 }
-.att-日 { background: #2563eb; }
-.att-差 { background: #d97706; }
-.att-公休 { background: #64748b; }
-.att-假 { background: #dc2626; }
-.att-休 { background: #0891b2; }
-.att-培 { background: #7c3aed; }
+.att-badge.pos-0 { top: 0; left: 50%; transform: translateX(-50%); }
+.att-badge.pos-1 { top: 50%; right: 1px; transform: translateY(-50%); }
+.att-badge.pos-2 { bottom: 0; left: 50%; transform: translateX(-50%); }
+.att-badge.pos-3 { top: 50%; left: 1px; transform: translateY(-50%); }
+.att-cat-日 { background: #2563eb; }
+.att-cat-差 { background: #d97706; }
+.att-cat-休 { background: #0d9488; }
+.att-cat-公休 { background: #64748b; }
+.att-cat-假 { background: #dc2626; }
+.att-cat-培 { background: #db2777; }
 .att-set-row {
     margin-top: 12px;
     padding-top: 10px;
@@ -335,6 +340,10 @@
     flex-wrap: wrap;
     gap: 10px;
 }
+.att-modal-group { width: 100%; margin-bottom: 4px; }
+.att-modal-group-label { font-size: 0.72rem; color: var(--text-secondary); margin: 0 0 4px 2px; }
+.att-modal-group-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.att-modal-group-btns .att-modal-btn { flex: 0 1 calc(50% - 4px); min-width: 70px; padding: 9px 0; font-size: 0.92rem; }
 .att-modal-btn {
     flex: 1 1 calc(33.333% - 7px);
     min-width: 84px;
@@ -342,15 +351,21 @@
     background: #f8fafc;
     color: #334155;
     border-radius: 10px;
-    padding: 13px 0;
-    font-size: 0.95rem;
-    font-weight: 600;
+    padding: 10px 0;
+    font-size: 1rem;
+    font-weight: 700;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
 }
+.att-modal-sub { font-size: 0.6rem; font-weight: 400; opacity: 0.85; line-height: 1; }
 .att-modal-btn:hover { background: #e2e8f0; }
 .att-modal-btn.att-active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .att-modal-btn.att-clear { color: #94a3b8; flex-basis: 100%; }
+.att-modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .att-modal-actions {
     margin-top: 16px;
     display: flex;

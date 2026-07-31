@@ -411,30 +411,6 @@
                         <div id="diary-records-list"></div>
                         <div id="diary-calendar" class="diary-calendar"></div>
                         <div id="diary-date-detail" class="diary-date-detail" style="display:none;"></div>
-
-                        <!-- 考勤选择弹窗：点击日历日期弹出 -->
-                        <div id="attendance-modal" class="att-modal-overlay" style="display:none;" onclick="if(event.target===this)closeAttendanceModal()">
-                            <div class="att-modal-card">
-                                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">
-                                    <span id="att-modal-date" class="att-modal-title"></span>
-                                    <button type="button" onclick="closeAttendanceModal()" style="background:none;border:none;font-size:1.25rem;color:var(--text-secondary);cursor:pointer;line-height:1;padding:0 2px;">✕</button>
-                                </div>
-                                <div id="att-modal-current" class="att-modal-current"></div>
-                                <div class="att-modal-codes">
-                                    <button type="button" class="att-modal-btn" data-code="日" onclick="attModalPick('日')">日</button>
-                                    <button type="button" class="att-modal-btn" data-code="差" onclick="attModalPick('差')">差</button>
-                                    <button type="button" class="att-modal-btn" data-code="公休" onclick="attModalPick('公休')">公休</button>
-                                    <button type="button" class="att-modal-btn" data-code="假" onclick="attModalPick('假')">假</button>
-                                    <button type="button" class="att-modal-btn" data-code="休" onclick="attModalPick('休')">休</button>
-                                    <button type="button" class="att-modal-btn" data-code="培" onclick="attModalPick('培')">培</button>
-                                    <button type="button" class="att-modal-btn att-clear" data-code="" onclick="attModalPick('')">清除考勤</button>
-                                </div>
-                                <div class="att-modal-actions">
-                                    <button type="button" class="btn btn-secondary btn-small" style="flex:1" onclick="closeAttendanceModal()">取消</button>
-                                    <button type="button" class="btn btn-primary btn-small" style="flex:1" onclick="attModalViewDiary()">查看/编辑写实</button>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- 输入视图：日期 + 工作内容 + 问题输入（默认显示） -->
@@ -1772,6 +1748,23 @@
         }
     })();
     </script>
+
+    <!-- 考勤选择弹窗：点击日历日期弹出（置于 body 下，避免被面板 transform 影响 fixed 定位） -->
+    <div id="attendance-modal" class="att-modal-overlay" style="display:none;" onclick="if(event.target===this)closeAttendanceModal()">
+        <div class="att-modal-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">
+                <span id="att-modal-date" class="att-modal-title"></span>
+                <button type="button" onclick="closeAttendanceModal()" style="background:none;border:none;font-size:1.25rem;color:var(--text-secondary);cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+            </div>
+            <div id="att-modal-current" class="att-modal-current"></div>
+            <div class="att-modal-codes" id="att-modal-codes"></div>
+            <div class="att-modal-actions">
+                <button type="button" class="btn btn-secondary btn-small" style="flex:1" onclick="closeAttendanceModal()">取消</button>
+                <button type="button" class="btn btn-secondary btn-small" style="flex:1" onclick="attModalViewDiary()">查看写实</button>
+                <button type="button" class="btn btn-primary btn-small" style="flex:1" onclick="attModalConfirm()">确定</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>

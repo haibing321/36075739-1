@@ -438,7 +438,7 @@
             '(function(){var a=M.diary||[];var s=sec("工作日志",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
             'a.forEach(function(d){var it=document.createElement("div");it.className="item";var t=document.createElement("div");t.className="t";t.textContent=(d.date||"")+(d.weather?"（"+d.weather+"）":"");it.appendChild(t);var c=document.createElement("div");c.textContent=d.content||"";it.appendChild(c);s.appendChild(it);});root.appendChild(s);})();',
             '(function(){var a=(M.attendance&&typeof M.attendance==="object")?M.attendance:{};var keys=Object.keys(a);var s=sec("考勤记录",keys.length);if(!keys.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
-            'var rows=keys.slice().sort().map(function(k){return [esc(k),esc(a[k]||"")];});s.appendChild(table(["日期","考勤码"],rows));root.appendChild(s);})();',
+            'var rows=keys.slice().sort().map(function(k){var v=a[k];if(Array.isArray(v))v=v.join(", ");return [esc(k),esc(v||"")];});s.appendChild(table(["日期","考勤码"],rows));root.appendChild(s);})();',
             '(function(){var a=M.phone||[];var s=sec("应急电话",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',
             'var rows=a.map(function(p){return [esc(p.name||p.contact||""),esc(p.phone||p.number||""),esc(p.dept||p.unit||"")];});s.appendChild(table(["名称","电话","单位/部门"],rows));root.appendChild(s);})();',
             '(function(){var a=M.handbook||[];var s=sec("安全检查手册",a.length);if(!a.length){s.innerHTML="<p class="empty">（无数据）</p>";root.appendChild(s);return;}',

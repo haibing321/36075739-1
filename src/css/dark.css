@@ -294,3 +294,10 @@
 [data-theme="dark"] .att-modal-btn:hover { background: #475569 !important; }
 [data-theme="dark"] .att-modal-btn.att-active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
 [data-theme="dark"] .att-modal-btn.att-clear { color: #94a3b8 !important; }
+[data-theme="dark"] .att-cat-日 { background: #3b82f6 !important; }
+[data-theme="dark"] .att-cat-差 { background: #f59e0b !important; }
+[data-theme="dark"] .att-cat-休 { background: #14b8a6 !important; }
+[data-theme="dark"] .att-cat-公休 { background: #64748b !important; }
+[data-theme="dark"] .att-cat-假 { background: #ef4444 !important; }
+[data-theme="dark"] .att-cat-培 { background: #ec4899 !important; }
+[data-theme="dark"] .att-modal-group-label { color: var(--text-secondary) !important; }

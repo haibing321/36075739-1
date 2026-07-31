@@ -415,31 +415,124 @@
             let _selectedDate = null;
 
             // 个人考勤（手动标记，localStorage 持久化）
+            // 工作性质分 日、差、休、公休、假、培 六类；日/差 各有具体说明（子项）。
+            // 每个日期最多选择 3 个工作属性，存储为子项数组；日历角标取子项首字（日勤→日、值班→值，二者区分）。
+            const ATT_CATS = [
+                { cat: '日', items: ['日勤', '值班', '夜查', '施工'] },
+                { cat: '差', items: ['出差', '添乘'] },
+                { cat: '休', items: ['休息'] },
+                { cat: '公休', items: ['公休'] },
+                { cat: '假', items: ['请假'] },
+                { cat: '培', items: ['培训'] }
+            ];
+            const ATT_ALL_ITEMS = [];
+            const ATT_LEGACY_MAP = { '日': '日勤', '值': '值班', '差': '出差', '夜': '夜查', '添': '添乘', '公': '公休', '公休': '公休', '假': '请假', '休': '休息', '培': '培训' };
+            ATT_CATS.forEach(function(c) { c.items.forEach(function(it) { ATT_ALL_ITEMS.push(it); }); });
+            function attCatOf(label) {
+                for (let i = 0; i < ATT_CATS.length; i++) {
+                    if (ATT_CATS[i].items.indexOf(label) !== -1) return ATT_CATS[i].cat;
+                }
+                return (label && label.length === 1) ? label : label;
+            }
+            const ATT_MAX = 3;
             function getAttendance() {
                 try { return JSON.parse(localStorage.getItem('attendance_v1') || '{}'); } catch (e) { return {}; }
             }
-            window.setAttendance = function(dateStr, code) {
+            // 将存储值（旧版字符串 / 新版数组）归一化为子项数组；旧单字映射为默认子项（日→日勤）
+            function getAttArray(dateStr) {
                 const m = getAttendance();
-                if (code) m[dateStr] = code; else delete m[dateStr];
+                let v = m[dateStr];
+                if (v == null) return [];
+                if (typeof v === 'string') v = [v];
+                if (!Array.isArray(v)) return [];
+                return v.map(function(s) {
+                    s = String(s).trim();
+                    return ATT_LEGACY_MAP[s] || s;
+                }).filter(function(s) { return ATT_ALL_ITEMS.indexOf(s) !== -1; });
+            }
+            // 旧数据迁移：字符串→数组，日→值（仅首次加载时执行）
+            (function migrateAttendance() {
+                const m = getAttendance();
+                let changed = false;
+                Object.keys(m).forEach(function(k) {
+                    let v = m[k];
+                    if (v == null) { delete m[k]; changed = true; return; }
+                    if (typeof v === 'string') v = [v];
+                    if (!Array.isArray(v)) { delete m[k]; changed = true; return; }
+                    const nv = v.map(function(s) {
+                        s = String(s).trim();
+                        return ATT_LEGACY_MAP[s] || s;
+                    }).filter(function(s) { return ATT_ALL_ITEMS.indexOf(s) !== -1; });
+                    if (nv.length) { if (JSON.stringify(nv) !== JSON.stringify(v)) { m[k] = nv; changed = true; } }
+                    else { delete m[k]; changed = true; }
+                });
+                if (changed) { try { localStorage.setItem('attendance_v1', JSON.stringify(m)); } catch (e) {} }
+            })();
+            window.setAttendance = function(dateStr, arr) {
+                const m = getAttendance();
+                if (arr && arr.length) m[dateStr] = arr; else delete m[dateStr];
                 localStorage.setItem('attendance_v1', JSON.stringify(m));
                 if (_selectedDate === dateStr) renderDateDetail(dateStr);
                 renderCalendar();
             };
-            const ATT_CODES = ['日', '差', '公休', '假', '休', '培'];
             let _attModalDate = null;
+            let _attModalSel = [];
+            function _attLabel(code) { return code; }
+            function attToast(msg) {
+                let t = document.getElementById('att-toast');
+                if (!t) {
+                    t = document.createElement('div');
+                    t.id = 'att-toast';
+                    t.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:rgba(15,23,42,0.92);color:#fff;padding:8px 16px;border-radius:20px;font-size:0.85rem;z-index:9999;opacity:0;transition:opacity .2s;pointer-events:none;';
+                    document.body.appendChild(t);
+                }
+                t.textContent = msg;
+                t.style.opacity = '1';
+                clearTimeout(t._timer);
+                t._timer = setTimeout(function() { t.style.opacity = '0'; }, 1400);
+            }
+            function buildAttModalButtons() {
+                const wrap = document.getElementById('att-modal-codes');
+                if (!wrap) return;
+                let h = '';
+                ATT_CATS.forEach(function(c) {
+                    h += '<div class="att-modal-group">';
+                    h += '<div class="att-modal-group-label">' + c.cat + '</div>';
+                    h += '<div class="att-modal-group-btns">';
+                    c.items.forEach(function(item) {
+                        h += '<button type="button" class="att-modal-btn" data-code="' + item + '" onclick="attModalToggle(\'' + item + '\')">' + item + '</button>';
+                    });
+                    h += '</div></div>';
+                });
+                h += '<button type="button" class="att-modal-btn att-clear" data-code="" onclick="attModalClear()">清除考勤</button>';
+                wrap.innerHTML = h;
+            }
+            function _updateAttModalUI() {
+                const btns = document.querySelectorAll('#attendance-modal .att-modal-btn[data-code]');
+                btns.forEach(function(b) {
+                    const code = b.getAttribute('data-code');
+                    if (!code) return; // 清除按钮不参与选择/禁用逻辑
+                    b.classList.toggle('att-active', _attModalSel.indexOf(code) !== -1);
+                    b.disabled = (_attModalSel.length >= ATT_MAX && _attModalSel.indexOf(code) === -1);
+                });
+                const cur = document.getElementById('att-modal-current');
+                if (cur) {
+                    if (_attModalSel.length) {
+                        const labels = _attModalSel.map(_attLabel).join('、');
+                        cur.textContent = '当前考勤：' + labels + '（' + _attModalSel.length + '/' + ATT_MAX + '）';
+                    } else {
+                        cur.textContent = '当前考勤：未设置';
+                    }
+                }
+            }
             window.openAttendanceModal = function(dateStr) {
                 _attModalDate = dateStr;
                 const dateObj = new Date(dateStr);
                 const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
                 const titleEl = document.getElementById('att-modal-date');
                 if (titleEl) titleEl.textContent = (dateObj.getMonth() + 1) + '月' + dateObj.getDate() + '日 ' + weekDay;
-                const cur = getAttendance()[dateStr] || '';
-                const curEl = document.getElementById('att-modal-current');
-                if (curEl) curEl.textContent = cur ? ('当前考勤：' + cur) : '当前考勤：未设置';
-                const modalButtons = document.querySelectorAll('#attendance-modal .att-modal-btn');
-                modalButtons.forEach(function(b) {
-                    b.classList.toggle('att-active', b.getAttribute('data-code') === cur);
-                });
+                _attModalSel = getAttArray(dateStr);
+                _updateAttModalUI();
                 const m = document.getElementById('attendance-modal');
                 if (m) m.style.display = 'flex';
             };
@@ -447,10 +540,26 @@
                 const m = document.getElementById('attendance-modal');
                 if (m) m.style.display = 'none';
                 _attModalDate = null;
+                _attModalSel = [];
             };
-            window.attModalPick = function(code) {
+            window.attModalToggle = function(code) {
                 if (!_attModalDate) return;
-                setAttendance(_attModalDate, code);
+                const idx = _attModalSel.indexOf(code);
+                if (idx !== -1) {
+                    _attModalSel.splice(idx, 1);
+                } else {
+                    if (_attModalSel.length >= ATT_MAX) { attToast('最多选择 ' + ATT_MAX + ' 个工作属性'); return; }
+                    _attModalSel.push(code);
+                }
+                _updateAttModalUI();
+            };
+            window.attModalClear = function() {
+                _attModalSel = [];
+                _updateAttModalUI();
+            };
+            window.attModalConfirm = function() {
+                if (!_attModalDate) return;
+                setAttendance(_attModalDate, _attModalSel.slice());
                 closeAttendanceModal();
             };
             window.attModalViewDiary = function() {
@@ -458,6 +567,8 @@
                 closeAttendanceModal();
                 if (d) selectDate(d);
             };
+            // 初始化考勤弹窗按钮（由 JS 生成，保证与 ATT_CATS 单一数据源一致）
+            buildAttModalButtons();
 
             // 复制日记中的工作内容
             window.copyDiaryWork = function(date, btnEl) {
@@ -483,7 +594,6 @@
 
                 // 获取该月的所有日期记录
                 const datesWithRecords = new Set(diaries.map(d => d.date));
-                const attMap = getAttendance();
                 const today = getLocalDateStr(new Date());
 
                 let html = '<div class="diary-calendar-header">';
@@ -523,22 +633,40 @@
                     if (hasRecord) classes += ' has-record';
                     if (isSelected) classes += ' selected';
 
-                    const attCode = attMap[dateStr];
+                    const attArr = getAttArray(dateStr);
                     html += '<div class="' + classes + '" onclick="openAttendanceModal(\'' + dateStr + '\')">' + day;
-                    if (attCode) html += '<span class="att-badge att-' + attCode + '">' + attCode + '</span>';
+                    attArr.slice(0, 4).forEach(function(label, i) {
+                        const ch = label.charAt(0);
+                        const cat = attCatOf(label);
+                        html += '<span class="att-badge att-cat-' + cat + ' pos-' + i + '">' + ch + '</span>';
+                    });
                     html += '</div>';
                 }
 
                 html += '</div>';
 
-                const attCnt = {'日':0,'差':0,'公休':0,'假':0,'休':0,'培':0};
+                const catCnt = { '日': 0, '差': 0, '休': 0, '公休': 0, '假': 0, '培': 0 };
+                let daysWithAtt = 0;
+                const _catOrder = ['日', '差', '休', '公休', '假', '培'];
                 for (let d = 1; d <= daysInMonth; d++) {
                     const ds = _calendarYear + '-' + String(_calendarMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-                    const c = attMap[ds];
-                    if (c && attCnt[c] !== undefined) attCnt[c]++;
+                    const arr = getAttArray(ds);
+                    if (arr.length) {
+                        daysWithAtt++;
+                        const seen = {};
+                        arr.forEach(function(label) {
+                            const c = attCatOf(label);
+                            if (catCnt[c] !== undefined) seen[c] = true;
+                        });
+                        Object.keys(seen).forEach(function(c) { catCnt[c]++; });
+                    }
                 }
-                const attTotal = attCnt['日'] + attCnt['差'] + attCnt['公休'] + attCnt['假'] + attCnt['休'] + attCnt['培'];
-                html += '<div class="att-summary">本月考勤：日' + attCnt['日'] + ' 差' + attCnt['差'] + ' 公休' + attCnt['公休'] + ' 假' + attCnt['假'] + ' 休' + attCnt['休'] + ' 培' + attCnt['培'] + ' ＝ ' + attTotal + '/' + daysInMonth + '天</div>';
+                const summaryParts = [];
+                _catOrder.forEach(function(c) {
+                    const n = catCnt[c];
+                    if (n) summaryParts.push(c + n);
+                });
+                html += '<div class="att-summary">本月考勤：' + (summaryParts.length ? summaryParts.join(' ') : '暂无') + ' ＝ ' + daysWithAtt + '/' + daysInMonth + '天</div>';
 
                 container.innerHTML = html;
             }
@@ -579,7 +707,9 @@
                 const diary = diaries.find(d => d.date === dateStr);
 
                 if (!diary) {
-                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p><div style="text-align:center;margin-top:12px;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 设置考勤</button></div>';
+                    const _attArr0 = getAttArray(dateStr);
+                    const _attTxt0 = _attArr0.length ? ('考勤：' + _attArr0.map(_attLabel).join('、')) : '设置考勤';
+                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">该日期暂无记录</p><div style="text-align:center;margin-top:12px;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 ' + _attTxt0 + '</button></div>';
                     container.style.display = 'block';
                     return;
                 }
@@ -608,7 +738,9 @@
                     html += '</div>';
                 }
 
-                html += '<div style="margin-top:14px;text-align:center;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 设置考勤</button></div>';
+                const _attArr1 = getAttArray(dateStr);
+                const _attTxt1 = _attArr1.length ? ('考勤：' + _attArr1.map(_attLabel).join('、')) : '设置考勤';
+                html += '<div style="margin-top:14px;text-align:center;"><button class="btn btn-secondary btn-small" onclick="openAttendanceModal(\'' + dateStr + '\')">🗓 ' + _attTxt1 + '</button></div>';
                 container.innerHTML = html;
                 container.style.display = 'block';
                 // 渲染多媒体内容（替换标签为实际图片/视频）

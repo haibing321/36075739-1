@@ -1749,19 +1749,21 @@
     })();
     </script>
 
-    <!-- 考勤选择弹窗：点击日历日期弹出（置于 body 下，避免被面板 transform 影响 fixed 定位） -->
-    <div id="attendance-modal" class="att-modal-overlay" style="display:none;" onclick="if(event.target===this)closeAttendanceModal()">
-        <div class="att-modal-card">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">
-                <span id="att-modal-date" class="att-modal-title"></span>
-                <button type="button" onclick="closeAttendanceModal()" style="background:none;border:none;font-size:1.25rem;color:var(--text-secondary);cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+    <!-- 考勤选择弹窗：点击日历日期弹出（置于 body 下，避免被面板 transform 影响 fixed 定位；复用系统 .modal 结构保持风格一致） -->
+    <div id="attendance-modal" class="modal" style="display:none;" onclick="if(event.target===this)closeAttendanceModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="att-modal-date" class="modal-title"></span>
+                <button type="button" class="modal-close" onclick="closeAttendanceModal()">✕</button>
             </div>
-            <div id="att-modal-current" class="att-modal-current"></div>
-            <div class="att-modal-codes" id="att-modal-codes"></div>
-            <div class="att-modal-actions">
-                <button type="button" class="btn btn-secondary btn-small" style="flex:1" onclick="closeAttendanceModal()">取消</button>
-                <button type="button" class="btn btn-secondary btn-small" style="flex:1" onclick="attModalViewDiary()">查看写实</button>
-                <button type="button" class="btn btn-primary btn-small" style="flex:1" onclick="attModalConfirm()">确定</button>
+            <div class="modal-body">
+                <div id="att-modal-current" class="att-modal-current"></div>
+                <div class="att-modal-codes" id="att-modal-codes"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-small" onclick="closeAttendanceModal()">取消</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="attModalViewDiary()">查看写实</button>
+                <button type="button" class="btn btn-primary btn-small" onclick="attModalConfirm()">确定</button>
             </div>
         </div>
     </div>

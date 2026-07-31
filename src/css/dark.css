@@ -285,19 +285,16 @@
 }
 [data-theme="dark"] .ds-code-dl { background: #2563eb !important; }
 
-/* 考勤选择弹窗暗化 */
-[data-theme="dark"] .att-modal-overlay { background: rgba(0,0,0,0.6) !important; }
-[data-theme="dark"] .att-modal-card { background: var(--card-bg) !important; border-color: var(--border) !important; }
-[data-theme="dark"] .att-modal-title { color: var(--text) !important; }
+/* 考勤选择弹窗暗化（结构已复用系统 .modal，此处仅保留按钮/角标覆盖） */
 [data-theme="dark"] .att-modal-current { color: var(--text-secondary) !important; }
 [data-theme="dark"] .att-modal-btn { background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important; }
 [data-theme="dark"] .att-modal-btn:hover { background: #475569 !important; }
 [data-theme="dark"] .att-modal-btn.att-active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
 [data-theme="dark"] .att-modal-btn.att-clear { color: #94a3b8 !important; }
+[data-theme="dark"] .att-modal-group-label { color: var(--text-secondary) !important; }
 [data-theme="dark"] .att-cat-日 { background: #3b82f6 !important; }
 [data-theme="dark"] .att-cat-差 { background: #f59e0b !important; }
 [data-theme="dark"] .att-cat-休 { background: #14b8a6 !important; }
 [data-theme="dark"] .att-cat-公休 { background: #64748b !important; }
 [data-theme="dark"] .att-cat-假 { background: #ef4444 !important; }
 [data-theme="dark"] .att-cat-培 { background: #ec4899 !important; }
-[data-theme="dark"] .att-modal-group-label { color: var(--text-secondary) !important; }

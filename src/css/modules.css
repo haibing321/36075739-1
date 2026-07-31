@@ -303,37 +303,12 @@
     color: #475569;
     text-align: center;
 }
-/* 考勤选择弹窗 */
-.att-modal-overlay {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 200;
-    background: rgba(15, 23, 42, 0.5);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-}
-.att-modal-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 20px;
-    width: min(340px, 92vw);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
-.att-modal-title {
-    font-weight: 700;
-    font-size: 1.05rem;
-    color: var(--text);
-}
+/* 考勤选择弹窗（复用系统 .modal 结构，仅做宽度收敛与网格按钮样式，保持与其它弹窗一致） */
+#attendance-modal .modal-content { max-width: 420px; }
 .att-modal-current {
     font-size: 0.85rem;
     color: var(--text-secondary);
-    margin: 8px 0 16px;
+    margin: 0 0 14px;
 }
 .att-modal-codes {
     display: flex;
@@ -341,19 +316,19 @@
     gap: 10px;
 }
 .att-modal-group { width: 100%; margin-bottom: 4px; }
-.att-modal-group-label { font-size: 0.72rem; color: var(--text-secondary); margin: 0 0 4px 2px; }
+.att-modal-group-label { font-size: 0.75rem; color: var(--text-secondary); margin: 0 0 5px 2px; }
 .att-modal-group-btns { display: flex; flex-wrap: wrap; gap: 8px; }
-.att-modal-group-btns .att-modal-btn { flex: 0 1 calc(50% - 4px); min-width: 70px; padding: 9px 0; font-size: 0.92rem; }
+.att-modal-group-btns .att-modal-btn { flex: 0 1 calc(50% - 4px); min-width: 70px; padding: 8px 0; font-size: 0.9rem; }
 .att-modal-btn {
     flex: 1 1 calc(33.333% - 7px);
     min-width: 84px;
     border: 1px solid #cbd5e1;
     background: #f8fafc;
     color: #334155;
-    border-radius: 10px;
-    padding: 10px 0;
-    font-size: 1rem;
-    font-weight: 700;
+    border-radius: 8px;
+    padding: 8px 0;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
     display: flex;
@@ -366,11 +341,6 @@
 .att-modal-btn.att-active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .att-modal-btn.att-clear { color: #94a3b8; flex-basis: 100%; }
 .att-modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.att-modal-actions {
-    margin-top: 16px;
-    display: flex;
-    gap: 10px;
-}
 /* 日期详情 */
 .diary-date-detail {
     background: white;

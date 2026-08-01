@@ -1315,3 +1315,59 @@ img.loaded { opacity: 1; }
         font-size: 0.8rem;
     }
 }
+
+/* ============================================================
+   统一增强样式（unified-enhancements.js）
+   ============================================================ */
+.rule-ref {
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #eff6ff;
+}
+.rule-ref:hover {
+  background: #dbeafe;
+}
+
+.phone-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f0fdf4;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid #86efac;
+  white-space: nowrap;
+  margin: 0 2px;
+}
+.btn-call {
+  background: #22c55e;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-left: 6px;
+}
+.btn-call:hover {
+  background: #16a34a;
+}
+
+/* 助手气泡内表格美化（卡片渲染对 AI 表格的可读性增强） */
+.ds-bubble-assistant table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+.ds-bubble-assistant th,
+.ds-bubble-assistant td {
+  border: 1px solid #cbd5e1;
+  padding: 6px 10px;
+  text-align: left;
+}
+.ds-bubble-assistant th {
+  background: #e2e8f0;
+}

@@ -1185,6 +1185,8 @@
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)
                     : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
                 var systemPrompt = rolePrompt + memoryText + baseSystem;
+                // 全域统一升级：注入当前模块上下文（unified-enhancements.js 设置，未定义则无影响）
+                if (window.UNIFIED_TAB_CONTEXT) systemPrompt += '\n\n' + window.UNIFIED_TAB_CONTEXT;
                 if (_tempSrc) { window._tempDataSrc = null; }
 
                 var messages = [
@@ -1608,6 +1610,10 @@
         // Part B 增强功能（agent 等）依赖的 Part A 内部函数
         window.dsEsc                  = typeof dsEsc !== 'undefined' ? dsEsc : function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
         window.dsMarkdown             = typeof dsMarkdown !== 'undefined' ? dsMarkdown : function(t){ return t||''; };
+        // 全域统一升级：暴露内部渲染/历史函数，供 unified-enhancements.js 安全钩接（不破坏现有逻辑）
+        window.dsRenderAll            = typeof dsRenderAll !== 'undefined' ? dsRenderAll : function(){};
+        window.dsAppendMsg            = typeof dsAppendMsg !== 'undefined' ? dsAppendMsg : function(){};
+        window.getDsHistory           = (typeof dsHistory !== 'undefined') ? function(){ return dsHistory; } : function(){ return []; };
 
     })();
 

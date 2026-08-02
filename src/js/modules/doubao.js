@@ -415,16 +415,20 @@
                 _dsSidebarOpen = !_dsSidebarOpen;
                 // 动态计算隐藏偏移量（适配手机端vw单位）
                 const sidebarWidth = sidebar.offsetWidth || 260;
+                const btn = document.getElementById('ds-sidebar-toggle-btn');
                 if (_dsSidebarOpen) {
                     sidebar.style.left = '0';
                     if (overlay) overlay.style.display = 'block';
-                    if (icon) icon.textContent = '✕';
+                    if (btn) { btn.classList.add('on'); btn.title = '收起侧边栏'; }
                     if (text) text.textContent = '收起';
+                    // 打开时自动聚焦搜索框（DeepSeek 习惯）
+                    const searchEl = document.getElementById('ds-history-search');
+                    if (searchEl) setTimeout(function(){ try { searchEl.focus(); } catch (e) {} }, 300);
                 } else {
                     sidebar.style.left = '-' + (sidebarWidth + 20) + 'px';
                     if (overlay) overlay.style.display = 'none';
-                    if (icon) icon.textContent = '☰';
-                    if (text) text.textContent = '📋 历史记录';
+                    if (btn) { btn.classList.remove('on'); btn.title = '打开历史对话'; }
+                    if (text) text.textContent = '历史记录';
                 }
             };
 
@@ -449,7 +453,8 @@
                     { key: 'pin',    name: '置顶',     items: [] },
                     { key: 'today',  name: '今天',     items: [] },
                     { key: 'yester', name: '昨天',     items: [] },
-                    { key: 'week',   name: '过去 7 天', items: [] },
+                    { key: 'week',   name: '七天内',   items: [] },
+                    { key: 'month',  name: '三十天内', items: [] },
                     { key: 'older',  name: '更早',     items: [] }
                 ];
                 list.forEach(conv => {
@@ -458,8 +463,13 @@
                     if (t >= startOfToday) groups[1].items.push(conv);
                     else if (t >= startOfToday - DAY) groups[2].items.push(conv);
                     else if (t >= startOfToday - 7 * DAY) groups[3].items.push(conv);
-                    else groups[4].items.push(conv);
+                    else if (t >= startOfToday - 30 * DAY) groups[4].items.push(conv);
+                    else groups[5].items.push(conv);
                 });
+
+                // 线条图标（照搬 DeepSeek 的线性图标风格，取代 emoji）
+                const SVG_PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 17v5"/><path d="M9 4h6l-.6 5.4L17 13H7l2.6-3.6L9 4Z"/></svg>';
+                const SVG_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
 
                 let html = '';
                 groups.forEach(g => {
@@ -468,17 +478,12 @@
                     html += '<div class="ds-history-group-title">' + g.name + '</div>';
                     g.items.forEach(conv => {
                         const isActive = conv.id === dsCurrentConvId;
-                        const dateStr = new Date(conv.timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
                         html += '<div class="ds-history-item' + (isActive ? ' active' : '') + '" onclick="dsSwitchConv(\'' + conv.id + '\')">' +
-                            '<span class="ds-history-icon">💬</span>' +
-                            '<div class="ds-history-main">' +
-                                '<span class="ds-history-title">' + dsEsc(conv.title || '新对话') + '</span>' +
-                                (g.key === 'pin' ? '' : '<span class="ds-history-date">' + dateStr + '</span>') +
-                            '</div>' +
-                            '<div class="ds-history-actions">' +
-                                '<button class="pin-btn' + (conv.pinned ? ' on' : '') + '" onclick="dsTogglePin(\'' + conv.id + '\', event)" title="' + (conv.pinned ? '取消置顶' : '置顶') + '">' + (conv.pinned ? '📌' : '📍') + '</button>' +
-                                '<button class="del-btn" onclick="dsDeleteConv(\'' + conv.id + '\', event)" title="删除">🗑️</button>' +
-                            '</div>' +
+                            '<span class="ds-history-title">' + dsEsc(conv.title || '新对话') + '</span>' +
+                            '<span class="ds-history-actions">' +
+                                '<button class="pin-btn' + (conv.pinned ? ' on' : '') + '" onclick="dsTogglePin(\'' + conv.id + '\', event)" title="' + (conv.pinned ? '取消置顶' : '置顶') + '">' + SVG_PIN + '</button>' +
+                                '<button class="del-btn" onclick="dsDeleteConv(\'' + conv.id + '\', event)" title="删除">' + SVG_DEL + '</button>' +
+                            '</span>' +
                         '</div>';
                     });
                 });
@@ -1400,8 +1405,14 @@
                     // 空对话时显示欢迎引导页
                     box.style.display = 'flex';
                     box.innerHTML = '<div class="ds-welcome">' +
-                        '<h3 class="ds-welcome-title">铁路安全 AI 对话助手</h3>' +
-                        '<p class="ds-welcome-sub">选择对话角色（下方「角色选择」），在下方输入问题即可开始。可聊铁路安全（规章查询 · 隐患分析 · 文书起草 · 风险研判）并能调用本地资料库辅助作答，也能聊铁路以外的任何话题。</p>' +
+                        '<div class="ds-welcome-logo">' +
+                            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">' +
+                                '<path d="M12 2 4 5.5v6c0 4.6 3.2 8.9 8 10.5 4.8-1.6 8-5.9 8-10.5v-6L12 2Z"/>' +
+                                '<path d="m9 12 2 2 4-4"/>' +
+                            '</svg>' +
+                        '</div>' +
+                        '<h3 class="ds-welcome-title">我是安监助手，很高兴见到你！</h3>' +
+                        '<p class="ds-welcome-sub">可以帮你查规章、析隐患、写文书，也能聊任何话题～</p>' +
                         '</div>';
                     return;
                 }

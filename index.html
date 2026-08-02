@@ -671,17 +671,29 @@
                     <div id="ds-sub-chat" style="display:flex;flex-direction:column;min-width:0;flex:1;min-height:0;">
                         <!-- 顶部栏（参考 DeepSeek：左侧菜单 + 右侧模式/角色） -->
                         <div class="ds-chat-header">
-                            <button id="ds-sidebar-toggle-btn" onclick="dsToggleSidebar()" class="ds-icon-btn" title="历史对话">
-                                <span id="ds-sidebar-toggle-icon">☰</span>
-                                <span id="ds-sidebar-toggle-text" style="display:none;">历史记录</span>
-                            </button>
+                            <div class="ds-chat-header-left">
+                                <button id="ds-sidebar-toggle-btn" onclick="dsToggleSidebar()" class="ds-icon-btn" title="打开历史对话">
+                                    <span id="ds-sidebar-toggle-icon" class="ds-svg-ico">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="19" height="19">
+                                            <rect x="3" y="4" width="18" height="16" rx="3"/><line x1="9" y1="4" x2="9" y2="20"/>
+                                        </svg>
+                                    </span>
+                                    <span id="ds-sidebar-toggle-text" style="display:none;">历史记录</span>
+                                </button>
+                                <button onclick="dsNewChat()" class="ds-icon-btn" title="开启新对话">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                                        <path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/>
+                                        <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.4-9.4Z"/>
+                                    </svg>
+                                </button>
+                            </div>
                             <div class="ds-chat-header-meta">
                                 <span id="ds-current-mode-label" class="ds-chat-mode">💬 智能对话</span>
                                 <span id="ds-current-role-label" class="ds-chat-role">通用</span>
                             </div>
                         </div>
                         <!-- 对话区（居中列） -->
-                        <div id="ds-chat-box" class="ds-chat-box" style="display:none;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#f8fafc;flex-direction:column;gap:10px;flex:1;min-height:200px;max-height:calc(100vh - 360px);"></div>
+                        <div id="ds-chat-box" class="ds-chat-box" style="display:none;overflow-y:auto;border:none;border-radius:0;padding:6px 4px;background:transparent;flex-direction:column;gap:10px;flex:1;min-height:200px;max-height:calc(100vh - 360px);"></div>
                         <!-- ========== 智能助手增强工具栏（保留全部按钮，精简为 pill 样式） ========== -->
                         <div id="agent-toolbar" class="ds-toolbar">
                           <span class="ds-toolbar-label">角色</span>
@@ -968,27 +980,52 @@
     <!-- DeepSeek 侧边栏：遮罩层 + 抽屉（放在 body 根级别，避免 fixed 定位被祖先影响） -->
     <div id="ds-sidebar-overlay" class="ds-sidebar-overlay" onclick="dsToggleSidebar()"></div>
     <div id="ds-sidebar" class="ds-sidebar">
-        <!-- 抽屉头部：标题 + 收起 -->
+        <!-- 抽屉头部：品牌 logo + 折叠按钮（照搬 DeepSeek） -->
         <div class="ds-sidebar-head">
-            <span class="ds-sidebar-title">💬 历史对话</span>
-            <button onclick="dsToggleSidebar()" class="ds-icon-btn" title="收起">✕</button>
+            <div class="ds-sidebar-brand">
+                <span class="ds-brand-logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2 4 5.5v6c0 4.6 3.2 8.9 8 10.5 4.8-1.6 8-5.9 8-10.5v-6L12 2Z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
+                </span>
+                <span class="ds-brand-name">安监助手</span>
+            </div>
+            <button onclick="dsToggleSidebar()" class="ds-icon-btn" title="收起侧边栏">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="19" height="19">
+                    <rect x="3" y="4" width="18" height="16" rx="3"/><line x1="9" y1="4" x2="9" y2="20"/>
+                </svg>
+            </button>
         </div>
-        <!-- 搜索框（DeepSeek 风格） -->
-        <div class="ds-sidebar-search">
-            <span class="ds-sidebar-search-icon">🔍</span>
-            <input id="ds-history-search" type="text" placeholder="搜索对话…" oninput="dsHistorySearch(this.value)" />
-        </div>
-        <!-- 新建对话按钮 -->
+        <!-- 新建对话（DeepSeek：淡蓝胶囊 + 方框铅笔图标） -->
         <button onclick="dsNewChat();dsToggleSidebar();" class="ds-newchat-btn">
-            <span>＋</span> 新建对话
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
+                <path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/>
+                <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.4-9.4Z"/>
+            </svg>
+            <span>开启新对话</span>
         </button>
+        <!-- 搜索框（DeepSeek 风格：灰底无边框） -->
+        <div class="ds-sidebar-search">
+            <span class="ds-sidebar-search-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="15" height="15">
+                    <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/>
+                </svg>
+            </span>
+            <input id="ds-history-search" type="text" placeholder="搜索历史对话" oninput="dsHistorySearch(this.value)" />
+        </div>
         <!-- 历史记录列表（按日期分组，由 JS 渲染） -->
         <div class="ds-history-list" id="ds-history-list">
             <div class="ds-history-empty">暂无历史记录</div>
         </div>
         <!-- 底部：清空记录 -->
         <div class="ds-sidebar-foot">
-            <button onclick="dsShowClearOptions()" class="ds-sidebar-foot-btn">🗑 清空记录</button>
+            <button onclick="dsShowClearOptions()" class="ds-sidebar-foot-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+                    <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>
+                </svg>
+                <span>清空记录</span>
+            </button>
         </div>
     </div>
 

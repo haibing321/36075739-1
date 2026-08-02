@@ -132,9 +132,10 @@
 [data-theme="dark"] .ds-md-table tr:nth-child(even) td { background: #182338 !important; }
 [data-theme="dark"] .ds-md-table { border-color: var(--border) !important; }
 [data-theme="dark"] .ds-md-quote { background: #182338 !important; }
-[data-theme="dark"] .ds-bubble-assistant { background: var(--card-bg) !important; color: var(--text) !important; }
-[data-theme="dark"] .ds-sidebar { background: #111a2b !important; }
-[data-theme="dark"] .ds-welcome { background: var(--card-bg) !important; }
+/* DeepSeek 风格：助手气泡去卡片底、侧栏与欢迎页由 ds-deepseek.css 统一控制 */
+[data-theme="dark"] .ds-bubble-assistant { background: transparent !important; color: var(--text) !important; }
+[data-theme="dark"] .ds-sidebar { background: #131a26 !important; }
+[data-theme="dark"] .ds-welcome { background: transparent !important; }
 
 /* ---------- 8. 列表 / 项 ---------- */
 [data-theme="dark"] .memo-item,

@@ -704,17 +704,8 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* 空状态欢迎页（精简） */
-.ds-welcome {
-  margin: auto;
-  text-align: center;
-  max-width: 520px;
-  padding: 18px 16px;
-  color: var(--text, #1e293b);
-}
+/* 空状态欢迎页样式已迁移至 src/css/ds-deepseek.css（DeepSeek 极简空态） */
 .ds-welcome-icon { display: none; }
-.ds-welcome-title { margin: 4px 0 6px; font-size: 1.1rem; color: var(--primary, #2563eb); }
-.ds-welcome-sub { font-size: 0.82rem; color: var(--text-secondary, #64748b); line-height: 1.5; margin: 0 0 14px; }
 
 /* ===== 智能助手模块响应式布局 ===== */
 /* 手机（≤600px）*/
@@ -730,8 +721,8 @@
     #autoCheck-smartBtn { flex: 1 1 100% !important; min-width: 0 !important; }
     #autoCheck-importBtn, #autoCheck-exportBtn { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }
     #autoCheck-clearBtn { flex: 1 1 calc(50% - 4px) !important; }
-    /* 手机端侧边栏全宽覆盖 */
-    #ds-sidebar { width: 85vw !important; max-width: 280px !important; border-radius: 0 12px 12px 0 !important; }
+    /* 手机端侧边栏全宽覆盖（DeepSeek：贴边全高，无圆角） */
+    #ds-sidebar { width: 82vw !important; max-width: 300px !important; border-radius: 0 !important; }
     #ds-sidebar-toggle-text { display: none; }
 }
 /* 平板（601px ~ 900px）*/

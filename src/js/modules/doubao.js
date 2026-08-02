@@ -188,9 +188,10 @@
                     var sb = document.getElementById('ds-sidebar');
                     if (sb) sb.style.left = '-' + (sb.offsetWidth + 20) + 'px';
                 })();
-                // 绑定 Ctrl+Enter
+                // DeepSeek 习惯：Enter 发送，Shift+Enter 换行（兼容 Ctrl+Enter）
                 document.getElementById('ds-user-input').addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dsSendMsg(); }
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); dsSendMsg(); }
+                    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dsSendMsg(); }
                 });
                 // 根据 API Key 状态切换豆包网页版/本地模块
                 toggleDoubaoMode();
@@ -404,6 +405,7 @@
 
             // 历史侧边栏抽屉开关
             let _dsSidebarOpen = false;
+            let _dsHistoryFilter = '';
             window.dsToggleSidebar = function() {
                 const sidebar = document.getElementById('ds-sidebar');
                 const overlay = document.getElementById('ds-sidebar-overlay');
@@ -426,53 +428,69 @@
                 }
             };
 
-            // 渲染历史记录列表（DeepSeek风格紧凑布局）
+            // 渲染历史记录列表（DeepSeek 风格：搜索过滤 + 按日期分组 + 置顶优先）
             function dsRenderHistoryList() {
                 const listEl = document.getElementById('ds-history-list');
                 if (!listEl) return;
-                
-                if (dsConversations.length === 0) {
-                    listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:16px 10px;font-size:0.82rem;">暂无历史记录</div>';
+
+                const kw = (_dsHistoryFilter || '').trim().toLowerCase();
+                let list = dsConversations.slice();
+                if (kw) list = list.filter(c => (c.title || '新对话').toLowerCase().indexOf(kw) !== -1);
+
+                if (list.length === 0) {
+                    listEl.innerHTML = '<div class="ds-history-empty">' + (kw ? '未找到匹配的对话' : '暂无历史记录') + '</div>';
                     return;
                 }
-                
-                let html = '';
-                dsConversations.forEach(conv => {
-                    const isActive = conv.id === dsCurrentConvId;
-                    const dateStr = new Date(conv.timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-                    
-                    // DeepSeek风格：紧凑行，圆角背景，小间距
-                    const bgColor = isActive ? 'var(--primary)' : 'transparent';
-                    const textColor = isActive ? '#ffffff' : '#1e293b';
-                    const dateColor = isActive ? 'rgba(255,255,255,0.7)' : '#94a3b8';
-                    
-                    html += '<div onclick="dsSwitchConv(\'' + conv.id + '\')" style="' +
-                        'padding:7px 10px;border-radius:6px;cursor:pointer;' +
-                        'background:' + bgColor + ';' +
-                        'transition:background 0.15s;display:flex;align-items:center;gap:6px;' +
-                        'margin-bottom:2px;' +
-                        '" onmouseover="if(this.dataset.active!==\'1\'){this.style.background=\'#e0f2fe\';}" ' +
-                        'onmouseout="if(this.dataset.active!==\'1\'){this.style.background=\'transparent\';}" ' +
-                        'data-active="' + (isActive ? '1' : '0') + '">' +
-                        '<span style="font-size:0.72rem;color:' + dateColor + ';flex-shrink:0;">' + dateStr + '</span>' +
-                        '<span style="font-size:0.82rem;line-height:1.3;color:' + textColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-weight:' + (isActive ? '500' : '400') + ';">' +
-                        dsEsc(conv.title || '新对话') +
-                        '</span>' +
-                        '<div style="display:flex;gap:2px;flex-shrink:0;opacity:0;transition:opacity 0.15s;" ' +
-                        'onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'\'">' +
-                        '<button onclick="dsTogglePin(\'' + conv.id + '\', event)" style="' +
-                        'background:none;border:none;cursor:pointer;padding:2px;font-size:0.8rem;line-height:1;' +
-                        'opacity:' + (conv.pinned ? '1' : '0.4') + ';' +
-                        '" title="' + (conv.pinned ? '取消置顶' : '置顶') + '">' + (conv.pinned ? '📌' : '<span style="opacity:0.3">📌</span>') + '</button>' +
-                        '<button onclick="dsDeleteConv(\'' + conv.id + '\', event)" style="' +
-                        'background:none;border:none;cursor:pointer;padding:2px;font-size:0.8rem;color:var(--danger);opacity:0.5;' +
-                        '" title="删除" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">🗑️</button>' +
-                        '</div>' +
-                        '</div>';
+
+                const now = new Date();
+                const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                const DAY = 86400000;
+                const groups = [
+                    { key: 'pin',    name: '置顶',     items: [] },
+                    { key: 'today',  name: '今天',     items: [] },
+                    { key: 'yester', name: '昨天',     items: [] },
+                    { key: 'week',   name: '过去 7 天', items: [] },
+                    { key: 'older',  name: '更早',     items: [] }
+                ];
+                list.forEach(conv => {
+                    const t = conv.timestamp || 0;
+                    if (conv.pinned) { groups[0].items.push(conv); return; }
+                    if (t >= startOfToday) groups[1].items.push(conv);
+                    else if (t >= startOfToday - DAY) groups[2].items.push(conv);
+                    else if (t >= startOfToday - 7 * DAY) groups[3].items.push(conv);
+                    else groups[4].items.push(conv);
                 });
-                
+
+                let html = '';
+                groups.forEach(g => {
+                    if (g.items.length === 0) return;
+                    g.items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                    html += '<div class="ds-history-group-title">' + g.name + '</div>';
+                    g.items.forEach(conv => {
+                        const isActive = conv.id === dsCurrentConvId;
+                        const dateStr = new Date(conv.timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+                        html += '<div class="ds-history-item' + (isActive ? ' active' : '') + '" onclick="dsSwitchConv(\'' + conv.id + '\')">' +
+                            '<span class="ds-history-icon">💬</span>' +
+                            '<div class="ds-history-main">' +
+                                '<span class="ds-history-title">' + dsEsc(conv.title || '新对话') + '</span>' +
+                                (g.key === 'pin' ? '' : '<span class="ds-history-date">' + dateStr + '</span>') +
+                            '</div>' +
+                            '<div class="ds-history-actions">' +
+                                '<button class="pin-btn' + (conv.pinned ? ' on' : '') + '" onclick="dsTogglePin(\'' + conv.id + '\', event)" title="' + (conv.pinned ? '取消置顶' : '置顶') + '">' + (conv.pinned ? '📌' : '📍') + '</button>' +
+                                '<button class="del-btn" onclick="dsDeleteConv(\'' + conv.id + '\', event)" title="删除">🗑️</button>' +
+                            '</div>' +
+                        '</div>';
+                    });
+                });
+
                 listEl.innerHTML = html;
             }
+
+            // 历史搜索（由侧边栏搜索框调用）
+            window.dsHistorySearch = function(v) {
+                _dsHistoryFilter = v || '';
+                dsRenderHistoryList();
+            };
 
             // 显示清空选项
             window.dsShowClearOptions = function() {
@@ -2547,25 +2565,17 @@
         };
       })();
 
-      // ========== 输入框高度与右侧按钮列等高（含语音按钮显隐/面板可见性变化）==========
+      // ========== 输入框自适应高度（DeepSeek 圆角框：textarea 随内容增长）==========
       (function initInputHeightSync() {
         var ta = document.getElementById('ds-user-input');
-        var col = document.getElementById('ds-input-buttons');
-        if (!ta || !col) return;
+        if (!ta) return;
         function sync() {
-          var h = col.offsetHeight;
-          if (!h) return;
-          ta.style.minHeight = h + 'px';
           if (typeof autoResize === 'function') autoResize(ta);
         }
         window.dsSyncInputHeight = sync;
-        // 按钮列尺寸变化（显隐语音按钮、面板从隐藏变为可见、窗口缩放）时自动对齐
-        if ('ResizeObserver' in window) {
-          try { new ResizeObserver(sync).observe(col); } catch (e) { sync(); }
-        } else {
-          sync();
-          window.addEventListener('resize', sync);
-        }
+        sync();
+        // 面板从隐藏变为可见 / 窗口缩放时重新计算
+        window.addEventListener('resize', sync);
       })();
 
       function saveFeedback(type, content) {

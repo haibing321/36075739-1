@@ -554,9 +554,9 @@
 /* 规章制度卡片: .rule-snippet, .rule-highlight, .rule-context, .rule-ellipsis */
 /* (已包含在 components.css 的 rule 卡片区域) */
 
-/* 历史侧边栏抽屉滚动条 */
+/* 历史侧边栏抽屉（基础） */
 #ds-sidebar {
-    overflow-y: auto;
+    overflow: hidden;
 }
 #ds-sidebar::-webkit-scrollbar { width: 3px; }
 #ds-sidebar::-webkit-scrollbar-track { background: transparent; }
@@ -597,19 +597,22 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
 }
 
-/* 用户：右侧蓝色气泡 */
+/* 用户：右侧浅灰气泡（DeepSeek 风格） */
 .ds-bubble-user {
-  background: linear-gradient(135deg, var(--primary, #2563eb), #1d4ed8);
-  color: #fff;
+  background: #eef1f5;
+  color: var(--text, #1e293b);
+  border: 1px solid #e2e8f0;
   border-bottom-right-radius: 4px;
 }
 
-/* 助手：左侧白底卡片 */
+/* 助手：左侧无背景（DeepSeek 清爽风格） */
 .ds-bubble-assistant {
-  background: #fff;
+  background: transparent;
   color: var(--text, #1e293b);
-  border: 1px solid var(--border, #e2e8f0);
+  border: none;
+  box-shadow: none;
   border-bottom-left-radius: 4px;
+  padding-left: 2px;
 }
 
 /* 系统提示：居中浅灰 */
@@ -722,7 +725,7 @@
     .keyword-candidate-tag { font-size: 0.78rem !important; padding: 5px 8px !important; }
     #ds-chat-box { min-height: 180px !important; }
     #ds-user-input { font-size: 0.88rem !important; }
-    #ds-send-btn { padding: 8px 12px !important; font-size: 0.88rem !important; }
+    #ds-send-btn { width: 38px !important; height: 38px !important; padding: 0 !important; flex-shrink: 0; }
     /* 自动对规按钮行在手机上自适应 */
     #autoCheck-smartBtn { flex: 1 1 100% !important; min-width: 0 !important; }
     #autoCheck-importBtn, #autoCheck-exportBtn { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }

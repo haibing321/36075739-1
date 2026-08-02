@@ -148,6 +148,7 @@
     <link rel="stylesheet" href="src/css/layout.css">
     <link rel="stylesheet" href="src/css/components.css">
     <link rel="stylesheet" href="src/css/modules.css">
+    <link rel="stylesheet" href="src/css/ds-deepseek.css">
     <link rel="stylesheet" href="src/css/responsive.css">
     <link rel="stylesheet" href="src/css/dark.css">
 </head>
@@ -668,23 +669,23 @@
 
                     <!-- === 智能对话子模块 === -->
                     <div id="ds-sub-chat" style="display:flex;flex-direction:column;min-width:0;flex:1;min-height:0;">
-                        <!-- 对话区折叠按钮栏（参考DeepSeek布局） -->
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);margin-top:4px;">
-                            <button id="ds-sidebar-toggle-btn" onclick="dsToggleSidebar()"
-                                style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;color:var(--text);font-size:0.82rem;cursor:pointer;white-space:nowrap;transition:all 0.2s;"
-                                onmouseover="this.style.background='var(--primary-light)';this.style.borderColor='var(--primary)'"
-                                onmouseout="this.style.background='#f8fafc';this.style.borderColor='var(--border)'">
+                        <!-- 顶部栏（参考 DeepSeek：左侧菜单 + 右侧模式/角色） -->
+                        <div class="ds-chat-header">
+                            <button id="ds-sidebar-toggle-btn" onclick="dsToggleSidebar()" class="ds-icon-btn" title="历史对话">
                                 <span id="ds-sidebar-toggle-icon">☰</span>
-                                <span id="ds-sidebar-toggle-text">📋 历史记录</span>
+                                <span id="ds-sidebar-toggle-text" style="display:none;">历史记录</span>
                             </button>
-                            <span style="font-size:0.78rem;color:var(--text-secondary);">💬 AI 对话</span>
+                            <div class="ds-chat-header-meta">
+                                <span id="ds-current-mode-label" class="ds-chat-mode">💬 智能对话</span>
+                                <span id="ds-current-role-label" class="ds-chat-role">通用</span>
+                            </div>
                         </div>
-                        <!-- 对话区 -->
-                        <div id="ds-chat-box" style="display:none;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#f8fafc;flex-direction:column;gap:10px;flex:1;min-height:200px;max-height:calc(100vh - 360px);"></div>
-                        <!-- ========== 智能助手增强工具栏 ========== -->
-                        <div id="agent-toolbar" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
-                          <span style="font-size:0.75rem;font-weight:600;color:#475569;">角色选择</span>
-                          <select id="expertRole" style="background: white; border: 1px solid #cbd5e1; border-radius: 20px; padding: 5px 12px; font-size: 0.85rem;">
+                        <!-- 对话区（居中列） -->
+                        <div id="ds-chat-box" class="ds-chat-box" style="display:none;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#f8fafc;flex-direction:column;gap:10px;flex:1;min-height:200px;max-height:calc(100vh - 360px);"></div>
+                        <!-- ========== 智能助手增强工具栏（保留全部按钮，精简为 pill 样式） ========== -->
+                        <div id="agent-toolbar" class="ds-toolbar">
+                          <span class="ds-toolbar-label">角色</span>
+                          <select id="expertRole" class="ds-pill-select">
                             <option value="default">🧑‍💼 通用</option>
                             <option value="dianwu">⚡ 电务安全监察</option>
                             <option value="gongwu">🛤️ 工务安全监察</option>
@@ -700,35 +701,34 @@
                             <option value="frontend">💻 前端工程师</option>
                             <option value="riskanalyst">🔍 风险分析专家</option>
                           </select>
-                          <span style="font-size:0.75rem;font-weight:600;color:#475569;margin-left:6px;">模型</span>
-                          <select id="ds-model-select" style="background: white; border: 1px solid #cbd5e1; border-radius: 20px; padding: 5px 12px; font-size: 0.85rem; max-width: 130px;"></select>
-                          <div style="flex:1"></div>
-                          <button id="ds-reset-datasource-btn" style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 16px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; color: #1d4ed8; font-weight: 500;">📊 关联数据</button>
+                          <span class="ds-toolbar-label">模型</span>
+                          <select id="ds-model-select" class="ds-pill-select ds-pill-select--model"></select>
+                          <button id="ds-reset-datasource-btn" class="ds-pill-btn" title="选择关联数据（规章/检查信息/手册/日志等）">📊 关联数据</button>
                         </div>
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
-                        <!-- 输入区 -->
-                        <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;">
-                            <textarea id="ds-user-input" rows="2" placeholder="输入问题，按 Ctrl+Enter 或点击发送..." oninput="autoResize(this)"
-                                style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;resize:none;line-height:1.5;max-height:120px;"></textarea>
-                            <div id="ds-input-buttons" style="display:flex;flex-direction:column;gap:4px;position:relative;">
-                                <button onclick="dsSendMsg()" id="ds-send-btn" class="btn btn-primary" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;" title="发送消息">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
+                        <!-- 输入区（DeepSeek 圆角输入框） -->
+                        <div class="ds-input-shell">
+                            <textarea id="ds-user-input" rows="1" placeholder="给智能助手发送消息…（Enter 发送 / Shift+Enter 换行）" oninput="autoResize(this)" class="ds-input-textarea"></textarea>
+                            <div class="ds-input-bar">
+                                <button id="ds-voice-btn" onclick="dsToggleVoiceInput()" class="ds-icon-btn" style="display:none;" title="语音输入">🎤</button>
+                                <button onclick="dsToggleAttachMenu()" class="ds-icon-btn" title="添加附件">＋</button>
+                                <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.xls,.xlsx,.pdf,.csv,.json,image/*"
+                                    style="display:none;" onchange="dsHandleAttach(this)">
+                                <div id="ds-attach-menu" class="ds-attach-menu-pop">
+                                    <div onclick="dsToggleAttachMenu();document.getElementById('ds-attach-file').click();">📁 本地文件</div>
+                                    <div onclick="dsToggleAttachMenu();dsOpenMaterialPicker();">📚 写作资料</div>
+                                </div>
+                                <div class="ds-input-spacer"></div>
+                                <button onclick="dsSendMsg()" id="ds-send-btn" class="ds-send-circle" title="发送">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
                                         <path d="M12 19V5"/>
                                         <path d="M5 12l7-7 7 7"/>
                                     </svg>
                                 </button>
-                                <button id="ds-voice-btn" onclick="dsToggleVoiceInput()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:none;align-items:center;justify-content:center;font-size:1.1rem;" title="语音输入">🎤</button>
-                                <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.xls,.xlsx,.pdf,.csv,.json,image/*"
-                                    style="display:none;" onchange="dsHandleAttach(this)">
-                                <button onclick="dsToggleAttachMenu()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;" title="添加附件">+</button>
-                                <div id="ds-attach-menu" style="display:none;position:absolute;right:44px;bottom:0;background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);border:1px solid #e2e8f0;padding:6px;z-index:100;white-space:nowrap;min-width:130px;">
-                                    <div onclick="dsToggleAttachMenu();document.getElementById('ds-attach-file').click();" style="padding:8px 14px;font-size:0.82rem;cursor:pointer;border-radius:8px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">📁 本地文件</div>
-                                    <div onclick="dsToggleAttachMenu();dsOpenMaterialPicker();" style="padding:8px 14px;font-size:0.82rem;cursor:pointer;border-radius:8px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">📚 写作资料</div>
-                                </div>
                             </div>
                         </div>
                         <!-- 已附加文件标签（图片缩略图 + 文件标签预览） -->
-                        <div id="ds-attach-preview" style="display:none;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
+                        <div id="ds-attach-preview" class="ds-attach-preview"></div>
                     </div>
 
                     <!-- === 智能体子模块 === -->
@@ -966,31 +966,29 @@
     </div>
 
     <!-- DeepSeek 侧边栏：遮罩层 + 抽屉（放在 body 根级别，避免 fixed 定位被祖先影响） -->
-    <div id="ds-sidebar-overlay" onclick="dsToggleSidebar()"
-        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9998;"></div>
-    <div id="ds-sidebar"
-        style="position:fixed;top:60px;left:-280px;width:260px;max-height:calc(100vh - 120px);z-index:9999;
-               display:flex;flex-direction:column;gap:8px;
-               background:#f8fafc;border-right:1px solid var(--border);
-               padding:14px;box-shadow:2px 0 16px rgba(0,0,0,0.15);
-               transition:left 0.28s cubic-bezier(0.4,0,0.2,1);overflow:visible;
-               border-radius:0 12px 12px 0;">
-        <!-- 抽屉头部 -->
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <span style="font-weight:700;font-size:0.92rem;color:var(--primary);">💬 历史对话</span>
-            <button onclick="dsToggleSidebar()"
-                style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:var(--text-secondary);padding:4px 6px;border-radius:6px;line-height:1;"
-                title="收起">✕</button>
+    <div id="ds-sidebar-overlay" class="ds-sidebar-overlay" onclick="dsToggleSidebar()"></div>
+    <div id="ds-sidebar" class="ds-sidebar">
+        <!-- 抽屉头部：标题 + 收起 -->
+        <div class="ds-sidebar-head">
+            <span class="ds-sidebar-title">💬 历史对话</span>
+            <button onclick="dsToggleSidebar()" class="ds-icon-btn" title="收起">✕</button>
+        </div>
+        <!-- 搜索框（DeepSeek 风格） -->
+        <div class="ds-sidebar-search">
+            <span class="ds-sidebar-search-icon">🔍</span>
+            <input id="ds-history-search" type="text" placeholder="搜索对话…" oninput="dsHistorySearch(this.value)" />
         </div>
         <!-- 新建对话按钮 -->
-        <button onclick="dsNewChat();dsToggleSidebar();" class="btn btn-primary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;padding:8px;">
+        <button onclick="dsNewChat();dsToggleSidebar();" class="ds-newchat-btn">
             <span>＋</span> 新建对话
         </button>
-        <!-- 历史记录列表（紧凑布局） -->
-        <div style="flex:1;overflow-y:auto;min-height:0;" id="ds-history-list">
-            <div style="text-align:center;color:#64748b;padding:16px 10px;font-size:0.82rem;">
-                暂无历史记录
-            </div>
+        <!-- 历史记录列表（按日期分组，由 JS 渲染） -->
+        <div class="ds-history-list" id="ds-history-list">
+            <div class="ds-history-empty">暂无历史记录</div>
+        </div>
+        <!-- 底部：清空记录 -->
+        <div class="ds-sidebar-foot">
+            <button onclick="dsShowClearOptions()" class="ds-sidebar-foot-btn">🗑 清空记录</button>
         </div>
     </div>
 

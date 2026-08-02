@@ -236,6 +236,30 @@
   window.preAggregateIssueData = preAggregateIssueData;
   window.enrichRiskPrompt = enrichRiskPrompt;
 
+  // ---------- 5.x 自然语言站台提取（最长子串匹配，规避"删字抠词"失效） ----------
+  function _matchLongest(q, fields) {
+    const ql = String(q || '').toLowerCase();
+    const seen = {};
+    const uniq = (fields || []).filter(f => f).map(String).filter(f => {
+      if (seen[f]) return false; seen[f] = 1; return true;
+    }).sort((a, b) => b.length - a.length);
+    for (const c of uniq) { if (ql.indexOf(c.toLowerCase()) !== -1) return c; }
+    return null;
+  }
+  function extractPhoneKeyword(q) {
+    const data = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : [];
+    const fields = [];
+    data.forEach(it => { [it.站名, it.单位, it.线名].forEach(f => { if (f) fields.push(f); }); });
+    return _matchLongest(q, fields);
+  }
+  function extractWeatherStation(q) {
+    const fields = [];
+    const data = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : [];
+    data.forEach(it => { [it.站名, it.单位, it.线名].forEach(f => { if (f) fields.push(f); }); });
+    if (Array.isArray(window.queryWeatherStations)) fields.push.apply(fields, window.queryWeatherStations);
+    return _matchLongest(q, fields);
+  }
+
   // ---------- 6. 包装 dsSendMsg：集成上下文注入 / 电话工具 / 语义缓存（不破坏原逻辑） ----------
   const _origSend = window.dsSendMsg;
   if (typeof _origSend === 'function') {
@@ -251,8 +275,9 @@
       const ctx = window.UNIFIED_TAB_CONTEXT || '';
 
       // 电话意图：直接调用工具并返回（跳过 AI）
+      // 用最长子串匹配站名/单位/线名，支持口语化问法（"查一下兰州站的电话"）
       if (/电话|号码|联系方式|拨打/.test(question)) {
-        const kw = question.replace(/[电话码联系式查寻找拨打]/g, '').trim();
+        const kw = extractPhoneKeyword(question);
         if (kw) {
           const results = window.AppRegistry.phone.search(kw);
           if (results.length) {
@@ -263,6 +288,30 @@
             _pushAssistant(ans);
             input.value = '';
             return;
+          }
+        }
+      }
+
+      // 天气意图：直接调用 get_weather（复用智能体逻辑，含 5s 超时兜底），跳过 AI
+      if (/天气|气温|温度|气象|多少度|下雨|下雪|风力|湿度/.test(question)) {
+        if (typeof window.queryWeather === 'function') {
+          const st = extractWeatherStation(question);
+          if (st) {
+            try {
+              const w = await window.queryWeather({ stationName: st });
+              if (w && w.ok) {
+                let ans = '🌤️ ' + (w.station || st) + ' 当前天气：' + w.weather + '，' + w.temp;
+                if (w.wind) ans += '，风力 ' + w.wind;
+                _pushAssistant(ans);
+                input.value = '';
+                return;
+              } else if (w && w.error && !/未找到车站/.test(w.error)) {
+                _pushAssistant('🌤️ ' + w.error);
+                input.value = '';
+                return;
+              }
+              // 未找到车站 → 退化为普通对话（交给 AI）
+            } catch (e) {}
           }
         }
       }

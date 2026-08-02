@@ -185,6 +185,7 @@
           '西宁北':[36.66,101.77],'陶家寨':[36.70,101.80],'柯柯':[36.98,98.28],
           '饮马峡':[37.26,95.86],'鱼卡':[38.03,95.00],'马海':[38.18,94.57]
         };
+        try { window.queryWeatherStations = Object.keys(staticCoords); } catch (e) {}
         if (!station) {
           // 直接从字典取坐标
           var match = staticCoords[stationName] || (function() {
@@ -424,4 +425,12 @@
     try { await window.saveAgentTask(taskRecord); } catch(e) {}
     return { messages: renderMsgs, taskId: taskId };
   };
+
+  // 暴露天气查询给「智能对话」模块复用（与智能体共用同一实现 & 字典，单点维护）
+  window.queryWeather = (function() {
+    for (var i = 0; i < TOOLS.length; i++) { if (TOOLS[i].name === 'get_weather') return TOOLS[i].handler; }
+    return null;
+  })();
+  // 预热：填充 window.queryWeatherStations（车站字典），使智能对话无需先调天气即可解析站名；__init__ 不在字典中，handler 于 fetch 前即返回，无网络开销
+  try { if (window.queryWeather) window.queryWeather({ stationName: '__init__' }); } catch (e) {}
 })();

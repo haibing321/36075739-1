@@ -856,15 +856,18 @@
 
                 // 先立即显示对话框，再异步加载数据更新
                 showDialog([], []);
-                wrDbGetAll(WR_MAT_STORE).then(function(mats) {
-                    window._wrAllMats = mats; // 缓存供wrConfirmSelection使用
-                    var templates = mats.filter(function(m) { return m.matType === 'template'; });
+                Promise.all([ wrGetAllTemplates().catch(function(){ return []; }), wrDbGetAll(WR_MAT_STORE).catch(function(){ return []; }) ])
+                .then(function(res) {
+                    var allTpls = res[0] || [];
+                    var mats = res[1] || [];
+                    window._wrAllMats = mats;   // 缓存供 wrConfirmSelection 查找参考资料
+                    window._wrAllTpls = allTpls; // 缓存供 wrConfirmSelection 查找模板（含 WR_TPL_STORE + WR_MAT_STORE 模板）
                     var otherMats = mats.filter(function(m) { return m.matType !== 'template'; });
                     // 更新已显示的对话框（仅更新select和列表内容）
                     var tplSelect = document.getElementById('wr-step-template');
                     if (tplSelect) {
                         tplSelect.innerHTML = '<option value="">-- 不使用模板 --</option>'
-                            + templates.map(function(t){ return '<option value="'+t.id+'">'+wrEsc(t.title)+'</option>'; }).join('');
+                            + allTpls.map(function(t){ return '<option value="tpl:'+t._src+':'+t.id+'">'+wrEsc(t.title)+'</option>'; }).join('');
                     }
                     var matDiv = document.querySelector('.wr-step-modal > div > div:nth-child(4) > div');
                     if (matDiv) {
@@ -874,17 +877,26 @@
                 }).catch(function(e) {
                     console.warn('资料库异步加载失败:', e);
                     window._wrAllMats = [];
+                    window._wrAllTpls = [];
                 });
             };
 
             window.wrConfirmSelection = function() {
                 var templateSelect = document.getElementById('wr-step-template');
-                var selectedTemplateId = templateSelect ? templateSelect.value : '';
+                var selectedVal = templateSelect ? templateSelect.value : '';
                 var selectedMatIds = Array.from(document.querySelectorAll('.wr-step-mat:checked')).map(function(cb){ return parseInt(cb.value); });
-                
-                // 使用缓存的资料数据，不再重复读DB
+
+                // 使用缓存的数据，不再重复读DB（模板来自 _wrAllTpls，参考资料来自 _wrAllMats）
                 var mats = window._wrAllMats || [];
-                window._wrSelectedTemplate = selectedTemplateId ? (mats.find(function(m){ return m.id == selectedTemplateId; }) || null) : null;
+                var tpls = window._wrAllTpls || [];
+                var selTpl = null;
+                if (selectedVal) {
+                    // value 形如 tpl:mat:123 / tpl:tpl:5，解析来源与原始 id
+                    var parts = selectedVal.split(':');
+                    var src = parts[1]; var tid = parseInt(parts[2], 10);
+                    selTpl = tpls.find(function(t){ return t._src === src && t.id == tid; }) || null;
+                }
+                window._wrSelectedTemplate = selTpl;
                 window._wrSelectedMaterialIds = selectedMatIds;
                 var modal = document.querySelector('.wr-step-modal');
                 if (modal) modal.remove();
@@ -1332,11 +1344,28 @@
             }
 
             /**
-             * 检索最相关的模板（从资料库中获取 matType === 'template' 的资料）
+             * 汇总所有可用模板：合并「资料库模板型资料」(WR_MAT_STORE, matType='template')
+             * 与「模板设置」自定义模板 (WR_TPL_STORE)，统一用于写作流程。
+             * 每条模板带 _src 标记（'mat' 或 'tpl'），便于下拉/检索后定位原始来源。
+             */
+            async function wrGetAllTemplates() {
+                let matTpls = [], tplTpls = [];
+                try {
+                    const allMats = await wrDbGetAll(WR_MAT_STORE);
+                    matTpls = allMats.filter(m => m.matType === 'template').map(t => Object.assign({}, t, { _src: 'mat' }));
+                } catch (e) { matTpls = []; }
+                try {
+                    const store = await wrDbGetAll(WR_TPL_STORE);
+                    tplTpls = store.map(t => Object.assign({}, t, { _src: 'tpl', matType: 'template' }));
+                } catch (e) { tplTpls = []; }
+                return matTpls.concat(tplTpls);
+            }
+
+            /**
+             * 检索最相关的模板（合并 资料库模板 + 模板设置 两套来源）
              */
             async function wrGetTemplate(parsedQuery) {
-                const allMats = await wrDbGetAll(WR_MAT_STORE);
-                const templates = allMats.filter(m => m.matType === 'template');
+                const templates = await wrGetAllTemplates();
                 if (!templates.length) return null;
                 // 关键词匹配
                 if (parsedQuery.keywords.length > 0) {
@@ -1347,8 +1376,8 @@
                     }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
                     if (scored.length) return scored[0].t;
                 }
-                // 兜底：最新导入的一条
-                return templates.sort((a,b) => b.importAt - a.importAt)[0];
+                // 兜底：最近更新/导入的一条
+                return templates.sort((a,b) => (b.importAt || b.updatedAt || b.createdAt || 0) - (a.importAt || a.updatedAt || a.createdAt || 0))[0];
             }
 
             /**
@@ -1704,7 +1733,7 @@
                     + (template ? '<span style="color:#059669;">《' + wrEsc(template.title) + '》</span>' : '<span style="color:#d97706;">无，将使用默认结构</span>') + '</div>';
 
                 html += '<div style="margin-bottom:8px;"><strong>📊 台账数据：</strong>'
-                    + '<span style="color:#d97706;">不自动检索，请手动选择资料</span></div>';
+                    + '<span style="color:#059669;">生成时将自动检索检查信息台账（确保数字真实）</span></div>';
 
                 // 本地资料库
                 if (localMaterials && localMaterials.length > 0) {
@@ -1718,9 +1747,9 @@
                     html += '<div style="margin-bottom:8px;"><strong>📁 本地资料：</strong><span style="color:#d97706;">无匹配资料（可到「资料库」导入文件）</span></div>';
                 }
 
-                html += '<div style="margin-bottom:8px;"><strong>📂 历史参考：</strong><span style="color:#d97706;">不自动检索</span></div>';
+                html += '<div style="margin-bottom:8px;"><strong>📂 历史参考：</strong><span style="color:#059669;">生成时将自动检索相似历史报告</span></div>';
 
-                html += '<div><strong>⚖️ 规章条款：</strong><span style="color:#d97706;">不自动检索</span></div>';
+                html += '<div><strong>⚖️ 规章条款：</strong><span style="color:#059669;">生成时将自动检索相关规章条款</span></div>';
 
                 html += '</div>';
 

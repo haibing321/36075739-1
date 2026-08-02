@@ -129,9 +129,9 @@
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ========== 移动端适配 ========== */
-/* 智能助手子模块切换栏：AI模式选择 + 资料中心按钮，窄屏换行避免溢出边界 */
+/* 智能助手子模块切换栏：模式 + 资料中心 等宽等高、不换行、按屏幕宽窄自适应收缩 */
 @media (max-width: 640px) {
-    .ds-sub-switch-bar { flex-wrap: wrap !important; }
-    .ds-sub-switch-bar > #ds-sub-select { min-width: 0 !important; }
-    .ds-sub-switch-bar > button { flex: 1 1 100% !important; margin-top: 4px; }
+    .ds-sub-switch-bar { flex-wrap: nowrap; }
+    .ds-sub-switch-bar > #ds-sub-select { flex: 1 1 0 !important; min-width: 0 !important; }
+    .ds-sub-switch-bar > button { flex: 1 1 0 !important; min-width: 0 !important; margin-top: 0 !important; }
 }

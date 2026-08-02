@@ -149,7 +149,8 @@
                 });
                 if (!arr.length) html += '<option value="">（未配置模型）</option>';
                 sel.innerHTML = html;
-                sel.onchange = function(){ setActiveProvider(sel.value); };
+                sel.onchange = function(){ setActiveProvider(sel.value); if (window.updateModeStatus) window.updateModeStatus(); };
+                if (window.updateModeStatus) window.updateModeStatus();
             }
 
             // ---- 初始化 ----
@@ -399,6 +400,14 @@
                 var roleMap = { default:'通用', dianwu:'⚡ 电务', gongwu:'🛤️ 工务', gongdian:'🔌 供电', keyun:'🚌 客运', chewu:'🚂 车务', jiwu:'🚄 机务', cheliang:'🚃 车辆', tongxin:'📡 通信', fangjian:'🏗️ 房建', huoyun:'📦 货运', tongyong:'🛡️ 综合', frontend:'💻 前端', riskanalyst:'🔍 风险分析' };
                 var roleLabel = document.getElementById('ds-current-role-label');
                 if (roleLabel) roleLabel.textContent = roleMap[role] || '通用';
+                // 当前模型名（角色/模型已改为输入条圆形图标按钮，选中态在此显示）
+                var modelSel = document.getElementById('ds-model-select');
+                var modelLabel = document.getElementById('ds-current-model-label');
+                if (modelLabel && modelSel) {
+                    var mi = modelSel.selectedIndex;
+                    var mName = (mi >= 0 && modelSel.options[mi]) ? modelSel.options[mi].text : '';
+                    modelLabel.textContent = mName || '未配置模型';
+                }
             }
             // 暴露给全局，使 index.html initPage 的首屏角色/模式状态刷新生效（此前因未挂 window 而成为死调用）
             window.updateModeStatus = updateModeStatus;

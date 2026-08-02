@@ -177,6 +177,65 @@
 }
 .ds-input-spacer { flex: 1; }
 
+/* —— 输入条左侧工具组：角色 / 模型 / 关联数据（圆形图标按钮，参考附件/发送风格） —— */
+.ds-input-tools-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+/* 圆形图标容器：透明 <select> 叠加 SVG，点击仍弹出原生下拉 */
+.ds-ico-wrap {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.15s;
+}
+.ds-ico {
+    position: absolute;
+    width: 18px; height: 18px;
+    pointer-events: none;
+    color: #7a869a;
+    transition: color 0.15s;
+}
+.ds-ico-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 34px; height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: transparent;
+    font-size: 0;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+}
+.ds-ico-wrap:hover { background: #eef1f6; }
+.ds-ico-wrap:hover .ds-ico { color: #4d6bfe; }
+/* 关联数据按钮（独立圆形图标） */
+.ds-ico-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px; height: 34px;
+    border: none;
+    background: transparent;
+    color: #7a869a;
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.ds-ico-btn:hover { background: #eef1f6; color: #4d6bfe; }
+.ds-ico-btn:active { transform: scale(0.94); }
+
 /* —— 附件按钮（DeepSeek：回形针线条图标，无底色，hover 浅灰圆） —— */
 .ds-attach-btn {
     display: inline-flex;
@@ -219,7 +278,62 @@
 .ds-send-circle.stopping,
 .ds-send-circle.stopping:hover { background: #37404f; }
 
-/* 附件弹出菜单（锚定在附件按钮上方） */
+/* —— 智能助手子模块切换条：模式 + 资料中心 等宽等高、不换行、自适应 —— */
+.ds-sub-switch-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: nowrap;
+}
+.ds-switch-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.ds-switch-select,
+.ds-switch-material {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 42px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 2px solid #3b82f6;
+    border-radius: var(--radius-md, 12px);
+    background: #fff;
+    color: var(--text, #1e293b);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.ds-switch-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 30px;
+}
+.ds-switch-material { color: #3b82f6; padding-right: 30px; }
+.ds-switch-select:hover,
+.ds-switch-material:hover { border-color: #2563eb; }
+.ds-switch-material:active { background: #eff6ff; }
+@media (max-width: 480px) {
+    .ds-switch-label { font-size: 0.82rem; }
+    .ds-switch-select,
+    .ds-switch-material { height: 38px; font-size: 0.82rem; padding: 0 8px; }
+    .ds-switch-select { padding-right: 26px; background-position: right 8px center; }
+    .ds-switch-material { padding-right: 26px; }
+}
 .ds-attach-menu-pop {
     display: none;
     position: absolute;
@@ -492,3 +606,24 @@
 [data-theme="dark"] .ds-sidebar-foot { border-top-color: #232c3d; }
 [data-theme="dark"] .ds-sidebar-foot-btn { color: #7a869a; }
 [data-theme="dark"] .ds-sidebar-foot-btn:hover { background: #3a1620; color: #fca5a5; }
+
+/* 暗黑模式：输入条圆形工具按钮 + 子模块切换条 */
+[data-theme="dark"] .ds-ico { color: #8b95a5; }
+[data-theme="dark"] .ds-ico-btn { color: #8b95a5; }
+[data-theme="dark"] .ds-ico-wrap:hover { background: #1c2534; }
+[data-theme="dark"] .ds-ico-wrap:hover .ds-ico { color: #93c5fd; }
+[data-theme="dark"] .ds-ico-btn:hover { background: #1c2534; color: #93c5fd; }
+[data-theme="dark"] .ds-switch-label { color: #94a3b8; }
+[data-theme="dark"] .ds-switch-select,
+[data-theme="dark"] .ds-switch-material {
+    height: 42px;
+    background-color: #0f172a;
+    color: #e2e8f0;
+    border-color: #3b82f6;
+}
+[data-theme="dark"] .ds-switch-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2393c5fd' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+[data-theme="dark"] .ds-switch-material { color: #93c5fd; }
+[data-theme="dark"] .ds-switch-select:hover,
+[data-theme="dark"] .ds-switch-material:hover { border-color: #60a5fa; }

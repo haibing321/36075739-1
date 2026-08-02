@@ -57,12 +57,12 @@ body {
 }
 
 /* 选中文字样式 */
-::selection { background: rgba(30, 58, 95, 0.2); }
+::selection { background: rgba(77, 107, 254, 0.18); }
 
 /* ---- 滚动条美化增强 ---- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(26,54,93,0.15); border-radius: 3px; transition: background 0.2s; }
-::-webkit-scrollbar-thumb:hover { background: rgba(26,54,93,0.3); }
+::-webkit-scrollbar-thumb { background: rgba(77, 107, 254, 0.2); border-radius: 3px; transition: background 0.2s; }
+::-webkit-scrollbar-thumb:hover { background: rgba(77, 107, 254, 0.4); }
 /* Firefox 滚动条 */
-* { scrollbar-width: thin; scrollbar-color: rgba(26,54,93,0.15) transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(77, 107, 254, 0.2) transparent; }

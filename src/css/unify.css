@@ -238,6 +238,82 @@ textarea:focus {
     .nav-toggle span { background: var(--ds-gray-600); }
 }
 
+/* ---------- 9. 模块专属图框 DeepSeek 化（去渐变 / 去位移 / 统一边框圆角） ---------- */
+
+/* 搜索结果卡：保留语义左边框（A类/红线等有意义），去除渐变底与悬浮位移 */
+.result-card {
+    background: #fff;
+    border: 1px solid var(--ds-gray-200);
+    border-left: 4px solid var(--ds-gray-300);
+    border-radius: var(--ds-radius-lg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.result-card:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); transform: none; }
+.result-card.level-a { border-left-color: var(--accent); background: #fff; }
+.result-card.level-b { border-left-color: var(--warning); background: #fff; }
+.result-card.level-c { border-left-color: var(--info); background: #fff; }
+.result-card.level-hongxian { border-left-color: #742a2a; background: #fff; }
+.result-card.level-kongbai { border-left-color: #718096; background: #fff; }
+
+/* 语义标签：渐变 → 纯色药丸（白字，清晰可读，符合安全分级语义） */
+.tag { border-radius: var(--ds-radius); }
+.tag-xingzhi { box-shadow: none; }
+.tag-xz-a,
+.tag-xz-b,
+.tag-xz-c,
+.tag-xz-hongxian,
+.tag-xz-kongbai { color: #fff; }
+.tag-xz-a { background: var(--accent); }
+.tag-xz-b { background: var(--warning); }
+.tag-xz-c { background: var(--info); }
+.tag-xz-hongxian { background: #742a2a; }
+.tag-xz-kongbai { background: #718096; }
+
+/* 匹配度徽章：紫渐变 → 品牌蓝纯色 */
+.match-badge { background: var(--ds-blue); }
+
+/* 天气 / 返回 / 专业标签按钮：渐变 → 纯色 */
+.phone-weather-btn { background: var(--ds-blue); }
+.wr-back-btn {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #065f46;
+    border-radius: var(--ds-radius);
+}
+.wr-back-btn:hover { background: #dcfce7; border-color: #6ee7b7; transform: none; }
+.rule-trade {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+.catalog-trade {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+/* 统计条：渐变 → 浅灰 */
+.stats-bar { background: var(--ds-gray-100); border: 1px solid var(--ds-gray-200); }
+
+/* 目录项：对齐浅灰底 + 细边 */
+.catalog-item { background: #fff; border: 1px solid var(--ds-gray-200); }
+.catalog-item:hover { background: var(--ds-gray-50); border-color: var(--ds-gray-300); box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06); }
+
+/* 日志模块卡片/分区：统一 14px 圆角 + 1px 边框 + 微阴影（DeepSeek 干净图框） */
+.diary-card,
+.diary-section,
+.diary-calendar,
+.diary-today-section,
+.diary-date-detail,
+.diary-unified-card,
+.diary-view-panel,
+.diary-unified-section {
+    background: #fff;
+    border: 1px solid var(--ds-gray-200);
+    border-radius: var(--ds-radius-lg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
 /* ============================================================
    暗黑模式覆盖（与智能对话暗黑风格一致）
    ============================================================ */
@@ -304,3 +380,34 @@ textarea:focus {
 [data-theme="dark"] .nav-btn { color: #94a3b8 !important; border-bottom-color: #1e293b !important; }
 [data-theme="dark"] .nav-btn:hover,
 [data-theme="dark"] .nav-btn.active { background: #1e293b !important; color: #93c5fd !important; }
+
+/* 模块专属图框 · 暗黑覆盖 */
+[data-theme="dark"] .result-card { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .result-card:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important; }
+[data-theme="dark"] .result-card.level-a { border-left-color: #ef4444 !important; }
+[data-theme="dark"] .result-card.level-b { border-left-color: #b8763a !important; }
+[data-theme="dark"] .result-card.level-c { border-left-color: #4a7fb5 !important; }
+[data-theme="dark"] .result-card.level-hongxian { border-left-color: #a05252 !important; }
+[data-theme="dark"] .result-card.level-kongbai { border-left-color: #718096 !important; }
+[data-theme="dark"] .tag-xz-a { background: #ef4444 !important; }
+[data-theme="dark"] .tag-xz-b { background: #b8763a !important; }
+[data-theme="dark"] .tag-xz-c { background: #4a7fb5 !important; }
+[data-theme="dark"] .tag-xz-hongxian { background: #7f3b3b !important; }
+[data-theme="dark"] .tag-xz-kongbai { background: #5b6675 !important; }
+[data-theme="dark"] .match-badge { background: var(--ds-blue) !important; }
+[data-theme="dark"] .phone-weather-btn { background: var(--ds-blue) !important; }
+[data-theme="dark"] .wr-back-btn { background: #14321f !important; border-color: #28543a !important; color: #86efac !important; }
+[data-theme="dark"] .wr-back-btn:hover { background: #1c4329 !important; transform: none !important; }
+[data-theme="dark"] .rule-trade { background: #15233f !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
+[data-theme="dark"] .catalog-trade { background: #15233f !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
+[data-theme="dark"] .stats-bar { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .catalog-item { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .catalog-item:hover { background: #263243 !important; }
+[data-theme="dark"] .diary-card,
+[data-theme="dark"] .diary-section,
+[data-theme="dark"] .diary-calendar,
+[data-theme="dark"] .diary-today-section,
+[data-theme="dark"] .diary-date-detail,
+[data-theme="dark"] .diary-unified-card,
+[data-theme="dark"] .diary-view-panel,
+[data-theme="dark"] .diary-unified-section { background: #1e293b !important; border-color: #334155 !important; }

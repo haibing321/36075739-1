@@ -2442,8 +2442,24 @@
             }
             function _exportEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+            // 一次性迁移：旧版报告缺 date 字段，wrFmtDate 会回退到 Date.now()，
+            // 导致每次查看都显示“当前日期”。这里为缺失 date 的报告补齐一个稳定日期
+            // （优先 createdAt/timestamp，否则取本次迁移时刻）并写回，之后即可稳定显示。
+            let _wrDateMigrated = false;
+            async function wrMigrateReportDates(reports) {
+                if (_wrDateMigrated) return;
+                _wrDateMigrated = true;
+                const need = (reports || []).filter(r => r && r.date == null);
+                if (!need.length) return;
+                for (const r of need) {
+                    r.date = r.createdAt || r.timestamp || Date.now();
+                    try { await wrDbPut(WR_RPT_STORE, r); } catch (e) { console.warn('[wr] 迁移报告日期失败', e); }
+                }
+            }
+
             window.wrRenderHistory = async function() {
                 const reports = await wrDbGetAll(WR_RPT_STORE);
+                await wrMigrateReportDates(reports);
                 const listEl  = document.getElementById('wr-history-list');
                 const countEl = document.getElementById('wr-hist-count');
                 if (!listEl) return;

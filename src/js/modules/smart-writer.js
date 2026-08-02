@@ -1751,11 +1751,11 @@
                     uploadedFiles.forEach(f => { enhancedQuery += `\n--- 文件：${f.name} ---\n${f.content}\n`; });
                 }
 
-                if (!isRegenerate) {
-                    wrAppendChatBubble('user', q);
-                    _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
-                    document.getElementById('wr-query-input').value = '';
-                }
+                    if (!isRegenerate && !window._wrSkipLocalSearch) {
+                        wrAppendChatBubble('user', q);
+                        _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
+                        document.getElementById('wr-query-input').value = '';
+                    }
                 wrUpdateConvBtn();
 
                 const aiBubble = wrAppendChatBubble('assistant', '', true);
@@ -1774,7 +1774,10 @@
                     // 已手动选择资料库资料 → 用手选资料，仍自动检索台账/规则/相似报告（保证数字真实、不编造）
                     const manualMatIds = (window._wrSelectedMaterialIds || []).filter(Boolean);
                     let materials;
-                    if (manualMatIds.length === 0) {
+                    if (window._wrSkipLocalSearch) {
+                        // 修改模式：原报告已含全部内容，跳过本地检索，避免无关资料噪声
+                        materials = { parsed: wrParseQuery(q) || { dateLabel: '' }, template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] };
+                    } else if (manualMatIds.length === 0) {
                         try { materials = await wrRetrieveMaterials(q); }
                         catch (e) { console.warn('自动检索失败，回退空资料', e); materials = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
                     } else {
@@ -1893,9 +1896,10 @@
                     window._wrCurrentReportParsed  = parsed;
 
                     // 保存到历史
+                    const isModify = !!window._wrSkipLocalSearch;
                     const savedId = await wrSaveReport({
-                        title: q.slice(0, 30) + (q.length > 30 ? '…' : ''),
-                        category: parsed.reportType,
+                        title: isModify ? ((window._wrModifyBaseTitle || '报告') + '（修改版）') : (q.slice(0, 30) + (q.length > 30 ? '…' : '')),
+                        category: isModify ? (window._wrModifyCategory || 'other') : parsed.reportType,
                         query: enhancedQuery,
                         content: fullText,
                         materialCount: { issues: 0, rules: 0, reports: 0 },
@@ -2569,11 +2573,15 @@
                     var input = document.getElementById('wr-query-input');
                     var oldVal = input ? input.value : '';
                     var fullPrompt = '【原报告】\n' + (r.content || '') + '\n\n【修改要求】\n' + instruction + '\n\n请基于原报告内容，按修改要求进行调整。保持原有结构和大部分文字，仅修改要求的部分。';
+                    window._wrModifyBaseTitle = r.title || '未命名报告';
+                    window._wrModifyCategory = r.category || 'other';
                     if (input) input.value = fullPrompt;
                     window._wrSkipLocalSearch = true; // 跳过本地资料检索
                     await wrGenerate();
                     if (input) input.value = oldVal;
                     window._wrSkipLocalSearch = false;
+                    window._wrModifyBaseTitle = null;
+                    window._wrModifyCategory = null;
                 };
             };
 

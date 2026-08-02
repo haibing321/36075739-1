@@ -184,40 +184,50 @@
     gap: 4px;
     flex-shrink: 0;
 }
-/* 圆形图标容器：透明 <select> 叠加 SVG，点击仍弹出原生下拉 */
-.ds-ico-wrap {
-    position: relative;
-    width: 34px;
-    height: 34px;
+/* —— 角色 / 模型 选择药丸（可读文本 + 图标，参考 DeepSeek 模型选择器） —— */
+.ds-chip {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: background 0.15s;
+    gap: 5px;
+    height: 34px;
+    padding: 0 9px 0 8px;
+    background: #f3f5f8;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: #475569;
+    cursor: pointer;
+    flex-shrink: 0;
+    max-width: 172px;
+    transition: background 0.15s, color 0.15s;
 }
-.ds-ico {
-    position: absolute;
-    width: 18px; height: 18px;
+.ds-chip:hover { background: #e9edf2; }
+.ds-chip-ico {
+    width: 16px; height: 16px;
+    color: #8a94a6;
+    flex-shrink: 0;
     pointer-events: none;
-    color: #7a869a;
-    transition: color 0.15s;
 }
-.ds-ico-select {
+.ds-chip-select {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    width: 34px; height: 34px;
     border: none;
-    border-radius: 50%;
     background: transparent;
-    color: transparent;
-    font-size: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%237a869a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right center;
+    font-size: 0.84rem;
+    font-weight: 500;
+    color: #475569;
+    padding: 0 16px 0 0;
+    max-width: 138px;
     cursor: pointer;
-    padding: 0;
-    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.ds-ico-wrap:hover { background: #eef1f6; }
-.ds-ico-wrap:hover .ds-ico { color: #4d6bfe; }
+.ds-chip-select:focus { outline: none; }
+.ds-chip-select option { color: #1e293b; font-size: 0.9rem; }
 /* 关联数据按钮（独立圆形图标） */
 .ds-ico-btn {
     display: inline-flex;
@@ -280,11 +290,11 @@
 
 /* —— 智能助手子模块切换条：模式 + 资料中心 等宽等高、不换行、自适应 —— */
 .ds-sub-switch-bar {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr 1fr;
     align-items: center;
     gap: 8px;
     margin-bottom: 12px;
-    flex-wrap: nowrap;
 }
 .ds-switch-label {
     font-size: 0.9rem;
@@ -293,19 +303,20 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
+.ds-switch-cell {
+    min-width: 0;
+}
 .ds-switch-select,
 .ds-switch-material {
-    flex: 1 1 0;
-    min-width: 0;
-    height: 42px;
     box-sizing: border-box;
+    height: 38px;
     padding: 0 12px;
-    border: 2px solid #3b82f6;
-    border-radius: var(--radius-md, 12px);
-    background: #fff;
-    color: var(--text, #1e293b);
-    font-size: 0.9rem;
-    font-weight: 600;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f3f5f8;
+    color: #475569;
+    font-size: 0.88rem;
+    font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
@@ -313,24 +324,28 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: background 0.15s;
 }
 .ds-switch-select {
+    width: 100%;
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%237a869a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
     padding-right: 30px;
 }
-.ds-switch-material { color: #3b82f6; padding-right: 30px; }
+.ds-switch-material {
+    min-width: 0;
+    padding-right: 12px;
+}
 .ds-switch-select:hover,
-.ds-switch-material:hover { border-color: #2563eb; }
-.ds-switch-material:active { background: #eff6ff; }
+.ds-switch-material:hover { background: #e9edf2; }
 @media (max-width: 480px) {
     .ds-switch-label { font-size: 0.82rem; }
     .ds-switch-select,
-    .ds-switch-material { height: 38px; font-size: 0.82rem; padding: 0 8px; }
+    .ds-switch-material { height: 34px; font-size: 0.82rem; padding: 0 8px; }
     .ds-switch-select { padding-right: 26px; background-position: right 8px center; }
     .ds-switch-material { padding-right: 26px; }
 }
@@ -607,23 +622,28 @@
 [data-theme="dark"] .ds-sidebar-foot-btn { color: #7a869a; }
 [data-theme="dark"] .ds-sidebar-foot-btn:hover { background: #3a1620; color: #fca5a5; }
 
-/* 暗黑模式：输入条圆形工具按钮 + 子模块切换条 */
-[data-theme="dark"] .ds-ico { color: #8b95a5; }
+/* 暗黑模式：输入条工具（角色/模型药丸 + 关联数据图标）+ 子模块切换条 */
+[data-theme="dark"] .ds-chip { background: #1c2534; color: #cbd5e1; border-color: #2a3548; }
+[data-theme="dark"] .ds-chip:hover { background: #243044; }
+[data-theme="dark"] .ds-chip-ico { color: #8b95a5; }
+[data-theme="dark"] .ds-chip-select {
+    color: #cbd5e1;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2393c5fd' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+[data-theme="dark"] .ds-chip-select option { color: #e2e8f0; background: #0f172a; }
 [data-theme="dark"] .ds-ico-btn { color: #8b95a5; }
-[data-theme="dark"] .ds-ico-wrap:hover { background: #1c2534; }
-[data-theme="dark"] .ds-ico-wrap:hover .ds-ico { color: #93c5fd; }
 [data-theme="dark"] .ds-ico-btn:hover { background: #1c2534; color: #93c5fd; }
 [data-theme="dark"] .ds-switch-label { color: #94a3b8; }
 [data-theme="dark"] .ds-switch-select,
 [data-theme="dark"] .ds-switch-material {
-    height: 42px;
-    background-color: #0f172a;
-    color: #e2e8f0;
-    border-color: #3b82f6;
+    height: 38px;
+    background-color: #1c2534;
+    color: #cbd5e1;
+    border-color: #2a3548;
 }
 [data-theme="dark"] .ds-switch-select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2393c5fd' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2393c5fd' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
-[data-theme="dark"] .ds-switch-material { color: #93c5fd; }
+[data-theme="dark"] .ds-switch-material { color: #cbd5e1; }
 [data-theme="dark"] .ds-switch-select:hover,
-[data-theme="dark"] .ds-switch-material:hover { border-color: #60a5fa; }
+[data-theme="dark"] .ds-switch-material:hover { background-color: #243044; }

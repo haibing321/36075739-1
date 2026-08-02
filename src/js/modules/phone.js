@@ -283,6 +283,21 @@
             // 暴露数据获取接口（供联动数据使用）
             window.getPhoneData = function() { return phoneData; };
 
+            // 模块对象暴露（供智能体/统一增强模块调用，避免外部直接依赖内部变量 phoneData）
+            if (!window.PhoneModule) {
+                window.PhoneModule = {
+                    getData: function() { return (typeof window.getPhoneData === 'function') ? window.getPhoneData() : []; },
+                    search: function(kw) {
+                        kw = String(kw || '').trim().toLowerCase();
+                        var all = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : [];
+                        if (!kw) return all;
+                        return all.filter(function(p) {
+                            return ((p.站名 || '') + ' ' + (p.单位 || '') + ' ' + (p.线名 || '') + ' ' + (p.路电 || '') + ' ' + (p.市电 || '')).toLowerCase().indexOf(kw) !== -1;
+                        });
+                    }
+                };
+            }
+
             // ── 纯坐标反查（供智能体 Agent 调用，不操作 DOM）──
             // 复用与新版 weather 查询一致的省份两级过滤逻辑
             window.phoneGeocode = async function(stationName, lineName) {

@@ -1303,6 +1303,21 @@
             // 暴露 rules 给其他模块调用（如检查手册导入）
             window.getRulesData = function() { return rules; };
 
+            // 模块对象暴露（供智能体/统一增强模块调用，避免外部直接依赖内部变量 rules）
+            if (!window.RuleModule) {
+                window.RuleModule = {
+                    getData: function() { return (typeof window.getRulesData === 'function') ? window.getRulesData() : []; },
+                    search: function(kw) {
+                        kw = String(kw || '').trim().toLowerCase();
+                        var all = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
+                        if (!kw) return all;
+                        return all.filter(function(r) {
+                            return ((r.title || '') + ' ' + (r.trade || '') + ' ' + (r.content || '')).toLowerCase().indexOf(kw) !== -1;
+                        });
+                    }
+                };
+            }
+
             // 匹配模式固定为AND（全部包含）
             function getMatchMode() {
                 return 'and';

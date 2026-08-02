@@ -1371,3 +1371,113 @@ img.loaded { opacity: 1; }
 .ds-bubble-assistant th {
   background: #e2e8f0;
 }
+
+/* ============================================================
+   统一增强卡片美化（unified-enhancements.js 渲染产物）
+   ============================================================ */
+
+/* 规章引用：从下划线文字升级为精致可点卡片 */
+.rule-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #1d4ed8;
+  cursor: pointer;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
+  transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
+  font-size: 0.92em;
+}
+.rule-ref:hover {
+  background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+  transform: translateY(-1px);
+}
+
+/* 电话号码卡片：圆润胶囊 + 拨号按钮 */
+.phone-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+  padding: 3px 10px;
+  border-radius: 14px;
+  border: 1px solid #86efac;
+  box-shadow: 0 1px 2px rgba(34, 197, 94, 0.15);
+  white-space: nowrap;
+  margin: 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+.btn-call {
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 3px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 6px;
+  box-shadow: 0 1px 3px rgba(22, 163, 74, 0.3);
+  transition: filter .15s ease, transform .1s ease;
+}
+.btn-call:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+.btn-call:active {
+  transform: translateY(0);
+}
+
+/* 通用卡片容器：供统一增强模块后续包裹 AI 产出/结构化结果使用 */
+.ue-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 10px 0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  transition: box-shadow .2s ease;
+}
+.ue-card:hover {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
+}
+.ue-card__title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  color: var(--text, #0f172a);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 助手气泡内表格升级为更通透的卡片表格 */
+.ds-bubble-assistant table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 10px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+.ds-bubble-assistant th,
+.ds-bubble-assistant td {
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  padding: 7px 11px;
+  text-align: left;
+}
+.ds-bubble-assistant th {
+  background: #f1f5f9;
+  font-weight: 600;
+  color: #334155;
+}
+.ds-bubble-assistant tr:last-child td { border-bottom: none; }
+.ds-bubble-assistant td:last-child,
+.ds-bubble-assistant th:last-child { border-right: none; }

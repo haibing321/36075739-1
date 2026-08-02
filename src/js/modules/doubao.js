@@ -1349,6 +1349,9 @@
                 }
             };
 
+            // 暴露统一的「发送消息到 DeepSeek」入口（供统一增强模块/外部智能体调用）
+            window.sendToDeepSeek = window._dsRunStream;
+
             // 重新生成：移除末尾助手消息，复用最后一条用户问题重发
             window.dsRegenerate = function() {
                 if (dsStreaming) return;

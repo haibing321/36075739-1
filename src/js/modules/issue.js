@@ -874,4 +874,19 @@
 
             // 暴露 issue 数据供其他模块调用（如智能助手联动）
             window.getIssueData = function() { return dataCache; };
+
+            // 模块对象暴露（供智能体/统一增强模块调用，避免外部直接依赖内部变量 dataCache）
+            if (!window.IssueModule) {
+                window.IssueModule = {
+                    getData: function() { return (typeof window.getIssueData === 'function') ? window.getIssueData() : []; },
+                    search: function(kw) {
+                        kw = String(kw || '').trim().toLowerCase();
+                        var all = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];
+                        if (!kw) return all;
+                        return all.filter(function(i) {
+                            return ((i.content || '') + ' ' + (i.category || '') + ' ' + (i['性质'] || '') + ' ' + (i.unit || '')).toLowerCase().indexOf(kw) !== -1;
+                        });
+                    }
+                };
+            }
         })();

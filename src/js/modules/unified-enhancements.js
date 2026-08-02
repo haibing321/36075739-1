@@ -42,42 +42,55 @@
   // ---------- 2. 智能上下文注入（自动感知当前 Tab，使用真实 API） ----------
   function getTabContext() {
     if (!window.ENABLE_UNIFIED) return '';
-    const active = document.querySelector('.panel.active');
+    let active = null;
+    try { active = document.querySelector('.panel.active'); } catch (e) { active = null; }
     if (!active) return '';
     const id = active.id;
-    let summary = '';
-    try {
-      switch (id) {
-        case 'panel-issue': {
+    const parts = [];
+    // 每个模块独立 try-catch：单个模块未加载/抛错只跳过该模块，不拖垮整个上下文注入
+    function safePart(label, fn) {
+      try {
+        const s = fn();
+        if (s) parts.push(s);
+      } catch (e) {
+        log('tab context [' + label + '] 构建失败，已跳过', (e && e.message) || e);
+      }
+    }
+    switch (id) {
+      case 'panel-issue':
+        safePart('issue', () => {
           const data = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];
           const recent = data.slice(-3).map(i => `${i.datetime || ''} ${i.category || ''} ${(i.content || '').slice(0, 40)}`).join('；');
-          summary = `当前在【检查信息】模块，共 ${data.length} 条记录，最近：${recent}`;
-          break;
-        }
-        case 'panel-rule': {
+          return `当前在【检查信息】模块，共 ${data.length} 条记录，最近：${recent}`;
+        });
+        break;
+      case 'panel-rule':
+        safePart('rule', () => {
           const data = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
           const trades = [...new Set(data.map(r => r.trade).filter(Boolean))];
-          summary = `当前在【规章制度】模块，共 ${data.length} 条，专业：${trades.join('、')}`;
-          break;
-        }
-        case 'panel-handbook': {
+          return `当前在【规章制度】模块，共 ${data.length} 条，专业：${trades.join('、')}`;
+        });
+        break;
+      case 'panel-handbook':
+        safePart('handbook', () => {
           const total = (document.getElementById('handbook-total') || {}).textContent || '0';
-          summary = `当前在【检查手册】模块，共 ${total} 条目`;
-          break;
-        }
-        case 'panel-diary': {
+          return `当前在【检查手册】模块，共 ${total} 条目`;
+        });
+        break;
+      case 'panel-diary':
+        safePart('diary', () => {
           const count = (document.getElementById('diary-count') || {}).textContent || '0';
-          summary = `当前在【工作日志】模块，已有 ${count} 条日志`;
-          break;
-        }
-        case 'panel-phone': {
+          return `当前在【工作日志】模块，已有 ${count} 条日志`;
+        });
+        break;
+      case 'panel-phone':
+        safePart('phone', () => {
           const count = (document.getElementById('phone-recordCount') || {}).textContent || '0';
-          summary = `当前在【应急电话】模块，共 ${count} 条通讯录`;
-          break;
-        }
-        default: summary = '';
-      }
-    } catch (e) { summary = ''; }
+          return `当前在【应急电话】模块，共 ${count} 条通讯录`;
+        });
+        break;
+    }
+    const summary = parts.join('｜');
     return summary ? `【当前模块上下文】${summary}` : '';
   }
   function refreshTabContext() {

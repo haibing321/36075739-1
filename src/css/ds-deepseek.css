@@ -171,42 +171,68 @@
 .ds-input-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     margin-top: 4px;
+    position: relative;
 }
 .ds-input-spacer { flex: 1; }
+
+/* —— 附件按钮（DeepSeek：回形针线条图标，无底色，hover 浅灰圆） —— */
+.ds-attach-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: transparent;
+    color: #7a869a;
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.ds-attach-btn:hover { background: #eef1f6; color: #4d6bfe; }
+.ds-attach-btn:active { transform: scale(0.94); }
+
+/* —— 发送按钮（DeepSeek：圆形，空输入置灰、有内容变蓝） —— */
 .ds-send-circle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     border: none;
     border-radius: 50%;
-    background: var(--primary, #2563eb);
+    background: #d5dbe5;
     color: #fff;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background 0.15s, transform 0.1s;
+    transition: background 0.16s, transform 0.1s;
     padding: 0;
 }
-.ds-send-circle:hover { background: var(--primary-light, #1d4ed8); }
-.ds-send-circle:active { transform: scale(0.94); }
+.ds-send-circle.on { background: #4d6bfe; }
+.ds-send-circle.on:hover { background: #3f5be0; }
+.ds-send-circle:active { transform: scale(0.92); }
+/* 生成中：变为「停止」深色钮（DeepSeek 同款） */
+.ds-send-circle.stopping,
+.ds-send-circle.stopping:hover { background: #37404f; }
 
-/* 附件弹出菜单 */
+/* 附件弹出菜单（锚定在附件按钮上方） */
 .ds-attach-menu-pop {
     display: none;
     position: absolute;
-    right: 44px;
-    bottom: 0;
+    right: 40px;
+    bottom: 40px;
     background: #fff;
-    border-radius: 10px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.14);
+    border: 1px solid #eef1f6;
     padding: 6px;
     z-index: 100;
     white-space: nowrap;
-    min-width: 130px;
+    min-width: 134px;
 }
 .ds-attach-menu-pop > div {
     padding: 8px 14px;
@@ -434,7 +460,15 @@
 [data-theme="dark"] .ds-input-shell { background: #0f172a; border-color: #283549; }
 [data-theme="dark"] .ds-input-textarea { color: #e2e8f0; }
 [data-theme="dark"] .ds-input-textarea::placeholder { color: #64748b; }
-[data-theme="dark"] .ds-send-circle { background: #3b82f6; }
+[data-theme="dark"] .ds-attach-btn { color: #7a869a; }
+[data-theme="dark"] .ds-attach-btn:hover { background: #1c2534; color: #93c5fd; }
+[data-theme="dark"] .ds-send-circle { background: #303a4c; color: #8b95a5; }
+[data-theme="dark"] .ds-send-circle.on { background: #4d6bfe; color: #fff; }
+[data-theme="dark"] .ds-send-circle.on:hover { background: #5c78ff; }
+[data-theme="dark"] .ds-send-circle.stopping,
+[data-theme="dark"] .ds-send-circle.stopping:hover { background: #4a5566; color: #fff; }
+[data-theme="dark"] .ds-attach-menu-pop { background: #1c2534; border-color: #2a3444; color: #c7d0dd; }
+[data-theme="dark"] .ds-attach-menu-pop > div:hover { background: #263243; }
 [data-theme="dark"] .ds-icon-btn.on { background: #1b2740; color: #93c5fd; }
 [data-theme="dark"] .ds-welcome-title { color: #e2e8f0; }
 [data-theme="dark"] .ds-welcome-sub { color: #8b95a5; }

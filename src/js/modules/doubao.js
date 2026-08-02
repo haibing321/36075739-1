@@ -1224,13 +1224,13 @@
                 dsScrollBottom();
 
                 dsStreaming = true;
+                // 生成中：发送按钮变「停止」（DeepSeek 同款：深色圆钮 + 方块停止图标）
                 var sendBtn = document.getElementById('ds-send-btn');
                 sendBtn.disabled = false;
-                sendBtn.style.opacity = '1';
-                sendBtn.style.background = '#e53e3e';
+                sendBtn.classList.add('on', 'stopping');
                 sendBtn.title = '点击停止生成';
                 sendBtn.onclick = function() { if (window._dsAbortController) window._dsAbortController.abort(); };
-                sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+                sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>';
 
                 try {
                     window._dsAbortController = new AbortController();
@@ -1363,11 +1363,14 @@
                     var sendBtn2 = document.getElementById('ds-send-btn');
                     if (sendBtn2) {
                         sendBtn2.disabled = false;
-                        sendBtn2.style.opacity = '1';
+                        sendBtn2.classList.remove('stopping');
+                        sendBtn2.style.opacity = '';
                         sendBtn2.style.background = '';
-                        sendBtn2.title = '发送（Ctrl+Enter）';
+                        sendBtn2.title = '发送';
                         sendBtn2.onclick = function() { dsSendMsg(); };
-                        sendBtn2.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
+                        sendBtn2.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>';
+                        // 输入已被清空 → 恢复置灰态（DeepSeek 行为）
+                        if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
                     }
                 }
             };
@@ -2543,47 +2546,26 @@
         window.speechSynthesis.speak(utter);
       };
 
-      // ========== 语音输入（webkitSpeechRecognition，不支持则隐藏按钮并提示）==========
-      (function initVoiceInput() {
-        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        var btn = document.getElementById('ds-voice-btn');
-        if (!SR || !btn) return; // 浏览器不支持语音识别（如部分国产浏览器）→ 按钮保持隐藏
-        btn.style.display = 'flex';
-        var recog = null;
-        var recognizing = false;
-        window.dsToggleVoiceInput = function() {
-          if (!recog) {
-            recog = new SR();
-            recog.lang = 'zh-CN';
-            recog.continuous = false;
-            recog.interimResults = true;
-            recog.onresult = function(ev) {
-              var txt = '';
-              for (var i = ev.resultIndex; i < ev.results.length; i++) {
-                if (ev.results[i].isFinal || ev.results[i].length) txt += ev.results[i][0].transcript;
-              }
-              var input = document.getElementById('ds-user-input');
-              if (input) { input.value = txt; input.dispatchEvent(new Event('input')); autoResize(input); }
-            };
-            recog.onerror = function() { if (btn) btn.textContent = '🎤'; recognizing = false; };
-            recog.onend = function() { if (btn) btn.textContent = '🎤'; recognizing = false; };
-          }
-          if (recognizing) { try { recog.stop(); } catch (_) {} recognizing = false; if (btn) btn.textContent = '🎤'; }
-          else {
-            try { recog.start(); recognizing = true; if (btn) btn.textContent = '⏹'; }
-            catch (e) { /* 已在识别中，忽略 */ }
-          }
-        };
-      })();
-
-      // ========== 输入框自适应高度（DeepSeek 圆角框：textarea 随内容增长）==========
+      // ========== 输入框自适应高度 + 发送按钮启用态（DeepSeek：空输入时发送按钮置灰）==========
       (function initInputHeightSync() {
         var ta = document.getElementById('ds-user-input');
         if (!ta) return;
+        var sendBtn = document.getElementById('ds-send-btn');
+        function syncSendState() {
+          if (!sendBtn) return;
+          // 有文字 或 有附件 → 激活；否则置灰（DeepSeek 行为）
+          var hasText = !!(ta.value && ta.value.trim());
+          var hasAttach = !!((window._dsAttachments || []).filter(Boolean).length);
+          if (hasText || hasAttach) sendBtn.classList.add('on');
+          else sendBtn.classList.remove('on');
+        }
         function sync() {
           if (typeof autoResize === 'function') autoResize(ta);
+          syncSendState();
         }
         window.dsSyncInputHeight = sync;
+        window.dsSyncSendState = syncSendState;
+        ta.addEventListener('input', syncSendState);
         sync();
         // 面板从隐藏变为可见 / 窗口缩放时重新计算
         window.addEventListener('resize', sync);

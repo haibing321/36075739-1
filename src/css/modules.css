@@ -716,7 +716,8 @@
     .keyword-candidate-tag { font-size: 0.78rem !important; padding: 5px 8px !important; }
     #ds-chat-box { min-height: 180px !important; }
     #ds-user-input { font-size: 0.88rem !important; }
-    #ds-send-btn { width: 38px !important; height: 38px !important; padding: 0 !important; flex-shrink: 0; }
+    /* DeepSeek 风格：手机端附件/发送按钮同为 36px 圆钮 */
+    #ds-send-btn, .ds-attach-btn { width: 36px !important; height: 36px !important; padding: 0 !important; flex-shrink: 0; }
     /* 自动对规按钮行在手机上自适应 */
     #autoCheck-smartBtn { flex: 1 1 100% !important; min-width: 0 !important; }
     #autoCheck-importBtn, #autoCheck-exportBtn { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }

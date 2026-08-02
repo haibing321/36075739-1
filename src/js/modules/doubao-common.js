@@ -90,11 +90,14 @@
     window.dsToggleAttachMenu = function() {
         var menu = document.getElementById('ds-attach-menu');
         if (!menu) return;
-        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        // 用 computed style 判断：菜单默认隐藏由 CSS 提供（内联 style.display 初始为空串）
+        var shown = getComputedStyle(menu).display !== 'none';
+        menu.style.display = shown ? 'none' : 'block';
     };
     document.addEventListener('click', function(e) {
         var menu = document.getElementById('ds-attach-menu');
-        if (menu && menu.style.display === 'block' && !e.target.closest('#ds-attach-menu') && !e.target.closest('[onclick*="dsToggleAttachMenu"]')) {
+        if (!menu) return;
+        if (getComputedStyle(menu).display !== 'none' && !e.target.closest('#ds-attach-menu') && !e.target.closest('[onclick*="dsToggleAttachMenu"]')) {
             menu.style.display = 'none';
         }
     });
@@ -327,6 +330,8 @@
             box.appendChild(tag);
         });
         box.style.display = has ? 'flex' : 'none';
+        // 附件增删后同步发送按钮启用态（DeepSeek：仅有附件也可发送）
+        if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
     };
 
     window.dsReadPdfFile = function(file) {

@@ -151,6 +151,8 @@
                 sel.innerHTML = html;
                 sel.onchange = function(){ setActiveProvider(sel.value); if (window.updateModeStatus) window.updateModeStatus(); };
                 if (window.updateModeStatus) window.updateModeStatus();
+                // 通知下拉菜单重建（模型列表可能变化）
+                try { sel.dispatchEvent(new Event('ds-rebuild')); } catch(e){}
             }
 
             // ---- 初始化 ----
@@ -198,6 +200,8 @@
                 toggleDoubaoMode();
                 // 渲染 chat 工具栏模型选择下拉
                 renderChatModelSelect();
+                // 角色/模型圆形图标按钮下拉初始化（与附件/发送同款）
+                dsInitDropdowns();
             }
 
             // ---- 多对话管理 ----
@@ -411,6 +415,55 @@
             }
             // 暴露给全局，使 index.html initPage 的首屏角色/模式状态刷新生效（此前因未挂 window 而成为死调用）
             window.updateModeStatus = updateModeStatus;
+
+            // 角色/模型：圆形图标按钮 + 下拉菜单（与附件/发送同款风格）
+            function dsInitDropdowns() {
+                function setup(kind) {
+                    var selId = kind === 'role' ? 'expertRole' : 'ds-model-select';
+                    var btnId = kind === 'role' ? 'ds-role-btn' : 'ds-model-btn';
+                    var menuId = kind === 'role' ? 'ds-role-menu' : 'ds-model-menu';
+                    var sel = document.getElementById(selId);
+                    var btn = document.getElementById(btnId);
+                    var menu = document.getElementById(menuId);
+                    if (!sel || !btn || !menu) return;
+                    function build() {
+                        var opts = Array.prototype.slice.call(sel.options);
+                        menu.innerHTML = opts.map(function(o) {
+                            return '<div class="ds-dropdown-item' + (o.selected ? ' active' : '') + '" data-val="' + dsEsc(o.value) + '">' + dsEsc(o.text) + '</div>';
+                        }).join('');
+                    }
+                    build();
+                    sel.addEventListener('ds-rebuild', build);
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var willOpen = !menu.classList.contains('open');
+                        document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+                        menu.classList.toggle('open', willOpen);
+                    });
+                    menu.addEventListener('click', function(e) {
+                        var item = e.target.closest ? e.target.closest('.ds-dropdown-item') : null;
+                        if (!item) return;
+                        var val = item.getAttribute('data-val');
+                        if (sel.value !== val) {
+                            sel.value = val;
+                            var ev = document.createEvent('HTMLEvents');
+                            ev.initEvent('change', true, true);
+                            sel.dispatchEvent(ev);
+                        }
+                        Array.prototype.forEach.call(menu.children, function(c){ c.classList.toggle('active', c === item); });
+                        menu.classList.remove('open');
+                        if (typeof updateModeStatus === 'function') updateModeStatus();
+                    });
+                }
+                setup('role');
+                setup('model');
+                document.addEventListener('click', function(e){
+                    if (!e.target.closest || !e.target.closest('.ds-dropdown')) {
+                        document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
+                    }
+                });
+            }
+            window.dsInitDropdowns = dsInitDropdowns;
 
             // 历史侧边栏抽屉开关
             let _dsSidebarOpen = false;

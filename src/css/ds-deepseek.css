@@ -246,6 +246,38 @@
 .ds-ico-btn:hover { background: #eef1f6; color: #4d6bfe; }
 .ds-ico-btn:active { transform: scale(0.94); }
 
+/* —— 角色 / 模型：圆形图标按钮 + 下拉菜单（与附件/发送同款风格） —— */
+.ds-hidden-select {
+    display: none;
+}
+.ds-dropdown { position: relative; display: inline-flex; }
+.ds-dropdown-menu {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    min-width: 190px;
+    max-height: 264px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+    padding: 6px;
+    z-index: 60;
+}
+.ds-dropdown-menu.open { display: block; }
+.ds-dropdown-item {
+    padding: 8px 11px;
+    border-radius: 8px;
+    font-size: 0.84rem;
+    color: #334155;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ds-dropdown-item:hover { background: #f1f5f9; }
+.ds-dropdown-item.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+
 /* —— 附件按钮（DeepSeek：回形针线条图标，无底色，hover 浅灰圆） —— */
 .ds-attach-btn {
     display: inline-flex;
@@ -633,7 +665,18 @@
 [data-theme="dark"] .ds-chip-select option { color: #e2e8f0; background: #0f172a; }
 [data-theme="dark"] .ds-ico-btn { color: #8b95a5; }
 [data-theme="dark"] .ds-ico-btn:hover { background: #1c2534; color: #93c5fd; }
+[data-theme="dark"] .ds-dropdown-menu { background: #1c2534; border-color: #2a3444; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+[data-theme="dark"] .ds-dropdown-item { color: #cbd5e1; }
+[data-theme="dark"] .ds-dropdown-item:hover { background: #263243; }
+[data-theme="dark"] .ds-dropdown-item.active { background: #1e3354; color: #93c5fd; }
 [data-theme="dark"] .ds-switch-label { color: #94a3b8; }
+/* 手机端：输入条按钮紧凑，确保底部按钮一行容纳 */
+@media (max-width: 640px) {
+    .ds-input-bar { gap: 3px; }
+    .ds-input-tools-left { gap: 2px; }
+    .ds-ico-btn, .ds-attach-btn, .ds-send-circle { width: 32px; height: 32px; }
+    .ds-dropdown-menu { min-width: 168px; max-height: 220px; }
+}
 [data-theme="dark"] .ds-switch-select,
 [data-theme="dark"] .ds-switch-material {
     height: 38px;

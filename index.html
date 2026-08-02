@@ -705,9 +705,13 @@
                             <div class="ds-input-bar">
                                 <!-- 左侧工具组：角色 / 模型 / 关联数据（圆形图标按钮，参考附件/发送风格） -->
                                 <div class="ds-input-tools-left">
-                                    <span class="ds-chip" title="选择对话角色">
-                                        <svg class="ds-chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
-                                        <select id="expertRole" class="ds-chip-select">
+                                    <!-- 角色：圆形图标按钮 + 下拉（与附件/发送同款风格） -->
+                                    <div class="ds-dropdown">
+                                        <button class="ds-ico-btn" id="ds-role-btn" type="button" title="选择对话角色">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+                                        </button>
+                                        <div class="ds-dropdown-menu" id="ds-role-menu"></div>
+                                        <select id="expertRole" class="ds-hidden-select">
                                             <option value="default">🧑‍💼 通用</option>
                                             <option value="dianwu">⚡ 电务安全监察</option>
                                             <option value="gongwu">🛤️ 工务安全监察</option>
@@ -723,18 +727,22 @@
                                             <option value="frontend">💻 前端工程师</option>
                                             <option value="riskanalyst">🔍 风险分析专家</option>
                                         </select>
-                                    </span>
-                                    <span class="ds-chip" title="选择模型">
-                                        <svg class="ds-chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"/></svg>
-                                        <select id="ds-model-select" class="ds-chip-select"></select>
-                                    </span>
+                                    </div>
+                                    <!-- 模型：圆形图标按钮 + 下拉 -->
+                                    <div class="ds-dropdown">
+                                        <button class="ds-ico-btn" id="ds-model-btn" type="button" title="选择模型">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"/></svg>
+                                        </button>
+                                        <div class="ds-dropdown-menu" id="ds-model-menu"></div>
+                                        <select id="ds-model-select" class="ds-hidden-select"></select>
+                                    </div>
                                     <button id="ds-reset-datasource-btn" class="ds-ico-btn" title="关联数据">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6"/><path d="M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3"/></svg>
                                     </button>
                                 </div>
                                 <div class="ds-input-spacer"></div>
                                 <!-- 附件（DeepSeek：回形针线条图标） -->
-                                <button onclick="dsToggleAttachMenu()" class="ds-attach-btn" title="上传附件">
+                                <button onclick="dsToggleAttachMenu()" id="ds-attach-btn" class="ds-attach-btn" title="上传附件">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19">
                                         <path d="M21.4 11.05 12.2 20.2a5.4 5.4 0 0 1-7.65-7.64l9.2-9.2a3.6 3.6 0 1 1 5.1 5.1l-9.2 9.2a1.8 1.8 0 1 1-2.55-2.55l8.5-8.48"/>
                                     </svg>

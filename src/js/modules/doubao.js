@@ -2547,6 +2547,27 @@
         };
       })();
 
+      // ========== 输入框高度与右侧按钮列等高（含语音按钮显隐/面板可见性变化）==========
+      (function initInputHeightSync() {
+        var ta = document.getElementById('ds-user-input');
+        var col = document.getElementById('ds-input-buttons');
+        if (!ta || !col) return;
+        function sync() {
+          var h = col.offsetHeight;
+          if (!h) return;
+          ta.style.minHeight = h + 'px';
+          if (typeof autoResize === 'function') autoResize(ta);
+        }
+        window.dsSyncInputHeight = sync;
+        // 按钮列尺寸变化（显隐语音按钮、面板从隐藏变为可见、窗口缩放）时自动对齐
+        if ('ResizeObserver' in window) {
+          try { new ResizeObserver(sync).observe(col); } catch (e) { sync(); }
+        } else {
+          sync();
+          window.addEventListener('resize', sync);
+        }
+      })();
+
       function saveFeedback(type, content) {
         var logs = JSON.parse(localStorage.getItem('feedback_logs') || '[]');
         logs.push({ type: type, content: content.slice(0,200), timestamp: Date.now() });

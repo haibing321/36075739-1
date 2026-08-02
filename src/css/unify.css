@@ -1,0 +1,306 @@
+/* ============================================================
+   全局极简统一（智能对话 / DeepSeek 风格）
+   在所有样式表之后加载，统一按钮 / 导航 / 卡片 / 弹窗 / 表单控件
+   为极简灰蓝风格，主色与智能对话保持一致（#4d6bfe）。
+   ============================================================ */
+
+/* ---------- 1. 头部 & 顶部导航：浅色极简条 ---------- */
+.header {
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    border-bottom: 1px solid var(--ds-gray-200);
+    backdrop-filter: none;
+}
+.logo-text { color: var(--text); }
+.logo-title { color: var(--ds-blue); }
+.logo-subtitle { color: var(--text-secondary); }
+.logo-icon {
+    background: rgba(77, 107, 254, 0.12);
+    border-radius: var(--ds-radius);
+}
+.nav-btn {
+    color: var(--ds-gray-600);
+    border-radius: var(--ds-radius);
+    font-weight: 500;
+}
+.nav-btn:hover { color: var(--ds-blue); background: var(--ds-gray-100); }
+.nav-btn.active { color: var(--ds-blue); background: var(--ds-gray-100); }
+.nav-btn.active::after {
+    background: var(--ds-blue);
+    height: 2px;
+    left: 18%;
+    right: 18%;
+    border-radius: 2px;
+}
+.nav-current-label { color: var(--text); }
+.nav-toggle { background: var(--ds-gray-100); }
+.nav-toggle:hover { background: var(--ds-gray-200); }
+.nav-toggle span { background: var(--ds-gray-600); }
+
+/* ---------- 2. 按钮基础 & 变体 ---------- */
+.btn {
+    border-radius: var(--ds-radius);
+    box-shadow: none;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn:hover { transform: none; box-shadow: none; }
+.btn:active { transform: none; }
+
+.btn-primary {
+    background: var(--ds-blue);
+    border: 1px solid var(--ds-blue);
+    color: #fff;
+}
+.btn-primary:hover { background: var(--ds-blue-dark); border-color: var(--ds-blue-dark); }
+
+.btn-secondary {
+    background: var(--ds-gray-100);
+    color: var(--ds-gray-700);
+    border: 1px solid var(--ds-gray-200);
+}
+.btn-secondary:hover { background: var(--ds-gray-200); }
+
+.btn-success { background: #22c55e; border: 1px solid #22c55e; color: #fff; }
+.btn-success:hover { background: #16a34a; border-color: #16a34a; }
+
+.btn-warning { background: #f59e0b; border: 1px solid #f59e0b; color: #fff; }
+.btn-warning:hover { background: #d97706; border-color: #d97706; }
+
+.btn-danger { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+.btn-danger:hover { background: var(--accent-light); border-color: var(--accent-light); }
+
+.btn-info { background: var(--ds-blue); border: 1px solid var(--ds-blue); color: #fff; }
+.btn-info:hover { background: var(--ds-blue-dark); border-color: var(--ds-blue-dark); }
+
+.btn-outline {
+    border: 1px solid var(--ds-gray-200);
+    background: #fff;
+    color: var(--ds-gray-700);
+    border-radius: var(--ds-radius);
+}
+.btn-outline:hover { background: var(--ds-gray-100); border-color: var(--ds-gray-300); }
+
+.btn-primary-sm {
+    background: var(--ds-blue);
+    border: 1px solid var(--ds-blue);
+    border-radius: var(--ds-radius);
+    box-shadow: none;
+}
+.btn-primary-sm:hover { background: var(--ds-blue-dark); transform: none; box-shadow: none; }
+
+.btn-small { border-radius: var(--ds-radius); }
+.btn-tiny { border-radius: 8px; }
+
+/* ---------- 3. 筛选药丸 & 数据标签 ---------- */
+.btn-chip {
+    background: var(--ds-gray-100);
+    color: var(--ds-gray-600);
+    border: 1px solid transparent;
+    border-radius: var(--ds-radius-pill);
+    font-weight: 500;
+}
+.btn-chip:hover { background: var(--ds-gray-200); color: var(--ds-gray-700); }
+.btn-chip.active,
+.btn-chip.wr-mat-tab-active {
+    background: var(--ds-blue-soft);
+    color: var(--ds-blue);
+    border-color: var(--ds-blue-border);
+}
+
+.btn-data-blue {
+    background: var(--ds-blue-soft);
+    border: 1px solid var(--ds-blue-border);
+    color: #2563eb;
+    border-radius: var(--ds-radius-pill);
+}
+.btn-data-blue:hover { background: #dbeafe; }
+.btn-data-green {
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    color: #15803d;
+    border-radius: var(--ds-radius-pill);
+}
+.btn-data-green:hover { background: #bbf7d0; }
+.btn-data-red {
+    background: #fee2e2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    border-radius: var(--ds-radius-pill);
+}
+.btn-data-red:hover { background: #fecaca; }
+
+/* ---------- 4. 圆形图标按钮（删除 / 新增 / 复制 / 关闭） ---------- */
+.btn-remove {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: 50%;
+}
+.btn-remove:hover { background: #fecaca; color: #b91c1c; }
+.btn-add {
+    background: var(--ds-blue-soft);
+    color: var(--ds-blue);
+    border: 1px solid var(--ds-blue-border);
+    border-radius: 50%;
+}
+.btn-add:hover { background: #dbeafe; }
+.btn-add:disabled { opacity: 0.5; }
+
+.btn-copy {
+    background: var(--ds-gray-100);
+    color: var(--ds-gray-600);
+    border: 1px solid var(--ds-gray-200);
+    border-radius: 8px;
+}
+.btn-copy:hover { background: var(--ds-blue); color: #fff; border-color: var(--ds-blue); }
+
+.btn-close { color: var(--ds-gray-500); }
+.btn-close:hover { background: var(--ds-gray-100); color: var(--ds-gray-700); }
+
+/* ---------- 5. 表单控件（输入框 / 下拉 / 文本域 / 搜索） ---------- */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+    border: 1px solid var(--ds-gray-200);
+    border-radius: var(--ds-radius);
+    background: #fff;
+    color: var(--text);
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+select:focus,
+textarea:focus {
+    border-color: var(--ds-blue);
+    box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.15);
+    outline: none;
+}
+.search-box {
+    background: var(--ds-gray-100);
+    border: 1px solid var(--ds-gray-200);
+    border-radius: var(--ds-radius);
+}
+.search-box:focus-within {
+    border-color: var(--ds-blue);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.12);
+}
+
+/* ---------- 6. 卡片 ---------- */
+.card {
+    background: #fff;
+    border: 1px solid var(--ds-gray-200);
+    border-radius: var(--ds-radius-lg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.card:hover {
+    transform: none;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+    border-color: var(--ds-gray-200);
+}
+.card-header {
+    background: #fff;
+    border-bottom: 1px solid var(--ds-gray-200);
+    border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0;
+    color: var(--text);
+}
+.card-title { color: var(--text); }
+.card-body { background: #fff; }
+
+/* ---------- 7. 弹窗 ---------- */
+.modal-content {
+    background: #fff;
+    border: 1px solid var(--ds-gray-200);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+.modal-header { border-bottom: 1px solid var(--ds-gray-200); }
+.modal-footer { border-top: 1px solid var(--ds-gray-200); }
+
+/* ---------- 8. 移动端导航（浅色头部下的下拉） ---------- */
+@media (max-width: 768px) {
+    .nav {
+        background: #ffffff;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+        border: 1px solid var(--ds-gray-200);
+        border-radius: 0 0 var(--ds-radius) var(--ds-radius);
+    }
+    .nav-btn {
+        color: var(--ds-gray-600);
+        border-bottom: 1px solid var(--ds-gray-200);
+        border-radius: var(--ds-radius);
+    }
+    .nav-btn:last-child { border-bottom: none; }
+    .nav-btn:hover { background: var(--ds-gray-100); color: var(--ds-blue); }
+    .nav-btn.active { background: var(--ds-gray-100); color: var(--ds-blue); }
+    .nav-current-label { color: var(--text); }
+    .nav-toggle { background: var(--ds-gray-100); }
+    .nav-toggle span { background: var(--ds-gray-600); }
+}
+
+/* ============================================================
+   暗黑模式覆盖（与智能对话暗黑风格一致）
+   ============================================================ */
+[data-theme="dark"] .header { background: #0f172a; border-bottom-color: #1e293b; }
+[data-theme="dark"] .logo-text { color: #e2e8f0; }
+[data-theme="dark"] .logo-title { color: #93c5fd; }
+[data-theme="dark"] .logo-subtitle { color: #94a3b8; }
+[data-theme="dark"] .logo-icon { background: rgba(77, 107, 254, 0.18); }
+[data-theme="dark"] .nav-btn { color: #94a3b8; }
+[data-theme="dark"] .nav-btn:hover,
+[data-theme="dark"] .nav-btn.active { color: #93c5fd; background: #1e293b; }
+[data-theme="dark"] .nav-btn.active::after { background: #93c5fd; }
+[data-theme="dark"] .nav-current-label { color: #e2e8f0; }
+[data-theme="dark"] .nav-toggle { background: #1e293b; }
+[data-theme="dark"] .nav-toggle:hover { background: #2a3a52; }
+[data-theme="dark"] .nav-toggle span { background: #94a3b8; }
+
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .btn-info { background: var(--ds-blue) !important; border-color: var(--ds-blue) !important; color: #fff !important; }
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-info:hover { background: var(--ds-blue-dark) !important; border-color: var(--ds-blue-dark) !important; }
+[data-theme="dark"] .btn-secondary { background: #2a3a52 !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+[data-theme="dark"] .btn-secondary:hover { background: #334155 !important; }
+[data-theme="dark"] .btn-outline { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+[data-theme="dark"] .btn-outline:hover { background: #2a3a52 !important; border-color: #475569 !important; }
+[data-theme="dark"] .btn-success { background: #16a34a !important; border-color: #16a34a !important; }
+[data-theme="dark"] .btn-warning { background: #d97706 !important; border-color: #d97706 !important; }
+[data-theme="dark"] .btn-danger { background: var(--accent) !important; border-color: var(--accent) !important; }
+
+[data-theme="dark"] .btn-chip { background: #1e293b !important; color: #94a3b8 !important; }
+[data-theme="dark"] .btn-chip:hover { background: #2a3a52 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] .btn-chip.active,
+[data-theme="dark"] .btn-chip.wr-mat-tab-active { background: #1e3354 !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
+[data-theme="dark"] .btn-data-blue { background: #15233f !important; border-color: #2a4a7a !important; color: #93c5fd !important; }
+[data-theme="dark"] .btn-data-green { background: #14321f !important; border-color: #28543a !important; color: #86efac !important; }
+[data-theme="dark"] .btn-data-red { background: #3a1620 !important; border-color: #7f1d1d !important; color: #fca5a5 !important; }
+
+[data-theme="dark"] .btn-remove { background: #4a1a1a !important; color: #fca5a5 !important; border-color: #7f1d1d !important; }
+[data-theme="dark"] .btn-add { background: #1e3354 !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
+[data-theme="dark"] .btn-copy { background: #1e293b !important; color: #cbd5e1 !important; border-color: #334155 !important; }
+[data-theme="dark"] .btn-copy:hover { background: var(--ds-blue) !important; color: #fff !important; border-color: var(--ds-blue) !important; }
+[data-theme="dark"] .btn-close { color: #cbd5e1 !important; }
+[data-theme="dark"] .btn-close:hover { background: #2a3a52 !important; color: #fff !important; }
+
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="dark"] select,
+[data-theme="dark"] textarea { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus { border-color: var(--ds-blue) !important; box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.25) !important; }
+[data-theme="dark"] .search-box { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .search-box:focus-within { background: #0f172a !important; box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.22) !important; }
+
+[data-theme="dark"] .card { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .card:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important; border-color: #334155 !important; }
+[data-theme="dark"] .card-header { background: #1e293b !important; border-bottom-color: #334155 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] .card-body { background: #1e293b !important; color: #e2e8f0 !important; }
+
+[data-theme="dark"] .modal-content { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer { border-color: #334155 !important; }
+
+[data-theme="dark"] .nav { background: #0f172a !important; border-color: #1e293b !important; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5) !important; }
+[data-theme="dark"] .nav-btn { color: #94a3b8 !important; border-bottom-color: #1e293b !important; }
+[data-theme="dark"] .nav-btn:hover,
+[data-theme="dark"] .nav-btn.active { background: #1e293b !important; color: #93c5fd !important; }

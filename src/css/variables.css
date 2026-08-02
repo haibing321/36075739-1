@@ -3,12 +3,12 @@
 
 /* ========== 全局变量 & 基础样式 (完全保留原样式) ========== */
 :root {
-    /* 主色调 - 庄重、大气、符合铁路安全监察属性 */
-    --primary: #1a365d;
-    --primary-light: #2c5282;
-    --primary-dark: #1a365d;
-    --accent: #c53030;
-    --accent-light: #e53e3e;
+    /* 主色调 - 智能对话同款蓝（DeepSeek 风格，全局统一） */
+    --primary: #4d6bfe;
+    --primary-light: #6d83ff;
+    --primary-dark: #3f5be0;
+    --accent: #ef4444;
+    --accent-light: #f87171;
     --success: #4a8c6f;
     --warning: #b8763a;
     --info: #4a7fb5;
@@ -25,8 +25,24 @@
     --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 12px;
-    --gradient-primary: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+    --gradient-primary: linear-gradient(135deg, #4d6bfe 0%, #2563eb 100%);
     --gradient-card: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+
+    /* —— 智能对话同款极简灰蓝体系（unify.css 复用） —— */
+    --ds-blue: #4d6bfe;
+    --ds-blue-dark: #3f5be0;
+    --ds-blue-soft: #eef2ff;
+    --ds-blue-border: #c7d2fe;
+    --ds-gray-50: #f8fafc;
+    --ds-gray-100: #f3f5f8;
+    --ds-gray-200: #e2e8f0;
+    --ds-gray-300: #cbd5e1;
+    --ds-gray-500: #64748b;
+    --ds-gray-600: #475569;
+    --ds-gray-700: #334155;
+    --ds-radius: 10px;
+    --ds-radius-lg: 14px;
+    --ds-radius-pill: 999px;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {

@@ -216,6 +216,99 @@
           return { ok: false, error: '天气查询失败：' + (e.message || '') };
         }
       }
+    },
+    {
+      name: 'search_phone',
+      description: '查询应急电话数据库，按站名/单位/线名/电话号关键词模糊查找联系电话（含路电、市电）。当用户问"某站/某单位的电话""联系方式""报话号码"等场景使用',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: { type: 'string', description: '搜索关键词：站名/单位/线名，或电话号片段' },
+          limit: { type: 'integer', description: '返回条数上限，默认10' }
+        },
+        required: ['keyword']
+      },
+      handler: async function(args) {
+        var all = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : [];
+        if (!all.length) return { total: 0, items: [], note: '电话数据库为空' };
+        var kw = (args.keyword || '').trim();
+        var matched = kw ? all.filter(function(r) {
+          return ((r.站名||'') + ' ' + (r.单位||'') + ' ' + (r.线名||'') + ' ' + (r.路电||'') + ' ' + (r.市电||'')).indexOf(kw) !== -1;
+        }) : all;
+        matched = matched.slice(0, args.limit || 10);
+        return { total: matched.length, items: matched.map(function(r) {
+          return { 站名: r.站名 || '', 单位: r.单位 || '', 线名: r.线名 || '', 路电: r.路电 || '', 市电: r.市电 || '' };
+        }) };
+      }
+    },
+    {
+      name: 'search_material',
+      description: '搜索写作资料库（用户上传的参考材料），按标题或内容关键词模糊查找。用于引用既有资料、模板、文档片段。返回精简列表(id+标题+类型+摘要)，需要全文请用 get_material_detail(id)',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: { type: 'string', description: '搜索关键词（标题或内容）' },
+          type: { type: 'string', description: '资料类型筛选(可选)：参考材料/模板/历史报告' },
+          limit: { type: 'integer', description: '返回条数上限，默认10' }
+        },
+        required: ['keyword']
+      },
+      handler: async function(args) {
+        var all = [];
+        try { if (typeof window._wrGetAllMaterials === 'function') all = await window._wrGetAllMaterials(); } catch(e) {}
+        if (!all || !all.length) return { total: 0, items: [], note: '资料库为空' };
+        var kw = (args.keyword || '').trim();
+        var matched = kw ? all.filter(function(m) {
+          return ((m.title||'') + ' ' + (m.content||'')).indexOf(kw) !== -1;
+        }) : all;
+        if (args.type) matched = matched.filter(function(m) { return (m.type||'') === args.type; });
+        matched = matched.slice(0, args.limit || 10);
+        return { total: matched.length, items: matched.map(function(m) {
+          return { id: (m.id !== undefined ? m.id : ''), 标题: m.title || '', 类型: m.type || '', 摘要: (m.content||'').slice(0, 150) };
+        }) };
+      }
+    },
+    {
+      name: 'get_material_detail',
+      description: '根据 search_material 返回的 id 获取单条资料完整内容(标题+类型+全文)',
+      parameters: { type:'object', properties:{ id:{ type:'string', description:'search_material 返回的 id(字符串)' } }, required:['id'] },
+      handler: async function(args) {
+        var all = [];
+        try { if (typeof window._wrGetAllMaterials === 'function') all = await window._wrGetAllMaterials(); } catch(e) {}
+        var item = (all || []).find(function(m) { return String(m.id) === String(args.id); });
+        return item ? { 标题: item.title || '', 类型: item.type || '', 全文: item.content || '' } : { error: '未找到 id=' + args.id };
+      }
+    },
+    {
+      name: 'read_diary',
+      description: '读取工作日志（写实）记录，可按日期(YYYY-MM-DD前缀)或关键词(工作内容/问题/规章依据)筛选。用于回顾某天工作、查找历史日志。默认返回最近记录',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: '日期筛选 YYYY-MM-DD（支持前缀，如 2026-08 表示8月，可选）' },
+          keyword: { type: 'string', description: '关键词模糊匹配工作内容/问题/规章依据(可选)' },
+          limit: { type: 'integer', description: '返回条数上限，默认20' }
+        },
+        required: []
+      },
+      handler: async function(args) {
+        var all = (typeof window.getDiaryData === 'function') ? window.getDiaryData() : [];
+        if (!all || !all.length) return { total: 0, items: [], note: '暂无工作日志' };
+        var date = (args.date || '').trim();
+        var kw = (args.keyword || '').trim();
+        var matched = all.filter(function(d) {
+          if (date && (d.date || '').indexOf(date) !== 0) return false;
+          if (kw) {
+            var hay = (d.work || '') + ' ' + (d.issues || []).join(' ') + ' ' + (d.regulations || []).join(' ');
+            if (hay.indexOf(kw) === -1) return false;
+          }
+          return true;
+        });
+        matched = matched.slice(-(args.limit || 20)).reverse();
+        return { total: matched.length, items: matched.map(function(d) {
+          return { 日期: d.date || '', 工作: d.work || '', 问题: (d.issues || []).join(' / '), 规章依据: (d.regulations || []).join(' / ') };
+        }) };
+      }
     }
   ];
 

@@ -2166,6 +2166,11 @@
         if (!text) return;
         var u = new SpeechSynthesisUtterance(text);
         u.lang = 'zh-CN'; u.rate = 1.0;
+        try {
+          var rvoices = window.speechSynthesis.getVoices();
+          var rzh = (rvoices || []).filter(function(v){ return /zh|cmn|Chinese|中文|普通话/i.test((v.lang||'') + (v.name||'')); })[0];
+          if (rzh) u.voice = rzh;
+        } catch (_) {}
         u.onend = function(){ window._riskSpeaking = false; if (btn) btn.textContent = '🔊 朗读'; };
         u.onerror = u.onend;
         window.speechSynthesis.speak(u);
@@ -2469,10 +2474,10 @@
           document.execCommand('copy'); document.body.removeChild(ta);
           if (typeof window.Toast !== 'undefined') window.Toast.success('已复制到剪贴板');
         }
-        // 下载本消息
+        // 下载本消息（导出为 Markdown，保留格式）
         fbDiv.querySelector('.feedback-download').onclick = function(){
-          var blob = new Blob([assistantContent], {type: 'text/plain;charset=utf-8'});
-          window.downloadBlob(blob, '智能对话_' + new Date().toISOString().slice(0,10) + '.txt');
+          var blob = new Blob([assistantContent], {type: 'text/markdown;charset=utf-8'});
+          window.downloadBlob(blob, '智能对话_' + new Date().toISOString().slice(0,10) + '.md');
         };
         fbDiv.querySelector('.feedback-good').onclick = function(){ saveFeedback('good', assistantContent); };
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };
@@ -2498,11 +2503,49 @@
         if (!text) return;
         var utter = new SpeechSynthesisUtterance(text);
         utter.lang = 'zh-CN'; utter.rate = 1.0;
+        try {
+          var voices = window.speechSynthesis.getVoices();
+          var zh = (voices || []).filter(function(v){ return /zh|cmn|Chinese|中文|普通话/i.test((v.lang||'') + (v.name||'')); })[0];
+          if (zh) utter.voice = zh;
+        } catch (_) {}
         utter.onend = function(){ btn.textContent = '🔊 朗读'; };
         utter.onerror = function(){ btn.textContent = '🔊 朗读'; };
         btn.textContent = '⏹ 停止';
         window.speechSynthesis.speak(utter);
       };
+
+      // ========== 语音输入（webkitSpeechRecognition，不支持则隐藏按钮并提示）==========
+      (function initVoiceInput() {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var btn = document.getElementById('ds-voice-btn');
+        if (!SR || !btn) return; // 浏览器不支持语音识别（如部分国产浏览器）→ 按钮保持隐藏
+        btn.style.display = 'flex';
+        var recog = null;
+        var recognizing = false;
+        window.dsToggleVoiceInput = function() {
+          if (!recog) {
+            recog = new SR();
+            recog.lang = 'zh-CN';
+            recog.continuous = false;
+            recog.interimResults = true;
+            recog.onresult = function(ev) {
+              var txt = '';
+              for (var i = ev.resultIndex; i < ev.results.length; i++) {
+                if (ev.results[i].isFinal || ev.results[i].length) txt += ev.results[i][0].transcript;
+              }
+              var input = document.getElementById('ds-user-input');
+              if (input) { input.value = txt; input.dispatchEvent(new Event('input')); autoResize(input); }
+            };
+            recog.onerror = function() { if (btn) btn.textContent = '🎤'; recognizing = false; };
+            recog.onend = function() { if (btn) btn.textContent = '🎤'; recognizing = false; };
+          }
+          if (recognizing) { try { recog.stop(); } catch (_) {} recognizing = false; if (btn) btn.textContent = '🎤'; }
+          else {
+            try { recog.start(); recognizing = true; if (btn) btn.textContent = '⏹'; }
+            catch (e) { /* 已在识别中，忽略 */ }
+          }
+        };
+      })();
 
       function saveFeedback(type, content) {
         var logs = JSON.parse(localStorage.getItem('feedback_logs') || '[]');
@@ -2617,9 +2660,9 @@
           if (result && result.messages) {
             result.messages.forEach(function(m) {
               if (m.role === 'agent-plan') {
-                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#f59e0b;font-size:0.85rem;">' + dsEsc(m.content) + '</div>';
+                historyEl.innerHTML += '<div style="margin-bottom:6px;background:#fffbeb;border-left:3px solid #f59e0b;color:#b45309;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
               } else if (m.role === 'agent-tool') {
-                historyEl.innerHTML += '<div style="margin-bottom:6px;color:#059669;font-size:0.85rem;">' + dsEsc(m.content) + '</div>';
+                historyEl.innerHTML += '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
               } else if (m.role === 'assistant') {
                 // B#8: 最终回答渲染 Markdown，与普通对话体验一致
                 historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;font-size:0.9rem;">' + dsMarkdown(m.content) + '</div>';

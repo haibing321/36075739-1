@@ -85,7 +85,8 @@
         break;
       case 'panel-phone':
         safePart('phone', () => {
-          const count = (document.getElementById('phone-recordCount') || {}).textContent || '0';
+          const raw = (document.getElementById('phone-recordCount') || {}).textContent || '0';
+          const count = String(raw).replace(/条/g, '').trim() || '0';
           return `当前在【应急电话】模块，共 ${count} 条通讯录`;
         });
         break;
@@ -112,11 +113,40 @@
   if (document.readyState !== 'loading') refreshTabContext();
   else document.addEventListener('DOMContentLoaded', refreshTabContext);
 
-  // ---------- 3. 语义缓存（基于问题+上下文指纹，1 小时 TTL） ----------
+  // ---------- 3. 语义缓存（基于问题+上下文指纹，1 小时 TTL，持久化到 localStorage） ----------
   const _cache = new Map();
-  const CACHE_TTL = 3600000;
+  const CACHE_TTL = 3600000; // 1 小时
+  const _CACHE_KEY = 'unified_semantic_cache_v1';
+  const _CACHE_MAX = 80;
   function _hash(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; } return 'u_' + h; }
   function _cacheKey(q, ctx) { return _hash(q + '|' + (ctx || '').slice(0, 50)); }
+  // 启动时从 localStorage 载入未过期项（并回写裁剪，清除已过期项避免存储膨胀）
+  function _loadCache() {
+    try {
+      const raw = localStorage.getItem(_CACHE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const now = Date.now();
+      for (const k in obj) {
+        if (obj[k] && (now - obj[k].t) < CACHE_TTL) _cache.set(k, obj[k]);
+      }
+      _saveCache();
+      log('cache loaded', _cache.size);
+    } catch (e) {}
+  }
+  // 将内存缓存落盘（裁剪超量项）
+  function _saveCache() {
+    try {
+      if (_cache.size > _CACHE_MAX) {
+        const arr = Array.from(_cache.entries()).sort((a, b) => a[1].t - b[1].t);
+        arr.slice(0, _cache.size - _CACHE_MAX).forEach(e => _cache.delete(e[0]));
+      }
+      const now = Date.now();
+      const obj = {};
+      _cache.forEach(function (v, k) { if ((now - v.t) < CACHE_TTL) obj[k] = v; });
+      localStorage.setItem(_CACHE_KEY, JSON.stringify(obj));
+    } catch (e) {}
+  }
   function getCachedAnswer(q, ctx) {
     if (!window.ENABLE_UNIFIED) return null;
     const e = _cache.get(_cacheKey(q, ctx));
@@ -126,8 +156,9 @@
   function setCachedAnswer(q, ctx, a) {
     if (!window.ENABLE_UNIFIED || !a) return;
     _cache.set(_cacheKey(q, ctx), { a: a, t: Date.now() });
-    if (_cache.size > 50) { const k = _cache.keys().next().value; _cache.delete(k); }
+    _saveCache();
   }
+  _loadCache();
 
   // ---------- 4. 输出卡片化渲染（XSS 安全：先 DOMPurify，再安全增强；用 data-* + 事件委托避免内联 onclick） ----------
   function renderCard(html) {
@@ -273,6 +304,38 @@
     return _matchLongest(q, fields);
   }
 
+  // 将 get_weather 返回的 7 天预报格式化为 Markdown 卡片（dsMarkdown 渲染为表格）
+  const _WMO_TEXT = { 0:'晴',1:'少云',2:'多云',3:'阴',45:'雾',48:'雾凇',51:'毛毛雨',53:'小雨',55:'中雨',56:'冻毛雨',57:'冻雨',61:'小雨',63:'中雨',65:'大雨',66:'冻小雨',67:'冻中雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'阵雨',81:'强阵雨',82:'暴雨',85:'阵雪',86:'强阵雪',95:'雷暴',96:'雷暴伴冰雹',99:'强雷暴伴冰雹' };
+  const _WMO_EMOJI = { 0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',56:'🌧️',57:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',77:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️' };
+  function formatWeather(w, st) {
+    const name = w.station || st;
+    let md = '🌤️ **' + name + ' 天气**';
+    if (w.current) {
+      md += '\n\n当前：' + (w.current.weatherEmoji || '') + ' ' + w.current.weather + '，' + w.current.temp + (w.current.wind ? '，风力 ' + w.current.wind : '');
+    }
+    if (w.daily && w.daily.time && w.daily.time.length) {
+      md += '\n\n**未来 7 天预报**\n\n';
+      md += '| 日期 | 天气 | 最高 | 最低 | 降水 | 风力 |\n| --- | --- | --- | --- | --- | --- |\n';
+      const weekday = ['周日','周一','周二','周三','周四','周五','周六'];
+      for (let i = 0; i < w.daily.time.length; i++) {
+        const d = w.daily.time[i];
+        const mmdd = d.slice(5);
+        let dow = '';
+        try { dow = weekday[new Date(d + 'T00:00:00').getDay()]; } catch (_) {}
+        const code = w.daily.weather_code[i];
+        const wtxt = _WMO_TEXT[code] || ('代码' + code);
+        const emo = _WMO_EMOJI[code] || '🌡️';
+        const hi = Math.round(w.daily.tmax[i]);
+        const lo = Math.round(w.daily.tmin[i]);
+        const pr = (w.daily.precip[i] != null ? w.daily.precip[i] : 0);
+        const wd = (w.daily.wind[i] != null ? Math.round(w.daily.wind[i]) : '-');
+        md += '| ' + mmdd + ' ' + dow + ' | ' + emo + ' ' + wtxt + ' | ' + hi + '° | ' + lo + '° | ' + pr + '% | ' + wd + 'km/h |\n';
+      }
+    }
+    md += '\n\n_数据来源：Open-Meteo 公开天气 API_';
+    return md;
+  }
+
   // ---------- 6. 包装 dsSendMsg：集成上下文注入 / 电话工具 / 语义缓存（不破坏原逻辑） ----------
   const _origSend = window.dsSendMsg;
   if (typeof _origSend === 'function') {
@@ -313,9 +376,7 @@
             try {
               const w = await window.queryWeather({ stationName: st });
               if (w && w.ok) {
-                let ans = '🌤️ ' + (w.station || st) + ' 当前天气：' + w.weather + '，' + w.temp;
-                if (w.wind) ans += '，风力 ' + w.wind;
-                _pushAssistant(ans);
+                _pushAssistant(formatWeather(w, st));
                 input.value = '';
                 return;
               } else if (w && w.error && !/未找到车站/.test(w.error)) {

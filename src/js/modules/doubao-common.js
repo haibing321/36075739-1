@@ -60,19 +60,24 @@
                     } else {
                         text = await window.dsReadPdfFile(file);
                     }
+                } else if (/^image\//.test(file.type) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) {
+                    // 图片附件：读取为 dataURL 并获取尺寸，供预览与（支持多模态时）送审
+                    text = await window.dsReadImageFile(file);
                 } else {
                     text = '暂不支持该文件格式：' + ext;
                 }
 
                 const maxLen = 8000;
                 const truncated = text.length > maxLen ? text.slice(0, maxLen) + '\n...[内容过长，已截取前' + maxLen + '字]' : text;
-                window._dsAttachments.push({ name: file.name, text: truncated });
+                const isImage = !!((/^image\//.test(file.type) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) && (file.attachDataUrl));
+                window._dsAttachments.push({ name: file.name, text: truncated, dataUrl: file.attachDataUrl || null, isImage: isImage });
 
-                const icon = ext === 'pdf' ? '📕' : ext === 'docx' || ext === 'doc' ? '📘' : ext === 'xlsx' || ext === 'xls' ? '📊' : '📎';
+                const icon = ext === 'pdf' ? '📕' : ext === 'docx' || ext === 'doc' ? '📘' : ext === 'xlsx' || ext === 'xls' ? '📊' : isImage ? '🖼️' : '📎';
                 const tagText = ' [' + icon + ' ' + file.name + '] ';
                 if (inputEl.value) { inputEl.value += tagText; } else { inputEl.value = tagText; }
                 inputEl.style.height = 'auto';
                 inputEl.style.height = inputEl.scrollHeight + 'px';
+                dsRenderAttachPreview();
             } catch (err) {
                 console.error('文件解析失败:', file.name, err);
                 alert('文件 "' + file.name + '" 解析失败：' + err.message);
@@ -268,6 +273,62 @@
         });
     };
 
+    // 图片附件：读取为 dataURL，获取尺寸，返回描述文本（供 AI 提示词引用；多模态模型可直接消费 dataUrl）
+    window.dsReadImageFile = function(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const dataUrl = e.target.result;
+                file.attachDataUrl = dataUrl;
+                const img = new Image();
+                img.onload = function() {
+                    const sizeKB = (file.size / 1024).toFixed(0);
+                    const desc = '[图片附件] ' + file.name + '（' + img.width + '×' + img.height + '，' + sizeKB + 'KB）\n'
+                        + '提示：当前对话模型为文本模型，图片内容需由支持多模态的模型解读；已附图片元信息供参考。';
+                    resolve(desc);
+                };
+                img.onerror = function() {
+                    resolve('[图片附件] ' + file.name + '（尺寸未知）');
+                };
+                img.src = dataUrl;
+            };
+            reader.onerror = function() { resolve('[图片附件] ' + file.name + '（读取失败）'); };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    // 渲染已附加文件的预览（图片缩略图 + 文件标签），点击可移除
+    window.dsRenderAttachPreview = function() {
+        var box = document.getElementById('ds-attach-preview');
+        if (!box) return;
+        var items = window._dsAttachments || [];
+        box.innerHTML = '';
+        var has = false;
+        items.forEach(function(a, idx) {
+            if (!a) return;
+            has = true;
+            var tag = document.createElement('div');
+            tag.style.cssText = 'display:flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:3px 6px;font-size:0.72rem;color:#475569;max-width:160px;';
+            if (a.isImage && a.dataUrl) {
+                var thumb = document.createElement('img');
+                thumb.src = a.dataUrl;
+                thumb.style.cssText = 'width:22px;height:22px;object-fit:cover;border-radius:4px;flex-shrink:0;';
+                tag.appendChild(thumb);
+            }
+            var label = document.createElement('span');
+            label.textContent = (a.isImage ? '🖼️ ' : '📎 ') + (a.name || '附件');
+            label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            tag.appendChild(label);
+            var x = document.createElement('span');
+            x.textContent = '✕';
+            x.style.cssText = 'cursor:pointer;color:#94a3b8;flex-shrink:0;padding:0 2px;';
+            x.onclick = function() { window.dsRemoveAttach(idx); };
+            tag.appendChild(x);
+            box.appendChild(tag);
+        });
+        box.style.display = has ? 'flex' : 'none';
+    };
+
     window.dsReadPdfFile = function(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -304,10 +365,17 @@
     };
 
     window.dsRemoveAttach = function(idx, tagEl) {
+        var removed = window._dsAttachments[idx];
+        if (removed) {
+            // 同步从输入框移除对应的 [图标 文件名] 标签文本
+            var inputEl = document.getElementById('ds-user-input');
+            if (inputEl && removed.name) {
+                inputEl.value = inputEl.value.replace(new RegExp('\\[[^\\]]*' + removed.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\]', 'g'), '').trim();
+            }
+        }
         if (window._dsAttachments[idx]) window._dsAttachments[idx] = null;
         if (tagEl) tagEl.remove();
-        var tagsEl = document.getElementById('ds-attach-tags');
-        if (tagsEl && !tagsEl.children.length) tagsEl.style.display = 'none';
+        dsRenderAttachPreview();
     };
 
     console.log('✅ doubao-common.js 已加载');

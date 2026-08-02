@@ -100,7 +100,7 @@
     },
     {
       name: 'get_weather',
-      description: '获取指定车站的实时天气(优先在线查询，超时5s；离线时使用内置兰州局主要车站坐标)',
+      description: '获取指定车站的天气预报（未来7天+实时）。优先在线查询，超时5s；离线时使用内置兰州局主要车站坐标。返回 current(实时温/天/风) 与 daily(7天：日期/天气/最高/最低/降水概率/风力)',
       parameters: { type:'object', properties:{ stationName:{type:'string',description:'车站名称'} }, required:['stationName'] },
       handler: async function(args) {
         var stationName = args.stationName || '';
@@ -195,6 +195,11 @@
           if (match) station = { 站名:stationName, 纬度:match[0], 经度:match[1] };
         }
         if (!station) return { ok: false, error: '未找到车站 ' + stationName + '（不在电话簿或内置字典中）' };
+        // 优先用内置坐标字典补全（即使电话簿命中但缺坐标，也避免直接失败）
+        if (!station.纬度) {
+          var sc = staticCoords[stationName] || staticCoords[(station.站名 || '')];
+          if (sc) { station.纬度 = sc[0]; station.经度 = sc[1]; }
+        }
         if (!station.纬度 && typeof window.phoneGeocode === 'function') {
           try {
             var geo = await window.phoneGeocode(stationName, station.线名 || station.线路 || '');
@@ -205,12 +210,37 @@
         try {
           var ctrl = new AbortController();
           var timer = setTimeout(function() { ctrl.abort(); }, 5000);
-          var r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + station.纬度 + '&longitude=' + station.经度 + '&current=temperature_2m,weather_code,wind_speed_10m&timezone=Asia/Shanghai', { signal: ctrl.signal });
+          var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + station.纬度 + '&longitude=' + station.经度
+            + '&current=temperature_2m,weather_code,wind_speed_10m'
+            + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max'
+            + '&forecast_days=7&timezone=Asia/Shanghai';
+          var r = await fetch(url, { signal: ctrl.signal });
           clearTimeout(timer);
           if (!r.ok) throw new Error('http ' + r.status);
           var w = await r.json();
           var wmo = { 0:'晴',1:'少云',2:'多云',3:'阴',45:'雾',48:'雾凇',51:'毛毛雨',53:'小雨',55:'中雨',56:'冻毛雨',57:'冻雨',61:'小雨',63:'中雨',65:'大雨',66:'冻小雨',67:'冻中雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'阵雨',81:'强阵雨',82:'暴雨',85:'阵雪',86:'强阵雪',95:'雷暴',96:'雷暴伴冰雹',99:'强雷暴伴冰雹' };
-          return { ok: true, station: stationName, temp: w.current.temperature_2m + '°C', weather: wmo[w.current.weather_code] || ('代码' + w.current.weather_code), wind: w.current.wind_speed_10m + 'km/h' };
+          var wmoEmoji = { 0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',56:'🌧️',57:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',77:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️' };
+          var cur = null;
+          if (w.current) {
+            cur = {
+              temp: w.current.temperature_2m + '°C',
+              weather: wmo[w.current.weather_code] || ('代码' + w.current.weather_code),
+              weatherEmoji: wmoEmoji[w.current.weather_code] || '🌡️',
+              wind: w.current.wind_speed_10m + 'km/h'
+            };
+          }
+          var daily = null;
+          if (w.daily && w.daily.time && w.daily.time.length) {
+            daily = {
+              time: w.daily.time,
+              weather_code: w.daily.weather_code,
+              tmax: w.daily.temperature_2m_max,
+              tmin: w.daily.temperature_2m_min,
+              precip: w.daily.precipitation_probability_max,
+              wind: w.daily.wind_speed_10m_max
+            };
+          }
+          return { ok: true, station: stationName, current: cur, daily: daily };
         } catch(e) {
           if (e.name === 'AbortError') return { ok: false, error: '天气查询超时（5s），请稍后重试或检查网络' };
           return { ok: false, error: '天气查询失败：' + (e.message || '') };

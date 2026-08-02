@@ -717,7 +717,8 @@
                                         <path d="M5 12l7-7 7 7"/>
                                     </svg>
                                 </button>
-                                <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.xls,.xlsx,.pdf,.csv,.json"
+                                <button id="ds-voice-btn" onclick="dsToggleVoiceInput()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:none;align-items:center;justify-content:center;font-size:1.1rem;" title="语音输入">🎤</button>
+                                <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.xls,.xlsx,.pdf,.csv,.json,image/*"
                                     style="display:none;" onchange="dsHandleAttach(this)">
                                 <button onclick="dsToggleAttachMenu()" class="btn btn-secondary btn-small" style="width:36px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;" title="添加附件">+</button>
                                 <div id="ds-attach-menu" style="display:none;position:absolute;right:44px;bottom:0;background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);border:1px solid #e2e8f0;padding:6px;z-index:100;white-space:nowrap;min-width:130px;">
@@ -726,7 +727,8 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- 已附加文件标签（已移除，改为直接显示在输入框中） -->
+                        <!-- 已附加文件标签（图片缩略图 + 文件标签预览） -->
+                        <div id="ds-attach-preview" style="display:none;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
                     </div>
 
                     <!-- === 智能体子模块 === -->

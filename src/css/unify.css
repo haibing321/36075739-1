@@ -503,3 +503,32 @@ textarea:focus {
 [data-theme="dark"] #ds-agent-input::placeholder { color: #64748b !important; }
 /* 智能体动态气泡（agent-plan 浅黄 / agent-tool & assistant 浅绿 / 错误红等内联浅色块）暗黑化：仅覆盖背景与文字，保留内联左边框语义色 */
 [data-theme="dark"] #ds-agent-history > div { background-color: #1e293b !important; color: #cbd5e1 !important; }
+
+/* 资料中心 · 导入/模板弹窗、模板设置按钮、资料卡片 · 暗黑 */
+/* 模板设置按钮（index 内联白底 #fff） —— 用 onclick 属性选择器精确匹配，零改源文件 */
+[data-theme="dark"] [onclick="wrShowAddTemplate()"] { background: #1e293b !important; border-color: #2a4a7a !important; color: #93c5fd !important; }
+/* 导入资料类型选择弹窗 */
+[data-theme="dark"] #wr-import-type-modal > div { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] #wr-import-type-modal button:not(.btn-close) { background: #1e293b !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] #wr-import-type-modal button:not(.btn-close):hover { background: #2a3a52 !important; }
+[data-theme="dark"] #wr-import-type-modal > div > div:last-child { background: #15233f !important; border-color: #2a4a7a !important; color: #93c5fd !important; }
+/* 模板编辑弹窗 */
+[data-theme="dark"] #wr-tpl-modal > div { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] #wr-tpl-modal input,
+[data-theme="dark"] #wr-tpl-modal select,
+[data-theme="dark"] #wr-tpl-modal textarea { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] #wr-tpl-modal input::placeholder,
+[data-theme="dark"] #wr-tpl-modal textarea::placeholder { color: #64748b !important; }
+[data-theme="dark"] #wr-tpl-modal > div > div:nth-child(2) { background: #15233f !important; border-color: #2a4a7a !important; color: #93c5fd !important; }
+[data-theme="dark"] #wr-tpl-modal > div > div:last-child button:first-child { background: #1e293b !important; color: #cbd5e1 !important; border-color: #334155 !important; }
+/* 资料显示卡片 */
+[data-theme="dark"] .wr-mat-card { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] .wr-mat-card:hover { border-color: #2a4a7a !important; box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important; }
+[data-theme="dark"] .wr-mat-card span { background: #15233f !important; color: #93c5fd !important; }
+[data-theme="dark"] .wr-mat-btn-view { background: #1e293b !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] .wr-mat-btn-view:hover { background: #2a3a52 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] .wr-mat-btn-template { background: #15233f !important; border-color: #2a4a7a !important; color: #93c5fd !important; }
+[data-theme="dark"] .wr-mat-btn-template:hover { background: #1e3354 !important; }
+[data-theme="dark"] .wr-mat-btn-delete { background: #3a1f24 !important; border-color: #7f3b3b !important; color: #fca5a5 !important; }
+[data-theme="dark"] .wr-mat-btn-delete:hover { background: #4a272d !important; }
+[data-theme="dark"] .wr-mat-select { background: #0f172a !important; border-color: #334155 !important; color: #cbd5e1 !important; }

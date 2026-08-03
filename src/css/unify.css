@@ -493,3 +493,13 @@ textarea:focus {
 [data-theme="dark"] #risk-results { background: #0f172a !important; border-color: #334155 !important; color: #cbd5e1 !important; }
 [data-theme="dark"] #risk-refine-input { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
 [data-theme="dark"] #risk-refine-input::placeholder { color: #64748b !important; }
+
+/* 智能体 · 对话显示框及面板 · 暗黑 */
+[data-theme="dark"] #ds-sub-agent > div:first-child { background: #1e293b !important; color: #cbd5e1 !important; border: 1px solid #334155 !important; }
+[data-theme="dark"] #ds-sub-agent > div:first-child button { background: #15233f !important; color: #93c5fd !important; }
+[data-theme="dark"] #ds-agent-history-panel { background: #1e293b !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] #ds-agent-history { background: #0f172a !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] #ds-agent-input { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] #ds-agent-input::placeholder { color: #64748b !important; }
+/* 智能体动态气泡（agent-plan 浅黄 / agent-tool & assistant 浅绿 / 错误红等内联浅色块）暗黑化：仅覆盖背景与文字，保留内联左边框语义色 */
+[data-theme="dark"] #ds-agent-history > div { background-color: #1e293b !important; color: #cbd5e1 !important; }

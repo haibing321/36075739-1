@@ -4,9 +4,16 @@
    为极简灰蓝风格，主色与智能对话保持一致（#4d6bfe）。
    ============================================================ */
 
+/* ---------- 0. 浅色模式微调：略加深页面底色 / 卡片 / 导航，降低纯白刺眼感 ----------
+   仅覆盖 :root 浅色变量（在 variables.css 之后加载生效），暗黑模式用 [data-theme="dark"] 更高特异性不受影响 */
+:root {
+    --bg: #eef2f7;        /* 页面底色由 #f7fafc 微深为冷灰蓝，整体不再发白 */
+    --card-bg: #f8fafd;   /* 卡片由纯白 #fff 调为极浅冷白，保留卡片略亮于底色的自然层次 */
+}
+
 /* ---------- 1. 头部 & 顶部导航：浅色极简条 ---------- */
 .header {
-    background: #ffffff;
+    background: #e9eef5;
     box-shadow: 0 1px 5px rgba(15, 23, 42, 0.10);
     border-bottom: 1px solid #d6deea;
     backdrop-filter: none;
@@ -192,7 +199,7 @@ textarea:focus {
 
 /* ---------- 6. 卡片 ---------- */
 .card {
-    background: #fff;
+    background: #f8fafd;
     border: 1px solid var(--ds-gray-200);
     border-radius: var(--ds-radius-lg);
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
@@ -203,13 +210,13 @@ textarea:focus {
     border-color: var(--ds-gray-200);
 }
 .card-header {
-    background: #fff;
+    background: #f8fafd;
     border-bottom: 1px solid var(--ds-gray-200);
     border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0;
     color: var(--text);
 }
 .card-title { color: var(--text); }
-.card-body { background: #fff; }
+.card-body { background: #f8fafd; }
 
 /* ---------- 7. 弹窗 ---------- */
 .modal-content {
@@ -620,3 +627,8 @@ textarea:focus {
 [data-theme="dark"] .hb-view-toggle button.active { background: var(--primary) !important; color: #ffffff !important; }
 /* 规章制度视图只读提示条（handbook.js 内联 background:#fffbeb / color:#92400e），全局兜底未含 #fffbeb */
 [data-theme="dark"] *[style*="background:#fffbeb"] { background: #3a2e12 !important; color: #fcd34d !important; border-color: #7a5a1f !important; }
+
+/* ---------- 储存条（各模块底部存储占用条 .storage-bar / .storage-fill） ----------
+   components.css 轨道硬编码 #e2e8f0，dark.css 未覆盖；填充用 var(--success/--warning/--accent) 在暗黑下已为亮色，无需改 */
+[data-theme="dark"] .storage-bar { background: #334155 !important; }
+[data-theme="dark"] .storage-fill { box-shadow: 0 0 0 1px rgba(0,0,0,0.25) inset; }

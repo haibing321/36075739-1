@@ -7,15 +7,15 @@
 /* ---------- 1. 头部 & 顶部导航：浅色极简条 ---------- */
 .header {
     background: #ffffff;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-    border-bottom: 1px solid var(--ds-gray-200);
+    box-shadow: 0 1px 5px rgba(15, 23, 42, 0.10);
+    border-bottom: 1px solid #d6deea;
     backdrop-filter: none;
 }
 .logo-text { color: var(--text); }
 .logo-title { color: var(--ds-blue); }
 .logo-subtitle { color: var(--text-secondary); }
 .logo-icon {
-    background: rgba(77, 107, 254, 0.12);
+    background: rgba(77, 107, 254, 0.14);
     border-radius: var(--ds-radius);
 }
 .nav-btn {
@@ -24,13 +24,17 @@
     font-weight: 500;
 }
 .nav-btn:hover { color: var(--ds-blue); background: var(--ds-gray-100); }
-.nav-btn.active { color: var(--ds-blue); background: var(--ds-gray-100); }
+.nav-btn.active {
+    color: var(--ds-blue);
+    background: rgba(77, 107, 254, 0.16);
+    font-weight: 600;
+}
 .nav-btn.active::after {
     background: var(--ds-blue);
-    height: 2px;
-    left: 18%;
-    right: 18%;
-    border-radius: 2px;
+    height: 3px;
+    left: 16%;
+    right: 16%;
+    border-radius: 3px;
 }
 .nav-current-label { color: var(--text); }
 .nav-toggle { background: var(--ds-gray-100); }
@@ -324,8 +328,8 @@ textarea:focus {
 [data-theme="dark"] .logo-icon { background: rgba(77, 107, 254, 0.18); }
 [data-theme="dark"] .nav-btn { color: #94a3b8; }
 [data-theme="dark"] .nav-btn:hover,
-[data-theme="dark"] .nav-btn.active { color: #93c5fd; background: #1e293b; }
-[data-theme="dark"] .nav-btn.active::after { background: #93c5fd; }
+[data-theme="dark"] .nav-btn.active { color: #93c5fd; background: rgba(77, 107, 254, 0.20); font-weight: 600; }
+[data-theme="dark"] .nav-btn.active::after { background: #93c5fd; height: 3px; }
 [data-theme="dark"] .nav-current-label { color: #e2e8f0; }
 [data-theme="dark"] .nav-toggle { background: #1e293b; }
 [data-theme="dark"] .nav-toggle:hover { background: #2a3a52; }

@@ -2589,39 +2589,77 @@
                 wrRenderHistory();
             };
 
-            // 修改历史报告
+            // 修改历史报告（支持补充资料）
             window.wrModifyHistoryReport = async function(id) {
                 const reports = await wrDbGetAll(WR_RPT_STORE);
                 const r = reports.find(x => x.id === id);
                 if (!r) { alert('报告未找到'); return; }
-                // 弹窗输入修改要求
+
+                // 载入资料库（非模板），供「补充资料」勾选
+                let mats = [];
+                try { mats = (await wrDbGetAll(WR_MAT_STORE)).filter(m => m.matType !== 'template'); } catch(e) { mats = []; }
+                let matHtml = '<div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:#f8fafc;">';
+                if (!mats.length) {
+                    matHtml += '<div style="padding:10px;text-align:center;color:var(--text-secondary);font-size:0.82rem;">暂无可用资料（可在「资料中心」导入）</div>';
+                } else {
+                    const groups = {};
+                    mats.forEach(m => { const t = (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它'; (groups[t] = groups[t] || []).push(m); });
+                    Object.keys(groups).forEach(t => {
+                        matHtml += '<div style="font-size:0.76rem;font-weight:600;color:var(--primary);margin:4px 0 2px;">' + wrEsc(t) + '</div>';
+                        groups[t].forEach(m => {
+                            matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:0.82rem;">'
+                                + '<input type="checkbox" class="wr-modify-hist-mat" value="' + (m.id != null ? m.id : '') + '" style="cursor:pointer;">'
+                                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(m.title || m.fileName || '资料') + '</span></label>';
+                        });
+                    });
+                }
+                matHtml += '</div>';
+
                 const modal = document.createElement('div');
                 modal.id = 'wr-modify-history-modal';
                 modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10100;display:flex;align-items:center;justify-content:center;';
-                modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
+                modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">'
                     + '<div style="display:flex;align-items:center;justify-content:space-between;">'
                     + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✏️ 修改报告：' + wrEsc((r.title||'未命名报告').slice(0,20)) + '</span>'
                     + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>'
                     + '</div>'
                     + '<div style="font-size:0.8rem;color:var(--text-secondary);">请输入修改要求，AI 将基于原报告进行调整。</div>'
                     + '<textarea id="wr-modify-instruction" placeholder="例如：增加安全检查项点、补充数据分析段落、调整报告结构..." style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;resize:vertical;font-family:inherit;"></textarea>'
-                    + '<div style="display:flex;gap:10px;">'
-                    + '<button id="wr-modify-confirm-btn" style="flex:1;padding:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 开始修改</button>'
+                    + '<div style="font-size:0.82rem;font-weight:600;color:var(--text);">📎 补充资料（可选，勾选后随修改要求一并提交给 AI）</div>'
+                    + matHtml
+                    + '<div style="display:flex;gap:10px;margin-top:4px;">'
+                    + '<button id="wr-modify-confirm-btn" style="flex:1;padding:10px;background:var(--ds-blue);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 开始修改</button>'
                     + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.9rem;cursor:pointer;">取消</button>'
                     + '</div></div>';
                 document.body.appendChild(modal);
                 document.getElementById('wr-modify-confirm-btn').onclick = async function() {
                     var instruction = document.getElementById('wr-modify-instruction').value.trim();
+                    // 收集勾选的补充资料
+                    var cbs = Array.prototype.slice.call(document.querySelectorAll('#wr-modify-history-modal .wr-modify-hist-mat:checked'));
+                    var selIds = cbs.map(function(cb){ return cb.value; });
+                    var suppText = '';
+                    if (selIds.length) {
+                        var byId = {};
+                        mats.forEach(function(m){ byId[String(m.id)] = m; });
+                        suppText = selIds.map(function(id){
+                            var m = byId[id];
+                            if (!m) return '';
+                            var label = (WR_MAT_TYPES[m.matType] || {}).label || '资料';
+                            return '【' + label + '】\n' + (m.content || '').slice(0, 4000);
+                        }).filter(Boolean).join('\n\n');
+                    }
+                    if (!instruction && !suppText) { alert('请输入修改要求或勾选补充资料'); return; }
                     modal.remove();
-                    if (!instruction) { alert('请输入修改要求'); return; }
-                    // 将原报告内容和修改要求写入输入框
+                    // 将原报告内容、修改要求与补充资料写入输入框
                     var input = document.getElementById('wr-query-input');
                     var oldVal = input ? input.value : '';
-                    var fullPrompt = '【原报告】\n' + (r.content || '') + '\n\n【修改要求】\n' + instruction + '\n\n请基于原报告内容，按修改要求进行调整。保持原有结构和大部分文字，仅修改要求的部分。';
+                    var fullPrompt = '【原报告】\n' + (r.content || '') + '\n\n【修改要求】\n' + (instruction || '（无文字要求，请依据补充资料完善报告）')
+                        + (suppText ? ('\n\n【补充资料】\n' + suppText) : '')
+                        + '\n\n请基于原报告内容，按上述修改要求进行补充和完善，保持原有结构和大部分文字，合理吸收补充资料中的相关内容。';
                     window._wrModifyBaseTitle = r.title || '未命名报告';
                     window._wrModifyCategory = r.category || 'other';
                     if (input) input.value = fullPrompt;
-                    window._wrSkipLocalSearch = true; // 跳过本地资料检索
+                    window._wrSkipLocalSearch = true; // 修改模式跳过自动检索，避免无关噪声（补充资料已显式注入）
                     await wrGenerate();
                     if (input) input.value = oldVal;
                     window._wrSkipLocalSearch = false;

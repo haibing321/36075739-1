@@ -102,7 +102,7 @@
         }
     });
 
-    // ---- 写作资料库附件选择 ----
+    // ---- 写作资料库附件选择（含历史报告） ----
     window._dsMaterialCache = [];
 
     window.dsOpenMaterialPicker = async function() {
@@ -124,8 +124,21 @@
                 var store = tx.objectStore('writing_materials');
                 store.getAll().onsuccess = function(e) { res(e.target.result || []); };
             });
+            // 同时载入「智能写作历史报告」，作为可附加的上下文
+            var reports = [];
+            try {
+                reports = await new Promise(function(res) {
+                    var tx = db.transaction('writing_reports', 'readonly');
+                    var store = tx.objectStore('writing_reports');
+                    store.getAll().onsuccess = function(e) { res(e.target.result || []); };
+                });
+            } catch(e) { reports = []; }
             db.close();
-            window._dsMaterialCache = materials || [];
+            // 合并：资料库条目保留原 type；历史报告统一标记为 report 类型
+            var reportItems = (reports || []).map(function(r) {
+                return { title: r.title || '未命名报告', content: r.content || '', type: 'report', source: 'report', id: 'rpt-' + (r.id != null ? r.id : '') };
+            });
+            window._dsMaterialCache = (materials || []).concat(reportItems);
             dsRenderMaterialList(window._dsMaterialCache);
         } catch(e) {
             list.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626;">加载失败：' + (e.message||'资料库为空') + '</div>';
@@ -149,7 +162,7 @@
             list.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">没有匹配的资料</div>';
             return;
         }
-        var typeMap = {report:'📄 报告',inspect:'🔍 检查信息',template:'📋 模版',fault:'⚠️ 故障',notice:'📢 通报',other:'📎 其它'};
+        var typeMap = {report:'📄 历史报告',inspect:'🔍 检查信息',template:'📋 模版',fault:'⚠️ 故障',notice:'📢 通报',other:'📎 其它'};
         var html = '';
         items.slice(0, 50).forEach(function(m, i) {
             var typeLabel = typeMap[m.type] || '📎 资料';

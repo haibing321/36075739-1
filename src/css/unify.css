@@ -13,9 +13,9 @@
 
 /* ---------- 1. 头部 & 顶部导航：浅色极简条 ---------- */
 .header {
-    background: #e9eef5;
+    background: #dbe3ee;
     box-shadow: 0 1px 5px rgba(15, 23, 42, 0.10);
-    border-bottom: 1px solid #d6deea;
+    border-bottom: 1px solid #c7d0de;
     backdrop-filter: none;
 }
 .logo-text { color: var(--text); }

@@ -610,3 +610,13 @@ textarea:focus {
 [data-theme="dark"] #issue-statsPanel *[style*="color:#334155"] { color: #cbd5e1 !important; }
 [data-theme="dark"] #issue-statsPanel *[style*="color:#64748b"] { color: #94a3b8 !important; }
 [data-theme="dark"] #issue-statsPanel *[style*="color:#94a3b8"] { color: #cbd5e1 !important; }
+
+/* 检查手册 · 浏览模式切换按钮（📑 大纲浏览 / 📜 规章制度）· 暗黑
+   components.css 的 .hb-view-toggle button 非激活态硬编码 #f1f5f9/#64748b、
+   hover #e2e8f0，暗黑下仍是浅灰块，与整体深色冲突。仅改 unify.css 暗黑段，源文件零改动。 */
+[data-theme="dark"] .hb-view-toggle { border-color: #334155 !important; }
+[data-theme="dark"] .hb-view-toggle button { background: #1e293b !important; color: #cbd5e1 !important; }
+[data-theme="dark"] .hb-view-toggle button:hover:not(.active) { background: #243044 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] .hb-view-toggle button.active { background: var(--primary) !important; color: #ffffff !important; }
+/* 规章制度视图只读提示条（handbook.js 内联 background:#fffbeb / color:#92400e），全局兜底未含 #fffbeb */
+[data-theme="dark"] *[style*="background:#fffbeb"] { background: #3a2e12 !important; color: #fcd34d !important; border-color: #7a5a1f !important; }

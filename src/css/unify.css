@@ -377,6 +377,16 @@ textarea:focus {
     max-width: 100vw;
     margin-left: calc(50% - 50vw);
 }
+/* 12c. 消息气泡本身：覆盖 ds-deepseek.css/modules.css 的 max-width:82%/85%/94%（宽屏下仍显窄） */
+#ds-chat-box .ds-bubble-assistant,
+#ds-chat-box .ds-bubble-system,
+#ds-chat-box .ds-welcome-sub {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+#ds-chat-box .ds-bubble-user {
+    max-width: 96% !important;
+}
 
 /* ============================================================
    暗黑模式覆盖（与智能对话暗黑风格一致）

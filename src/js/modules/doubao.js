@@ -410,6 +410,8 @@
                 if (modelLabel && modelSel) {
                     var mi = modelSel.selectedIndex;
                     var mName = (mi >= 0 && modelSel.options[mi]) ? modelSel.options[mi].text : '';
+                    // 简化默认模型展示：去掉「默认模型 (xxx)」前缀，仅保留模型标识
+                    mName = mName.replace(/^默认模型\s*[（(](.+?)[）)]\s*$/, '$1');
                     modelLabel.textContent = mName || '未配置模型';
                 }
             }

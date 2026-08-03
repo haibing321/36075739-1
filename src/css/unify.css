@@ -479,3 +479,17 @@ textarea:focus {
 [data-theme="dark"] .diary-issue-item-content { background: #16263f !important; color: #cbd5e1 !important; border-left-color: var(--accent) !important; }
 [data-theme="dark"] .btn-add-issue { background: #1e3354 !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
 [data-theme="dark"] .btn-add-issue:hover { background: #24406b !important; }
+
+/* 风险研判 · 研判条件框及结果区 · 暗黑 */
+[data-theme="dark"] #risk-config { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] #risk-config input[type="date"],
+[data-theme="dark"] #risk-config input[type="text"],
+[data-theme="dark"] #risk-unit,
+[data-theme="dark"] #risk-focus { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] #risk-config input::placeholder,
+[data-theme="dark"] #risk-unit::placeholder,
+[data-theme="dark"] #risk-focus::placeholder { color: #64748b !important; }
+[data-theme="dark"] #risk-data-preview { background: #15233f !important; border-color: #2a4a7a !important; color: #93c5fd !important; }
+[data-theme="dark"] #risk-results { background: #0f172a !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] #risk-refine-input { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] #risk-refine-input::placeholder { color: #64748b !important; }

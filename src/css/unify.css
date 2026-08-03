@@ -363,6 +363,21 @@ textarea:focus {
 .btn-add-issue:hover { background: #dbeafe; }
 .btn-add-issue:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ---------- 12. 智能对话记录框加宽（电脑端填满卡片≈2/3屏+, 各终端自适应） ---------- */
+/* 12a. 对话框本身：覆盖 ds-deepseek.css 的 max-width:min(960px,100%); margin:0 auto（窄居中列） */
+#ds-chat-box.ds-chat-box {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+}
+/* 12b. 仅「智能对话」面板突破全局 .main(最大1600px) 容器上限，铺满视口（full-bleed）。
+   其它模块布局不变；只改 margin 不碰 transform，故不与卡片 hover 动效冲突。 */
+#panel-doubao.active .card {
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+}
+
 /* ============================================================
    暗黑模式覆盖（与智能对话暗黑风格一致）
    ============================================================ */

@@ -532,3 +532,64 @@ textarea:focus {
 [data-theme="dark"] .wr-mat-btn-delete { background: #3a1f24 !important; border-color: #7f3b3b !important; color: #fca5a5 !important; }
 [data-theme="dark"] .wr-mat-btn-delete:hover { background: #4a272d !important; }
 [data-theme="dark"] .wr-mat-select { background: #0f172a !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+
+/* ============================================================
+   全模块按钮暗黑兜底
+   策略：各模块 JS 动态生成的 <button> 大量使用内联硬编码浅色背景
+   (#fff/#f8fafc/#eff6ff/#dbeafe/#f0fdf4/#fff1f2/#fef2f2/#fff5f5/
+   #fffbeb/#e0e7ff/#e2e8f0/#fef3c7 等)，dark.css 的全局属性选择器
+   仅覆盖 #f8fafc/#f1f5f9/#eff6ff/#fef3c7，其余仍为白/浅块。
+   此处仅针对 <button> 元素按内联浅色背景做兜底暗黑化（不动 <div>
+   信息框，避免丢失语义色）。语义色按钮（蓝/绿/红/琥珀）按文字色二次
+   覆盖，保留警示/成功含义。源文件零改动。
+   ============================================================ */
+[data-theme="dark"] button[style*="background:#fff"],
+[data-theme="dark"] button[style*="background: #fff"],
+[data-theme="dark"] button[style*="background:#ffffff"],
+[data-theme="dark"] button[style*="background:#f8fafc"],
+[data-theme="dark"] button[style*="background:#f1f5f9"],
+[data-theme="dark"] button[style*="background:#e2e8f0"],
+[data-theme="dark"] button[style*="background:#eff6ff"],
+[data-theme="dark"] button[style*="background:#dbeafe"],
+[data-theme="dark"] button[style*="background:#f0fdf4"],
+[data-theme="dark"] button[style*="background:#e0e7ff"],
+[data-theme="dark"] button[style*="background:#fffbeb"],
+[data-theme="dark"] button[style*="background:#fff1f2"],
+[data-theme="dark"] button[style*="background:#fef2f2"],
+[data-theme="dark"] button[style*="background:#fff5f5"] {
+    background: #1e293b !important;
+    color: #cbd5e1 !important;
+    border-color: #334155 !important;
+}
+/* 语义色按钮暗黑保留（按文字色匹配，置于兜底之后以覆盖） */
+[data-theme="dark"] button[style*="color:#1d4ed8"],
+[data-theme="dark"] button[style*="color:#1e40af"],
+[data-theme="dark"] button[style*="color:#2563eb"],
+[data-theme="dark"] button[style*="color:#1e3a8a"] {
+    background: #15233f !important;
+    color: #93c5fd !important;
+    border-color: #2a4a7a !important;
+}
+[data-theme="dark"] button[style*="color:#15803d"],
+[data-theme="dark"] button[style*="color:#166534"],
+[data-theme="dark"] button[style*="color:#047857"],
+[data-theme="dark"] button[style*="color:#059669"] {
+    background: #14321f !important;
+    color: #86efac !important;
+    border-color: #28543a !important;
+}
+[data-theme="dark"] button[style*="color:#dc2626"],
+[data-theme="dark"] button[style*="color:#b91c1c"],
+[data-theme="dark"] button[style*="color:#991b1b"],
+[data-theme="dark"] button[style*="color:#ef4444"] {
+    background: #3a1f24 !important;
+    color: #fca5a5 !important;
+    border-color: #7f3b3b !important;
+}
+[data-theme="dark"] button[style*="color:#92400e"],
+[data-theme="dark"] button[style*="color:#b45309"],
+[data-theme="dark"] button[style*="color:#d97706"] {
+    background: #3a2e12 !important;
+    color: #fcd34d !important;
+    border-color: #7a5a1f !important;
+}

@@ -318,6 +318,39 @@ textarea:focus {
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
 
+/* ---------- 10. 智能对话建议按钮（等宽灰药丸，统一大小 / 不撑太宽） ---------- */
+.ds-suggest-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ds-suggestion {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 36px;
+    padding: 0 12px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--ds-radius);
+}
+
+/* ---------- 11. 工作写实「添加问题」→ 与检查信息「添加关键词」同款蓝药丸 ---------- */
+.btn-add-issue {
+    width: 100%;
+    background: var(--ds-blue-soft);
+    color: var(--ds-blue);
+    border: 1px solid var(--ds-blue-border);
+    border-radius: 50%;
+    padding: 12px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-add-issue:hover { background: #dbeafe; }
+.btn-add-issue:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ============================================================
    暗黑模式覆盖（与智能对话暗黑风格一致）
    ============================================================ */
@@ -415,3 +448,34 @@ textarea:focus {
 [data-theme="dark"] .diary-unified-card,
 [data-theme="dark"] .diary-view-panel,
 [data-theme="dark"] .diary-unified-section { background: #1e293b !important; border-color: #334155 !important; }
+
+/* 关联数据弹出窗口 · 暗黑 */
+[data-theme="dark"] #ds-datasource-modal > div { background: #1e293b !important; border: 1px solid #334155 !important; }
+[data-theme="dark"] #ds-datasource-modal label { color: #cbd5e1 !important; }
+[data-theme="dark"] #ds-datasource-modal hr { border-color: #334155 !important; opacity: 0.5; }
+[data-theme="dark"] #ds-datasource-modal span { color: #e2e8f0 !important; }
+
+/* 考勤弹窗 / 考勤统计显示框 · 暗黑 */
+[data-theme="dark"] .modal-body { background: #1e293b !important; color: #e2e8f0 !important; }
+[data-theme="dark"] .att-summary { background: #0f172a !important; color: #94a3b8 !important; border: 1px solid #334155 !important; }
+[data-theme="dark"] .att-nature-btn,
+[data-theme="dark"] .att-sub-btn,
+[data-theme="dark"] .att-btn { background: #1e293b !important; color: #cbd5e1 !important; border-color: #334155 !important; }
+[data-theme="dark"] .att-nature-btn:hover,
+[data-theme="dark"] .att-sub-btn:hover,
+[data-theme="dark"] .att-btn:hover { background: #2a3a52 !important; }
+[data-theme="dark"] .att-nature-btn.att-active { background: var(--ds-blue) !important; color: #fff !important; border-color: var(--ds-blue) !important; }
+[data-theme="dark"] .att-sub-btn.att-active { background: var(--ds-blue) !important; color: #fff !important; border-color: var(--ds-blue) !important; }
+[data-theme="dark"] .att-set-row { border-top-color: #334155 !important; }
+[data-theme="dark"] .att-clear-link { color: #64748b !important; }
+
+/* 工作写实查看内容框 · 内层暗黑 */
+[data-theme="dark"] .diary-card { box-shadow: none !important; }
+[data-theme="dark"] .diary-card-header { border-bottom-color: #334155 !important; }
+[data-theme="dark"] .diary-card-date { color: #93c5fd !important; }
+[data-theme="dark"] .diary-work-title,
+[data-theme="dark"] .diary-issues-title { color: #94a3b8 !important; }
+[data-theme="dark"] .diary-work-content { background: #0f172a !important; color: #cbd5e1 !important; }
+[data-theme="dark"] .diary-issue-item-content { background: #16263f !important; color: #cbd5e1 !important; border-left-color: var(--accent) !important; }
+[data-theme="dark"] .btn-add-issue { background: #1e3354 !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
+[data-theme="dark"] .btn-add-issue:hover { background: #24406b !important; }

@@ -88,7 +88,7 @@
 
 /* —— 对话区：居中列（宽屏居中，手机铺满）—— */
 #ds-chat-box.ds-chat-box {
-    max-width: 760px;
+    max-width: min(960px, 100%);
     width: 100%;
     margin: 0 auto;
 }

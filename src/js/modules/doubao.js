@@ -1380,11 +1380,12 @@
                         var lastMsgDiv = _finalChatBox.querySelector('.ds-row-assistant:last-of-type');
                         if (lastMsgDiv) {
                             var suggestDiv = document.createElement('div');
-                            suggestDiv.style.cssText = 'display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;';
+                            suggestDiv.className = 'ds-suggest-row';
+                            suggestDiv.style.cssText = 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;';
                             suggestions.forEach(function(text) {
                                 var btn = document.createElement('button');
                                 btn.textContent = text;
-                                btn.className = 'btn btn-secondary btn-small';
+                                btn.className = 'btn btn-secondary btn-small ds-suggestion';
                                 btn.onclick = function() {
                                     var ib = document.getElementById('ds-user-input');
                                     if (ib) ib.value = text.replace(/^[^\s]+\s/, '');

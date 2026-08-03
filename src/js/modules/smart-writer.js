@@ -2595,23 +2595,40 @@
                 const r = reports.find(x => x.id === id);
                 if (!r) { alert('报告未找到'); return; }
 
-                // 载入资料库（非模板），供「补充资料」勾选
+                // 载入资料库（非模板）与历史报告，供「补充资料」勾选（可从其它报告中抽取部分内容补充）
                 let mats = [];
                 try { mats = (await wrDbGetAll(WR_MAT_STORE)).filter(m => m.matType !== 'template'); } catch(e) { mats = []; }
-                let matHtml = '<div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:#f8fafc;">';
-                if (!mats.length) {
-                    matHtml += '<div style="padding:10px;text-align:center;color:var(--text-secondary);font-size:0.82rem;">暂无可用资料（可在「资料中心」导入）</div>';
+                let otherReports = [];
+                try { otherReports = (await wrDbGetAll(WR_RPT_STORE)).filter(x => x.id !== r.id); } catch(e) { otherReports = []; }
+                // 统一补充来源（资料 + 其它历史报告），checkbox value 为 suppList 索引
+                const suppList = [];
+                mats.forEach(m => suppList.push({ kind: 'mat', id: m.id, title: (m.title || m.fileName || '资料'), label: (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它', content: m.content || '' }));
+                otherReports.forEach(rp => suppList.push({ kind: 'report', id: rp.id, title: (rp.title || '未命名报告'), label: '历史报告', content: rp.content || '' }));
+                let matHtml = '<div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:#f8fafc;">';
+                if (!suppList.length) {
+                    matHtml += '<div style="padding:10px;text-align:center;color:var(--text-secondary);font-size:0.82rem;">暂无可用资料或其它报告（可在「资料中心」导入）</div>';
                 } else {
-                    const groups = {};
-                    mats.forEach(m => { const t = (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它'; (groups[t] = groups[t] || []).push(m); });
-                    Object.keys(groups).forEach(t => {
+                    const matGroups = {};
+                    suppList.forEach((s, idx) => { if (s.kind === 'mat') { const t = s.label; (matGroups[t] = matGroups[t] || []).push(idx); } });
+                    Object.keys(matGroups).forEach(t => {
                         matHtml += '<div style="font-size:0.76rem;font-weight:600;color:var(--primary);margin:4px 0 2px;">' + wrEsc(t) + '</div>';
-                        groups[t].forEach(m => {
+                        matGroups[t].forEach(idx => {
+                            const s = suppList[idx];
                             matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:0.82rem;">'
-                                + '<input type="checkbox" class="wr-modify-hist-mat" value="' + (m.id != null ? m.id : '') + '" style="cursor:pointer;">'
-                                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(m.title || m.fileName || '资料') + '</span></label>';
+                                + '<input type="checkbox" class="wr-modify-hist-mat" value="' + idx + '" style="cursor:pointer;">'
+                                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(s.title) + '</span></label>';
                         });
                     });
+                    const reportIdxs = suppList.map((s, idx) => s.kind === 'report' ? idx : -1).filter(i => i >= 0);
+                    if (reportIdxs.length) {
+                        matHtml += '<div style="font-size:0.76rem;font-weight:600;color:var(--primary);margin:6px 0 2px;">📄 历史报告（勾选后从中抽取相关内容补充）</div>';
+                        reportIdxs.forEach(idx => {
+                            const s = suppList[idx];
+                            matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:0.82rem;">'
+                                + '<input type="checkbox" class="wr-modify-hist-mat" value="' + idx + '" style="cursor:pointer;">'
+                                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(s.title) + '</span></label>';
+                        });
+                    }
                 }
                 matHtml += '</div>';
 
@@ -2636,16 +2653,12 @@
                     var instruction = document.getElementById('wr-modify-instruction').value.trim();
                     // 收集勾选的补充资料
                     var cbs = Array.prototype.slice.call(document.querySelectorAll('#wr-modify-history-modal .wr-modify-hist-mat:checked'));
-                    var selIds = cbs.map(function(cb){ return cb.value; });
                     var suppText = '';
-                    if (selIds.length) {
-                        var byId = {};
-                        mats.forEach(function(m){ byId[String(m.id)] = m; });
-                        suppText = selIds.map(function(id){
-                            var m = byId[id];
-                            if (!m) return '';
-                            var label = (WR_MAT_TYPES[m.matType] || {}).label || '资料';
-                            return '【' + label + '】\n' + (m.content || '').slice(0, 4000);
+                    if (cbs.length) {
+                        suppText = cbs.map(function(cb){
+                            var s = suppList[parseInt(cb.value, 10)];
+                            if (!s) return '';
+                            return '【' + s.label + '】' + wrEsc(s.title) + '\n' + (s.content || '').slice(0, 4000);
                         }).filter(Boolean).join('\n\n');
                     }
                     if (!instruction && !suppText) { alert('请输入修改要求或勾选补充资料'); return; }
@@ -2655,7 +2668,7 @@
                     var oldVal = input ? input.value : '';
                     var fullPrompt = '【原报告】\n' + (r.content || '') + '\n\n【修改要求】\n' + (instruction || '（无文字要求，请依据补充资料完善报告）')
                         + (suppText ? ('\n\n【补充资料】\n' + suppText) : '')
-                        + '\n\n请基于原报告内容，按上述修改要求进行补充和完善，保持原有结构和大部分文字，合理吸收补充资料中的相关内容。';
+                        + '\n\n请基于原报告内容，按上述修改要求进行补充和完善。对于【补充资料】，仅摘录与修改要求相关的片段有机融入原报告，保持原报告的整体结构、格式与文风，不要整体照搬或替换原报告内容。';
                     window._wrModifyBaseTitle = r.title || '未命名报告';
                     window._wrModifyCategory = r.category || 'other';
                     if (input) input.value = fullPrompt;

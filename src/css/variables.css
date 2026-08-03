@@ -60,9 +60,16 @@ body {
 ::selection { background: rgba(77, 107, 254, 0.18); }
 
 /* ---- 滚动条美化增强 ---- */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(77, 107, 254, 0.2); border-radius: 3px; transition: background 0.2s; }
-::-webkit-scrollbar-thumb:hover { background: rgba(77, 107, 254, 0.4); }
+::-webkit-scrollbar-thumb { background: rgba(77, 107, 254, 0.28); border-radius: 6px; transition: background 0.2s; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(77, 107, 254, 0.5); }
 /* Firefox 滚动条 */
-* { scrollbar-width: thin; scrollbar-color: rgba(77, 107, 254, 0.2) transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(77, 107, 254, 0.28) transparent; }
+/* 触屏 / 手机端：加宽滚动条，便于手指直接拖动手柄 */
+@media (pointer: coarse), (max-width: 768px) {
+  * { scrollbar-width: auto; }
+  ::-webkit-scrollbar { width: 14px; height: 14px; }
+  ::-webkit-scrollbar-thumb { background: rgba(77, 107, 254, 0.38); background-clip: padding-box; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(77, 107, 254, 0.58); }
+}

@@ -368,23 +368,49 @@
         }
       }
 
-      // 天气意图：直接调用 get_weather（复用智能体逻辑，含 5s 超时兜底），跳过 AI
+      // 天气意图处理（修复：复合问题中只回天气、忽略其它内容的痛点）
+      //   纯天气询问（无其它任务意图）→ 直接返回天气卡片（保留快速体验）
+      //   复合问题（含分析/总结/说明/安排等）→ 将天气作为上下文注入，交给 AI 综合回答，不再忽略其它内容
+      //   强任务（写报告/对规/风险等）→ 不拦截，交给原路由（不打断用户对这些功能的预期）
       if (/天气|气温|温度|气象|多少度|下雨|下雪|风力|湿度/.test(question)) {
         if (typeof window.queryWeather === 'function') {
           const st = extractWeatherStation(question);
           if (st) {
+            const STRONG_TASK = /写报告|生成.*报告|起草|撰写|月度总结|整改通知书|对规|违反|违章|不符合|哪条规章|风险|趋势|研判|预警/;
+            const COMPOSITE_HINT = /分析|总结|说明|影响|安排|计划|方案|措施|建议|给我|帮我|评估|预测|制定|规划|梳理|整理|对比|检查|报告|通知|通报|安全|作业|施工|防洪|排查|注意|根据|结合|考虑|处理|应对|防范/;
             try {
               const w = await window.queryWeather({ stationName: st });
               if (w && w.ok) {
-                _pushAssistant(formatWeather(w, st));
-                input.value = '';
-                return;
-              } else if (w && w.error && !/未找到车站/.test(w.error)) {
-                _pushAssistant('🌤️ ' + w.error);
-                input.value = '';
-                return;
+                if (STRONG_TASK.test(question)) {
+                  // 强任务：交给原路由（天气站名已随 question 带入任务文本，不抢答）
+                } else if (!COMPOSITE_HINT.test(question)) {
+                  // 纯天气询问：直接返回卡片
+                  _pushAssistant(formatWeather(w, st));
+                  input.value = '';
+                  return;
+                } else {
+                  // 复合问题：注入天气上下文，直接走 AI 流综合回答（气泡仍显示用户原话）
+                  let finalText = question + '\n\n[参考天气信息·' + st + ']\n' + formatWeather(w, st);
+                  const validAttach = (window._dsAttachments || []).filter(Boolean);
+                  if (validAttach.length) {
+                    finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
+                    window._dsAttachments = [];
+                  }
+                  const hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : null;
+                  if (hist && typeof window.dsRenderAll === 'function') {
+                    hist.push({ role: 'user', content: finalText, displayText: question });
+                    window.dsRenderAll();
+                    await window._dsRunStream(finalText);
+                  } else {
+                    input.value = finalText;
+                    await _origSend.apply(this, arguments);
+                  }
+                  input.value = '';
+                  if (input.style) input.style.height = '';
+                  return;
+                }
               }
-              // 未找到车站 → 退化为普通对话（交给 AI）
+              // 天气查询失败 / 未找到车站 / 强任务 → 退化为普通对话或原路由（交给 AI，不再抢答天气）
             } catch (e) {}
           }
         }

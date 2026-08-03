@@ -593,3 +593,20 @@ textarea:focus {
     color: #fcd34d !important;
     border-color: #7a5a1f !important;
 }
+
+/* 检查信息 · 统计弹出窗口（#issue-statsPanel）· 暗黑
+   面板容器(index 内联 #fff)、关闭按钮(#888)、JS 动态渲染的统计卡片
+   (浅色渐变)、性质/类别卡片(#fff)、进度条轨道(#f1f5f9)、标题(#1e293b)
+   与标签文字(#334155/#64748b/#94a3b8) 均为内联硬编码浅色，暗黑下不可读。
+   仅改 unify.css 暗黑段，源文件零改动。 */
+[data-theme="dark"] #issue-statsPanel { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] #issue-statsPanel button[style*="background:none"] { color: #94a3b8 !important; }
+[data-theme="dark"] #issue-statsPanel button[style*="background:none"]:hover { color: #e2e8f0 !important; }
+[data-theme="dark"] #issue-statsPanel .stats-card { background: #15233f !important; border-color: #334155 !important; box-shadow: none !important; }
+[data-theme="dark"] #issue-statsPanel .stats-card:hover { transform: none !important; }
+[data-theme="dark"] #issue-statsPanel *[style*="background:#fff"] { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme="dark"] #issue-statsPanel *[style*="background:#f1f5f9"] { background: #0f172a !important; }
+[data-theme="dark"] #issue-statsPanel *[style*="color:#1e293b"] { color: #e2e8f0 !important; }
+[data-theme="dark"] #issue-statsPanel *[style*="color:#334155"] { color: #cbd5e1 !important; }
+[data-theme="dark"] #issue-statsPanel *[style*="color:#64748b"] { color: #94a3b8 !important; }
+[data-theme="dark"] #issue-statsPanel *[style*="color:#94a3b8"] { color: #cbd5e1 !important; }

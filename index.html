@@ -612,9 +612,8 @@
                     </div>
 
                     <!-- === 智能对规子模块 === -->
-                    <div id="ds-sub-check" style="display:none;flex-direction:column;flex:1;min-height:0;">
+                    <div id="ds-sub-check" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:auto;padding:16px;">
                         <!-- 自动对规模块 -->
-                        <div style="background: linear-gradient(135deg, #eff6ff, #e0f2fe); border-radius: 12px; padding: 16px; flex:1; overflow-y:auto;">
                             <textarea id="autoCheck-input" rows="2" placeholder="输入检查问题，例如：工务作业人员在天窗点外违规上道作业，未设置防护。"
                                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; resize: none; margin-bottom: 10px; box-sizing: border-box; min-height: 40px; max-height: 200px; line-height: 1.5;"
                                 oninput="autoResize(this);acOnInputChange(this.value)"></textarea>
@@ -667,7 +666,6 @@
                             </div>
                             <div id="autoCheck-results" style="margin-top: 16px; max-height: 500px; min-height: 200px; overflow-y: auto; display: none;">
                             </div>
-                        </div>
                     </div>
 
                     <!-- === 智能对话子模块 === -->
@@ -797,24 +795,22 @@
                             <!-- 写作对话历史区（智能对话式） -->
                             <div id="wr-chat-history" style="display:none;flex-direction:column;gap:8px;overflow-y:auto;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;flex:1;min-height:200px;max-height:calc(100vh - 400px);"></div>
 
-                            <!-- 写作需求输入区（智能对话式） -->
-                            <div style="background:linear-gradient(135deg,#eff6ff,#e0f2fe);border-radius:12px;padding:14px;">
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                                    <span style="font-size:1.1rem;">✍️</span>
-                                    <span id="wr-input-label" style="font-weight:700;font-size:0.95rem;color:var(--primary);">写作需求</span>
-                                    <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:#1d4ed8;">自动检索本地资料 · 可连续修改</span>
-                                </div>
+                            <!-- 写作需求输入区（智能对话式，直接平铺） -->
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                                <span style="font-size:1.1rem;">✍️</span>
+                                <span id="wr-input-label" style="font-weight:700;font-size:0.95rem;color:var(--primary);">写作需求</span>
+                                <span style="font-size:0.72rem;background:#fff;padding:2px 8px;border-radius:20px;color:#1d4ed8;">自动检索本地资料 · 可连续修改</span>
+                            </div>
 
-                                <textarea id="wr-query-input" rows="3" placeholder="例如：帮我写一份2026年3月的月度安全检查报告，要包含问题统计、典型问题和整改要求。"
-                                    style="width:100%;padding:10px 12px;border:1px solid #bfdbfe;border-radius:8px;font-size:0.9rem;resize:none;box-sizing:border-box;line-height:1.6;background:#fff;"
-                                    oninput="autoResize(this);wrOnQueryChange()"
-                                    onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();wrWrite();}"></textarea>
+                            <textarea id="wr-query-input" rows="3" placeholder="例如：帮我写一份2026年3月的月度安全检查报告，要包含问题统计、典型问题和整改要求。"
+                                style="width:100%;padding:10px 12px;border:1px solid #bfdbfe;border-radius:8px;font-size:0.9rem;resize:none;box-sizing:border-box;line-height:1.6;background:#fff;"
+                                oninput="autoResize(this);wrOnQueryChange()"
+                                onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();wrWrite();}"></textarea>
 
-                                <!-- 检索到的资料预览 -->
-                                <div id="wr-material-preview" style="display:none;margin-top:8px;padding:8px 12px;background:#fff;border:1px solid #bfdbfe;border-radius:8px;font-size:0.8rem;color:#1d4ed8;">
-                                    <div style="font-weight:700;margin-bottom:4px;">📦 已检索到的资料：</div>
-                                    <div id="wr-material-tags" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
-                                </div>
+                            <!-- 检索到的资料预览 -->
+                            <div id="wr-material-preview" style="display:none;margin-top:8px;padding:8px 12px;background:#fff;border:1px solid #bfdbfe;border-radius:8px;font-size:0.8rem;color:#1d4ed8;">
+                                <div style="font-weight:700;margin-bottom:4px;">📦 已检索到的资料：</div>
+                                <div id="wr-material-tags" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
                             </div>
 
                             <!-- 操作按钮行 -->
@@ -844,8 +840,7 @@
                     </div>
 
                     <!-- === 风险研判子模块 === -->
-                    <div id="ds-sub-risk" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
-                        <div style="background:linear-gradient(135deg,#eff6ff,#e0f2fe);border-radius:12px;padding:16px;flex:1;display:flex;flex-direction:column;">
+                    <div id="ds-sub-risk" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;padding:16px;">
                             <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">基于本地检查信息数据，AI自动分析风险趋势并生成预警措施报告。</p>
                             
                             <!-- 风险研判条件配置 -->
@@ -911,7 +906,6 @@
                                     🔄 重新生成
                                 </button>
                             </div>
-                        </div>
                     </div>
 
                     <!-- === 豆包网页版子模块 === -->

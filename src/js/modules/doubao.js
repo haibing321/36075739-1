@@ -2212,7 +2212,7 @@
               if (totalEl) totalEl.textContent = all.length + ' 条';
               var filtered = all;
               if (dateStart) {
-                var sd = new Date(dateStart);
+                var sd = new Date(dateStart + 'T00:00:00');
                 filtered = filtered.filter(function(d) {
                   try { return new Date(d.datetime || '') >= sd; } catch(e) { return false; }
                 });
@@ -2324,7 +2324,7 @@
             userMsg += '\n请开始分析。';
 
             messages = [
-              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。' },
+              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。\n【重要约束】你只能引用下方【检查信息】真实汇总数据中的统计数字、案例与日期，严禁虚构任何统计数字、事故案例或时间；若某方面数据不足，必须如实说明"数据不足"，不得编造或推测具体数字。' },
               { role: 'user', content: userMsg }
             ];
           } else {
@@ -2399,7 +2399,7 @@
 
       async function _buildRiskDataSummary(dateStart, dateEnd, unitFilter) {
         var parts = [];
-        var startDate = dateStart ? new Date(dateStart) : null;
+        var startDate = dateStart ? new Date(dateStart + 'T00:00:00') : null;
         var endDate = dateEnd ? new Date(dateEnd + 'T23:59:59') : null;
         var all = [];
         try {

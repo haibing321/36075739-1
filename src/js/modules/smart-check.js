@@ -315,9 +315,21 @@
                 return sorted.length > 0 ? sorted[0][0] : null;
             }
 
-            // HTML转义函数
+            // HTML转义函数（用于 HTML 文本节点/属性值）
             function acEscHtml(s) {
                 return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+            }
+
+            // JS 字符串转义（用于内联事件属性里注入的动态值，如 onclick="fn('...')"）
+            // 关键：必须用反斜杠转义单/双引号，而非 HTML 实体（HTML 实体会在解析属性值后被还原，导致 JS 字符串提前闭合 → DOM XSS）
+            function acEscJsStr(s) {
+                return String(s)
+                    .replace(/\\/g, '\\\\')
+                    .replace(/'/g, "\\'")
+                    .replace(/"/g, '\\"')
+                    .replace(/\n/g, '\\n')
+                    .replace(/\r/g, '\\r')
+                    .replace(/<\//g, '<\\/');
             }
 
             // 铁路安监领域违规行为关键词（用于增强关键词提取，捕捉违规描述）
@@ -628,7 +640,7 @@
                             'cursor:pointer;transition:all 0.15s;user-select:none;' +
                             'background:var(--primary);color:#fff;border:2px solid var(--primary);' +
                             '" ' +
-                            'onclick="acToggleCandidateKeyword(\'' + acEscHtml(kw) + '\')" ' +
+                            'onclick="acToggleCandidateKeyword(\'' + acEscJsStr(kw) + '\')" ' +
                             'title="点击取消选中" ' +
                             '>' + acEscHtml(kw) + ' <span style="margin-left:4px;font-size:0.75rem;">✓</span></span>';
                     } else {
@@ -639,7 +651,7 @@
                             'cursor:pointer;transition:all 0.15s;user-select:none;' +
                             'background:#f1f5f9;color:var(--text);border:2px solid #e2e8f0;' +
                             '" ' +
-                            'onclick="acToggleCandidateKeyword(\'' + acEscHtml(kw) + '\')" ' +
+                            'onclick="acToggleCandidateKeyword(\'' + acEscJsStr(kw) + '\')" ' +
                             'title="点击选中" ' +
                             'onmouseover="if(!this.dataset.selected){this.style.background=\'#e2e8f0\';this.style.borderColor=\'var(--primary)\';}" ' +
                             'onmouseout="if(!this.dataset.selected){this.style.background=\'#f1f5f9\';this.style.borderColor=\'#e2e8f0\';}" ' +
@@ -684,7 +696,7 @@
                         'cursor:pointer;transition:all 0.15s;user-select:none;' +
                         'background:var(--primary);color:#fff;border:2px solid var(--primary);' +
                         '" ' +
-                        'onclick="acRemoveSelectedKeyword(\'' + acEscHtml(kw) + '\')" ' +
+                        'onclick="acRemoveSelectedKeyword(\'' + acEscJsStr(kw) + '\')" ' +
                         'title="点击移除" ' +
                         'onmouseover="this.style.opacity=\'0.8\'" ' +
                         'onmouseout="this.style.opacity=\'1\'" ' +
@@ -2063,7 +2075,7 @@
                                     + '<div style="background:#e8f5e9;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#1b5e20;">'
                                     + '"' + acEscHtml(c.clause) + '"'
                                     + '</div>'
-                                    + '<div style="margin-top:6px;"><button class="btn btn-info btn-small" style="font-size:0.72rem;padding:2px 10px;" onclick="window.acRuleViewByRef(\'' + acEscHtml(c.title) + '\',\'' + acEscHtml(c.fileNumber || '') + '\',\'' + acEscHtml(c.article || '') + '\')">📄 查看全文</button></div>'
+                                    + '<div style="margin-top:6px;"><button class="btn btn-info btn-small" style="font-size:0.72rem;padding:2px 10px;" onclick="window.acRuleViewByRef(\'' + acEscJsStr(c.title) + '\',\'' + acEscJsStr(c.fileNumber || '') + '\',\'' + acEscJsStr(c.article || '') + '\')">📄 查看全文</button></div>'
                                     + '</div>';
                             });
                         }
@@ -2287,7 +2299,7 @@
 
             // 停止AI对规生成
             window.stopACGeneration = function() {
-                if (_acAbortController) _acAbortController.abort();
+                if (window._dsAbortController) window._dsAbortController.abort();
             };
 
 

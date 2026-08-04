@@ -655,3 +655,38 @@ textarea:focus {
    components.css 轨道硬编码 #e2e8f0，dark.css 未覆盖；填充用 var(--success/--warning/--accent) 在暗黑下已为亮色，无需改 */
 [data-theme="dark"] .storage-bar { background: #334155 !important; }
 [data-theme="dark"] .storage-fill { box-shadow: 0 0 0 1px rgba(0,0,0,0.25) inset; }
+
+/* ---------- 规章制度「查看全文」弹窗暗黑 ---------- */
+/* 全文内容区：覆盖 index.html 内联 background:#f7fafc */
+[data-theme="dark"] #rule-fullContentBody {
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+    border-left-color: var(--info) !important;
+}
+/* 顶部关键词命中提示栏：覆盖 components.css #fef9e7 浅黄底 */
+[data-theme="dark"] #rule-fullViewHlBar {
+    background: #15233f !important;
+    border-color: #334155 !important;
+    color: #cbd5e1 !important;
+}
+/* 命中位置文字：覆盖 index.html 内联 color:#a05000 */
+[data-theme="dark"] #rule-fullViewHlPosText { color: #fcd34d !important; }
+/* 命中总数：覆盖 components.css #c05621 */
+[data-theme="dark"] .fv-hl-total { color: #fcd34d !important; }
+/* 关键词高亮 mark：改深琥珀底亮字，协调暗黑 */
+[data-theme="dark"] mark.rule-fv-hl {
+    background: #3a2e12 !important;
+    color: #fcd34d !important;
+    border-color: #7a5a1f !important;
+}
+[data-theme="dark"] mark.rule-fv-hl.fv-active {
+    background: #7a5a1f !important;
+    color: #ffffff !important;
+    outline-color: #fcd34d !important;
+}
+/* 关键词标签：覆盖 rule.js 动态注入的浅色内联（统一深底亮蓝，协调暗黑） */
+[data-theme="dark"] .fv-kw-tag {
+    background: #15233f !important;
+    color: #93c5fd !important;
+    border-color: #2a4a7a !important;
+}

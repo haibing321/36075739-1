@@ -506,6 +506,25 @@ textarea:focus {
 [data-theme="dark"] .btn-add-issue { background: #1e3354 !important; color: #93c5fd !important; border-color: #2a4a7a !important; }
 [data-theme="dark"] .btn-add-issue:hover { background: #24406b !important; }
 
+/* 工作日志输入视图 · 输入框暗黑（工作内容 / 检查发现问题） */
+[data-theme="dark"] .diary-textarea,
+[data-theme="dark"] .diary-issue-input {
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+}
+[data-theme="dark"] .diary-textarea:focus,
+[data-theme="dark"] .diary-issue-input:focus {
+    background: #1e293b !important;
+    border-color: var(--info) !important;
+}
+[data-theme="dark"] #multimedia-panel {
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #cbd5e1 !important;
+}
+[data-theme="dark"] .diary-section-title { color: #93c5fd !important; }
+
 /* 风险研判 · 研判条件框及结果区 · 暗黑 */
 [data-theme="dark"] #risk-config { background: #1e293b !important; border-color: #334155 !important; }
 [data-theme="dark"] #risk-config input[type="date"],

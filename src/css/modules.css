@@ -68,7 +68,7 @@
     display: flex;
     gap: 12px;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
     flex-wrap: wrap;
 }
 .diary-date-row label { font-weight: 600; color: var(--primary); font-size: 1rem; }
@@ -79,14 +79,14 @@
     font-size: 0.95rem;
 }
 .diary-view-panel {
-    padding: 16px;
+    padding: 14px;
 }
 .diary-view-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
     border-bottom: 2px solid var(--primary);
 }
 .diary-view-title {
@@ -373,7 +373,7 @@
 }
 /* 输入视图内的section */
 .diary-view-panel .diary-section {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 .diary-view-panel .diary-section:last-child {
     margin-bottom: 0;
@@ -382,20 +382,20 @@
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--primary);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 .diary-textarea {
     width: 100%;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     font-size: 0.95rem;
     font-family: inherit;
     resize: vertical;
-    min-height: 80px;
+    min-height: 64px;
     transition: all 0.2s;
     box-sizing: border-box;
     background: #f8fafc;
@@ -407,18 +407,18 @@
     background: #fff;
 }
 .diary-issue-row {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     position: relative;
 }
 .diary-issue-input {
     width: 100%;
-    padding: 10px 40px 10px 14px;
+    padding: 8px 40px 8px 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
     font-family: inherit;
     resize: vertical;
-    min-height: 40px;
+    min-height: 36px;
     box-sizing: border-box;
     padding-right: 70px;
 }
@@ -444,7 +444,7 @@
 .btn-remove-issue:hover { background: #dc2626; color: white; }
 .btn-add-issue {
     width: 100%;
-    padding: 12px;
+    padding: 10px;
     border: 2px dashed #90cdf4;
     background: rgba(255,255,255,0.5);
     color: var(--info);
@@ -452,7 +452,7 @@
     cursor: pointer;
     font-size: 0.875rem;
     transition: all 0.2s;
-    margin-top: 8px;
+    margin-top: 6px;
 }
 .btn-add-issue:hover { background: white; border-color: var(--info); }
 .btn-add-issue:disabled {

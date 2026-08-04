@@ -449,11 +449,13 @@
                     });
                 });
 
-                // 排序：先按匹配率，再按 Fuse 评分，最后按时间倒序
+                // 排序：按时间倒序（最近在前），时间相同时再按匹配率、Fuse 评分
                 results.sort(function(a, b) {
+                    var ta = new Date(a.datetime || 0).getTime();
+                    var tb = new Date(b.datetime || 0).getTime();
+                    if (tb !== ta) return tb - ta;
                     if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
-                    if ((b.fuseScore || 0) !== (a.fuseScore || 0)) return (b.fuseScore || 0) - (a.fuseScore || 0);
-                    return new Date(b.datetime || 0) - new Date(a.datetime || 0);
+                    return (b.fuseScore || 0) - (a.fuseScore || 0);
                 });
 
                 return { results: results, method: 'fuse' };
@@ -511,8 +513,10 @@
                         });
 
                         results.sort((a, b) => {
-                            if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
-                            return new Date(b.datetime || 0) - new Date(a.datetime || 0);
+                            var ta = new Date(a.datetime || 0).getTime();
+                            var tb = new Date(b.datetime || 0).getTime();
+                            if (tb !== ta) return tb - ta;
+                            return b.matchRate - a.matchRate;
                         });
                     }
 
@@ -807,14 +811,16 @@
             function issueFeedbackScore(item) {
                 try { const m = JSON.parse(localStorage.getItem('issue_feedback') || '{}'); const v = m[issueFeedbackKey(item)]; return v === 'good' ? 1 : v === 'bad' ? -1 : 0; } catch (e) { return 0; }
             }
-            // 在匹配率/模糊分之后追加反馈维度：👍置顶、👎沉底
+            // 按时间倒序为主（最近在前），时间相同时再按反馈/匹配率/模糊分
             function issueApplyFeedbackSort(results) {
                 results.sort(function(a, b) {
-                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
+                    var ta = new Date(a.datetime || 0).getTime();
+                    var tb = new Date(b.datetime || 0).getTime();
+                    if (tb !== ta) return tb - ta;
                     const fa = issueFeedbackScore(a), fb = issueFeedbackScore(b);
                     if (fa !== fb) return fb - fa;
-                    if ((b.fuseScore || 0) !== (a.fuseScore || 0)) return (b.fuseScore || 0) - (a.fuseScore || 0);
-                    return new Date(b.datetime || 0) - new Date(a.datetime || 0);
+                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
+                    return (b.fuseScore || 0) - (a.fuseScore || 0);
                 });
             }
             window.issueMarkRelevance = function(btn, type) {

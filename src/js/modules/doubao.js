@@ -1026,10 +1026,18 @@
                         try {
                             var rpts = await window._wrGetAllReports();
                             if (rpts && rpts.length > 0) {
-                                var rptSlice = rpts.sort(function(a,b){ return b.date - a.date; }).slice(0, 3);
+                                var rptSlice = rpts.sort(function(a,b){
+                                var ta = a.date ? new Date(a.date).getTime() : 0;
+                                var tb = b.date ? new Date(b.date).getTime() : 0;
+                                if (isNaN(ta)) ta = 0;
+                                if (isNaN(tb)) tb = 0;
+                                return tb - ta;
+                            }).slice(0, 3);
                                 var txt = '【历史报告（最近' + rptSlice.length + '篇，共' + rpts.length + '篇）—仅供文风参考】\n';
                                 rptSlice.forEach(function(r, i){
-                                    txt += (i+1) + '. 《' + (r.title||'未命名') + '》（' + new Date(r.date).toLocaleDateString('zh-CN') + '）：\n' + String(r.content||'').slice(0, 300) + '…\n';
+                                    var rDateStr = '';
+                                    if (r.date) { var rd = new Date(r.date); if (!isNaN(rd.getTime())) rDateStr = rd.toLocaleDateString('zh-CN'); }
+                                    txt += (i+1) + '. 《' + (r.title||'未命名') + '》' + (rDateStr ? '（' + rDateStr + '）' : '') + '：\n' + String(r.content||'').slice(0, 300) + '…\n';
                                 });
                                 if (txt.length > DS_MAX_CTX_CHARS) txt = txt.slice(0, DS_MAX_CTX_CHARS) + '\n（内容已截断）';
                                 sysParts.push(txt);
@@ -1287,16 +1295,18 @@
                 dsRenderAll();
                 dsScrollBottom();
 
-                dsStreaming = true;
-                // 生成中：发送按钮变「停止」（DeepSeek 同款：深色圆钮 + 方块停止图标）
-                var sendBtn = document.getElementById('ds-send-btn');
-                sendBtn.disabled = false;
-                sendBtn.classList.add('on', 'stopping');
-                sendBtn.title = '点击停止生成';
-                sendBtn.onclick = function() { if (window._dsAbortController) window._dsAbortController.abort(); };
-                sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>';
-
                 try {
+                    // 生成中：发送按钮变「停止」（DeepSeek 同款：深色圆钮 + 方块停止图标）
+                    // 置于 try 内 + 守卫，确保设置阶段任何异常都能被 finally 复位，避免 dsStreaming 永久为 true 冻结聊天
+                    dsStreaming = true;
+                    var sendBtn = document.getElementById('ds-send-btn');
+                    if (sendBtn) {
+                        sendBtn.disabled = false;
+                        sendBtn.classList.add('on', 'stopping');
+                        sendBtn.title = '点击停止生成';
+                        sendBtn.onclick = function() { if (window._dsAbortController) window._dsAbortController.abort(); };
+                        sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>';
+                    }
                     window._dsAbortController = new AbortController();
                     var isFrontendRole = selectedRole === 'frontend';
                     var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);

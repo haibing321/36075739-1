@@ -106,13 +106,13 @@
             // 事务重试包装：连接关闭时自动重连重试一次
             function _wrRetry(fn) {
                 return fn().catch(err => {
-                    if (err && err.name === 'InvalidStateError' || String(err.message).includes('closing')) {
+                    if (err && (err.name === 'InvalidStateError' || (err.message && String(err.message).includes('closing')))) {
                         console.log('[DB] 事务失败(连接关闭)，重试...');
                         _wrDB = null;
                         _wrDBOpening = null;
                         return fn();
                     }
-                    throw err;
+                    throw (err || new Error('数据库事务失败（未提供错误对象）'));
                 });
             }
 
@@ -812,9 +812,9 @@
                     <div style="background:linear-gradient(135deg,#5a9d82,#3d7d65);color:#fff;padding:8px 14px;border-radius:12px 12px 4px 12px;max-width:85%;font-size:0.9rem;line-height:1.5;word-break:break-word;">
                         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-weight:600;">
                             <span>📎</span>
-                            <span>${fileName}</span>
+                            <span>${wrEsc(fileName)}</span>
                         </div>
-                        <div style="font-size:0.85rem;opacity:0.95;white-space:pre-wrap;max-height:200px;overflow-y:auto;border-top:1px solid rgba(255,255,255,0.2);padding-top:6px;margin-top:4px;">${content.slice(0, 500)}${content.length > 500 ? '\n\n...[内容预览已截取]' : ''}</div>
+                        <div style="font-size:0.85rem;opacity:0.95;white-space:pre-wrap;max-height:200px;overflow-y:auto;border-top:1px solid rgba(255,255,255,0.2);padding-top:6px;margin-top:4px;">${wrEsc(content.slice(0, 500))}${content.length > 500 ? '\n\n...[内容预览已截取]' : ''}</div>
                     </div>
                 `;
                 chatHistory.appendChild(msgDiv);
@@ -1013,7 +1013,6 @@
                                                 rowCount:  ji.rowCount || null,
                                                 rawText:   String(jiContent).slice(0, 5000)
                                             });
-                                            successCount++;
                                         }
                                     }
 
@@ -1029,11 +1028,15 @@
                                                 createdAt: r.createdAt || Date.now(),
                                                 materialCount: r.materialCount || { issues: 0, rules: 0, reports: 0 }
                                             });
-                                            successCount++;
                                         }
                                     }
 
-                                    if (jsonItems || jsonReports) { processed++; continue; }
+                                    if (jsonItems || jsonReports) {
+                                        processed++;
+                                        // 文件级成功计数（与分母 files.length 一致）：仅当确有记录/报告写入才计 1
+                                        if ((jsonItems && jsonItems.length > 0) || (jsonReports && jsonReports.length > 0)) successCount++;
+                                        continue;
+                                    }
                                     
                                     // 非数组格式（单条JSON对象），作为整体存储
                                     item.content = JSON.stringify(data);
@@ -1315,8 +1318,8 @@
                 if (parsedQuery.dateRange) {
                     const { start, end } = parsedQuery.dateRange;
                     filtered = filtered.filter(iss => {
-                        if (iss.date) {
-                            const ts = new Date(iss.date).getTime();
+                        if (iss.datetime || iss.date) {
+                            const ts = new Date(iss.datetime || iss.date).getTime();
                             if (!isNaN(ts)) return ts >= start && ts <= end;
                         }
                         // 从content中提取日期
@@ -2278,7 +2281,7 @@
 
             // ---- 占位符提取函数 ----
             function extractPlaceholders(text) {
-                const regex = /\{\{(\w+)\}\}/g;
+                const regex = /\{\{([^}]+)\}\}/g;
                 const matches = new Set();
                 let m;
                 while ((m = regex.exec(text)) !== null) {
@@ -2329,7 +2332,7 @@
                     result = result.split(placeholder).join(String(value));
                 }
                 // 清理未替换的占位符
-                result = result.replace(/\{\{\w+\}\}/g, '（待补充）');
+                result = result.replace(/\{\{([^}]+)\}\}/g, '（待补充）');
                 return result;
             }
 
@@ -2673,11 +2676,14 @@
                     window._wrModifyCategory = r.category || 'other';
                     if (input) input.value = fullPrompt;
                     window._wrSkipLocalSearch = true; // 修改模式跳过自动检索，避免无关噪声（补充资料已显式注入）
-                    await wrGenerate();
-                    if (input) input.value = oldVal;
-                    window._wrSkipLocalSearch = false;
-                    window._wrModifyBaseTitle = null;
-                    window._wrModifyCategory = null;
+                    try {
+                        await wrGenerate();
+                    } finally {
+                        if (input) input.value = oldVal;
+                        window._wrSkipLocalSearch = false;
+                        window._wrModifyBaseTitle = null;
+                        window._wrModifyCategory = null;
+                    }
                 };
             };
 

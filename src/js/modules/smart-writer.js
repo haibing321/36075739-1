@@ -1934,7 +1934,11 @@
                         category: isModify ? (window._wrModifyCategory || 'other') : parsed.reportType,
                         query: enhancedQuery,
                         content: fullText,
-                        materialCount: { issues: 0, rules: 0, reports: 0 },
+                        materialCount: {
+                            issues:  (materials.issues || []).length,
+                            rules:   (materials.ruleCandidates || []).length,
+                            reports: (materials.similarReports || []).length
+                        },
                         date: Date.now(),
                         templateId: template ? template.id : null
                     });
@@ -2553,7 +2557,8 @@
                 document.getElementById('wr-report-modal-title').textContent = r.title || '未命名报告';
                 document.getElementById('wr-report-modal-meta').textContent =
                     '类型：' + wrCatName(r.category) + '　生成时间：' + wrFmtDate(r.date)
-                    + (r.materialCount ? '　引用台账：' + r.materialCount.issues + '条，规章：' + r.materialCount.rules + '条' : '');
+                    + (r.materialCount && (r.materialCount.issues + r.materialCount.rules + r.materialCount.reports) > 0
+                        ? '　引用台账：' + r.materialCount.issues + '条，规章：' + r.materialCount.rules + '条，历史报告：' + r.materialCount.reports + '篇' : '');
                 document.getElementById('wr-report-modal-content').innerHTML = (window.dsMarkdown ? window.dsMarkdown(r.content || '') : (r.content || ''));
                 modal._currentReport = r;
                 modal.style.display = 'flex';

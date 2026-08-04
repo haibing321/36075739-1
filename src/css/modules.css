@@ -56,10 +56,7 @@
     overflow: hidden;
 }
 .diary-section {
-    background: #f8fcff;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }
 .diary-section-title {
     font-size: 0.9rem;

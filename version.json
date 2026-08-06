@@ -1,5 +1,5 @@
 {
-  "version": "v2.8",
-  "releaseNotes": "暗黑模式（设置开关+记忆）、考勤随工作日志导入导出、检查信息统计按专业/单位分组、智能助手朗读仅读正文、工作日志自动保存",
+  "version": "v2.9",
+  "releaseNotes": "智能体/写作逻辑修复（write_diary、排序副作用、重复终止提示、模板XSS防护）、全局按钮配色统一柔和化、六大模块真机测试144项全绿",
   "downloadUrl": "https://haibing321.github.io/36075739-2/"
 }

@@ -454,7 +454,8 @@
       var phoneCount = window.getPhoneData ? window.getPhoneData().length : 0;
       var issDates = '';
       if (issCount > 0 && window.getIssueData) {
-        var all = window.getIssueData(); all.sort(function(a,b){ return (a.datetime||'').localeCompare(b.datetime||''); });
+        // 副本排序：避免就地 sort 打乱模块共享的 dataCache 顺序（副作用修复）
+        var all = [].concat(window.getIssueData() || []); all.sort(function(a,b){ return (a.datetime||'').localeCompare(b.datetime||''); });
         issDates = '，日期范围 ' + (all[0] ? (all[0].datetime||'').slice(0,10) : '?') + ' ~ ' + (all[all.length-1] ? (all[all.length-1].datetime||'').slice(0,10) : '?');
       }
       system += '当前数据：检查信息 ' + issCount + '条' + issDates + '，规章制度 ' + ruleCount + '条，检查手册 ' + hbCount + '条，应急电话 ' + phoneCount + '个。\n';
@@ -518,7 +519,10 @@
         if (callKey === lastCallKey) {
           repeatCount++;
           if (repeatCount >= 2) {
-            renderMsgs.push({ role: 'agent-tool', content: '⚠️ 检测到重复调用，已提前终止' });
+            // 重复终止：直接作为最终输出，避免再叠加「超15轮」兜底提示（文案矛盾）
+            var dupMsg = '⚠️ 检测到重复调用，已提前终止';
+            taskRecord.finalOutput = dupMsg;
+            renderMsgs.push({ role: 'agent-tool', content: dupMsg });
             break;
           }
         } else { lastCallKey = callKey; repeatCount = 0; }

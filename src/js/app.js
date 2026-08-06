@@ -189,8 +189,9 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (issues && String(issues).trim()) {
                 fullContent += (fullContent ? '｜' : '') + '发现问题：' + String(issues).trim();
             }
-            var ok = window.addIssueToDiary(fullContent, '', date || '');
-            return { ok: !!ok, message: ok ? '日志已写入' : '写入失败' };
+            // addIssueToDiary 无返回值（成功亦为 undefined），未抛异常即视为写入成功
+            window.addIssueToDiary(fullContent, '', date || '');
+            return { ok: true, message: '日志已写入' };
         } catch(e) { return { ok: false, error: e.message }; }
     };
 
@@ -392,7 +393,7 @@ window.onclick = function(e) {
         toast.innerHTML = [
             '<span>🔄 发现新版本</span>',
             '<button id="_sw_update_btn" style="',
-            '  background:#ffd700;color:#1a365d;border:none;border-radius:16px;',
+            '  background:var(--primary);color:#fff;border:none;border-radius:16px;',
             '  padding:4px 14px;font-size:0.82rem;font-weight:700;cursor:pointer;margin-left:8px;',
             '">立即更新</button>'
         ].join('');
@@ -659,7 +660,7 @@ async function checkForUpdate() {
     const statusEl = document.getElementById('update-status');
     if (!statusEl) return;
     statusEl.textContent = '⏳ 正在检查...';
-    statusEl.style.color = '#3b82f6';
+    statusEl.style.color = 'var(--primary)';
     await performUpdateCheck(UPDATE_CHECK_URL, true);
     // 同时触发 SW 实际拉取并预备新版本（离线优先策略下，更新只在此时发生）
     if (window.triggerApplyUpdate) window.triggerApplyUpdate();

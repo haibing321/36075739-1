@@ -764,7 +764,7 @@
                         const regulation = (diary.regulations && diary.regulations[idx]) ? diary.regulations[idx] : '';
                         html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue);
                         if (regulation) {
-                            html += '<div style="margin-top:6px; font-size:0.8rem; color:#3b82f6; border-left:2px solid #3b82f6; padding-left:8px;"><strong>📜 完整引用句子：</strong>' + escapeHtml(regulation) + '</div>';
+                            html += '<div style="margin-top:6px; font-size:0.8rem; color:var(--primary); border-left:2px solid var(--primary); padding-left:8px;"><strong>📜 完整引用句子：</strong>' + escapeHtml(regulation) + '</div>';
                         }
                         html += '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
                     });

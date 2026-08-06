@@ -350,8 +350,8 @@
                     var fileExt = fileExts[ext] || ext;
                     return '<div style="position:relative;margin:6px 0;">' +
                         '<button onclick="(window.dsDownloadCode||function(b){var p=b.parentElement.querySelector(\'pre\');if(!p)return;window.downloadBlob(new Blob([p.textContent],{type:\'text/plain;charset=utf-8\'}),\'code.' + fileExt + '\')})(this)" data-ext="' + fileExt + '" ' +
-                        'style="position:absolute;top:6px;right:6px;background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
-                        'onmouseover="this.style.background=\'#2563eb\'" onmouseout="this.style.background=\'#3b82f6\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
+                        'style="position:absolute;top:6px;right:6px;background:var(--primary);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
+                        'onmouseover="this.style.background=\'var(--primary-dark)\'" onmouseout="this.style.background=\'var(--primary)\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
                         '<pre style="background:#1e293b;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';
                 });
                 // 粗体
@@ -1951,7 +1951,7 @@
                         actionsDiv.innerHTML = `
                             <button onclick="wrCopyText('${savedId}')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>
                             <button onclick="wrDownloadText('${savedId}')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>
-                            ${template && template.templateBuffer ? `<button onclick="wrDownloadDocxFromTemplate()" style="padding:5px 10px;background:#2b6cb0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📄 导出DOCX</button>` : ''}
+                            ${template && template.templateBuffer ? `<button onclick="wrDownloadDocxFromTemplate()" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📄 导出DOCX</button>` : ''}
                             <button onclick="wrSpeak('${savedId}')" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">🔊 朗读</button>
 
                             <button onclick="wrRegenerate()" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">🔄 重新生成</button>
@@ -2087,7 +2087,7 @@
                         + '<div style="font-size:0.8rem;color:var(--text-secondary);">勾选需要补充的资料（可多选），然后点击确认完成报告</div>'
                         + matHtml
                         + '<div style="display:flex;gap:10px;margin-top:8px;">'
-                        + '<button onclick="wrConfirmModify()" style="flex:1;padding:10px;background:linear-gradient(135deg,#3d7d65,#2d6b52);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 确认完成报告</button>'
+                        + '<button onclick="wrConfirmModify()" style="flex:1;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 确认完成报告</button>'
                         + '<button onclick="document.getElementById(\'wr-modify-modal\').remove()" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.9rem;cursor:pointer;">取消</button>'
                         + '</div>'
                         + '</div>';
@@ -2333,7 +2333,8 @@
                 let result = templateContent;
                 for (const [key, value] of Object.entries(mapping)) {
                     const placeholder = `{{${key}}}`;
-                    result = result.split(placeholder).join(String(value));
+                    // 替换值来自 AI 输出，先转义再拼接，防止模板渲染路径 XSS（模板自身 HTML 结构保留）
+                    result = result.split(placeholder).join(wrEsc(String(value)));
                 }
                 // 清理未替换的占位符
                 result = result.replace(/\{\{([^}]+)\}\}/g, '（待补充）');

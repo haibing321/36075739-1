@@ -72,11 +72,11 @@
 }
 .btn-secondary:hover { background: var(--ds-gray-200); }
 
-.btn-success { background: #22c55e; border: 1px solid #22c55e; color: #fff; }
-.btn-success:hover { background: #16a34a; border-color: #16a34a; }
+.btn-success { background: var(--success); border: 1px solid var(--success); color: #fff; }
+.btn-success:hover { background: #3d7560; border-color: #3d7560; }
 
-.btn-warning { background: #f59e0b; border: 1px solid #f59e0b; color: #fff; }
-.btn-warning:hover { background: #d97706; border-color: #d97706; }
+.btn-warning { background: var(--warning); border: 1px solid var(--warning); color: #fff; }
+.btn-warning:hover { background: #9c6530; border-color: #9c6530; }
 
 .btn-danger { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
 .btn-danger:hover { background: var(--accent-light); border-color: var(--accent-light); }
@@ -102,6 +102,41 @@
 
 .btn-small { border-radius: var(--ds-radius); }
 .btn-tiny { border-radius: 8px; }
+
+/* ---------- 2.x 内联彩色按钮统一（JS 动态生成；个别高饱和色与整体不协调，统一为主色/柔和色） ---------- */
+button[style*="background:#3b82f6"],
+button[style*="background: #3b82f6"] { background: var(--primary) !important; border-color: var(--primary) !important; }
+button[style*="background:#2b6cb0"],
+button[style*="background: #2b6cb0"] { background: var(--primary-dark) !important; border-color: var(--primary-dark) !important; }
+button[style*="background:#10b981"],
+button[style*="background: #10b981"] { background: var(--primary) !important; border-color: var(--primary) !important; }
+
+/* 智能体面板「停止」按钮：亮红字柔化为深红，与整体协调 */
+#ds-agent-stop { color: #b91c1c !important; }
+
+/* ---------- 2.y 工作写实按钮组：去渐变统一纯色（铁律：禁 linear-gradient 作按钮底色） ---------- */
+#diary-btn-group .btn-secondary,
+.diary-view-header .btn-secondary {
+    background: var(--ds-gray-100);
+    color: var(--ds-gray-700);
+    border: 1px solid var(--ds-gray-200);
+    box-shadow: none;
+}
+#diary-btn-group .btn-secondary:hover,
+.diary-view-header .btn-secondary:hover {
+    background: var(--ds-gray-200);
+    border-color: var(--ds-gray-300);
+    box-shadow: none;
+}
+#diary-btn-group .btn-info {
+    background: var(--ds-blue);
+    color: #fff;
+    border: 1px solid var(--ds-blue);
+    box-shadow: none;
+}
+#diary-btn-group .btn-info:hover { background: var(--ds-blue-dark); border-color: var(--ds-blue-dark); }
+#btn-multimedia-toggle { background: var(--warning) !important; border-color: var(--warning) !important; color: #fff !important; }
+
 
 /* ---------- 3. 筛选药丸 & 数据标签 ---------- */
 .btn-chip {

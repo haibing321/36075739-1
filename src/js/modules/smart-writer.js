@@ -829,10 +829,7 @@
                     return;
                 }
 
-                if (_wrConvHistory.length > 0) {
-                    wrGenerate();
-                    return;
-                }
+                // 修复C：无论是否有对话历史，始终弹出模板/资料选择，允许用户每次重选（弹窗会预填上次选择）
 
                 // 展示对话框（无论DB是否可用）
                 var showDialog = function(templates, otherMats) {
@@ -873,6 +870,16 @@
                     if (matDiv) {
                         matDiv.innerHTML = otherMats.length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>'
                             : otherMats.map(function(m){ return '<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="'+m.id+'"> '+wrEsc(m.title||m.fileName)+'</label>'; }).join('');
+                    }
+                    // 修复C：预填上次选择的模板与资料
+                    if (window._wrSelectedTemplate && tplSelect) {
+                        var _st = window._wrSelectedTemplate;
+                        tplSelect.value = 'tpl:' + _st._src + ':' + _st.id;
+                    }
+                    if ((window._wrSelectedMaterialIds || []).length) {
+                        document.querySelectorAll('.wr-step-mat').forEach(function(cb) {
+                            if (window._wrSelectedMaterialIds.indexOf(parseInt(cb.value)) !== -1) cb.checked = true;
+                        });
                     }
                 }).catch(function(e) {
                     console.warn('资料库异步加载失败:', e);
@@ -1575,13 +1582,14 @@
                         sysLines.push('输出格式示例：{"问题总数":"12","A类数量":"3","典型问题列表":"1. 信号机故障\\n2. 轨道电路异常"}');
                         sysLines.push('重要：JSON 中的多行文本值必须使用 \\\\n 表示换行，不能包含实际换行符。整个 JSON 必须在一行或严格符合 JSON 语法。');
                         sysLines.push('只输出 JSON 对象，不要输出任何其他内容。');
+                        sysLines.push('【重要】若用户需求中包含【上传的文件内容】或本地资料，请在映射值（尤其问题描述、典型案例、整改要求类字段）中充分引用其中的具体事实与数据，不得忽略或编造。');
                     } else {
                         sysLines.push('【输出要求】');
                         sysLines.push('- 直接输出最终文档内容，无需解释说明。');
                         sysLines.push('- 按模板章节结构输出，不随意增减章节。');
                         sysLines.push('- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。');
                         sysLines.push('- 统计数字、日期等关键信息必须与台账数据一致。');
-                        sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。');
+                        sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料与【上传的文件内容】，不得编造。');
                     }
                 } else {
                     sysLines.push('【输出要求】');
@@ -1589,7 +1597,7 @@
                     sysLines.push('- 按模板章节结构输出，不随意增减章节。');
                     sysLines.push('- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。');
                     sysLines.push('- 统计数字、日期等关键信息必须与台账数据一致。');
-                    sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。');
+                    sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料与【上传的文件内容】，不得编造。');
                 }
 
                 const userLines = ['【用户需求】', query, ''];
@@ -1812,6 +1820,8 @@
                     } else if (manualMatIds.length === 0) {
                         try { materials = await wrRetrieveMaterials(q); }
                         catch (e) { console.warn('自动检索失败，回退空资料', e); materials = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
+                        // 修复A：弹窗中手选模板优先于自动匹配（只选模板未勾资料时仍应生效）
+                        if (window._wrSelectedTemplate) materials.template = window._wrSelectedTemplate;
                     } else {
                         const allMats = await wrDbGetAll(WR_MAT_STORE);
                         const chosenLocal = allMats.filter(m => manualMatIds.includes(m.id) && m.matType !== 'template');

@@ -740,3 +740,45 @@ textarea:focus {
     color: #93c5fd !important;
     border-color: #2a4a7a !important;
 }
+
+/* ============ 智能写作动态弹窗暗黑适配（手选模板/修改报告/报告查看等） ============ */
+[data-theme="dark"] .wr-step-modal > div,
+[data-theme="dark"] #wr-modify-modal > div,
+[data-theme="dark"] #wr-modify-history-modal > div,
+[data-theme="dark"] #wr-report-modal > div,
+[data-theme="dark"] #wr-mat-view-modal > div {
+    background: #1e293b !important;
+    color: #e2e8f0 !important;
+}
+[data-theme="dark"] .wr-step-modal select,
+[data-theme="dark"] #wr-modify-modal select,
+[data-theme="dark"] #wr-modify-history-modal select,
+[data-theme="dark"] #wr-report-modal select,
+[data-theme="dark"] #wr-mat-view-modal select {
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+}
+[data-theme="dark"] .wr-step-modal input[type="text"],
+[data-theme="dark"] .wr-step-modal textarea,
+[data-theme="dark"] #wr-modify-modal textarea,
+[data-theme="dark"] #wr-modify-history-modal textarea {
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+}
+[data-theme="dark"] .wr-step-modal div[style*="border:1px solid var(--border)"],
+[data-theme="dark"] #wr-modify-modal div[style*="border:1px solid var(--border)"],
+[data-theme="dark"] #wr-modify-history-modal div[style*="border:1px solid var(--border)"] {
+    border-color: #334155 !important;
+}
+[data-theme="dark"] .wr-step-modal label,
+[data-theme="dark"] #wr-modify-modal label,
+[data-theme="dark"] #wr-modify-history-modal label { color: #e2e8f0 !important; }
+[data-theme="dark"] .wr-step-modal button,
+[data-theme="dark"] #wr-modify-modal button,
+[data-theme="dark"] #wr-modify-history-modal button { color: #e2e8f0 !important; }
+[data-theme="dark"] .wr-step-modal button[style*="background:var(--primary)"],
+[data-theme="dark"] #wr-modify-modal button[style*="background:var(--primary)"],
+[data-theme="dark"] #wr-modify-history-modal button[style*="background:var(--primary)"] { color: #fff !important; }
+

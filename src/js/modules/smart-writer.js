@@ -1812,30 +1812,36 @@
                     // 自动检索 vs 手动选择逻辑：
                     // 未手动选择资料库资料 → 全自动检索（台账/模板/本地资料/历史报告/规则）
                     // 已手动选择资料库资料 → 用手选资料，仍自动检索台账/规则/相似报告（保证数字真实、不编造）
+                    //
+                    // ⚠️ 关键修正：_wrSkipLocalSearch 仅表示「跳过台账/规则自动检索」（修改模式或包装层为性能考虑设置），
+                    //    绝不能因此丢弃用户手选的模板与资料。模板与手选资料始终按用户选择保留。
                     const manualMatIds = (window._wrSelectedMaterialIds || []).filter(Boolean);
+                    const useManual = manualMatIds.length > 0;
+                    const skipAuto = !!window._wrSkipLocalSearch; // 仅跳过台账/规则/相似报告的自动检索
                     let materials;
-                    if (window._wrSkipLocalSearch) {
-                        // 修改模式：原报告已含全部内容，跳过本地检索，避免无关资料噪声
+                    if (useManual) {
+                        // 手选资料：合并所选资料；是否跳过台账自动检索由 skipAuto 决定（性能），但模板与资料始终保留
+                        const allMats = await wrDbGetAll(WR_MAT_STORE);
+                        const chosenLocal = allMats.filter(m => manualMatIds.includes(m.id) && m.matType !== 'template');
+                        let auto = null;
+                        if (!skipAuto) { try { auto = await wrRetrieveMaterials(q); } catch (e) { auto = null; } }
+                        materials = {
+                            parsed: (auto && auto.parsed) || wrParseQuery(q),
+                            template: window._wrSelectedTemplate || (auto && auto.template) || null,
+                            issues: (auto && auto.issues) || [],
+                            stats: (auto && auto.stats) || null,
+                            similarReports: (auto && auto.similarReports) || [],
+                            ruleCandidates: (auto && auto.ruleCandidates) || [],
+                            localMaterials: chosenLocal
+                        };
+                    } else if (skipAuto) {
+                        // 修改模式（未手选资料）：原报告已含全部内容，跳过本地检索，避免无关资料噪声
                         materials = { parsed: wrParseQuery(q) || { dateLabel: '' }, template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] };
-                    } else if (manualMatIds.length === 0) {
+                    } else {
                         try { materials = await wrRetrieveMaterials(q); }
                         catch (e) { console.warn('自动检索失败，回退空资料', e); materials = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
                         // 修复A：弹窗中手选模板优先于自动匹配（只选模板未勾资料时仍应生效）
                         if (window._wrSelectedTemplate) materials.template = window._wrSelectedTemplate;
-                    } else {
-                        const allMats = await wrDbGetAll(WR_MAT_STORE);
-                        const chosenLocal = allMats.filter(m => manualMatIds.includes(m.id) && m.matType !== 'template');
-                        let auto;
-                        try { auto = await wrRetrieveMaterials(q); } catch (e) { auto = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
-                        materials = {
-                            parsed: auto.parsed || wrParseQuery(q),
-                            template: window._wrSelectedTemplate || auto.template,
-                            issues: auto.issues || [],
-                            stats: auto.stats || null,
-                            similarReports: auto.similarReports || [],
-                            ruleCandidates: auto.ruleCandidates || [],
-                            localMaterials: chosenLocal
-                        };
                     }
                     const parsed = materials.parsed;
                     const template = materials.template;
@@ -1914,18 +1920,22 @@
                     fullText = fullText.replace(/【数据:典型问题\n([\s\S]*?)\n】/g, '$1');
                     fullText = fullText.replace(/【数据:([^\】]*?)】/g, '$1');
 
-                    // ★ 关键改进：如果使用了模板，真正应用占位符替换 ★
+                    // ★ 模板应用：占位符模板优先用 AI 返回的映射填充；解析失败则保留 AI 正文并清理残留占位符
                     if (template && template.content) {
-                        const mapping = wrParseMapping(fullText);
-                        if (mapping && typeof mapping === 'object') {
+                        // 尝试从模型输出提取映射（模型被要求输出 JSON 映射，可能夹带尾注/解释）
+                        let mapping = wrParseMapping(fullText);
+                        if (!mapping) { try { mapping = _wrExtractJson(fullText); } catch (e) {} }
+                        if (mapping && typeof mapping === 'object' && Object.keys(mapping).length) {
                             fullText = applyTemplatePlaceholders(template.content, mapping);
-                            // 重新渲染气泡：模板替换后内容已是 HTML，不能用 wrStreamFormat（会二次转义）
-                            if (streamBubbleContent) streamBubbleContent.innerHTML = fullText;
-                            const histEl = document.getElementById('wr-chat-history');
-                            if (histEl) histEl.scrollTop = histEl.scrollHeight;
-                        } else {
-                            console.warn('未解析到有效映射，保留 AI 原始输出');
+                        } else if (/\{\{[^}]+\}\}/.test(fullText)) {
+                            // 模型已直接撰写正文但残留占位符：保留正文，仅把残留占位符标记待补充（绝不丢弃模板/正文）
+                            fullText = fullText.replace(/\{\{([^}]+)\}\}/g, '（待补充：$1）');
                         }
+                        // 否则：模型已直接输出完整文档（占位符已内联填充），原样保留
+                        // 重新渲染气泡：模板替换后内容已是 HTML，不能用 wrStreamFormat（会二次转义）
+                        if (streamBubbleContent) streamBubbleContent.innerHTML = fullText;
+                        const histEl = document.getElementById('wr-chat-history');
+                        if (histEl) histEl.scrollTop = histEl.scrollHeight;
                     }
 
                     // 记录到对话历史
@@ -2333,6 +2343,23 @@
                     }
                 } catch(e) {
                     console.log('[wrParseMapping] 提取解析失败:', e.message);
+                }
+                return null;
+            }
+
+            // 稳健抽取首个「平衡」JSON 对象（容忍尾注/解释文本），用于占位符映射兜底
+            function _wrExtractJson(text) {
+                const start = text.indexOf('{');
+                if (start < 0) return null;
+                let depth = 0, inStr = false, esc = false;
+                for (let i = start; i < text.length; i++) {
+                    const c = text[i];
+                    if (esc) { esc = false; continue; }
+                    if (c === '\\') { esc = true; continue; }
+                    if (c === '"') { inStr = !inStr; continue; }
+                    if (inStr) continue;
+                    if (c === '{') depth++;
+                    else if (c === '}') { depth--; if (depth === 0) { try { return JSON.parse(text.slice(start, i + 1)); } catch (e) { return null; } } }
                 }
                 return null;
             }

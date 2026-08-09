@@ -905,6 +905,9 @@
                 }
                 window._wrSelectedTemplate = selTpl;
                 window._wrSelectedMaterialIds = selectedMatIds;
+                // 修复：确认选择后立即刷新预览区，使已选模板/资料即时显示，不再残留"尚未选择"
+                var _q = (document.getElementById('wr-query-input') || {}).value || '';
+                try { wrUpdateMaterialPreview(_q); } catch (e) { console.warn('刷新资料预览失败', e); }
                 var modal = document.querySelector('.wr-step-modal');
                 if (modal) modal.remove();
                 // 跳转到写作面板并触发生成

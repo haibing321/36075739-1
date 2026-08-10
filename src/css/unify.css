@@ -782,3 +782,108 @@ textarea:focus {
 [data-theme="dark"] #wr-modify-modal button[style*="background:var(--primary)"],
 [data-theme="dark"] #wr-modify-history-modal button[style*="background:var(--primary)"] { color: #fff !important; }
 
+/* ============ 设置面板 / 数据管理 暗黑适配 ============ */
+/* 注：元素被 JS 修改 .style 后，浏览器会把 inline 颜色重序列化为 rgb() 形式，故需同时覆盖 hex 与 rgb() 两种写法 */
+[data-theme="dark"] #settings-panel div[style*="background:#f8fafc"],
+[data-theme="dark"] #settings-panel div[style*="background: #f8fafc"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(248, 250, 252)"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(248,250,252)"],
+[data-theme="dark"] #settings-panel div[style*="background:#eff6ff"],
+[data-theme="dark"] #settings-panel div[style*="background: #eff6ff"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(239, 246, 255)"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(239,246,255)"],
+[data-theme="dark"] #settings-panel div[style*="background:#f1f5f9"],
+[data-theme="dark"] #settings-panel div[style*="background: #f1f5f9"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(241, 245, 249)"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(241,245,249)"] {
+  background: #15233f !important;
+  color: #cbd5e1 !important;
+  border-color: #334155 !important;
+}
+[data-theme="dark"] #settings-panel div[style*="background:#eff6ff"],
+[data-theme="dark"] #settings-panel div[style*="background: #eff6ff"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(239, 246, 255)"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(239,246,255)"] { color: #93c5fd !important; }
+[data-theme="dark"] #settings-panel div[style*="background:#f8fafc"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background: #f8fafc"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(248, 250, 252)"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(248,250,252)"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background:#eff6ff"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background: #eff6ff"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(239, 246, 255)"] span[style*="color:#475569"],
+[data-theme="dark"] #settings-panel div[style*="background: rgb(239,246,255)"] span[style*="color:#475569"] { color: #cbd5e1 !important; }
+
+/* ============ 对话气泡 暗黑适配（doubao 聊天区） ============ */
+[data-theme="dark"] .ds-bubble-assistant {
+  background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important;
+}
+[data-theme="dark"] .ds-bubble-system {
+  background: #15233f !important; color: #cbd5e1 !important; border-color: #334155 !important;
+}
+
+/* ============ 通用 .modal 内白底容器 兜底（备忘/检查信息清空等） ============ */
+[data-theme="dark"] .modal-content div[style*="background:#fff"],
+[data-theme="dark"] .modal-content div[style*="background: #fff"],
+[data-theme="dark"] .modal-content div[style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] .modal-content div[style*="background: rgb(255,255,255)"],
+[data-theme="dark"] .modal-content div[style*="background:#ffffff"],
+[data-theme="dark"] .modal-content div[style*="background: #ffffff"] {
+  background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important;
+}
+
+/* ============ 智能对规结果卡片 暗黑适配 ============ */
+[data-theme="dark"] #autoCheck-results div[style*="background:#f0f9ff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: #f0f9ff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(240, 249, 255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(240,249,255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background:#eff6ff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: #eff6ff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(239, 246, 255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(239,246,255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background:#fff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: #fff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(255,255,255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background:#ffffff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: #ffffff"],
+[data-theme="dark"] #autoCheck-results div[style*="background:#f5f3ff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: #f5f3ff"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(245, 243, 255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(245,243,255)"],
+[data-theme="dark"] #autoCheck-results div[style*="background:#f0fdf4"],
+[data-theme="dark"] #autoCheck-results div[style*="background: #f0fdf4"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(240, 253, 244)"],
+[data-theme="dark"] #autoCheck-results div[style*="background: rgb(240,253,244)"],
+[data-theme="dark"] #autoCheck-ai-hint {
+  background: #1e293b !important; color: #cbd5e1 !important; border-color: #334155 !important;
+}
+/* 对规结果内常见深色文字转浅色，保证暗黑可读 */
+[data-theme="dark"] #autoCheck-results *[style*="color:#1e3a5f"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #1e3a5f"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(30, 58, 95)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(30,58,95)"],
+[data-theme="dark"] #autoCheck-results *[style*="color:#1e40af"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #1e40af"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(30, 64, 175)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(30,64,175)"],
+[data-theme="dark"] #autoCheck-results *[style*="color:#374151"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #374151"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(55, 65, 81)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(55,65,81)"],
+[data-theme="dark"] #autoCheck-results *[style*="color:#475569"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #475569"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(71, 85, 105)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(71,85,105)"],
+[data-theme="dark"] #autoCheck-results *[style*="color:#0c4a6e"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #0c4a6e"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(12, 74, 110)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(12,74,110)"],
+[data-theme="dark"] #autoCheck-results *[style*="color:#6d28d9"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #6d28d9"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(109, 40, 217)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(109,40,217)"],
+[data-theme="dark"] #autoCheck-results *[style*="color:#15803d"],
+[data-theme="dark"] #autoCheck-results *[style*="color: #15803d"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(21, 128, 61)"],
+[data-theme="dark"] #autoCheck-results *[style*="color: rgb(21,128,61)"] { color: #cbd5e1 !important; }
+

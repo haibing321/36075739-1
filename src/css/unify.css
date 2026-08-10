@@ -813,6 +813,35 @@ textarea:focus {
 [data-theme="dark"] #settings-panel div[style*="background: rgb(239, 246, 255)"] span[style*="color:#475569"],
 [data-theme="dark"] #settings-panel div[style*="background: rgb(239,246,255)"] span[style*="color:#475569"] { color: #cbd5e1 !important; }
 
+/* 设置面板内按钮（如「检查更新」）暗黑适配：注意是 button 而非 div，需单独覆盖 */
+[data-theme="dark"] #settings-panel button[style*="background:#f8fafc"],
+[data-theme="dark"] #settings-panel button[style*="background: #f8fafc"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(248, 250, 252)"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(248,250,252)"],
+[data-theme="dark"] #settings-panel button[style*="background:#eff6ff"],
+[data-theme="dark"] #settings-panel button[style*="background: #eff6ff"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(239, 246, 255)"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(239,246,255)"],
+[data-theme="dark"] #settings-panel button[style*="background:#f1f5f9"],
+[data-theme="dark"] #settings-panel button[style*="background: #f1f5f9"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(241, 245, 249)"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(241,245,249)"],
+[data-theme="dark"] #settings-panel button[style*="background:#fff"],
+[data-theme="dark"] #settings-panel button[style*="background: #fff"],
+[data-theme="dark"] #settings-panel button[style*="background:#ffffff"],
+[data-theme="dark"] #settings-panel button[style*="background: #ffffff"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(255,255,255)"] {
+  background: #15233f !important;
+  color: #cbd5e1 !important;
+  border-color: #334155 !important;
+}
+/* 检查更新按钮内浅色文字兜底，保证暗黑可读 */
+[data-theme="dark"] #settings-panel button[style*="background:#f8fafc"] span[style*="color:#94a3b8"],
+[data-theme="dark"] #settings-panel button[style*="background: #f8fafc"] span[style*="color:#94a3b8"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(248, 250, 252)"] span[style*="color:#94a3b8"],
+[data-theme="dark"] #settings-panel button[style*="background: rgb(248,250,252)"] span[style*="color:#94a3b8"] { color: #93c5fd !important; }
+
 /* ============ 对话气泡 暗黑适配（doubao 聊天区） ============ */
 [data-theme="dark"] .ds-bubble-assistant {
   background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important;

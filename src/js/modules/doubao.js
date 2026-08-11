@@ -2737,6 +2737,17 @@
         if (!input || !historyEl) return;
         var msg = input.value.trim();
         if (!msg) return;
+        // A1-P3：/goal 系列命令本地处理，不调用 LLM
+        if (typeof window.handleAgentCommand === 'function') {
+          var _cmdResp = window.handleAgentCommand(msg);
+          if (_cmdResp !== null && _cmdResp !== undefined) {
+            historyEl.innerHTML += '<div style="margin-bottom:8px;color:var(--primary);font-weight:600;">🧑 ' + dsEsc(msg) + '</div>';
+            historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;font-size:0.9rem;white-space:pre-wrap;">' + dsEsc(_cmdResp) + '</div>';
+            input.value = '';
+            historyEl.scrollTop = historyEl.scrollHeight;
+            return;
+          }
+        }
         if (typeof window._agentRun !== 'function') { historyEl.innerHTML += '<div style="color:#dc2626">⚠️ 智能体模块未加载</div>'; return; }
 
         _agentRunning = true;
@@ -2761,7 +2772,16 @@
               if (m.role === 'agent-plan') {
                 historyEl.innerHTML += '<div style="margin-bottom:6px;background:#fffbeb;border-left:3px solid #f59e0b;color:#b45309;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
               } else if (m.role === 'agent-tool') {
-                historyEl.innerHTML += '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
+                if (m.toolMeta) {
+                  // A2 透明卡片：用途 / 证据样例
+                  var _ev = m.toolMeta.evidence ? '<div style="color:#047857;margin-top:2px;white-space:pre-wrap;">证据：' + dsEsc(m.toolMeta.evidence) + '</div>' : '';
+                  historyEl.innerHTML += '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:6px 10px;font-size:0.82rem;line-height:1.5;">'
+                    + '<div style="font-weight:600;">🔧 ' + dsEsc(String(m.content).replace(/^🔧\s*/, '')) + '</div>'
+                    + '<div style="color:#065f46;margin-top:2px;">用途：' + dsEsc(m.toolMeta.purpose || '') + '</div>'
+                    + _ev + '</div>';
+                } else {
+                  historyEl.innerHTML += '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
+                }
               } else if (m.role === 'assistant') {
                 // B#8: 最终回答渲染 Markdown，与普通对话体验一致
                 historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;font-size:0.9rem;">' + dsMarkdown(m.content) + '</div>';

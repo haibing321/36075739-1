@@ -100,3 +100,44 @@
     }).join('\n');
   };
 })();
+
+// ========== A1-P1 用户偏好画像（轻量，存 localStorage） ==========
+(function() {
+  var PROFILE_KEY = 'agent_user_profile';
+  function _read() {
+    try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function _write(p) {
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch (e) {}
+  }
+  // 从历史任务累积用户关注单位 / 常用检索词
+  window.learnFromConversation = function(userIntent, taskRecord) {
+    try {
+      var p = _read();
+      p.units = p.units || {};
+      p.keywords = p.keywords || {};
+      (taskRecord.steps || []).forEach(function(s) {
+        if (s.tool === 'search_issues' && s.params && s.params.unit) {
+          p.units[s.params.unit] = (p.units[s.params.unit] || 0) + 1;
+        }
+        if (s.tool === 'search_rules' && s.params && s.params.keyword) {
+          var k = String(s.params.keyword).trim(); if (k) p.keywords[k] = (p.keywords[k] || 0) + 1;
+        }
+      });
+      p.lastSeen = new Date().toISOString();
+      _write(p);
+    } catch (e) {}
+  };
+  // 生成注入提示词的偏好片段
+  window.getPreferencePrompt = function() {
+    try {
+      var p = _read();
+      var parts = [];
+      var units = Object.keys(p.units || {}).sort(function(a, b) { return p.units[b] - p.units[a]; });
+      if (units.length) parts.push('该用户常关注单位：' + units.slice(0, 5).join('、') + '。');
+      var kws = Object.keys(p.keywords || {}).sort(function(a, b) { return p.keywords[b] - p.keywords[a]; });
+      if (kws.length) parts.push('常用检索词：' + kws.slice(0, 5).join('、') + '。');
+      return parts.join('');
+    } catch (e) { return ''; }
+  };
+})();

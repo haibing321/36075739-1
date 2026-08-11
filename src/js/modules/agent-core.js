@@ -3,6 +3,44 @@
  * 只暴露 window._agentRun(userMessage) 一个入口
  */
 (function() {
+  // ========== A1 总开关（紧急降级） ==========
+  // 默认开启；在控制台执行 localStorage.setItem('agentEnhanceV2','0') 即可瞬间回退到纯净 ReAct
+  window._agentEnhanceOn = function() { return localStorage.getItem('agentEnhanceV2') !== '0'; };
+
+  // 工具用途说明（A2 透明日志用）
+  var _TOOL_PURPOSE = {
+    search_issues: '检索检查信息系统，查找相关问题记录',
+    get_issue_detail: '调取单条检查信息完整内容（含规章依据）',
+    search_rules: '检索规章制度库，查找相关条款',
+    get_rule_detail: '调取单条规章制度完整条款',
+    search_handbook: '检索检查手册项点',
+    get_handbook_detail: '调取手册项点完整内容',
+    write_diary: '将本次工作写入「工作日志」',
+    save_report: '将报告存入「写作资料库」',
+    get_weather: '查询车站天气预报',
+    search_phone: '检索应急电话通讯录',
+    search_material: '检索写作参考资料库',
+    get_material_detail: '调取参考资料详情',
+    read_diary: '读取历史工作日志'
+  };
+  function _toolPurpose(name) { return _TOOL_PURPOSE[name] || '调用工具'; }
+  function _toolEvidence(execResult) {
+    try {
+      var r = execResult && execResult.result;
+      if (!r) return '';
+      if (Array.isArray(r.items) && r.items.length) {
+        return r.items.slice(0, 2).map(function(it) {
+          return [it.单位, it.标题, it.专业, it.摘要].filter(Boolean).join(' · ');
+        }).join('\n');
+      }
+      if (typeof r.total === 'number') return '命中 ' + r.total + ' 条';
+      if (r.content) return ('写入内容：' + String(r.content)).slice(0, 80);
+      if (r.title) return '标题：' + String(r.title);
+      if (r.message) return String(r.message).slice(0, 80);
+    } catch (e) {}
+    return '';
+  }
+
   // ========== 工具注册表（标准 OpenAI/DeepSeek tools 格式）==========
   var TOOLS = [
     {
@@ -480,6 +518,20 @@
       if (ctx) system += '\n\n历史任务记录：\n' + ctx;
     } catch(e) {}
 
+    // A1-P0 感知：注入当前界面模块上下文（用户正在浏览的页面/数据）
+    try {
+      if (window._agentEnhanceOn && window._agentEnhanceOn() && window.UNIFIED_TAB_CONTEXT) {
+        system += '\n\n当前界面上下文（用户正在浏览的模块与数据）：\n' + window.UNIFIED_TAB_CONTEXT + '\n若用户意图与当前模块相关，可优先结合上述上下文理解需求。\n';
+      }
+    } catch(e) {}
+    // A1-P1 记忆：注入用户偏好画像
+    try {
+      if (window._agentEnhanceOn && window._agentEnhanceOn() && typeof window.getPreferencePrompt === 'function') {
+        var pref = window.getPreferencePrompt();
+        if (pref) system += '\n\n用户偏好画像：\n' + pref + '\n';
+      }
+    } catch(e) {}
+
     var messages = [
       { role: 'system', content: system },
       { role: 'user', content: userMessage }
@@ -519,11 +571,19 @@
         if (callKey === lastCallKey) {
           repeatCount++;
           if (repeatCount >= 2) {
-            // 重复终止：直接作为最终输出，避免再叠加「超15轮」兜底提示（文案矛盾）
-            var dupMsg = '⚠️ 检测到重复调用，已提前终止';
-            taskRecord.finalOutput = dupMsg;
-            renderMsgs.push({ role: 'agent-tool', content: dupMsg });
-            break;
+            if (window._agentEnhanceOn && window._agentEnhanceOn()) {
+              // A1-P2 反思回灌：提示模型换策略，不再重复，继续循环一轮（上限保证不无限）
+              var reflectMsg = '⚠️ 你正在重复调用相同工具，请停止重复，直接基于已有信息给出最终自然语言回答，或换一个不同的检索角度。';
+              messages.push({ role: 'user', content: reflectMsg });
+              renderMsgs.push({ role: 'agent-tool', content: '🔄 反思：检测到重复调用，已提示智能体换策略' });
+              lastCallKey = ''; repeatCount = 0; // 重置，下一轮重新判定
+            } else {
+              // 纯净 ReAct：保持原行为，直接终止避免文案矛盾
+              var dupMsg = '⚠️ 检测到重复调用，已提前终止';
+              taskRecord.finalOutput = dupMsg;
+              renderMsgs.push({ role: 'agent-tool', content: dupMsg });
+              break;
+            }
           }
         } else { lastCallKey = callKey; repeatCount = 0; }
 
@@ -534,7 +594,13 @@
           var execResult = await _executeTool(tc.function.name, args);
           var summary = tc.function.name + ': ' + (execResult.ok ? (execResult.result && execResult.result.total !== undefined ? '✅ 共' + execResult.result.total + '条' : '✅') : '❌ ' + (execResult.error || ''));
           taskRecord.steps.push({ tool: tc.function.name, params: args, ok: execResult.ok, summary: summary });
-          renderMsgs.push({ role: 'agent-tool', content: '🔧 ' + summary, tool: tc.function.name });
+          // A2 透明日志：附带用途/证据，渲染层据此展示卡片
+          renderMsgs.push({
+            role: 'agent-tool',
+            content: '🔧 ' + summary,
+            tool: tc.function.name,
+            toolMeta: { name: tc.function.name, purpose: _toolPurpose(tc.function.name), evidence: _toolEvidence(execResult) }
+          });
           messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(execResult) });
         }
       } else {
@@ -550,6 +616,8 @@
     }
 
     try { await window.saveAgentTask(taskRecord); } catch(e) {}
+    // A1-P1 记忆写回：从历史任务中累积用户关注的单位/常用检索词
+    try { if (window._agentEnhanceOn && window._agentEnhanceOn() && typeof window.learnFromConversation === 'function') window.learnFromConversation(userMessage, taskRecord); } catch(e) {}
     return { messages: renderMsgs, taskId: taskId };
   };
 

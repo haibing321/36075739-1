@@ -151,8 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
         var data = [];
         try {
             if (typeof window.getIssueData === 'function') data = window.getIssueData();
-        } catch(e) { return []; }
-        if (!data.length) return [];
+        } catch(e) { return { total: 0, items: [] }; }
+        if (!data.length) return { total: 0, items: [] };
         var filtered = data;
         if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
         if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
@@ -161,7 +161,36 @@ document.addEventListener('DOMContentLoaded', function() {
         if (dateTo)   filtered = filtered.filter(function(i) { return (i.datetime||'') <= dateTo + ' 23:59:59'; });
         // 性质筛选（A类/B类/C类/红线/空白）
         if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
-        return _fuzzyFilter(filtered, keyword, ['性质','category','content','regulation','unit'], limit || 30);
+        // 典型问题引用默认 35 条；用户要求更多时无硬上限
+        var lim = (typeof limit === 'number' && limit > 0) ? limit : 35;
+        // 先取未截断的全量匹配（用于统计总数），再按 lim 截取引用列表
+        var matchedFull = _fuzzyFilter(filtered, keyword, ['性质','category','content','regulation','unit'], Number.MAX_SAFE_INTEGER);
+        return { total: matchedFull.length, items: matchedFull.slice(0, lim) };
+    };
+
+    /** 统计检查信息（时间范围内全部计入，不封顶；可按 性质/category/unit 分组） */
+    window._agentCountIssues = function(keyword, unit, category, dateFrom, dateTo, nature, groupBy) {
+        var data = [];
+        try {
+            if (typeof window.getIssueData === 'function') data = window.getIssueData();
+        } catch(e) { return { total: 0, groups: {} }; }
+        if (!data.length) return { total: 0, groups: {} };
+        var filtered = data;
+        if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
+        if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
+        if (dateFrom) filtered = filtered.filter(function(i) { return (i.datetime||'') >= dateFrom; });
+        if (dateTo)   filtered = filtered.filter(function(i) { return (i.datetime||'') <= dateTo + ' 23:59:59'; });
+        if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
+        var kw = (keyword && String(keyword).trim()) ? keyword : '';
+        var matched = kw ? _fuzzyFilter(filtered, kw, ['性质','category','content','regulation','unit'], Number.MAX_SAFE_INTEGER) : filtered;
+        var groups = {};
+        if (groupBy) {
+            matched.forEach(function(i) {
+                var k = (i[groupBy] != null && i[groupBy] !== '') ? i[groupBy] : '(未分类)';
+                groups[k] = (groups[k] || 0) + 1;
+            });
+        }
+        return { total: matched.length, groups: groups };
     };
 
     /** 搜索规章制度 */

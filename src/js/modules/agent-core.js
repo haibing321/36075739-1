@@ -10,6 +10,7 @@
   // 工具用途说明（A2 透明日志用）
   var _TOOL_PURPOSE = {
     search_issues: '检索检查信息系统，查找相关问题记录',
+    count_issues: '统计检查信息数量（时间范围内全部计入，不封顶，可按性质/类别/单位分组）',
     get_issue_detail: '调取单条检查信息完整内容（含规章依据）',
     search_rules: '检索规章制度库，查找相关条款',
     get_rule_detail: '调取单条规章制度完整条款',
@@ -55,18 +56,40 @@
           dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD(可选)' },
           dateTo: { type: 'string', description: '截止日期 YYYY-MM-DD(可选)' },
           nature: { type: 'string', description: '问题性质筛选：A类/B类/C类/红线/空白(可选)' },
-          limit: { type: 'integer', description: '返回条数上限，默认30' }
+          limit: { type: 'integer', description: '引用典型问题条数，默认35（用户要求更多时加大 limit 即可，不封顶）' }
         },
         required: ['keyword']
       },
       handler: async function(args) {
-        var all = window._agentGetIssues(args.keyword || '', args.unit || '', args.category || '', args.limit || 30, args.dateFrom || '', args.dateTo || '', args.nature || '');
+        var res = window._agentGetIssues(args.keyword || '', args.unit || '', args.category || '', args.limit || 35, args.dateFrom || '', args.dateTo || '', args.nature || '');
+        var all = res.items;
         var full = [];
         try { if (typeof window.getIssueData === 'function') full = window.getIssueData(); } catch(e) {}
-        return { total: all.length, items: all.map(function(i) {
+        return { total: res.total, items: all.map(function(i) {
           var realIdx = full.indexOf(i);
           return { id: (realIdx >= 0 ? realIdx : -1), 性质: i['性质']||'', 时间: i.datetime||'', 类别: i.category||'', 单位: i.unit||'', 摘要: (i.content||'').slice(0,120) };
         })};
+      }
+    },
+    {
+      name: 'count_issues',
+      description: '统计检查信息数量（用于数据汇总/报表）。按单位/类别/日期/性质/关键词筛选后，返回时间范围内【全部】条数的真实总数(不封顶)，可选按 性质/category/unit 分组计数。做统计务必用本工具而非 search_issues，以保证不遗漏。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: { type: 'string', description: '关键词(可选)' },
+          unit: { type: 'string', description: '责任单位筛选(可选)' },
+          category: { type: 'string', description: '类别筛选(可选)' },
+          dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD(可选)' },
+          dateTo: { type: 'string', description: '截止日期 YYYY-MM-DD(可选)' },
+          nature: { type: 'string', description: '性质筛选：A类/B类/C类/红线/空白(可选)' },
+          groupBy: { type: 'string', description: "分组维度：'性质' | 'category' | 'unit'(可选)" }
+        },
+        required: []
+      },
+      handler: async function(args) {
+        var r = window._agentCountIssues(args.keyword || '', args.unit || '', args.category || '', args.dateFrom || '', args.dateTo || '', args.nature || '', args.groupBy || '');
+        return { total: r.total, groups: r.groups };
       }
     },
     {
@@ -512,6 +535,8 @@
     system += '5. 拿到结果后继续推理，直到能给出「最终自然语言回答」，此时不要调用 function\n';
     system += '6. 不需要工具时直接回答\n';
     system += '7. 整个任务控制在 5 轮以内完成\n';
+    system += '8. 引用典型问题写报告时，默认列举不超过 35 条；若用户明确要更多，可在 search_issues 中加大 limit（无上限），不要自行截断或估算\n';
+    system += '9. 做统计/计数（如"某时段共多少条""按性质分布"）时，必须用 count_issues 或读取 search_issues 返回的 total（该值为时间范围内真实总数，不封顶）；务必统计时间范围内的全部，不得因条数多而只取前 N 条或估算\n';
 
     try {
       var ctx = await window.getRecentAgentContext();

@@ -245,6 +245,9 @@
 }
 .ds-ico-btn:hover { background: #eef1f6; color: #4d6bfe; }
 .ds-ico-btn:active { transform: scale(0.94); }
+/* 联网搜索开启态：淡主色底 + 主色图标（纯色，无渐变） */
+.ds-ico-btn.ds-ws-on { background: #e8ecfd; color: #4d6bfe; }
+.ds-ico-btn.ds-ws-on:hover { background: #dde3fc; color: #4d6bfe; }
 
 /* —— 角色 / 模型：圆形图标按钮 + 下拉菜单（与附件/发送同款风格） —— */
 .ds-hidden-select {
@@ -665,6 +668,8 @@
 [data-theme="dark"] .ds-chip-select option { color: #e2e8f0; background: #0f172a; }
 [data-theme="dark"] .ds-ico-btn { color: #8b95a5; }
 [data-theme="dark"] .ds-ico-btn:hover { background: #1c2534; color: #93c5fd; }
+[data-theme="dark"] .ds-ico-btn.ds-ws-on { background: #1e3354; color: #93c5fd; }
+[data-theme="dark"] .ds-ico-btn.ds-ws-on:hover { background: #24405f; color: #93c5fd; }
 [data-theme="dark"] .ds-dropdown-menu { background: #1c2534; border-color: #2a3444; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 [data-theme="dark"] .ds-dropdown-item { color: #cbd5e1; }
 [data-theme="dark"] .ds-dropdown-item:hover { background: #263243; }

@@ -761,6 +761,8 @@
                 // 持久化联网搜索开关（全局行为，与具体模型配置无关）
                 var _wsChk = document.getElementById('ds-pe-websearch');
                 localStorage.setItem('ds_web_search', (_wsChk && _wsChk.checked) ? '1' : '0');
+                // 同步输入栏地球按钮高亮（两处 UI 共用同一开关）
+                try { if (typeof window.dsSyncWebSearchBtn === 'function') window.dsSyncWebSearchBtn(); } catch (e) {}
                 if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
                 renderModelManager();
             }
@@ -1285,6 +1287,13 @@
                     ? await dsBuildSystemPrompt(finalText, _dataSrc)
                     : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
                 var systemPrompt = rolePrompt + memoryText + baseSystem;
+                // 注入当前日期：避免模型把「今天/本月/8月12日」当成年份不明而拒答
+                try {
+                    var _nowD = new Date();
+                    var _wd = ['日','一','二','三','四','五','六'][_nowD.getDay()];
+                    systemPrompt += '\n\n当前日期：' + _nowD.getFullYear() + '年' + (_nowD.getMonth() + 1) + '月' + _nowD.getDate() + '日（星期' + _wd + '）。'
+                        + '用户提到「今天/昨天/本月/近期」等相对时间，以及未标注年份的日期（如「8月12日」），均按当前日期所在年份理解，不要反问年份。';
+                } catch (e) {}
                 // 全域统一升级：注入当前模块上下文（unified-enhancements.js 设置，未定义则无影响）
                 if (window.UNIFIED_TAB_CONTEXT) systemPrompt += '\n\n' + window.UNIFIED_TAB_CONTEXT;
                 if (_tempSrc) { window._tempDataSrc = null; }
@@ -1320,7 +1329,29 @@
                     // 天气等本地查询失败时由调用方置 window._dsForceWebSearch=true 强制联网（读取后立即清除，仅本次生效）
                     var forceWs = !!window._dsForceWebSearch;
                     window._dsForceWebSearch = false;
-                    var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs;
+                    // 自动判定：开关未开时，若问题明显属于「外部实时信息」也自动联网，避免答"我无法联网"
+                    // 业务域问题（检查信息/规章/日志等）一律不自动联网，保证仍走本地数据源
+                    var autoWs = (function(_q) {
+                        var q = String(_q || '');
+                        var explicitWeb = /联网|上网|网上|搜一下|搜一搜|搜索一下|查一下网|最新消息|实时/;
+                        var bizDomain = /检查信息|规章|条款|隐患|典型问题|安监|监察|工务|电务|供电|车务|机务|车辆|通信|房建|客运|货运|日志|写实|报告|手册|项点|台账|考勤|通讯录|资料库|模板|问题库/;
+                        var realtime = /新闻|头条|时事|热点|大事|舆情|股价|股票|汇率|油价|金价|比特币|涨跌|发布会|上映|比分|比赛结果|夺冠|地震|台风|天气|气温/;
+                        if (explicitWeb.test(q)) return true;
+                        if (bizDomain.test(q)) return false;
+                        return realtime.test(q);
+                    })(finalText);
+                    var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs || autoWs;
+                    // 告知模型自身联网状态：联网时禁止自称"无法联网"；未联网时引导用户开启，而不是空口拒答
+                    if (useWebSearch) {
+                        systemPrompt += '\n\n【联网搜索已启用】你本次具备实时联网检索能力，可获取最新的新闻、行情、天气等外部信息。'
+                            + '请直接基于检索到的最新事实作答，并标注信息对应的日期；严禁声称"我没有实时联网能力""无法获取当日新闻"。';
+                    } else {
+                        try {
+                            if (messages[0] && messages[0].role === 'system') {
+                                messages[0].content += '\n\n【提示】本次未启用联网搜索。若用户询问需要实时联网才能回答的信息，请简要说明并告知：点击输入框左下方的 🌐 地球按钮即可开启联网搜索，然后重新提问。';
+                            }
+                        } catch (e) {}
+                    }
                     var responsesUrl = (dsApiUrl || '').replace(/\/chat\/completions\/?$/i, '/responses') || 'https://api.deepseek.com/responses';
                     var inputItems = dsHistory.slice(-10)
                         .map(function(m) { return { role: m.role, content: (m.content || '') }; })
@@ -2717,6 +2748,34 @@
         sync();
         // 面板从隐藏变为可见 / 窗口缩放时重新计算
         window.addEventListener('resize', sync);
+      })();
+
+      // ========== 联网搜索开关（输入栏地球按钮，与「模型管理」面板复选框共用 ds_web_search）==========
+      (function initWebSearchToggle() {
+        var btn = document.getElementById('ds-websearch-btn');
+        if (!btn) return;
+        // 同步按钮视觉与提示；供模型管理面板保存后回调，保持两处 UI 一致
+        window.dsSyncWebSearchBtn = function() {
+          var on = localStorage.getItem('ds_web_search') === '1';
+          var b = document.getElementById('ds-websearch-btn');
+          if (!b) return;
+          if (on) b.classList.add('ds-ws-on'); else b.classList.remove('ds-ws-on');
+          b.title = on
+            ? '联网搜索：已开启（每次提问都联网，点击关闭）'
+            : '联网搜索：已关闭（点击开启；关闭时遇新闻/天气等实时问题仍会自动联网）';
+        };
+        window.dsToggleWebSearch = function() {
+          var on = localStorage.getItem('ds_web_search') === '1';
+          localStorage.setItem('ds_web_search', on ? '0' : '1');
+          window.dsSyncWebSearchBtn();
+          // 同步「模型管理」面板里的复选框（若正打开）
+          var chk = document.getElementById('ds-pe-websearch');
+          if (chk) chk.checked = !on;
+          var msg = on ? '已关闭联网搜索（实时类问题仍自动联网）' : '🌐 已开启联网搜索';
+          if (window.Toast && window.Toast.success) window.Toast.success(msg);
+        };
+        btn.addEventListener('click', window.dsToggleWebSearch);
+        window.dsSyncWebSearchBtn();
       })();
 
       function saveFeedback(type, content) {

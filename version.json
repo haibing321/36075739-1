@@ -1,5 +1,5 @@
 {
-  "version": "v2.9",
-  "releaseNotes": "智能体/写作逻辑修复（write_diary、排序副作用、重复终止提示、模板XSS防护）、全局按钮配色统一柔和化、六大模块真机测试144项全绿",
+  "version": "v2.91",
+  "releaseNotes": "智能对话联网搜索按钮前置到输入栏，支持自动联网判定与当前日期注入；天气本地失败自动联网搜索已上线",
   "downloadUrl": "https://haibing321.github.io/36075739-2/"
 }

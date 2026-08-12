@@ -2827,10 +2827,18 @@
         window.addEventListener('resize', sync);
       })();
 
-      // ========== 联网搜索开关（输入栏地球按钮，与「模型管理」面板复选框共用 ds_web_search）==========
+      // ========== 联网搜索开关（输入栏按钮：带文字说明菜单，与「模型管理」面板复选框共用 ds_web_search）==========
       (function initWebSearchToggle() {
         var btn = document.getElementById('ds-websearch-btn');
+        var menu = document.getElementById('ds-websearch-menu');
         if (!btn) return;
+        function syncMenuActive() {
+          if (!menu) return;
+          var on = localStorage.getItem('ds_web_search') === '1';
+          menu.querySelectorAll('.ds-dropdown-item').forEach(function(it) {
+            it.classList.toggle('active', (it.getAttribute('data-ws') === '1') === on);
+          });
+        }
         // 同步按钮视觉与提示；供模型管理面板保存后回调，保持两处 UI 一致
         window.dsSyncWebSearchBtn = function() {
           var on = localStorage.getItem('ds_web_search') === '1';
@@ -2838,20 +2846,43 @@
           if (!b) return;
           if (on) b.classList.add('ds-ws-on'); else b.classList.remove('ds-ws-on');
           b.title = on
-            ? '联网搜索：已开启（每次提问都联网，点击关闭）'
-            : '联网搜索：已关闭（点击开启；关闭时遇新闻/天气等实时问题仍会自动联网）';
+            ? '联网搜索：已开启（点击查看选项）'
+            : '联网搜索：已关闭（点击查看选项）';
+          syncMenuActive();
         };
-        window.dsToggleWebSearch = function() {
-          var on = localStorage.getItem('ds_web_search') === '1';
-          localStorage.setItem('ds_web_search', on ? '0' : '1');
+        function closeMenu() { if (menu) menu.classList.remove('open'); }
+        function openMenu() { if (menu) menu.classList.add('open'); }
+        function setWs(on) {
+          localStorage.setItem('ds_web_search', on ? '1' : '0');
           window.dsSyncWebSearchBtn();
           // 同步「模型管理」面板里的复选框（若正打开）
           var chk = document.getElementById('ds-pe-websearch');
-          if (chk) chk.checked = !on;
-          var msg = on ? '已关闭联网搜索（实时类问题仍自动联网）' : '🌐 已开启联网搜索';
-          if (window.Toast && window.Toast.success) window.Toast.success(msg);
+          if (chk) chk.checked = on;
+          if (window.Toast && window.Toast.success)
+            window.Toast.success(on ? '🌐 已开启联网搜索' : '已关闭联网搜索（实时问题仍自动联网）');
+          closeMenu();
+        }
+        // 供模型管理面板复选框变更时调用（保持两处一致）
+        window.dsToggleWebSearch = function() {
+          var on = localStorage.getItem('ds_web_search') === '1';
+          setWs(!on);
         };
-        btn.addEventListener('click', window.dsToggleWebSearch);
+        // 点击按钮：展开/收起说明菜单（而非直接切换，便于手机端理解选项）
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (menu && menu.classList.contains('open')) closeMenu(); else openMenu();
+        });
+        // 菜单项：选择开启 / 关闭
+        if (menu) {
+          menu.querySelectorAll('.ds-dropdown-item').forEach(function(it) {
+            it.addEventListener('click', function(e) {
+              e.stopPropagation();
+              setWs(it.getAttribute('data-ws') === '1');
+            });
+          });
+        }
+        // 点击页面其它位置收起菜单
+        document.addEventListener('click', function() { closeMenu(); });
         window.dsSyncWebSearchBtn();
       })();
 

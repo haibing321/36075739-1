@@ -738,10 +738,21 @@
                                     <button id="ds-reset-datasource-btn" class="ds-ico-btn" title="关联数据">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6"/><path d="M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3"/></svg>
                                     </button>
-                                    <!-- 联网搜索（地球图标，开启后高亮；关闭时遇实时类问题仍会自动联网） -->
-                                    <button id="ds-websearch-btn" class="ds-ico-btn" type="button" title="联网搜索">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>
-                                    </button>
+                                    <!-- 联网搜索：带文字标签的按钮，点击展开说明菜单（开启后高亮；关闭时遇实时类问题仍会自动联网） -->
+                                    <div class="ds-dropdown">
+                                        <button id="ds-websearch-btn" class="ds-ws-btn" type="button" title="联网搜索">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>
+                                            <span class="ds-ws-label">联网搜索</span>
+                                        </button>
+                                        <div class="ds-dropdown-menu ds-ws-menu" id="ds-websearch-menu">
+                                            <div class="ds-ws-menu-head">
+                                                <div class="ds-ws-menu-title">🌐 联网搜索</div>
+                                                <div class="ds-ws-menu-desc">开启后每次提问都会联网检索最新信息；关闭时遇到新闻、天气、行情等实时问题仍会自动联网。</div>
+                                            </div>
+                                            <div class="ds-dropdown-item" data-ws="1">✅ 开启（每次提问都联网）</div>
+                                            <div class="ds-dropdown-item" data-ws="0">关闭（仅实时问题自动联网）</div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="ds-input-spacer"></div>
                                 <!-- 附件（DeepSeek：回形针线条图标） -->
@@ -1476,7 +1487,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v2.92</span> · 2026.08.12</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v2.93</span> · 2026.08.12</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1485,6 +1496,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek ReAct 自主规划执行）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- v2.93 版本 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🎉</span>
+                    <span>v2.93</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🌐 联网搜索按钮带文字标签「联网搜索」：手机端一眼可懂；点击展开说明菜单，明确「开启（每次提问都联网）/ 关闭（仅实时问题自动联网）」两个选项，不再仅靠图标开关</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v2.92 版本 -->
@@ -1505,28 +1530,6 @@
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
                         <span>🔄 知识更新增强：问「最新版 / 新规 / 修订 / 现行有效 / 2025·2026 年新标准」等时效内容时，自动联网核实最新规定，不再局限于本地库</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v2.91 版本 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v2.91</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌐 智能对话接入联网搜索：输入栏新增地球按钮，一键开启/关闭；关闭时遇到新闻、天气、行情等实时问题仍会自动联网</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📅 提示词注入当前日期：模型自动把「今天/8月12日」等相对日期理解为当前年份，不再反问年份</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🤖 智能对话模型管理保留联网开关：与输入栏地球按钮共用同一状态，两处随时同步</span>
                     </div>
                 </div>
             </div>

@@ -704,6 +704,8 @@
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API 地址</label><input id="ds-pe-url" list="api-url-list" onchange="if(window.dsAutoDetectModel)dsAutoDetectModel()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="https://api.deepseek.com/chat/completions"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-chat"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
+                // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具，需 deepseek-v4-flash
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，模型固定 deepseek-v4-flash）</label>';
                 html += '</div>';
                 html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
                 html += '</div>';
@@ -756,6 +758,9 @@
                 }
                 if (!name) name = model;
                 addOrUpdateProvider({ id: pid || undefined, name: name, apiUrl: url, model: model, apiKey: key });
+                // 持久化联网搜索开关（全局行为，与具体模型配置无关）
+                var _wsChk = document.getElementById('ds-pe-websearch');
+                localStorage.setItem('ds_web_search', (_wsChk && _wsChk.checked) ? '1' : '0');
                 if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
                 renderModelManager();
             }
@@ -1311,12 +1316,36 @@
                     var isFrontendRole = selectedRole === 'frontend';
                     var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
                     var maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
-                    var resp = await fetch(dsApiUrl, {
+                    // 联网搜索开关：开启则走 DeepSeek Responses API（web_search 工具），否则维持原 chat/completions
+                    var useWebSearch = (localStorage.getItem('ds_web_search') === '1');
+                    var responsesUrl = (dsApiUrl || '').replace(/\/chat\/completions\/?$/i, '/responses') || 'https://api.deepseek.com/responses';
+                    var inputItems = dsHistory.slice(-10)
+                        .map(function(m) { return { role: m.role, content: (m.content || '') }; })
+                        .filter(function(m) { return !!m.content || m.role === 'system'; });
+                    var resp;
+                    if (useWebSearch) {
+                        resp = await fetch(responsesUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                            body: JSON.stringify({
+                                model: 'deepseek-v4-flash',
+                                instructions: systemPrompt,
+                                input: inputItems,
+                                tools: [{ type: 'web_search' }],
+                                stream: true,
+                                temperature: 0.7,
+                                max_output_tokens: maxTokens
+                            }),
+                            signal: window._dsAbortController.signal
+                        });
+                    } else {
+                    resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
                         body: JSON.stringify({ model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens }),
                         signal: window._dsAbortController.signal
                     });
+                    }
 
                     if (!resp.ok) {
                         var errText = await resp.text();
@@ -1340,6 +1369,46 @@
                         return;
                     }
 
+                    if (useWebSearch) {
+                        // ── Responses API 语义化 SSE 流式（web_search 黑盒注入，客户端拿不到完整 URL 列表）──
+                        var reader = resp.body.getReader();
+                        var decoder = new TextDecoder();
+                        var buffer = '';
+                        var _renderTick = 0;
+                        var _wsText = '';
+                        var _wsSearching = false;
+                        while (true) {
+                            var resp2 = await reader.read();
+                            if (resp2.done) break;
+                            buffer += decoder.decode(resp2.value, { stream: true });
+                            var segs = buffer.split('\n\n');
+                            buffer = segs.pop() || '';
+                            for (var _si = 0; _si < segs.length; _si++) {
+                                var _segLines = segs[_si].split('\n');
+                                var _dataLine = null;
+                                for (var _li = 0; _li < _segLines.length; _li++) { if (_segLines[_li].indexOf('data:') === 0) { _dataLine = _segLines[_li]; break; } }
+                                if (!_dataLine) continue;
+                                var _payload = _dataLine.slice(5).trim();
+                                if (!_payload) continue;
+                                var _j; try { _j = JSON.parse(_payload); } catch(e) { continue; }
+                                var _t = _j.type;
+                                if (_t === 'response.output_text.delta') { _wsText += (_j.delta || ''); }
+                                else if (_t === 'response.web_search_call.in_progress' || _t === 'response.web_search_call.searching') { _wsSearching = true; }
+                                else if (_t === 'response.failed') { var _em = (_j.error && (_j.error.message || _j.error.code)) || '联网搜索失败'; dsHistory[assistantIdx].content = '❌ ' + _em; dsRenderAll(); return; }
+                            }
+                            _renderTick++;
+                            if (_renderTick % 3 === 0) {
+                                var _chatBox = document.getElementById('ds-chat-box');
+                                var _bubbles = _chatBox.querySelectorAll('.ds-bubble-assistant');
+                                var _lastBubble = _bubbles[_bubbles.length - 1];
+                                var _shown = (_wsSearching && !_wsText) ? '🌐 正在联网搜索…' : (_wsText ? dsMarkdown(_wsText) : '');
+                                if (_lastBubble) _lastBubble.innerHTML = _shown + '<span class="ds-cursor">▌</span>';
+                                dsScrollBottom();
+                            }
+                        }
+                        dsHistory[assistantIdx].content = _wsText;
+                    } else {
+                        // ── 既有 chat/completions 流式 ──
                     var reader = resp.body.getReader();
                     var decoder = new TextDecoder();
                     var buffer = '';
@@ -1371,6 +1440,7 @@
                                 } catch(e) {}
                             }
                         }
+                    }
                     }
 
                     var _finalChatBox = document.getElementById('ds-chat-box');

@@ -1486,7 +1486,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v2.93</span> · 2026.08.12</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.0</span> · 2026.08.12</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1495,6 +1495,28 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek ReAct 自主规划执行）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- v3.0 版本（大版本） -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🎉</span>
+                    <span>v3.0</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🌐 智能对话联网搜索：输入栏地球图标按钮，点击展开说明菜单开关；关闭时遇到新闻、天气、行情等实时问题仍自动联网，问「最新版 / 新规 / 修订 / 现行有效 / 新标准」等时效内容自动核实最新规定</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧠 角色提示词专家化：电务/工务/供电/车务/机务/车辆/通信/房建/客运/货运等各专业角色，升级为「专业领域 + 应熟悉规章 + 典型风险 + 分析框架 + 引用纪律」的结构化专家人设，并统一注入专业准则，回答更准更可信</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎨 视觉与体验：纯色统一按钮、暗黑模式、PWA 持续打磨，与角色/模型等工具按钮风格一致</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v2.93 版本 -->
@@ -1506,29 +1528,7 @@
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌐 联网搜索按钮带文字标签「联网搜索」：手机端一眼可懂；点击展开说明菜单，明确「开启（每次提问都联网）/ 关闭（仅实时问题自动联网）」两个选项，不再仅靠图标开关</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v2.92 版本 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v2.92</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🧠 智能对话角色提示词全面升级：电务/工务/供电/车务/机务/车辆/通信/房建/客运/货运等各专业角色，扩展为「专业领域 + 应熟悉规章体系 + 典型风险 + 分析框架 + 引用纪律」的结构化专家人设</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📚 通用专业准则注入：所有角色统一遵循「知识分层（本地库为权威源 / 联网补时效 / 不臆造）、准确性纪律、专业结构化输出」，回答更准更可信</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔄 知识更新增强：问「最新版 / 新规 / 修订 / 现行有效 / 2025·2026 年新标准」等时效内容时，自动联网核实最新规定，不再局限于本地库</span>
+                        <span>🌐 智能对话联网搜索按钮交互优化：输入栏地球图标按钮，点击展开说明菜单，明确「开启（每次提问都联网）/ 关闭（仅实时类问题自动联网）」两个选项；手机端与桌面端一致</span>
                     </div>
                 </div>
             </div>

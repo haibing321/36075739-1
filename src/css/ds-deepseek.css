@@ -248,28 +248,6 @@
 /* 联网搜索开启态：淡主色底 + 主色图标（纯色，无渐变） */
 .ds-ico-btn.ds-ws-on { background: #e8ecfd; color: #4d6bfe; }
 .ds-ico-btn.ds-ws-on:hover { background: #dde3fc; color: #4d6bfe; }
-/* 联网搜索按钮：带文字标签的药丸，点击展开说明菜单（手机端也显示文字） */
-.ds-ws-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 34px;
-    padding: 0 10px 0 8px;
-    border: 1px solid transparent;
-    background: #f3f5f8;
-    border-radius: 10px;
-    color: #475569;
-    cursor: pointer;
-    flex-shrink: 0;
-    font-size: 0.82rem;
-    font-weight: 500;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.ds-ws-btn:hover { background: #e9edf2; }
-.ds-ws-btn:active { transform: scale(0.97); }
-.ds-ws-btn .ds-ws-label { white-space: nowrap; }
-.ds-ws-btn.ds-ws-on { background: #e8ecfd; color: #4d6bfe; border-color: #c7d2fe; }
-.ds-ws-btn.ds-ws-on:hover { background: #dde3fc; }
 /* 说明菜单 */
 .ds-ws-menu { min-width: 248px; }
 .ds-ws-menu-head { padding: 4px 11px 9px; border-bottom: 1px solid #eef2f7; margin-bottom: 6px; }
@@ -697,10 +675,6 @@
 [data-theme="dark"] .ds-ico-btn:hover { background: #1c2534; color: #93c5fd; }
 [data-theme="dark"] .ds-ico-btn.ds-ws-on { background: #1e3354; color: #93c5fd; }
 [data-theme="dark"] .ds-ico-btn.ds-ws-on:hover { background: #24405f; color: #93c5fd; }
-[data-theme="dark"] .ds-ws-btn { background: #1c2534; color: #cbd5e1; }
-[data-theme="dark"] .ds-ws-btn:hover { background: #243044; }
-[data-theme="dark"] .ds-ws-btn.ds-ws-on { background: #1e3354; color: #93c5fd; border-color: #2a4a72; }
-[data-theme="dark"] .ds-ws-btn.ds-ws-on:hover { background: #24405f; }
 [data-theme="dark"] .ds-ws-menu-head { border-color: #2a3650; }
 [data-theme="dark"] .ds-ws-menu-title { color: #e2e8f0; }
 [data-theme="dark"] .ds-ws-menu-desc { color: #94a3b8; }

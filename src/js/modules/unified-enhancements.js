@@ -409,6 +409,14 @@
                   if (input.style) input.style.height = '';
                   return;
                 }
+              } else {
+                // 本地未查到该车站天气（不在电话簿/内置字典，或查询失败）→ 自动联网搜索，不返回"未找到"
+                // 流式阶段会显示「🌐 正在联网搜索…」作为降级提示
+                window._dsForceWebSearch = true;
+                await _origSend.apply(this, arguments);
+                input.value = '';
+                if (input.style) input.style.height = '';
+                return;
               }
               // 天气查询失败 / 未找到车站 / 强任务 → 退化为普通对话或原路由（交给 AI，不再抢答天气）
             } catch (e) {}

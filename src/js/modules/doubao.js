@@ -1317,7 +1317,10 @@
                     var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
                     var maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
                     // 联网搜索开关：开启则走 DeepSeek Responses API（web_search 工具），否则维持原 chat/completions
-                    var useWebSearch = (localStorage.getItem('ds_web_search') === '1');
+                    // 天气等本地查询失败时由调用方置 window._dsForceWebSearch=true 强制联网（读取后立即清除，仅本次生效）
+                    var forceWs = !!window._dsForceWebSearch;
+                    window._dsForceWebSearch = false;
+                    var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs;
                     var responsesUrl = (dsApiUrl || '').replace(/\/chat\/completions\/?$/i, '/responses') || 'https://api.deepseek.com/responses';
                     var inputItems = dsHistory.slice(-10)
                         .map(function(m) { return { role: m.role, content: (m.content || '') }; })

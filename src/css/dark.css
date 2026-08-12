@@ -77,7 +77,6 @@
 [data-theme="dark"] .modal-body { color: var(--text); }
 
 /* 设置/关于面板的内层白卡（index.html 内联 background:#fff）已由 HTML 改为 var(--card-bg)，此处兜底 */
-[data-theme="dark"] #settings-panel > div:last-child,
 [data-theme="dark"] #about-panel > div:nth-child(2) {
     background: var(--card-bg) !important;
     color: var(--text) !important;

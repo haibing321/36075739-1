@@ -549,8 +549,8 @@ window.toggleSettingsPanel = function() {
     var p = document.getElementById('settings-panel');
     if (!p) return;
     var isOpening = (p.style.display === 'none' || p.style.display === '');
-    p.style.display = isOpening ? 'block' : 'none';
     if (isOpening) {
+        p.style.display = 'block';
         if (window.updateDataManagementStats) window.updateDataManagementStats();
         if (window.syncDarkModeToggle) window.syncDarkModeToggle();
         // 移动端：展开设置时自动收起顶部导航下拉（模块选择框），与其它模块按钮行为一致（否则下拉残留重叠）
@@ -560,8 +560,20 @@ window.toggleSettingsPanel = function() {
             nav.classList.remove('nav-open');
             if (toggle) toggle.classList.remove('open');
         }
+    } else {
+        p.style.display = 'none';
     }
 };
+
+// 点击设置面板外部（含页面任意其它区域）自动收起设置下拉窗，与工具按钮下拉行为一致
+document.addEventListener('click', function(e) {
+    var p = document.getElementById('settings-panel');
+    if (!p || p.style.display === 'none') return;
+    var btn = document.getElementById('tab-settings');
+    if (p.contains(e.target)) return;          // 点面板内部不关
+    if (btn && btn.contains(e.target)) return;  // 点设置按钮本身不关（由 toggleSettingsPanel 处理）
+    p.style.display = 'none';
+});
 
 window.clearAllCache = function() {
     if (!confirm('⚠️ 将清除所有缓存数据并刷新页面，确定继续？')) return;

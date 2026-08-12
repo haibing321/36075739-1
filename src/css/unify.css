@@ -510,11 +510,7 @@ textarea:focus {
 [data-theme="dark"] .diary-unified-card,
 [data-theme="dark"] .diary-unified-section { background: #1e293b !important; border-color: #334155 !important; }
 
-/* 关联数据弹出窗口 · 暗黑 */
-[data-theme="dark"] #ds-datasource-modal > div { background: #1e293b !important; border: 1px solid #334155 !important; }
-[data-theme="dark"] #ds-datasource-modal label { color: #cbd5e1 !important; }
-[data-theme="dark"] #ds-datasource-modal hr { border-color: #334155 !important; opacity: 0.5; }
-[data-theme="dark"] #ds-datasource-modal span { color: #e2e8f0 !important; }
+/* 关联数据下拉面板：复用 .ds-dropdown-menu 浅色窗框，与角色/模型/联网下拉在暗黑下保持一致（均浅色），故不额外加暗黑覆盖 */
 
 /* 考勤弹窗 / 考勤统计显示框 · 暗黑 */
 [data-theme="dark"] .modal-body { background: #1e293b !important; color: #e2e8f0 !important; }

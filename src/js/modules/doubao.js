@@ -831,85 +831,87 @@
             }
             bindApiModalEvents();
 
-            // ---- 数据源选择模块 ----
+            // ---- 关联数据：与角色/模型/联网一致的下拉面板（点击展开、再次点击收起）----
+            // 注意：_sessionDataSource 声明在 Part A IIFE 作用域，供 dsSendMsg（_dsRunStream）读取当前数据源
             var _sessionDataSource = (function(){
                 try { var s = localStorage.getItem('ds_datasource_v1'); return s ? JSON.parse(s) : null; } catch(e){ return null; }
             })();
-            function showDataSourceSelector() {
-                return new Promise(function(resolve) {
-                    var modal = document.getElementById('ds-datasource-modal');
-                    if (!modal) { resolve({ rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false }); return; }
-                    var defCfg = _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
-                    document.getElementById('ds-dialog-rules').checked = defCfg.rules;
-                    document.getElementById('ds-dialog-issue').checked = defCfg.issue;
-                    document.getElementById('ds-dialog-handbook').checked = defCfg.handbook;
-                    document.getElementById('ds-dialog-wr-all').checked = defCfg.wrAll;
-                    document.getElementById('ds-dialog-phone').checked = defCfg.phone;
-                    document.getElementById('ds-dialog-diary').checked = defCfg.diary;
-                    document.getElementById('ds-dialog-remember').checked = defCfg.remember;
-                    var _dsAllBox = document.getElementById('ds-dialog-all');
-                    if (_dsAllBox) {
-                        _dsAllBox.checked = ['rules','issue','handbook','wr-all','phone','diary'].every(function(k){
-                            var el = document.getElementById('ds-dialog-' + k); return el && el.checked;
-                        });
-                    }
-                    modal.style.display = 'flex';
-                    var confirmBtn = document.getElementById('ds-dialog-confirm');
-                    var reject = null;
-                    confirmBtn._reject = function() { if (reject) { reject(); reject = null; } };
-                    var handleConfirm = function() {
-                        var config = {
-                            rules: document.getElementById('ds-dialog-rules').checked,
-                            issue: document.getElementById('ds-dialog-issue').checked,
-                            handbook: document.getElementById('ds-dialog-handbook').checked,
-                            wrAll: document.getElementById('ds-dialog-wr-all').checked,
-                            phone: document.getElementById('ds-dialog-phone').checked,
-                            diary: document.getElementById('ds-dialog-diary').checked,
-                            remember: document.getElementById('ds-dialog-remember').checked
-                        };
-                        if (config.remember) {
-                            _sessionDataSource = config;
-                            try { localStorage.setItem('ds_datasource_v1', JSON.stringify(config)); } catch(e) {}
-                        } else {
-                            try { localStorage.removeItem('ds_datasource_v1'); } catch(e) {}
-                            _sessionDataSource = config;
-                        }
-                        modal.style.display = 'none';
-                        confirmBtn.removeEventListener('click', handleConfirm);
-                        resolve(config);
-                    };
-                    reject = function() { modal.style.display = 'none'; resolve(null); };
-                    confirmBtn.addEventListener('click', handleConfirm, { once: true });
-                });
-            }
+            (function initDataSourceDropdown() {
+                var btn = document.getElementById('ds-reset-datasource-btn');
+                var menu = document.getElementById('ds-datasource-menu');
+                if (!btn || !menu) return;
 
-            // 数据源按钮绑定（已改为HTML onclick直接打开模态框）
-            setTimeout(function() {
-                var resetBtn = document.getElementById('ds-reset-datasource-btn');
-                if (resetBtn) resetBtn.onclick = async function() {
-                    var inputEl = document.getElementById('ds-user-input');
-                    var currentText = inputEl ? inputEl.value.trim() : '';
-                    var result = await showDataSourceSelector();
-                    if (!result) return;
-                    window._tempDataSrc = result;
-                    try {
-                        if (currentText && inputEl) {
-                            inputEl.value = currentText;
-                            if (typeof window.dsSendMsg === 'function') await window.dsSendMsg();
-                        }
-                    } finally {
-                        window._tempDataSrc = null;
-                        if (!result.remember) _sessionDataSource = null;
-                    }
-                };
-                var _allBox = document.getElementById('ds-dialog-all');
-                if (_allBox) _allBox.onchange = function() {
-                    var v = _allBox.checked;
+                function getDsCfg() {
+                    return {
+                        rules: document.getElementById('ds-dialog-rules').checked,
+                        issue: document.getElementById('ds-dialog-issue').checked,
+                        handbook: document.getElementById('ds-dialog-handbook').checked,
+                        wrAll: document.getElementById('ds-dialog-wr-all').checked,
+                        phone: document.getElementById('ds-dialog-phone').checked,
+                        diary: document.getElementById('ds-dialog-diary').checked,
+                        remember: document.getElementById('ds-dialog-remember').checked
+                    };
+                }
+                function syncAllBox() {
+                    var all = document.getElementById('ds-dialog-all');
+                    if (all) all.checked = ['rules','issue','handbook','wr-all','phone','diary'].every(function(k){
+                        var el = document.getElementById('ds-dialog-' + k); return el && el.checked;
+                    });
+                }
+                function loadDsCfg() {
+                    var def = _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: true };
+                    ['rules','issue','handbook','wr-all','phone','diary','remember'].forEach(function(k){
+                        var el = document.getElementById('ds-dialog-' + k); if (el) el.checked = def[k];
+                    });
+                    syncAllBox();
+                }
+
+                // 按钮：点击切换下拉（与角色/模型/联网一致）
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var willOpen = !menu.classList.contains('open');
+                    document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+                    if (willOpen) loadDsCfg();
+                    menu.classList.toggle('open', willOpen);
+                });
+
+                // 全选 / 单项同步
+                var allBox = document.getElementById('ds-dialog-all');
+                if (allBox) allBox.addEventListener('change', function(){
+                    var v = allBox.checked;
                     ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
                         var el = document.getElementById('ds-dialog-' + k); if (el) el.checked = v;
                     });
-                };
-            }, 300);
+                });
+                ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
+                    var el = document.getElementById('ds-dialog-' + k);
+                    if (el) el.addEventListener('change', syncAllBox);
+                });
+
+                // 取消：仅收起
+                var cancelBtn = menu.querySelector('.ds-ds-btn--cancel');
+                if (cancelBtn) cancelBtn.addEventListener('click', function(e){ e.stopPropagation(); menu.classList.remove('open'); });
+
+                // 确认使用：应用选择 + 有输入则发送
+                var confirmBtn = menu.querySelector('.ds-ds-btn--confirm');
+                if (confirmBtn) confirmBtn.addEventListener('click', function(e){
+                    e.stopPropagation();
+                    var cfg = getDsCfg();
+                    if (cfg.remember) {
+                        _sessionDataSource = cfg;
+                        try { localStorage.setItem('ds_datasource_v1', JSON.stringify(cfg)); } catch(e){}
+                    } else {
+                        try { localStorage.removeItem('ds_datasource_v1'); } catch(e){}
+                        _sessionDataSource = cfg;
+                    }
+                    window._tempDataSrc = cfg;
+                    menu.classList.remove('open');
+                    var inputEl = document.getElementById('ds-user-input');
+                    if (inputEl && inputEl.value.trim() && typeof window.dsSendMsg === 'function') {
+                        window.dsSendMsg();
+                    }
+                });
+            })();
 
             // ---- dsUpdateCtxInfo 已删除（由弹窗替代） ----
 

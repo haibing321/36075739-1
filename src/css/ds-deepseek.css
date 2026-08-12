@@ -253,6 +253,19 @@
 .ds-ws-menu-head { padding: 4px 11px 9px; border-bottom: 1px solid #eef2f7; margin-bottom: 6px; }
 .ds-ws-menu-title { font-size: 0.86rem; font-weight: 600; color: #1e293b; }
 .ds-ws-menu-desc { font-size: 0.76rem; color: #64748b; line-height: 1.5; margin-top: 3px; white-space: normal; }
+/* 关联数据下拉面板：与角色/模型/联网同款窗框 */
+.ds-datasource-menu { min-width: 256px; max-height: 380px; padding: 10px; }
+.ds-datasource-head { font-size: 0.86rem; font-weight: 600; color: #1e293b; padding: 2px 6px 9px; border-bottom: 1px solid #eef2f7; margin-bottom: 8px; white-space: nowrap; }
+.ds-datasource-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: #334155; }
+.ds-datasource-row:hover { background: #f1f5f9; }
+.ds-datasource-row input[type=checkbox] { width: 15px; height: 15px; accent-color: #4d6bfe; cursor: pointer; flex-shrink: 0; }
+.ds-datasource-sep { height: 0; border: none; border-top: 1px solid #eef2f7; margin: 8px 2px; }
+.ds-datasource-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ds-ds-btn { padding: 7px 14px; border-radius: 8px; font-size: 0.82rem; cursor: pointer; border: 1px solid transparent; font-family: inherit; }
+.ds-ds-btn--cancel { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.ds-ds-btn--cancel:hover { background: #e2e8f0; }
+.ds-ds-btn--confirm { background: #4d6bfe; color: #fff; } /* 纯色主色，无渐变 */
+.ds-ds-btn--confirm:hover { background: #3f5be0; }
 
 /* —— 角色 / 模型：圆形图标按钮 + 下拉菜单（与附件/发送同款风格） —— */
 .ds-hidden-select {

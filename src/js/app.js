@@ -553,6 +553,13 @@ window.toggleSettingsPanel = function() {
     if (isOpening) {
         if (window.updateDataManagementStats) window.updateDataManagementStats();
         if (window.syncDarkModeToggle) window.syncDarkModeToggle();
+        // 移动端：展开设置时自动收起顶部导航下拉（模块选择框），与其它模块按钮行为一致（否则下拉残留重叠）
+        var nav = document.getElementById('mainNav');
+        var toggle = document.getElementById('navToggle');
+        if (nav && nav.classList.contains('nav-open')) {
+            nav.classList.remove('nav-open');
+            if (toggle) toggle.classList.remove('open');
+        }
     }
 };
 

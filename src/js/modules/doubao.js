@@ -2869,10 +2869,12 @@
           var on = localStorage.getItem('ds_web_search') === '1';
           setWs(!on);
         };
-        // 点击按钮：展开/收起说明菜单（而非直接切换，便于手机端理解选项）
+        // 点击按钮：先关闭其它已展开的菜单，再 toggle 自身（与角色/模型/关联数据一致，保证一次只开一个）
         btn.addEventListener('click', function(e) {
           e.stopPropagation();
-          if (menu && menu.classList.contains('open')) closeMenu(); else openMenu();
+          var willOpen = !(menu && menu.classList.contains('open'));
+          document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+          if (menu) menu.classList.toggle('open', willOpen);
         });
         // 菜单项：选择开启 / 关闭
         if (menu) {

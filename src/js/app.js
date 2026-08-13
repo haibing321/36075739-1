@@ -655,6 +655,16 @@ window.toggleToolCalls = function(on) {
     var hint = document.getElementById('toolCallsHint');
     if (hint) hint.textContent = on ? '开启' : '关闭';
 };
+// P2 对话前缀续写（Beta）：默认关
+window.togglePrefixMode = function(on) {
+    try { localStorage.setItem('ds_prefix', on ? '1' : '0'); } catch (e) {}
+    var hint = document.getElementById('prefixHint');
+    if (hint) hint.textContent = on ? '开启' : '关闭';
+};
+// P2 接口风格：openai 兼容 / anthropic 兼容
+window.changeApiStyle = function(v) {
+    try { localStorage.setItem('ds_api_style', v || 'openai'); } catch (e) {}
+};
 // 进入设置时同步 V4 能力开关状态
 window.syncCapabilityToggles = function() {
     var t = document.getElementById('thinkingToggle');
@@ -663,6 +673,10 @@ window.syncCapabilityToggles = function() {
     if (j) { var jon = localStorage.getItem('ds_json_mode') === '1'; j.checked = jon; var h2 = document.getElementById('jsonModeHint'); if (h2) h2.textContent = jon ? '开启' : '关闭'; }
     var tc = document.getElementById('toolCallsToggle');
     if (tc) { var tcon = localStorage.getItem('ds_tool_calls') === '1'; tc.checked = tcon; var h3 = document.getElementById('toolCallsHint'); if (h3) h3.textContent = tcon ? '开启' : '关闭'; }
+    var pf = document.getElementById('prefixToggle');
+    if (pf) { var pfon = localStorage.getItem('ds_prefix') === '1'; pf.checked = pfon; var h4 = document.getElementById('prefixHint'); if (h4) h4.textContent = pfon ? '开启' : '关闭'; }
+    var st = document.getElementById('ds-api-style');
+    if (st) { st.value = localStorage.getItem('ds_api_style') || 'openai'; }
 };
 
 // API 配置：根据选中的 API 地址自动推荐模型

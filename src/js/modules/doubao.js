@@ -1372,8 +1372,16 @@
                     var _isV4 = /deepseek/i.test(dsModel) || /api\.deepseek\.com/i.test(dsApiUrl);
                     var thinkingOn = _isV4 && localStorage.getItem('ds_thinking') !== '0';
                     var jsonOn = localStorage.getItem('ds_json_mode') === '1';
+                    // P2 接口风格：Anthropic 兼容（默认 openai）
+                    var _apiStyle = localStorage.getItem('ds_api_style') || 'openai';
+                    // P2 对话前缀续写（Beta，默认关）：锁死助手开场白；仅 OpenAI 风格下可用
+                    var _prefixOn = localStorage.getItem('ds_prefix') === '1' && _apiStyle === 'openai';
                     // P1 Tool Calls：仅 DeepSeek V4 模型 + 开关开启时生效；与 JSON 模式互斥（避免 tools 与 response_format 冲突）
                     var _useTools = _isV4 && localStorage.getItem('ds_tool_calls') === '1' && !jsonOn;
+                    // 接口风格为 anthropic：仅走 Anthropic Messages 协议（不支持 tools/json/prefix/websearch）
+                    if (_apiStyle === 'anthropic') { _useTools = false; jsonOn = false; _prefixOn = false; useWebSearch = false; }
+                    // 前缀续写开启：强制关闭思考（Beta 仅非思考）+ 工具 + JSON，避免组合复杂化
+                    if (_prefixOn) { thinkingOn = false; _useTools = false; jsonOn = false; }
                     var _toolsParamArr = (_useTools && typeof window._agentToolsParam === 'function') ? window._agentToolsParam() : null;
                     var _toolExec = (typeof window._agentExecuteTool === 'function') ? window._agentExecuteTool : null;
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
@@ -1400,10 +1408,34 @@
                             }),
                             signal: window._dsAbortController.signal
                         });
+                    } else if (_apiStyle === 'anthropic') {
+                        // ── P2 Anthropic Messages 协议（system 顶级字段 + content 字符串 + x-api-key 头）──
+                        var _anthSystem = '';
+                        var _anthMessages = [];
+                        for (var _ami = 0; _ami < messages.length; _ami++) {
+                            var _am = messages[_ami];
+                            if (_am.role === 'system') { _anthSystem += (_am.content || ''); }
+                            else if ((_am.content || '').trim() || _am.role !== 'assistant') { _anthMessages.push({ role: _am.role, content: (_am.content || '') }); }
+                        }
+                        var _anthBody = { model: dsModel, max_tokens: maxTokens, system: _anthSystem, messages: _anthMessages, stream: true };
+                        if (thinkingOn) { _anthBody.thinking = { type: 'enabled' }; } else { _anthBody.thinking = { type: 'disabled' }; }
+                        var _anthropicUrl = (function() { try { var _u = new URL(dsApiUrl); return _u.origin + '/anthropic/v1/messages'; } catch (e) { return 'https://api.deepseek.com/anthropic/v1/messages'; } })();
+                        resp = await fetch(_anthropicUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+                            body: JSON.stringify(_anthBody),
+                            signal: window._dsAbortController.signal
+                        });
                     } else {
                     // JSON 输出模式：在系统提示后追加「必须输出合法 JSON」约束（仅未启用工具调用时，避免与 tools 冲突）
                     if (jsonOn && !_useTools && messages[0] && messages[0].role === 'system') {
                         messages[0].content += '\n\n【输出格式】你必须且只能输出合法的 JSON 对象（不要使用 markdown 代码块、不要附加任何解释文字）。';
+                    }
+                    // P2 对话前缀续写：末尾追加 assistant 前缀（prefix:true），并预填气泡以完整展示
+                    if (_prefixOn) {
+                        var _prefixText = '根据铁路安全监察相关规定，';
+                        messages.push({ role: 'assistant', content: _prefixText, prefix: true });
+                        dsHistory[assistantIdx].content = _prefixText;
                     }
                     // DeepSeek V4 思考模式 + JSON 模式参数
                     var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
@@ -1479,8 +1511,11 @@
                             }
                         }
                         dsHistory[assistantIdx].content = _wsText;
+                    } else if (_apiStyle === 'anthropic') {
+                        // ── P2 Anthropic Messages 流式（content_block_delta 解析）──
+                        await _dsStreamAnthropic(resp, assistantIdx);
                     } else {
-                        // ── chat/completions 流式（支持 P1 Tool Calls 多轮）──
+                        // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
                         await _dsStreamChat(resp, assistantIdx, _pendingToolCalls);
                         // 若模型请求调用工具：本地执行后回灌结果，再请求一轮让其总结（最多 4 轮，避免无限循环）
@@ -1753,6 +1788,86 @@
                     }
                 }
             }
+
+            // ---- P2 Anthropic Messages 流式解析（content_block_delta 事件） ----
+            async function _dsStreamAnthropic(resp, idx) {
+                var reader = resp.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var _renderTick = 0;
+                while (true) {
+                    var _chunk = await reader.read();
+                    if (_chunk.done) break;
+                    buffer += decoder.decode(_chunk.value, { stream: true });
+                    var _evBlocks = buffer.split('\n\n');
+                    buffer = _evBlocks.pop() || '';
+                    for (var _bi = 0; _bi < _evBlocks.length; _bi++) {
+                        var _blk = _evBlocks[_bi];
+                        var _ev = null, _data = null;
+                        var _blines = _blk.split('\n');
+                        for (var _li = 0; _li < _blines.length; _li++) {
+                            if (_blines[_li].indexOf('event:') === 0) _ev = _blines[_li].slice(6).trim();
+                            else if (_blines[_li].indexOf('data:') === 0) _data = _blines[_li].slice(5).trim();
+                        }
+                        if (!_data) continue;
+                        var _j; try { _j = JSON.parse(_data); } catch (e) { continue; }
+                        if (_ev === 'content_block_delta') {
+                            var _dt = _j.delta;
+                            if (_dt && _dt.type === 'text_delta' && _dt.text) {
+                                dsHistory[idx].content += _dt.text;
+                                _renderTick++;
+                            } else if (_dt && _dt.type === 'thinking_delta' && _dt.thinking) {
+                                dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + _dt.thinking;
+                                _renderTick++;
+                            }
+                            if (_renderTick % 3 === 0) {
+                                var _cb = document.getElementById('ds-chat-box');
+                                if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); }
+                            }
+                        } else if (_ev === 'error') {
+                            dsHistory[idx].content = '❌ ' + ((_j.error && (_j.error.message || _j.error.type)) || 'Anthropic 流错误');
+                            dsRenderAll(); return;
+                        }
+                    }
+                }
+            }
+
+            // ---- P2 FIM 中间补全（Beta，独立入口，仅非思考） ----
+            window.dsOpenFim = function() { var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'flex'; };
+            window.dsCloseFim = function() { var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'none'; };
+            window.dsRunFim = async function() {
+                var _p = document.getElementById('ds-fim-prefix');
+                var _s = document.getElementById('ds-fim-suffix');
+                var _mo = document.getElementById('ds-fim-model');
+                var _mt = document.getElementById('ds-fim-maxtok');
+                var _r = document.getElementById('ds-fim-result');
+                if (!_r) return;
+                var _key = dsApiKey || (typeof _getApiKey === 'function' ? await _getApiKey() : '');
+                if (!_key) { _r.innerHTML = '⚠️ 请先在「设置 → API 配置」中填写 Key'; return; }
+                var _prompt = _p ? _p.value : '';
+                var _suffix = _s ? _s.value : '';
+                if (!_prompt.trim() && !_suffix.trim()) { _r.innerHTML = '⚠️ 请填写前缀或后缀'; return; }
+                var _model = _mo ? _mo.value : 'deepseek-v4-flash';
+                var _max = parseInt((_mt ? _mt.value : '1024') || '1024', 10); if (!( _max > 0)) _max = 1024; if (_max > 4096) _max = 4096;
+                var _fimUrl = (function() { try { var _u = new URL(dsApiUrl); return _u.origin + '/beta/completions'; } catch (e) { return 'https://api.deepseek.com/beta/completions'; } })();
+                var _body = { model: _model, prompt: _prompt, max_tokens: _max, temperature: 0.7 };
+                if (_suffix.trim()) _body.suffix = _suffix;
+                _r.innerHTML = '⏳ 补全中…';
+                var _ac = new AbortController();
+                try {
+                    var _resp = await fetch(_fimUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _key }, body: JSON.stringify(_body), signal: _ac.signal });
+                    if (!_resp.ok) {
+                        var _et = await _resp.text(); var _em = 'HTTP ' + _resp.status;
+                        try { var _ej = JSON.parse(_et); _em += '：' + ((_ej.error && (_ej.error.message || _ej.error.type)) || _et.slice(0, 200)); } catch (e) { _em += '：' + _et.slice(0, 200); }
+                        _r.innerHTML = '❌ ' + _em; return;
+                    }
+                    var _jj = await _resp.json();
+                    var _text = (_jj.choices && _jj.choices[0] && _jj.choices[0].text) || '';
+                    _r.innerHTML = '<pre class="ds-fim-pre">' + (typeof dsEsc === 'function' ? dsEsc(_text) : _text) + '</pre>';
+                } catch (e) {
+                    _r.innerHTML = '❌ ' + (e && e.message ? e.message : String(e));
+                }
+            };
 
             function dsBubbleInner(idx) {
                 var m = dsHistory[idx];

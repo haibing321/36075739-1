@@ -142,8 +142,11 @@ function fetchWithTimeout(req, ms) {
 self.addEventListener('install', function(event) {
   console.log('[SW] 安装中...', CACHE_VERSION);
   event.waitUntil(precache(event));
-  // 立即激活，不等旧 SW 释放
-  self.skipWaiting();
+  // 注意：此处【不要】调用 self.skipWaiting()。
+  // 否则新 SW 一装好就静默接管，页面已加载的旧 JS/CSS 不会刷新，
+  // 表现为「点击检查更新无效果」。正确流程：新 SW 进入 waiting 状态后，
+  // 由「检查更新 → 立即更新」弹窗通过 postMessage({type:'SKIP_WAITING'}) 显式激活并刷新页面
+  // （见下方 message 事件处理）。首次安装因无旧 SW，仍会立即激活，不受影响。
 });
 
 // 激活：清理旧缓存 + 立即接管页面

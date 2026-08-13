@@ -117,8 +117,12 @@
     }));
     var out = [];
     results.forEach(function (r) {
-      if (r.status === 'fulfilled' && r.value && r.value.ok && r.value.daily) {
-        out.push({ station: r.value.station, daily: r.value.daily });
+      // _agentExecuteTool 把 handler 的真实返回值包在 result 字段里
+      var res = r.value && r.value.result;
+      if (r.status === 'fulfilled' && res && res.ok && res.daily) {
+        out.push({ station: res.station, daily: res.daily });
+      } else if (r.status === 'rejected') {
+        if (typeof console !== 'undefined') console.warn('[WeeklyBrief] 天气获取失败:', r.reason);
       }
     });
     return out;

@@ -929,6 +929,22 @@
     line-height: 1.25;
 }
 
+/* 规章制度全文表格：暗黑模式适配（覆盖导入文件自带的行内白底/隔行白底） */
+[data-theme="dark"] #rule-fullContentBody table {
+    background: #1c2534;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+[data-theme="dark"] #rule-fullContentBody tbody tr,
+[data-theme="dark"] #rule-fullContentBody tbody td,
+[data-theme="dark"] #rule-fullContentBody tbody th {
+    background: #1c2534 !important;   /* !important 覆盖导入文件自带的内联白底 */
+    color: #e2e8f0 !important;          /* !important 覆盖内联深色字 */
+    border-bottom-color: #2a3444;
+}
+[data-theme="dark"] #rule-fullContentBody tbody tr:hover td {
+    background: #263243 !important;
+}
+
 /* 图片样式 - 限制最大宽度为60%，点击可放大 */
 #rule-fullContentBody img {
     max-width: 60%;

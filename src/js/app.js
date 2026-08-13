@@ -436,12 +436,24 @@ window.onclick = function(e) {
         });
         document.body.appendChild(toast);
         document.getElementById('_sw_update_btn').onclick = function() {
-            // 通知 SW 立即接管并刷新以应用新版本
+            // 通知「等待中」的新 SW 立即接管以应用新版本。
+            // 关键：SKIP_WAITING 必须发给 reg.waiting（等待中的新 SW），
+            // 不能发给 navigator.serviceWorker.controller（当前控制的旧 SW，收了也不会激活）。
+            // 也不要在此同步 reload()——否则新 SW 尚未激活、页面仍在旧 SW 控制下刷新，
+            // 会导致「检测到新版本→点更新→仍是旧版→再次检测」死循环。
+            // 真正刷新交由下方 controllerchange 事件（新 SW 确实接管后才触发）。
             _pendingReload = true;
-            if (navigator.serviceWorker.controller) {
-                navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
-            }
-            window.location.reload();
+            navigator.serviceWorker.getRegistration().then(function(reg) {
+                var target = (reg && reg.waiting) ? reg.waiting : navigator.serviceWorker.controller;
+                if (target) target.postMessage({ type: 'SKIP_WAITING' });
+            }).catch(function() {});
+            // 兜底：若 1.5s 内 controllerchange 未触发（极端情况），强制刷新一次确保生效
+            setTimeout(function() {
+                if (_pendingReload) {
+                    _pendingReload = false;
+                    window.location.reload();
+                }
+            }, 1500);
         };
         // 30秒后自动消失
         setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 310); }, 30000);

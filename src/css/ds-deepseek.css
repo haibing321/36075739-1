@@ -735,12 +735,12 @@
 /* FIM 中间补全弹窗（P2 Beta） */
 #ds-fim-modal .ds-fim-pre,
 .ds-fim-pre { margin: 0; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; max-height: 320px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; color: #1e293b; white-space: pre-wrap; word-break: break-word; }
-[data-theme="dark"] #ds-fim-modal { background: rgba(8,12,20,.6); }
-[data-theme="dark"] #ds-fim-modal > div { background: #1c2534; border-color: #2a3444; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
-[data-theme="dark"] #ds-fim-modal label { color: #94a3b8; }
+[data-theme="dark"] #ds-fim-modal { background: rgba(8,12,20,.6) !important; }
+[data-theme="dark"] #ds-fim-modal > div { background: #1c2534 !important; border-color: #2a3444 !important; box-shadow: 0 20px 60px rgba(0,0,0,.5) !important; }
+[data-theme="dark"] #ds-fim-modal label { color: #94a3b8 !important; }
 [data-theme="dark"] #ds-fim-modal textarea,
 [data-theme="dark"] #ds-fim-modal select,
-[data-theme="dark"] #ds-fim-modal input { background: #0f1623; color: #cbd5e1; border-color: #334155; }
-[data-theme="dark"] #ds-fim-modal #ds-fim-result { color: #cbd5e1; }
-[data-theme="dark"] .ds-fim-pre { background: #0f1623; border-color: #2a3444; color: #cbd5e1; }
+[data-theme="dark"] #ds-fim-modal input { background: #0f1623 !important; color: #cbd5e1 !important; border-color: #334155 !important; }
+[data-theme="dark"] #ds-fim-modal #ds-fim-result { color: #cbd5e1 !important; }
+[data-theme="dark"] .ds-fim-pre { background: #0f1623 !important; border-color: #2a3444 !important; color: #cbd5e1 !important; }
 #ds-fim-modal { font-family: inherit; }

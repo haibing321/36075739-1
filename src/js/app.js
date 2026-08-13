@@ -749,6 +749,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (aboutVer) aboutVer.textContent = APP_VERSION;
     // 离线获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
     _fetchSwVersion();
+    // 每周安全简报（主动智能）：周一打开应用时生成并推送
+    if (window.WeeklyBrief) window.WeeklyBrief.init();
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）

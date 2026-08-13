@@ -1329,6 +1329,7 @@
     <script src="src/js/modules/agent-memory.js" defer></script>
     <script src="src/js/modules/agent-core.js" defer></script>
     <script src="src/js/modules/agent-goals.js" defer></script>
+    <script src="src/js/modules/weekly-brief.js" defer></script>
     <script src="src/js/modules/backup.js" defer></script>
     <!-- 应用入口：PWA/SW注册、DeepSeek样式、存储检查等 -->
     <script src="src/js/app.js" defer></script>
@@ -1410,6 +1411,23 @@
                         </label>
                     </span>
                 </div>
+                </div>
+
+                <!-- 每周安全简报（主动智能） -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
+                    <span style="font-size:0.88rem;">📅 每周安全简报 <span style="font-size:0.7rem;color:#94a3b8;">周一推送·天气研判</span></span>
+                    <span style="display:flex;align-items:center;gap:8px;">
+                        <span id="wbBriefHint" style="font-size:0.7rem;color:#94a3b8;">开启</span>
+                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
+                            <input type="checkbox" id="wb-brief-enabled" style="opacity:0;width:0;height:0;">
+                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
+                        </label>
+                    </span>
+                </div>
+                <div style="padding:10px 14px;background:#f8fafc;border-radius:10px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="font-size:0.8rem;color:#475569;">管辖范围车站（逗号分隔，默认兰州局主要站）</div>
+                    <input id="wb-brief-stations" type="text" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;box-sizing:border-box;" placeholder="兰州、天水、武威…" />
+                    <button id="wb-brief-preview" style="align-self:flex-start;padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">👁 预览本周简报</button>
                 </div>
 
                 <!-- 数据管理（可展开） -->

@@ -1557,7 +1557,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.0</span> · 2026.08.12</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.0</span> · 2026.08.13</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1565,7 +1565,37 @@
 
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
-                铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek ReAct 自主规划执行）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+                铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- 近期更新（DeepSeek V4 适配） -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>近期更新（DeepSeek V4 适配）</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧠 思考模式（V4）：先输出思考过程（可折叠），再给答案，复杂问题更可靠</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛠 工具调用（V4）：智能体自主调用规章制度 / 检查信息 / 手册 / 电话 / 资料等 14 个本地工具完成检索查证</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔣 JSON 输出模式：结构化结果便于导出与二次处理</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔒 前缀续写 / ✂️ FIM 补全（Beta）：固定起手式、快速填空补段，均非思考模式</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>⚙️ 设置面板「DeepSeek V4 高级能力」折叠归组，首屏更清爽</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v3.0 版本（大版本） -->
@@ -1647,7 +1677,7 @@
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                     <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
                 </div>
-                <div>• AI智能体：OpenAI兼容API + ReAct自主执行循环，可调用本地数据完成任务</div>
+                <div>• AI智能体：DeepSeek V4（OpenAI 兼容格式）API + ReAct自主执行循环，可调用本地数据/工具完成任务</div>
                 <div>• 数据存储：IndexedDB + localStorage（纯本地离线，上限200MB）</div>
                 <div>• 部署方式：GitHub Pages 静态托管</div>
                 <div>• 兼容适配：华为/Chrome/Edge/手机端全面适配</div>

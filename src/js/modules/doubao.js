@@ -1372,14 +1372,10 @@
                     var _isV4 = /deepseek/i.test(dsModel) || /api\.deepseek\.com/i.test(dsApiUrl);
                     var thinkingOn = _isV4 && localStorage.getItem('ds_thinking') !== '0';
                     var jsonOn = localStorage.getItem('ds_json_mode') === '1';
-                    // P2 接口风格：Anthropic 兼容（默认 openai）
-                    var _apiStyle = localStorage.getItem('ds_api_style') || 'openai';
-                    // P2 对话前缀续写（Beta，默认关）：锁死助手开场白；仅 OpenAI 风格下可用
-                    var _prefixOn = localStorage.getItem('ds_prefix') === '1' && _apiStyle === 'openai';
+                    // P2 对话前缀续写（Beta，默认关）：锁死助手开场白（本系统固定 OpenAI 风格，故恒可用）
+                    var _prefixOn = localStorage.getItem('ds_prefix') === '1';
                     // P1 Tool Calls：仅 DeepSeek V4 模型 + 开关开启时生效；与 JSON 模式互斥（避免 tools 与 response_format 冲突）
                     var _useTools = _isV4 && localStorage.getItem('ds_tool_calls') === '1' && !jsonOn;
-                    // 接口风格为 anthropic：仅走 Anthropic Messages 协议（不支持 tools/json/prefix/websearch）
-                    if (_apiStyle === 'anthropic') { _useTools = false; jsonOn = false; _prefixOn = false; useWebSearch = false; }
                     // 前缀续写开启：强制关闭思考（Beta 仅非思考）+ 工具 + JSON，避免组合复杂化
                     if (_prefixOn) { thinkingOn = false; _useTools = false; jsonOn = false; }
                     var _toolsParamArr = (_useTools && typeof window._agentToolsParam === 'function') ? window._agentToolsParam() : null;
@@ -1406,24 +1402,6 @@
                                 temperature: 0.7,
                                 max_output_tokens: maxTokens
                             }),
-                            signal: window._dsAbortController.signal
-                        });
-                    } else if (_apiStyle === 'anthropic') {
-                        // ── P2 Anthropic Messages 协议（system 顶级字段 + content 字符串 + x-api-key 头）──
-                        var _anthSystem = '';
-                        var _anthMessages = [];
-                        for (var _ami = 0; _ami < messages.length; _ami++) {
-                            var _am = messages[_ami];
-                            if (_am.role === 'system') { _anthSystem += (_am.content || ''); }
-                            else if ((_am.content || '').trim() || _am.role !== 'assistant') { _anthMessages.push({ role: _am.role, content: (_am.content || '') }); }
-                        }
-                        var _anthBody = { model: dsModel, max_tokens: maxTokens, system: _anthSystem, messages: _anthMessages, stream: true };
-                        if (thinkingOn) { _anthBody.thinking = { type: 'enabled' }; } else { _anthBody.thinking = { type: 'disabled' }; }
-                        var _anthropicUrl = (function() { try { var _u = new URL(dsApiUrl); return _u.origin + '/anthropic/v1/messages'; } catch (e) { return 'https://api.deepseek.com/anthropic/v1/messages'; } })();
-                        resp = await fetch(_anthropicUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-                            body: JSON.stringify(_anthBody),
                             signal: window._dsAbortController.signal
                         });
                     } else {
@@ -1511,9 +1489,6 @@
                             }
                         }
                         dsHistory[assistantIdx].content = _wsText;
-                    } else if (_apiStyle === 'anthropic') {
-                        // ── P2 Anthropic Messages 流式（content_block_delta 解析）──
-                        await _dsStreamAnthropic(resp, assistantIdx);
                     } else {
                         // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
@@ -1784,49 +1759,6 @@
                                     }
                                 }
                             } catch (e) {}
-                        }
-                    }
-                }
-            }
-
-            // ---- P2 Anthropic Messages 流式解析（content_block_delta 事件） ----
-            async function _dsStreamAnthropic(resp, idx) {
-                var reader = resp.body.getReader();
-                var decoder = new TextDecoder();
-                var buffer = '';
-                var _renderTick = 0;
-                while (true) {
-                    var _chunk = await reader.read();
-                    if (_chunk.done) break;
-                    buffer += decoder.decode(_chunk.value, { stream: true });
-                    var _evBlocks = buffer.split('\n\n');
-                    buffer = _evBlocks.pop() || '';
-                    for (var _bi = 0; _bi < _evBlocks.length; _bi++) {
-                        var _blk = _evBlocks[_bi];
-                        var _ev = null, _data = null;
-                        var _blines = _blk.split('\n');
-                        for (var _li = 0; _li < _blines.length; _li++) {
-                            if (_blines[_li].indexOf('event:') === 0) _ev = _blines[_li].slice(6).trim();
-                            else if (_blines[_li].indexOf('data:') === 0) _data = _blines[_li].slice(5).trim();
-                        }
-                        if (!_data) continue;
-                        var _j; try { _j = JSON.parse(_data); } catch (e) { continue; }
-                        if (_ev === 'content_block_delta') {
-                            var _dt = _j.delta;
-                            if (_dt && _dt.type === 'text_delta' && _dt.text) {
-                                dsHistory[idx].content += _dt.text;
-                                _renderTick++;
-                            } else if (_dt && _dt.type === 'thinking_delta' && _dt.thinking) {
-                                dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + _dt.thinking;
-                                _renderTick++;
-                            }
-                            if (_renderTick % 3 === 0) {
-                                var _cb = document.getElementById('ds-chat-box');
-                                if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); }
-                            }
-                        } else if (_ev === 'error') {
-                            dsHistory[idx].content = '❌ ' + ((_j.error && (_j.error.message || _j.error.type)) || 'Anthropic 流错误');
-                            dsRenderAll(); return;
                         }
                     }
                 }

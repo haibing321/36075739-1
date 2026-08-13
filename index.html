@@ -1426,13 +1426,10 @@
                             <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
                         </label>
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <span style="font-size:0.8rem;color:#475569;">管辖线别（从应急电话导入）</span>
-                        <select id="wb-brief-line" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;box-sizing:border-box;background:#fff;color:#1e293b;">
-                        </select>
-                    </div>
+                    <div style="font-size:0.8rem;color:#475569;">管辖范围（从应急电话导入，可多选线别；长线可只勾部分站）</div>
+                    <div id="wb-brief-lines" style="display:flex;flex-direction:column;gap:6px;"></div>
                     <div style="font-size:0.78rem;color:#64748b;line-height:1.5;">
-                        相关站：<span id="wb-brief-stations-preview">—</span>
+                        已选站：<span id="wb-brief-stations-preview">—</span>
                     </div>
                     <button id="wb-brief-preview" style="align-self:flex-start;padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">👁 预览本周简报</button>
                 </div>

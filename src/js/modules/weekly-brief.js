@@ -11,7 +11,7 @@
   'use strict';
 
   var WEEK_KEY = 'wb_weekly_brief_week';     // 已推送的周标识，用于去重
-  var CFG_KEY  = 'wb_weekly_brief_cfg';      // {enabled, line}
+  var CFG_KEY  = 'wb_weekly_brief_cfg';      // {enabled, lines:{线名:'ALL'|站名[]}}
   var BUREAU   = '兰州局';                    // 系统内置默认管辖范围
   var DEFAULT_STATIONS = ['兰州', '天水', '武威', '张掖', '嘉峪关', '银川', '中卫', '西宁', '格尔木', '陇南', '平凉'];
   var MAX_STATIONS = 12;
@@ -36,15 +36,26 @@
     return { lines: lines, allStations: Object.keys(allStations).sort(), hasData: data.length > 0 };
   }
 
-  // 当前所选「管辖范围」站名：无电话数据兜底兰州局；选线别取该线相关站；否则全部已导入
+  // 当前所选「管辖范围」站名：无电话数据兜底兰州局；多选线别 + 长线可只选部分站
   function getStations() {
     var c = loadCfg();
     var info = getPhoneLines();
     if (!info.hasData) return DEFAULT_STATIONS.slice(0, MAX_STATIONS);
-    if (!c.line || c.line === '__all__') return info.allStations.slice(0, MAX_STATIONS);
-    var found = null;
-    for (var i = 0; i < info.lines.length; i++) if (info.lines[i].line === c.line) { found = info.lines[i]; break; }
-    return found ? found.stations.slice(0, MAX_STATIONS) : info.allStations.slice(0, MAX_STATIONS);
+    var sel = c.lines || {};
+    var keys = Object.keys(sel);
+    if (!keys.length) return info.allStations.slice(0, MAX_STATIONS); // 未勾选则默认全部已导入
+    var set = {};
+    keys.forEach(function (line) {
+      var v = sel[line];
+      if (v === 'ALL') {
+        var ln = null;
+        for (var i = 0; i < info.lines.length; i++) if (info.lines[i].line === line) { ln = info.lines[i]; break; }
+        if (ln) ln.stations.forEach(function (s) { set[s] = true; });
+      } else if (Array.isArray(v)) {
+        v.forEach(function (s) { set[s] = true; });
+      }
+    });
+    return Object.keys(set).slice(0, MAX_STATIONS);
   }
 
   // 简报标题里的管辖范围标签
@@ -52,8 +63,11 @@
     var c = loadCfg();
     var info = getPhoneLines();
     if (!info.hasData) return BUREAU;
-    if (!c.line || c.line === '__all__') return '已导入管辖范围';
-    return c.line;
+    var sel = c.lines || {};
+    var keys = Object.keys(sel);
+    if (!keys.length) return '已导入管辖范围';
+    if (keys.length === 1) return keys[0];
+    return '已选 ' + keys.length + ' 条线';
   }
 
   /* ---------------- 配置 ---------------- */
@@ -62,11 +76,21 @@
       var c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
       if (c && typeof c === 'object') {
         if (typeof c.enabled === 'undefined') c.enabled = true;
-        if (typeof c.line === 'undefined') c.line = null;
+        // 旧版 {line:'xxx'} 迁移为 {lines:{线名:'ALL'}}
+        if (typeof c.lines === 'undefined') {
+          c.lines = {};
+          if (c.line && c.line !== '__all__') {
+            var info = getPhoneLines();
+            var ln = null;
+            for (var i = 0; i < info.lines.length; i++) if (info.lines[i].line === c.line) { ln = info.lines[i]; break; }
+            if (ln) c.lines[c.line] = 'ALL';
+          }
+          delete c.line;
+        }
         return c;
       }
     } catch (e) {}
-    return { enabled: true, line: null };
+    return { enabled: true, lines: {} };
   }
   function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) {} }
   function isEnabled() { return loadCfg().enabled !== false; }
@@ -394,7 +418,7 @@
   /* ---------------- 设置绑定 ---------------- */
   function bindSettings() {
     var toggle = document.getElementById('wb-brief-enabled');
-    var sel = document.getElementById('wb-brief-line');
+    var wrap = document.getElementById('wb-brief-lines');
     var previewEl = document.getElementById('wb-brief-stations-preview');
     var previewBtn = document.getElementById('wb-brief-preview');
 
@@ -402,7 +426,99 @@
       if (!previewEl) return;
       var info = getPhoneLines();
       if (!info.hasData) { previewEl.textContent = '（未导入应急电话，使用默认兰州局范围）'; return; }
-      previewEl.textContent = getStations().join('、') || '—';
+      var cfg = loadCfg();
+      var keys = Object.keys(cfg.lines || {});
+      previewEl.textContent = '已选 ' + getStations().length + ' 站' +
+        (keys.length ? '（' + keys.join('、') + '）' : '（全部已导入）');
+    }
+
+    function lineStationsChecked(wrap, line) {
+      var scbs = wrap.querySelectorAll('.wb-station-cb[data-line="' + line + '"]');
+      var arr = [];
+      scbs.forEach(function (sc) { if (sc.checked) arr.push(sc.dataset.station); });
+      return arr;
+    }
+
+    function syncCfg(wrap, info) {
+      var cfg = loadCfg();
+      cfg.lines = {};
+      info.lines.forEach(function (x) {
+        var lcb = wrap.querySelector('.wb-line-cb[data-line="' + x.line + '"]');
+        if (!lcb || !lcb.checked) return;
+        var checked = lineStationsChecked(wrap, x.line);
+        if (checked.length === x.stations.length) cfg.lines[x.line] = 'ALL';
+        else if (checked.length) cfg.lines[x.line] = checked;
+        // 0 站选中：不写入
+      });
+      saveCfg(cfg);
+    }
+
+    function buildChecklist() {
+      if (!wrap) return;
+      var info = getPhoneLines();
+      wrap.innerHTML = '';
+      if (!info.hasData) {
+        var tip = document.createElement('div');
+        tip.style.cssText = 'font-size:0.78rem;color:#94a3b8;padding:4px 2px;';
+        tip.textContent = '（请先在「数据管理」导入应急电话；未导入时使用默认兰州局范围）';
+        wrap.appendChild(tip);
+        refreshPreview();
+        return;
+      }
+      var cfg = loadCfg();
+      info.lines.forEach(function (x) {
+        var line = x.line, stations = x.stations;
+        var cur = cfg.lines ? cfg.lines[line] : undefined;
+        var lineOn = !!cur;
+        var curSet = (cur === 'ALL') ? null : (Array.isArray(cur) ? cur : []);
+
+        var row = document.createElement('div');
+        row.style.cssText = 'border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;background:#fff;';
+
+        var head = document.createElement('div');
+        head.style.cssText = 'display:flex;align-items:center;gap:8px;';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'wb-line-cb'; cb.dataset.line = line; cb.checked = lineOn;
+        var lbl = document.createElement('span');
+        lbl.textContent = line + '（' + stations.length + ' 站）';
+        lbl.style.cssText = 'flex:1;font-size:0.82rem;cursor:pointer;color:#1e293b;';
+        var exp = document.createElement('span');
+        exp.textContent = '▾'; exp.style.cssText = 'color:#94a3b8;font-size:0.7rem;cursor:pointer;padding:0 4px;';
+        head.appendChild(cb); head.appendChild(lbl); head.appendChild(exp);
+        row.appendChild(head);
+
+        var stBox = document.createElement('div');
+        stBox.style.cssText = 'display:' + (lineOn ? 'flex' : 'none') + ';flex-direction:column;gap:2px;margin:6px 0 2px 24px;';
+        stations.forEach(function (st) {
+          var srow = document.createElement('label');
+          srow.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#475569;cursor:pointer;';
+          var scb = document.createElement('input');
+          scb.type = 'checkbox'; scb.className = 'wb-station-cb';
+          scb.dataset.line = line; scb.dataset.station = st;
+          scb.checked = lineOn ? true : (curSet ? curSet.indexOf(st) !== -1 : false);
+          var slbl = document.createElement('span'); slbl.textContent = st;
+          srow.appendChild(scb); srow.appendChild(slbl);
+          stBox.appendChild(srow);
+        });
+        row.appendChild(stBox);
+        wrap.appendChild(row);
+
+        // 勾选线名 → 全选/取消该线所有站
+        lbl.addEventListener('click', function () { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); });
+        cb.addEventListener('change', function () {
+          stBox.querySelectorAll('.wb-station-cb').forEach(function (sc) { sc.checked = cb.checked; });
+          stBox.style.display = cb.checked ? 'flex' : 'none';
+          syncCfg(wrap, info); refreshPreview();
+        });
+        // 展开/收起站点列表（不改动勾选）
+        exp.addEventListener('click', function (e) {
+          e.stopPropagation();
+          stBox.style.display = (stBox.style.display === 'none') ? 'flex' : 'none';
+        });
+        // 勾选某个站 → 重新计算该线选择
+        stBox.addEventListener('change', function () { syncCfg(wrap, info); refreshPreview(); });
+      });
+      refreshPreview();
     }
 
     if (toggle) {
@@ -411,33 +527,7 @@
         var cfg = loadCfg(); cfg.enabled = toggle.checked; saveCfg(cfg);
       });
     }
-    if (sel) {
-      var info = getPhoneLines();
-      sel.innerHTML = '';
-      if (!info.hasData) {
-        var opt0 = document.createElement('option');
-        opt0.textContent = '（请先在电话模块导入应急电话）';
-        opt0.value = ''; opt0.disabled = true;
-        sel.appendChild(opt0);
-      } else {
-        var allOpt = document.createElement('option');
-        allOpt.value = '__all__';
-        allOpt.textContent = '全部已导入（' + info.allStations.length + ' 站）';
-        sel.appendChild(allOpt);
-        info.lines.forEach(function (x) {
-          var o = document.createElement('option');
-          o.value = x.line; o.textContent = x.line + '（' + x.stations.length + ' 站）';
-          sel.appendChild(o);
-        });
-      }
-      var cfg = loadCfg();
-      var pick = cfg.line || (info.lines.length ? info.lines[0].line : '__all__');
-      if (pick) { try { sel.value = pick; } catch (e) {} }
-      sel.addEventListener('change', function () {
-        var c = loadCfg(); c.line = sel.value || null; saveCfg(c); refreshPreview();
-      });
-      refreshPreview();
-    }
+    buildChecklist();
     if (previewBtn) previewBtn.addEventListener('click', function () { generate({ skipMark: true }); });
   }
 

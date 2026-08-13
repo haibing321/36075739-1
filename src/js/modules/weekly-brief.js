@@ -1,6 +1,6 @@
 /* 每周安全简报（主动智能）
  * 思路（按用户反馈修正）：不再按月份硬套关键词，而是
- *   1) 取「管辖范围」车站（默认兰州局主要站）的实际天气预报（7天，open-meteo，无需密钥）；
+ *   1) 取「管辖范围」车站（线别从应急电话导入，无数据时兜底兰州局）的实际天气预报（7天，open-meteo，无需密钥）；
  *   2) 用 WMO 天气代码 + 降水概率 + 温度 + 风速，研判本周铁路专业隐患（防洪/防寒/防雷/防雾/防胀/防风…）；
  *   3) 交叉本地检查信息（getIssueData），统计相关条数、红线/重大，给出聚焦建议；
  *   4) 技术动态：资料库「技术动态」素材优先，无则 LLM 兜底生成；
@@ -11,24 +11,64 @@
   'use strict';
 
   var WEEK_KEY = 'wb_weekly_brief_week';     // 已推送的周标识，用于去重
-  var CFG_KEY  = 'wb_weekly_brief_cfg';      // {enabled, stations}
+  var CFG_KEY  = 'wb_weekly_brief_cfg';      // {enabled, line}
   var BUREAU   = '兰州局';                    // 系统内置默认管辖范围
   var DEFAULT_STATIONS = ['兰州', '天水', '武威', '张掖', '嘉峪关', '银川', '中卫', '西宁', '格尔木', '陇南', '平凉'];
   var MAX_STATIONS = 12;
+
+  // 从「应急电话」聚合 线别 → 相关站（站名/线名均来自电话数据，非手工输入）
+  function getPhoneLines() {
+    var data = [];
+    try { data = (window.PhoneModule && window.PhoneModule.getData) ? window.PhoneModule.getData() : []; } catch (e) {}
+    data = data || [];
+    var map = {};          // line -> {station:true}
+    var allStations = {};  // station -> true
+    data.forEach(function (it) {
+      var line = (it.线名 || '').trim();
+      var st = (it.站名 || '').trim();
+      if (!st) return;
+      allStations[st] = true;
+      if (line) { if (!map[line]) map[line] = {}; map[line][st] = true; }
+    });
+    var lines = Object.keys(map).sort().map(function (l) {
+      return { line: l, stations: Object.keys(map[l]).sort() };
+    });
+    return { lines: lines, allStations: Object.keys(allStations).sort(), hasData: data.length > 0 };
+  }
+
+  // 当前所选「管辖范围」站名：无电话数据兜底兰州局；选线别取该线相关站；否则全部已导入
+  function getStations() {
+    var c = loadCfg();
+    var info = getPhoneLines();
+    if (!info.hasData) return DEFAULT_STATIONS.slice(0, MAX_STATIONS);
+    if (!c.line || c.line === '__all__') return info.allStations.slice(0, MAX_STATIONS);
+    var found = null;
+    for (var i = 0; i < info.lines.length; i++) if (info.lines[i].line === c.line) { found = info.lines[i]; break; }
+    return found ? found.stations.slice(0, MAX_STATIONS) : info.allStations.slice(0, MAX_STATIONS);
+  }
+
+  // 简报标题里的管辖范围标签
+  function computeScopeLabel() {
+    var c = loadCfg();
+    var info = getPhoneLines();
+    if (!info.hasData) return BUREAU;
+    if (!c.line || c.line === '__all__') return '已导入管辖范围';
+    return c.line;
+  }
 
   /* ---------------- 配置 ---------------- */
   function loadCfg() {
     try {
       var c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
-      if (c && Array.isArray(c.stations)) return c;
+      if (c && typeof c === 'object') {
+        if (typeof c.enabled === 'undefined') c.enabled = true;
+        if (typeof c.line === 'undefined') c.line = null;
+        return c;
+      }
     } catch (e) {}
-    return { enabled: true, stations: DEFAULT_STATIONS.slice() };
+    return { enabled: true, line: null };
   }
   function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) {} }
-  function getStations() {
-    var c = loadCfg();
-    return (c.stations && c.stations.length) ? c.stations.slice(0, MAX_STATIONS) : DEFAULT_STATIONS.slice(0, MAX_STATIONS);
-  }
   function isEnabled() { return loadCfg().enabled !== false; }
 
   /* ---------------- 周标识（ISO 周，周一为一周始） ---------------- */
@@ -163,9 +203,9 @@
   }
 
   /* ---------------- 组装简报文本 ---------------- */
-  function buildSeasonBlock(agg, stations, usedFallback) {
+  function buildSeasonBlock(agg, stations, usedFallback, scopeLabel) {
     var lines = [];
-    lines.push('【天气研判】管辖范围：' + BUREAU + ' · 共 ' + stations.length + ' 站' + (usedFallback ? '（天气接口暂不可用，按季节研判）' : ''));
+    lines.push('【天气研判】管辖范围：' + (scopeLabel || BUREAU) + ' · 共 ' + stations.length + ' 站' + (usedFallback ? '（天气接口暂不可用，按季节研判）' : ''));
     if (!usedFallback) {
       lines.push('未来7天：管内最高 ' + (agg.maxT > -99 ? agg.maxT + '°C' : '—') +
                  ' / 最低 ' + (agg.minT < 99 ? agg.minT + '°C' : '—') +
@@ -313,13 +353,14 @@
     opts = opts || {};
     var weekKey = getWeekKey();
     var stations = getStations();
+    var scopeLabel = computeScopeLabel();
     var agg, usedFallback = false;
     if (navigator.onLine !== false) {
       var wl = await fetchJurisdictionWeather(stations);
       if (wl.length) agg = aggregateWeather(wl);
     }
     if (!agg) { agg = seasonFallback(); usedFallback = true; }
-    var season = buildSeasonBlock(agg, stations, usedFallback);
+    var season = buildSeasonBlock(agg, stations, usedFallback, scopeLabel);
     var tech = await buildTechBlock();
     var brief = { weekKey: weekKey, season: season, tech: tech };
     renderCard(brief);
@@ -332,21 +373,49 @@
   /* ---------------- 设置绑定 ---------------- */
   function bindSettings() {
     var toggle = document.getElementById('wb-brief-enabled');
-    var input = document.getElementById('wb-brief-stations');
+    var sel = document.getElementById('wb-brief-line');
+    var previewEl = document.getElementById('wb-brief-stations-preview');
     var previewBtn = document.getElementById('wb-brief-preview');
+
+    function refreshPreview() {
+      if (!previewEl) return;
+      var info = getPhoneLines();
+      if (!info.hasData) { previewEl.textContent = '（未导入应急电话，使用默认兰州局范围）'; return; }
+      previewEl.textContent = getStations().join('、') || '—';
+    }
+
     if (toggle) {
       toggle.checked = isEnabled();
       toggle.addEventListener('change', function () {
         var cfg = loadCfg(); cfg.enabled = toggle.checked; saveCfg(cfg);
       });
     }
-    if (input) {
-      input.value = getStations().join('、');
-      input.addEventListener('change', function () {
-        var arr = input.value.split(/[，,、\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
-        var cfg = loadCfg(); cfg.stations = arr.length ? arr : DEFAULT_STATIONS.slice();
-        saveCfg(cfg);
+    if (sel) {
+      var info = getPhoneLines();
+      sel.innerHTML = '';
+      if (!info.hasData) {
+        var opt0 = document.createElement('option');
+        opt0.textContent = '（请先在电话模块导入应急电话）';
+        opt0.value = ''; opt0.disabled = true;
+        sel.appendChild(opt0);
+      } else {
+        var allOpt = document.createElement('option');
+        allOpt.value = '__all__';
+        allOpt.textContent = '全部已导入（' + info.allStations.length + ' 站）';
+        sel.appendChild(allOpt);
+        info.lines.forEach(function (x) {
+          var o = document.createElement('option');
+          o.value = x.line; o.textContent = x.line + '（' + x.stations.length + ' 站）';
+          sel.appendChild(o);
+        });
+      }
+      var cfg = loadCfg();
+      var pick = cfg.line || (info.lines.length ? info.lines[0].line : '__all__');
+      if (pick) { try { sel.value = pick; } catch (e) {} }
+      sel.addEventListener('change', function () {
+        var c = loadCfg(); c.line = sel.value || null; saveCfg(c); refreshPreview();
       });
+      refreshPreview();
     }
     if (previewBtn) previewBtn.addEventListener('click', function () { generate({ skipMark: true }); });
   }

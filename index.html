@@ -1413,20 +1413,27 @@
                 </div>
                 </div>
 
-                <!-- 每周安全简报（主动智能） -->
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">📅 每周安全简报 <span style="font-size:0.7rem;color:#94a3b8;">周一推送·天气研判</span></span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <span id="wbBriefHint" style="font-size:0.7rem;color:#94a3b8;">开启</span>
+                <!-- 每周安全简报（主动智能，折叠下拉） -->
+                <div onclick="var s=document.getElementById('set-wb-brief');s.style.display=s.style.display==='none'?'flex':'none';var a=document.getElementById('set-wb-brief-arrow');if(a)a.style.transform=s.style.display==='none'?'rotate(0deg)':'rotate(180deg)';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:600;color:var(--primary);flex:1;">📅 每周安全简报 <span style="font-size:0.7rem;color:#94a3b8;font-weight:400;">周一推送·天气研判</span></span>
+                    <span id="set-wb-brief-arrow" style="color:#64748b;font-size:0.75rem;transition:transform .2s;transform:rotate(0deg);">▾</span>
+                </div>
+                <div id="set-wb-brief" style="display:none;flex-direction:column;gap:8px;padding:10px 10px 8px;background:#f8fafc;border-radius:8px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-size:0.86rem;">启用简报推送</span>
                         <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
                             <input type="checkbox" id="wb-brief-enabled" style="opacity:0;width:0;height:0;">
                             <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
                         </label>
-                    </span>
-                </div>
-                <div style="padding:10px 14px;background:#f8fafc;border-radius:10px;display:flex;flex-direction:column;gap:8px;">
-                    <div style="font-size:0.8rem;color:#475569;">管辖范围车站（逗号分隔，默认兰州局主要站）</div>
-                    <input id="wb-brief-stations" type="text" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;box-sizing:border-box;" placeholder="兰州、天水、武威…" />
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        <span style="font-size:0.8rem;color:#475569;">管辖线别（从应急电话导入）</span>
+                        <select id="wb-brief-line" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;box-sizing:border-box;background:#fff;color:#1e293b;">
+                        </select>
+                    </div>
+                    <div style="font-size:0.78rem;color:#64748b;line-height:1.5;">
+                        相关站：<span id="wb-brief-stations-preview">—</span>
+                    </div>
                     <button id="wb-brief-preview" style="align-self:flex-start;padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">👁 预览本周简报</button>
                 </div>
 

@@ -695,6 +695,13 @@
 [data-theme="dark"] .ds-dropdown-item { color: #cbd5e1; }
 [data-theme="dark"] .ds-dropdown-item:hover { background: #263243; }
 [data-theme="dark"] .ds-dropdown-item.active { background: #1e3354; color: #93c5fd; }
+/* 关联数据弹窗：补齐深字深底覆盖（head/row/cancel 此前无暗黑规则，导致暗黑下几乎看不见） */
+[data-theme="dark"] .ds-datasource-head { color: #e2e8f0; border-bottom-color: #2a3444; }
+[data-theme="dark"] .ds-datasource-row { color: #cbd5e1; }
+[data-theme="dark"] .ds-datasource-row:hover { background: #263243; }
+[data-theme="dark"] .ds-datasource-sep { border-top-color: #2a3444; }
+[data-theme="dark"] .ds-ds-btn--cancel { background: #263243; color: #cbd5e1; border-color: #334155; }
+[data-theme="dark"] .ds-ds-btn--cancel:hover { background: #334155; }
 [data-theme="dark"] .ds-switch-label { color: #94a3b8; }
 /* 手机端：输入条按钮紧凑，确保底部按钮一行容纳 */
 @media (max-width: 640px) {

@@ -1348,9 +1348,12 @@
                         var explicitWeb = /联网|上网|网上|搜一下|搜一搜|搜索一下|查一下网|最新消息|实时/;
                         var bizDomain = /检查信息|规章|条款|隐患|典型问题|安监|监察|工务|电务|供电|车务|机务|车辆|通信|房建|客运|货运|日志|写实|报告|手册|项点|台账|考勤|通讯录|资料库|模板|问题库/;
                         var realtime = /新闻|头条|时事|热点|大事|舆情|股价|股票|汇率|油价|金价|比特币|涨跌|发布会|上映|比分|比赛结果|夺冠|地震|台风|天气|气温/;
+                        // 输入含 URL/链接：自动联网检索该网页内容（还原 备份后缺失的"含 URL 自动联网"能力）
+                        var hasUrl = /https?:\/\/[^\s]+|www\.[^\s]+\.[a-z]{2,}|[a-z\u4e00-\u9fa5\u3000-\u9fff0-9-]+\.(com|cn|net|org|gov|edu|io|ai|co|info)([\/?#]\S*)?/i;
+                        if (bizDomain.test(q)) return false;       // 业务域问题一律走本地数据源，不自动联网
+                        if (hasUrl.test(q)) return true;            // 含链接/网址：自动联网读取网页内容
                         if (freshness.test(q)) return true;
                         if (explicitWeb.test(q)) return true;
-                        if (bizDomain.test(q)) return false;
                         return realtime.test(q);
                     })(finalText);
                     var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs || autoWs;

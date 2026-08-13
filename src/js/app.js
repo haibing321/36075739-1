@@ -650,12 +650,19 @@ window.toggleJsonMode = function(on) {
     var hint = document.getElementById('jsonModeHint');
     if (hint) hint.textContent = on ? '开启' : '关闭';
 };
+window.toggleToolCalls = function(on) {
+    try { localStorage.setItem('ds_tool_calls', on ? '1' : '0'); } catch (e) {}
+    var hint = document.getElementById('toolCallsHint');
+    if (hint) hint.textContent = on ? '开启' : '关闭';
+};
 // 进入设置时同步 V4 能力开关状态
 window.syncCapabilityToggles = function() {
     var t = document.getElementById('thinkingToggle');
     if (t) { var on = localStorage.getItem('ds_thinking') !== '0'; t.checked = on; var h = document.getElementById('thinkingHint'); if (h) h.textContent = on ? '开启' : '关闭'; }
     var j = document.getElementById('jsonModeToggle');
     if (j) { var jon = localStorage.getItem('ds_json_mode') === '1'; j.checked = jon; var h2 = document.getElementById('jsonModeHint'); if (h2) h2.textContent = jon ? '开启' : '关闭'; }
+    var tc = document.getElementById('toolCallsToggle');
+    if (tc) { var tcon = localStorage.getItem('ds_tool_calls') === '1'; tc.checked = tcon; var h3 = document.getElementById('toolCallsHint'); if (h3) h3.textContent = tcon ? '开启' : '关闭'; }
 };
 
 // API 配置：根据选中的 API 地址自动推荐模型

@@ -653,4 +653,8 @@
   })();
   // 预热：填充 window.queryWeatherStations（车站字典），使智能对话无需先调天气即可解析站名；__init__ 不在字典中，handler 于 fetch 前即返回，无网络开销
   try { if (window.queryWeather) window.queryWeather({ stationName: '__init__' }); } catch (e) {}
+
+  // 暴露工具注册表与执行器，供「智能对话」模块 P1 Tool Calls 复用（与智能体共用同一套 schema 与本地实现，单点维护，避免重复定义）
+  window._agentToolsParam = _toolsParam;
+  window._agentExecuteTool = _executeTool;
 })();

@@ -1372,6 +1372,10 @@
                     var _isV4 = /deepseek/i.test(dsModel) || /api\.deepseek\.com/i.test(dsApiUrl);
                     var thinkingOn = _isV4 && localStorage.getItem('ds_thinking') !== '0';
                     var jsonOn = localStorage.getItem('ds_json_mode') === '1';
+                    // P1 Tool Calls：仅 DeepSeek V4 模型 + 开关开启时生效；与 JSON 模式互斥（避免 tools 与 response_format 冲突）
+                    var _useTools = _isV4 && localStorage.getItem('ds_tool_calls') === '1' && !jsonOn;
+                    var _toolsParamArr = (_useTools && typeof window._agentToolsParam === 'function') ? window._agentToolsParam() : null;
+                    var _toolExec = (typeof window._agentExecuteTool === 'function') ? window._agentExecuteTool : null;
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
                     if (thinkingOn) maxTokens = (isFrontendRole || isCodeRequest) ? 24576 : 16384;
 
@@ -1397,15 +1401,16 @@
                             signal: window._dsAbortController.signal
                         });
                     } else {
-                    // JSON 输出模式：在系统提示后追加「必须输出合法 JSON」约束（response_format 仅保证格式）
-                    if (jsonOn && messages[0] && messages[0].role === 'system') {
+                    // JSON 输出模式：在系统提示后追加「必须输出合法 JSON」约束（仅未启用工具调用时，避免与 tools 冲突）
+                    if (jsonOn && !_useTools && messages[0] && messages[0].role === 'system') {
                         messages[0].content += '\n\n【输出格式】你必须且只能输出合法的 JSON 对象（不要使用 markdown 代码块、不要附加任何解释文字）。';
                     }
                     // DeepSeek V4 思考模式 + JSON 模式参数
                     var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
                     if (thinkingOn) { _chatBody.thinking = { type: 'enabled' }; _chatBody.reasoning_effort = 'high'; }
                     else { _chatBody.thinking = { type: 'disabled' }; }
-                    if (jsonOn) { _chatBody.response_format = { type: 'json_object' }; }
+                    if (_useTools) { _chatBody.tools = _toolsParamArr; }   // P1 Tool Calls：注入本地工具 schema
+                    else if (jsonOn) { _chatBody.response_format = { type: 'json_object' }; }
                     resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
@@ -1475,41 +1480,39 @@
                         }
                         dsHistory[assistantIdx].content = _wsText;
                     } else {
-                        // ── 既有 chat/completions 流式 ──
-                    var reader = resp.body.getReader();
-                    var decoder = new TextDecoder();
-                    var buffer = '';
-                    var _renderTick = 0;
-                    while (true) {
-                        var resp2 = await reader.read();
-                        if (resp2.done) break;
-                        buffer += decoder.decode(resp2.value, { stream: true });
-                        var lines2 = buffer.split('\n');
-                        buffer = lines2.pop();
-                        for (let _li = 0; _li < lines2.length; _li++) {
-                            var trimmed = lines2[_li].trim();
-                            if (!trimmed || trimmed === 'data: [DONE]') continue;
-                            if (trimmed.startsWith('data: ')) {
-                                try {
-                                    var json2 = JSON.parse(trimmed.slice(6));
-                                    var delta = json2.choices?.[0]?.delta?.content || '';
-                                    var _rc = json2.choices?.[0]?.delta?.reasoning_content || '';
-                                    if (_rc) { dsHistory[assistantIdx].reasoning = (dsHistory[assistantIdx].reasoning || '') + _rc; }
-                                    if (delta) {
-                                        dsHistory[assistantIdx].content += delta;
-                                        _renderTick++;
-                                        if (_renderTick % 3 === 0) {
-                                            var chatBox = document.getElementById('ds-chat-box');
-                                            var bubbles = chatBox.querySelectorAll('.ds-bubble-assistant');
-                                            var lastBubble = bubbles[bubbles.length - 1];
-                                            if (lastBubble) lastBubble.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>';
-                                            dsScrollBottom();
-                                        }
-                                    }
-                                } catch(e) {}
+                        // ── chat/completions 流式（支持 P1 Tool Calls 多轮）──
+                        var _pendingToolCalls = [];
+                        await _dsStreamChat(resp, assistantIdx, _pendingToolCalls);
+                        // 若模型请求调用工具：本地执行后回灌结果，再请求一轮让其总结（最多 4 轮，避免无限循环）
+                        var _tcRound = 1;
+                        var _maxTcRounds = 4;
+                        while (_useTools && _toolExec && _pendingToolCalls.length && _tcRound < _maxTcRounds) {
+                            _tcRound++;
+                            _pendingToolCalls = _pendingToolCalls.filter(Boolean);
+                            messages.push({ role: 'assistant', content: null, tool_calls: _pendingToolCalls });
+                            for (var _k = 0; _k < _pendingToolCalls.length; _k++) {
+                                var _call = _pendingToolCalls[_k];
+                                var _args = {};
+                                try { _args = _call.function.arguments ? JSON.parse(_call.function.arguments) : {}; } catch (e) { _args = {}; }
+                                dsHistory[assistantIdx].content = '🔧 正在调用工具：' + _call.function.name + ' …';
+                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
+                                var _exec = await _toolExec(_call.function.name, _args);
+                                var _tcContent = JSON.stringify(_exec && _exec.result !== undefined ? _exec.result : _exec, null, 2);
+                                messages.push({ role: 'tool', tool_call_id: _call.id, content: _tcContent });
                             }
+                            // 清空气泡，准备下一轮最终回答
+                            dsHistory[assistantIdx].content = '';
+                            dsHistory[assistantIdx].reasoning = '';
+                            (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
+                            // 后续轮次：回灌工具结果（仍带 tools，允许模型继续调用或总结）
+                            var _bodyN = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
+                            if (thinkingOn) { _bodyN.thinking = { type: 'enabled' }; _bodyN.reasoning_effort = 'high'; } else { _bodyN.thinking = { type: 'disabled' }; }
+                            if (_useTools) { _bodyN.tools = _toolsParamArr; }
+                            var _respN = await fetch(dsApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify(_bodyN), signal: window._dsAbortController.signal });
+                            if (!_respN.ok) { var _et = await _respN.text(); dsHistory[assistantIdx].content = '❌ 工具结果回灌后请求失败（HTTP ' + _respN.status + '）：' + _et.slice(0, 200); dsRenderAll(); return; }
+                            _pendingToolCalls = [];
+                            await _dsStreamChat(_respN, assistantIdx, _pendingToolCalls);
                         }
-                    }
                     }
 
                     var _finalChatBox = document.getElementById('ds-chat-box');
@@ -1694,6 +1697,63 @@
             };
 
             // ---- 气泡内容组装（含思考过程折叠块） ----
+            // ---- P1 Tool Calls：通用 chat/completions 流式解析 ----
+            // 将 resp 流式写入 dsHistory[idx]，并把增量 tool_calls 累积进 toolCallsOut（按 index 存放，调用方需 filter(Boolean)）
+            async function _dsStreamChat(resp, idx, toolCallsOut) {
+                var reader = resp.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var _renderTick = 0;
+                while (true) {
+                    var _chunk = await reader.read();
+                    if (_chunk.done) break;
+                    buffer += decoder.decode(_chunk.value, { stream: true });
+                    var _lines = buffer.split('\n');
+                    buffer = _lines.pop() || '';
+                    for (var _li = 0; _li < _lines.length; _li++) {
+                        var _trimmed = _lines[_li].trim();
+                        if (!_trimmed || _trimmed === 'data: [DONE]') continue;
+                        if (_trimmed.indexOf('data: ') === 0) {
+                            try {
+                                var _json = JSON.parse(_trimmed.slice(6));
+                                var _delta = _json.choices?.[0]?.delta?.content || '';
+                                var _rc = _json.choices?.[0]?.delta?.reasoning_content || '';
+                                if (_rc) { dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + _rc; }
+                                // 累积 tool_calls（delta 中以 index 碎片化下发）
+                                var _dtc = _json.choices?.[0]?.delta?.tool_calls;
+                                if (Array.isArray(_dtc)) {
+                                    for (var _ti = 0; _ti < _dtc.length; _ti++) {
+                                        var _tc = _dtc[_ti];
+                                        var _ix = (_tc.index !== undefined) ? _tc.index : 0;
+                                        if (!toolCallsOut[_ix]) toolCallsOut[_ix] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                        if (_tc.id) toolCallsOut[_ix].id = _tc.id;
+                                        if (_tc.type) toolCallsOut[_ix].type = _tc.type;
+                                        if (_tc.function) {
+                                            if (_tc.function.name) toolCallsOut[_ix].function.name += _tc.function.name;
+                                            if (_tc.function.arguments) toolCallsOut[_ix].function.arguments += _tc.function.arguments;
+                                            if (_tc.function.type) toolCallsOut[_ix].type = _tc.function.type;
+                                        }
+                                    }
+                                }
+                                if (_delta) {
+                                    dsHistory[idx].content += _delta;
+                                    _renderTick++;
+                                    if (_renderTick % 3 === 0) {
+                                        var _cb = document.getElementById('ds-chat-box');
+                                        if (_cb) {
+                                            var _bs = _cb.querySelectorAll('.ds-bubble-assistant');
+                                            var _lb = _bs[_bs.length - 1];
+                                            if (_lb) _lb.innerHTML = dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>';
+                                            dsScrollBottom();
+                                        }
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+            }
+
             function dsBubbleInner(idx) {
                 var m = dsHistory[idx];
                 if (!m) return '';

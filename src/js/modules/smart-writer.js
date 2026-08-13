@@ -1778,7 +1778,7 @@
                 if (!q.trim()) { alert('请输入写作需求'); return; }
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
-                const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-chat';
+                const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-v4-flash';
                 if (!apiKey) { alert('请先在智能助手模块中配置 API Key。'); return; }
 
                 const writeBtn = document.getElementById('wr-write-btn');

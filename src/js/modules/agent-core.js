@@ -451,7 +451,7 @@
   async function _callLLM(messages, withTools) {
     var apiKey = localStorage.getItem('ds_api_key_v1') || '';
     var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
-    var model = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
+    var model = localStorage.getItem('ds_model_v1') || 'deepseek-v4-flash';
     if (!apiKey) throw new Error('请先在设置中配置 API Key');
     var controller = new AbortController();
     window.__agentAbort = controller; // 供停止按钮中断当前请求
@@ -482,7 +482,7 @@
       try { var ed = await resp.json(); detail = (ed.error && ed.error.message) || ''; } catch(_) {}
       if (resp.status === 401) throw new Error('API Key 无效或未授权（401）' + (detail ? '：' + detail : ''));
       if (resp.status === 429) throw new Error('请求过于频繁，请稍后再试（429）');
-      if (resp.status === 400) throw new Error('请求参数错误（400）' + (detail ? '：' + detail : '') + '｜若当前 API 不支持 function calling，请在设置中更换为 deepseek-chat');
+      if (resp.status === 400) throw new Error('请求参数错误（400）' + (detail ? '：' + detail : '') + '｜若当前 API 不支持 function calling，请在设置中更换为 deepseek-v4-flash');
       throw new Error('API 错误 ' + resp.status + (detail ? '：' + detail : ''));
     }
     var data = await resp.json();

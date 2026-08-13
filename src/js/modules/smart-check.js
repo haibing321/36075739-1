@@ -1761,7 +1761,7 @@
                 if (!query) { alert('请输入检查问题描述'); return; }
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 const apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
-                const model  = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
+                const model  = localStorage.getItem('ds_model_v1') || 'deepseek-v4-flash';
 
 
                 const container = document.getElementById('autoCheck-results');

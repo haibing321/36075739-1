@@ -1360,6 +1360,28 @@
                     </span>
                 </div>
 
+                <!-- DeepSeek V4 能力开关 -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
+                    <span style="font-size:0.88rem;">🧠 思考模式 <span style="font-size:0.7rem;color:#94a3b8;">(V4)</span></span>
+                    <span style="display:flex;align-items:center;gap:8px;">
+                        <span id="thinkingHint" style="font-size:0.7rem;color:#94a3b8;">开启</span>
+                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
+                            <input type="checkbox" id="thinkingToggle" onchange="toggleThinkingMode(this.checked)" style="opacity:0;width:0;height:0;" checked>
+                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
+                        </label>
+                    </span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
+                    <span style="font-size:0.88rem;">🔣 JSON 输出模式</span>
+                    <span style="display:flex;align-items:center;gap:8px;">
+                        <span id="jsonModeHint" style="font-size:0.7rem;color:#94a3b8;">关闭</span>
+                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
+                            <input type="checkbox" id="jsonModeToggle" onchange="toggleJsonMode(this.checked)" style="opacity:0;width:0;height:0;">
+                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
+                        </label>
+                    </span>
+                </div>
+
                 <!-- 数据管理（可展开） -->
                 <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
                     <span style="font-weight:600;color:var(--primary);flex:1;">📦 数据管理</span>

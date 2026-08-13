@@ -202,7 +202,14 @@
       if (bubble._enhContent === entry.content) return; // 内容未变，跳过（防循环）
       _enhancing = true;
       try {
-        bubble.innerHTML = renderCard(md(entry.content));
+        // 思考过程（reasoning_content）折叠块：保留 DeepSeek V4 思考模式产出，
+        // 避免卡片化重渲染只取 entry.content 而把思考过程丢弃。
+        var reasoningHtml = '';
+        if (entry.reasoning) {
+          var _esc = (typeof window.dsEsc === 'function') ? window.dsEsc : function(s){ return String(s).replace(/</g, '&lt;'); };
+          reasoningHtml = '<details class="ds-reasoning" open><summary>💭 思考过程</summary><div class="ds-reasoning-body">' + _esc(entry.reasoning) + '</div></details>';
+        }
+        bubble.innerHTML = reasoningHtml + renderCard(md(entry.content));
         bubble._enhContent = entry.content;
         // 重新挂载反馈按钮（复制/下载/有用/无用/重生成/朗读）
         if (typeof window._addFeedbackButtons === 'function') {

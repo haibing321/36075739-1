@@ -27,7 +27,7 @@
             const DS_CONVERSATIONS_STORAGE = 'ds_conversations_v1'; // 多对话历史存储
             const DS_CURRENT_CONV_ID = 'ds_current_conv_id_v1';     // 当前对话ID
             const DS_DEFAULT_API_URL = 'https://api.deepseek.com/chat/completions';
-            const DS_DEFAULT_MODEL   = 'deepseek-chat';
+            const DS_DEFAULT_MODEL   = 'deepseek-v4-flash';
             const DS_MAX_CTX_CHARS   = 6000;  // 单类别最多携带的字符数
             const DS_PLACEHOLDER_KEY = 'YOUR_API_KEY_HERE';
 
@@ -703,7 +703,7 @@
                 html += '<div style="display:flex;flex-direction:column;gap:10px;">';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">名称（显示用）</label><input id="ds-pe-name" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="如：DeepSeek V4"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API 地址</label><input id="ds-pe-url" list="api-url-list" onchange="if(window.dsAutoDetectModel)dsAutoDetectModel()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="https://api.deepseek.com/chat/completions"></div>';
-                html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-chat"></div>';
+                html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-v4-flash"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
                 // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具，需 deepseek-v4-flash
                 html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，模型固定 deepseek-v4-flash）</label>';
@@ -787,7 +787,7 @@
                 var models = {
                     'bigmodel.cn': 'glm-4',
                     'aliyuncs.com': 'qwen-turbo',
-                    'deepseek.com': 'deepseek-chat',
+                    'deepseek.com': 'deepseek-v4-flash',
                     'openai.com': 'gpt-3.5-turbo'
                 };
                 for (var domain in models) {
@@ -1368,6 +1368,13 @@
                             }
                         } catch (e) {}
                     }
+                    // DeepSeek V4 能力开关：思考模式 / JSON 输出（仅对 DeepSeek V4 模型生效，其余供应商忽略以免报错）
+                    var _isV4 = /deepseek/i.test(dsModel) || /api\.deepseek\.com/i.test(dsApiUrl);
+                    var thinkingOn = _isV4 && localStorage.getItem('ds_thinking') !== '0';
+                    var jsonOn = localStorage.getItem('ds_json_mode') === '1';
+                    // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
+                    if (thinkingOn) maxTokens = (isFrontendRole || isCodeRequest) ? 24576 : 16384;
+
                     var responsesUrl = (dsApiUrl || '').replace(/\/chat\/completions\/?$/i, '/responses') || 'https://api.deepseek.com/responses';
                     var inputItems = dsHistory.slice(-10)
                         .map(function(m) { return { role: m.role, content: (m.content || '') }; })
@@ -1382,6 +1389,7 @@
                                 instructions: systemPrompt,
                                 input: inputItems,
                                 tools: [{ type: 'web_search' }],
+                                reasoning: { effort: thinkingOn ? 'high' : 'none' },
                                 stream: true,
                                 temperature: 0.7,
                                 max_output_tokens: maxTokens
@@ -1389,10 +1397,19 @@
                             signal: window._dsAbortController.signal
                         });
                     } else {
+                    // JSON 输出模式：在系统提示后追加「必须输出合法 JSON」约束（response_format 仅保证格式）
+                    if (jsonOn && messages[0] && messages[0].role === 'system') {
+                        messages[0].content += '\n\n【输出格式】你必须且只能输出合法的 JSON 对象（不要使用 markdown 代码块、不要附加任何解释文字）。';
+                    }
+                    // DeepSeek V4 思考模式 + JSON 模式参数
+                    var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
+                    if (thinkingOn) { _chatBody.thinking = { type: 'enabled' }; _chatBody.reasoning_effort = 'high'; }
+                    else { _chatBody.thinking = { type: 'disabled' }; }
+                    if (jsonOn) { _chatBody.response_format = { type: 'json_object' }; }
                     resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-                        body: JSON.stringify({ model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens }),
+                        body: JSON.stringify(_chatBody),
                         signal: window._dsAbortController.signal
                     });
                     }
@@ -1476,6 +1493,8 @@
                                 try {
                                     var json2 = JSON.parse(trimmed.slice(6));
                                     var delta = json2.choices?.[0]?.delta?.content || '';
+                                    var _rc = json2.choices?.[0]?.delta?.reasoning_content || '';
+                                    if (_rc) { dsHistory[assistantIdx].reasoning = (dsHistory[assistantIdx].reasoning || '') + _rc; }
                                     if (delta) {
                                         dsHistory[assistantIdx].content += delta;
                                         _renderTick++;
@@ -1483,7 +1502,7 @@
                                             var chatBox = document.getElementById('ds-chat-box');
                                             var bubbles = chatBox.querySelectorAll('.ds-bubble-assistant');
                                             var lastBubble = bubbles[bubbles.length - 1];
-                                            if (lastBubble) lastBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content) + '<span class="ds-cursor">▌</span>';
+                                            if (lastBubble) lastBubble.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>';
                                             dsScrollBottom();
                                         }
                                     }
@@ -1496,7 +1515,7 @@
                     var _finalChatBox = document.getElementById('ds-chat-box');
                     var _finalBubbles = _finalChatBox.querySelectorAll('.ds-bubble-assistant');
                     var _finalBubble = _finalBubbles[_finalBubbles.length - 1];
-                    if (_finalBubble) _finalBubble.innerHTML = dsMarkdown(dsHistory[assistantIdx].content);
+                    if (_finalBubble) _finalBubble.innerHTML = dsBubbleInner(assistantIdx);
                     dsSaveHistory();
                     dsRenderHistoryList();
                     // 统一重渲染，确保每条 AI 回复下方都带上操作按钮（复制/下载/有用/无用/重生成/朗读）
@@ -1626,7 +1645,7 @@
                         if (!msg.content) {
                             html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant"><span class="ds-typing">思考中<span class="ds-dot">.</span><span class="ds-dot">.</span><span class="ds-dot">.</span></span></div></div>';
                         } else {
-                            html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant" data-ds-idx="' + i + '">' + dsMarkdown(msg.content) + '</div></div>';
+                            html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant" data-ds-idx="' + i + '">' + dsBubbleInner(i) + '</div></div>';
                         }
                     } else {
                         html += '<div class="ds-row-system"><div class="ds-bubble-system">' + dsEsc(msg.content) + '</div></div>';
@@ -1673,6 +1692,17 @@
                 var blob = new Blob([code], {type: mime + ';charset=utf-8'});
                 window.downloadBlob(blob, 'code.' + ext);
             };
+
+            // ---- 气泡内容组装（含思考过程折叠块） ----
+            function dsBubbleInner(idx) {
+                var m = dsHistory[idx];
+                if (!m) return '';
+                var reasoningHtml = '';
+                if (m.reasoning) {
+                    reasoningHtml = '<details class="ds-reasoning" open><summary>💭 思考过程</summary><div class="ds-reasoning-body">' + dsEsc(m.reasoning) + '</div></details>';
+                }
+                return reasoningHtml + dsMarkdown(m.content || '');
+            }
 
             // ---- 增强 Markdown 渲染 ----
             function dsMarkdown(text) {
@@ -2154,7 +2184,7 @@
         const refText = buildReferenceText(rules, issues);
         const apiKey = await (typeof _getApiKey === 'function' ? _getApiKey() : Promise.resolve(localStorage.getItem('ds_api_key_v1') || ''));
         const apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
-        const model = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
+        const model = localStorage.getItem('ds_model_v1') || 'deepseek-v4-flash';
         if (!apiKey) {
           if (container) container.innerHTML = '<div style="color:var(--warning)">请先配置 API Key</div>';
           return;
@@ -2484,7 +2514,7 @@
           var apiKey = localStorage.getItem('ds_api_key_v1') || '';
           if (!apiKey) { container.innerHTML = '<div style="color:#dc2626;padding:20px;">请先配置 API Key</div>'; return; }
           var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
-          var model   = localStorage.getItem('ds_model_v1') || 'deepseek-chat';
+          var model   = localStorage.getItem('ds_model_v1') || 'deepseek-v4-flash';
 
           var messages = [];
           var noIssueData = false;

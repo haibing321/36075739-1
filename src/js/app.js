@@ -553,6 +553,7 @@ window.toggleSettingsPanel = function() {
         p.style.display = 'block';
         if (window.updateDataManagementStats) window.updateDataManagementStats();
         if (window.syncDarkModeToggle) window.syncDarkModeToggle();
+        if (window.syncCapabilityToggles) window.syncCapabilityToggles();
         // 移动端：展开设置时自动收起顶部导航下拉（模块选择框），与其它模块按钮行为一致（否则下拉残留重叠）
         var nav = document.getElementById('mainNav');
         var toggle = document.getElementById('navToggle');
@@ -638,6 +639,25 @@ window.syncDarkModeToggle = function() {
     if (hint) hint.textContent = on ? '开启' : '关闭';
 };
 
+// DeepSeek V4 能力开关：思考模式 / JSON 输出模式
+window.toggleThinkingMode = function(on) {
+    try { localStorage.setItem('ds_thinking', on ? '1' : '0'); } catch (e) {}
+    var hint = document.getElementById('thinkingHint');
+    if (hint) hint.textContent = on ? '开启' : '关闭';
+};
+window.toggleJsonMode = function(on) {
+    try { localStorage.setItem('ds_json_mode', on ? '1' : '0'); } catch (e) {}
+    var hint = document.getElementById('jsonModeHint');
+    if (hint) hint.textContent = on ? '开启' : '关闭';
+};
+// 进入设置时同步 V4 能力开关状态
+window.syncCapabilityToggles = function() {
+    var t = document.getElementById('thinkingToggle');
+    if (t) { var on = localStorage.getItem('ds_thinking') !== '0'; t.checked = on; var h = document.getElementById('thinkingHint'); if (h) h.textContent = on ? '开启' : '关闭'; }
+    var j = document.getElementById('jsonModeToggle');
+    if (j) { var jon = localStorage.getItem('ds_json_mode') === '1'; j.checked = jon; var h2 = document.getElementById('jsonModeHint'); if (h2) h2.textContent = jon ? '开启' : '关闭'; }
+};
+
 // API 配置：根据选中的 API 地址自动推荐模型
 window._updateModelList = function() {
     var urlEl = document.getElementById('modal-apiurl');
@@ -695,6 +715,7 @@ function _fetchSwVersion() {
 document.addEventListener('DOMContentLoaded', function() {
     // 暗黑模式：同步开关与提示（主题已在 <head> 内联脚本中提前应用，避免闪烁）
     if (window.syncDarkModeToggle) window.syncDarkModeToggle();
+    if (window.syncCapabilityToggles) window.syncCapabilityToggles();
     var verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
     var aboutVer = document.getElementById('about-app-version');

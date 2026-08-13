@@ -703,6 +703,14 @@
 [data-theme="dark"] .ds-ds-btn--cancel { background: #263243; color: #cbd5e1; border-color: #334155; }
 [data-theme="dark"] .ds-ds-btn--cancel:hover { background: #334155; }
 [data-theme="dark"] .ds-switch-label { color: #94a3b8; }
+/* 思考过程折叠块（DeepSeek V4 思考模式） */
+.ds-reasoning { margin: 0 0 8px; border: 1px solid var(--border); border-radius: 8px; background: rgba(99,102,241,0.06); font-size: 0.82rem; overflow: hidden; }
+.ds-reasoning summary { cursor: pointer; padding: 6px 10px; color: var(--text-secondary); font-weight: 600; user-select: none; }
+.ds-reasoning summary:hover { background: rgba(99,102,241,0.10); }
+.ds-reasoning-body { padding: 0 10px 8px; white-space: pre-wrap; color: var(--text-secondary); max-height: 260px; overflow: auto; line-height: 1.6; }
+[data-theme="dark"] .ds-reasoning { background: rgba(99,102,241,0.14); }
+[data-theme="dark"] .ds-reasoning summary { color: #cbd5e1; }
+[data-theme="dark"] .ds-reasoning-body { color: #94a3b8; }
 /* 手机端：输入条按钮紧凑，确保底部按钮一行容纳 */
 @media (max-width: 640px) {
     .ds-input-bar { gap: 3px; }

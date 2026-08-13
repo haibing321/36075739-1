@@ -1364,7 +1364,12 @@
                     </span>
                 </div>
 
-                <!-- DeepSeek V4 能力开关 -->
+                <!-- DeepSeek V4 高级能力（默认折叠；复用「数据管理」折叠样式，零行为变更） -->
+                <div onclick="var s=document.getElementById('set-v4-mgr');s.style.display=s.style.display==='none'?'flex':'none';var a=document.getElementById('set-v4-mgr-arrow');if(a)a.style.transform=s.style.display==='none'?'rotate(0deg)':'rotate(180deg)';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:600;color:var(--primary);flex:1;">🧠 DeepSeek V4 高级能力</span>
+                    <span id="set-v4-mgr-arrow" style="color:#64748b;font-size:0.75rem;transition:transform .2s;transform:rotate(0deg);">▾</span>
+                </div>
+                <div id="set-v4-mgr" style="display:none;flex-direction:column;gap:8px;padding:2px 2px 4px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
                     <span style="font-size:0.88rem;">🧠 思考模式 <span style="font-size:0.7rem;color:#94a3b8;">(V4)</span></span>
                     <span style="display:flex;align-items:center;gap:8px;">
@@ -1411,6 +1416,7 @@
                         <option value="openai">OpenAI 兼容</option>
                         <option value="anthropic">Anthropic 兼容</option>
                     </select>
+                </div>
                 </div>
 
                 <!-- 数据管理（可展开） -->

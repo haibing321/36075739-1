@@ -2,7 +2,7 @@
  * 思路（按用户反馈修正）：不再按月份硬套关键词，而是
  *   1) 取「管辖范围」车站（线别从应急电话导入，无数据时兜底兰州局）的实际天气预报（7天，open-meteo，无需密钥）；
  *   2) 用 WMO 天气代码 + 降水概率 + 温度 + 风速，研判本周铁路专业隐患（防洪/防寒/防雷/防雾/防胀/防风…）；
- *   3) 交叉本地检查信息（getIssueData），统计相关条数、红线/重大，给出聚焦建议；
+ *   3) 交叉本地检查信息（getIssueData），仅取「最近两周 + 去年同期同周两周」窗口内、按天气隐患关键词命中的条目，统计条数/红线/重大并做同比；
  *   4) 技术动态：资料库「技术动态」素材优先，无则 LLM 兜底生成；
  *   5) 渲染卡片 + 浏览器通知 + 存入资料库（通报文电），并按 ISO 周去重，仅周一首次打开推送。
  * 不改动 rule.js / issue.js（铁律），仅读取 getIssueData。
@@ -130,23 +130,36 @@
     return hits;
   }
 
-  /* ---------------- 交叉本地检查信息 ---------------- */
+  /* ---------------- 交叉本地检查信息（按时间窗：近两周 + 去年同期同周两周） ---------------- */
+  // 仅统计落在「最近两周」与「去年同期同周两周」内的检查信息，并给出同比
   function matchIssues(keywords) {
     var issues = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];
     issues = issues || [];
-    var total = 0, redline = 0, major = 0;
+    var now = Date.now();
+    var DAY = 864e5;
+    var recentStart = now - 14 * DAY;                 // 最近两周起点
+    var ly = now - 364 * DAY;                         // 去年同期同周（约 52 周前）
+    var sameStart = ly - 7 * DAY;                     // 同期两周起点
+    var sameEnd = ly + 7 * DAY;                       // 同期两周终点
+    var recent = { total: 0, redline: 0, major: 0 };
+    var same = { total: 0, redline: 0, major: 0 };
+    function tally(bucket, it) {
+      bucket.total++;
+      var nature = (it.性质 || it.nature || '');
+      if (/红线/.test(nature)) bucket.redline++;
+      else if (/重大/.test(nature)) bucket.major++;
+    }
     for (var i = 0; i < issues.length; i++) {
       var it = issues[i] || {};
       var text = ((it.category || '') + ' ' + (it.content || '') + ' ' + (it.regulation || '') + ' ' + (it.unit || '')).toLowerCase();
       var hit = keywords.some(function (k) { return text.indexOf(k.toLowerCase()) !== -1; });
-      if (hit) {
-        total++;
-        var nature = (it.性质 || it.nature || '');
-        if (/红线/.test(nature)) redline++;
-        else if (/重大/.test(nature)) major++;
-      }
+      if (!hit) continue;
+      var ts = new Date(it.datetime || 0).getTime();
+      if (isNaN(ts)) continue;                        // 无日期不参与时间窗统计
+      if (ts >= recentStart && ts <= now) tally(recent, it);
+      else if (ts >= sameStart && ts <= sameEnd) tally(same, it);
     }
-    return { total: total, redline: redline, major: major };
+    return { recent: recent, same: same };
   }
 
   /* ---------------- 取管辖范围天气预报 ---------------- */
@@ -216,14 +229,22 @@
     if (!keys.length) {
       lines.push('本周管内天气平稳，未见明显极端天气，按季节性常规防控即可。');
     } else {
-      lines.push('研判重点隐患：');
+      lines.push('研判重点隐患（近两周，并对比去年同期同周）：');
       keys.slice(0, 5).forEach(function (k, idx) {
         var h = HAZARDS[k]; if (!h) return;
         var m = matchIssues(h.keywords);
-        var extra = m.total
-          ? ('检查信息中相关 ' + m.total + ' 条' + (m.redline ? '（红线' + m.redline + '）' : '') + (m.major ? '（重大' + m.major + '）' : ''))
-          : '检查信息中暂未匹配到同类问题';
-        lines.push((idx + 1) + '. ' + h.label + '（' + h.trade + '，频次' + agg.tally[k] + '）：' + extra + '。建议：' + h.advice);
+        var rec = m.recent, sam = m.same;
+        var recTxt = rec.total
+          ? ('近两周相关 ' + rec.total + ' 条' + (rec.redline ? '（红线' + rec.redline + '）' : '') + (rec.major ? '（重大' + rec.major + '）' : ''))
+          : '近两周检查信息中暂未匹配到同类问题';
+        var samTxt = sam.total ? ('；去年同期同周 ' + sam.total + ' 条') : '；去年同期同周无记录';
+        var trend = '';
+        if (rec.total && sam.total) {
+          if (rec.total > sam.total) trend = '（同比增多）';
+          else if (rec.total < sam.total) trend = '（同比下降）';
+          else trend = '（同比持平）';
+        }
+        lines.push((idx + 1) + '. ' + h.label + '（' + h.trade + '，天气频次' + agg.tally[k] + '）：' + recTxt + samTxt + trend + '。建议：' + h.advice);
       });
     }
     return lines.join('\n');

@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.edgeone/
 
 # Build output
 dist/

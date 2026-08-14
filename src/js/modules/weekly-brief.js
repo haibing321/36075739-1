@@ -16,6 +16,46 @@
   var DEFAULT_STATIONS = ['兰州', '天水', '武威', '张掖', '嘉峪关', '银川', '中卫', '西宁', '格尔木', '陇南', '平凉'];
   var MAX_STATIONS = 12;
 
+  // 从单位名推导专业（与 issue.js extractTradeFromUnit 保持一致；此处独立实现，不依赖外部模块）
+  function extractTrade(unitName) {
+    if (!unitName) return '';
+    var name = String(unitName).trim();
+    var unitTradeMap = [
+      { keywords: ['天水车站', '兰州车站', '迎水桥车站', '兰州北车站', '调度所', '银川车站'], trade: '车务' },
+      { keywords: ['物流中心'], trade: '货运' },
+      { keywords: ['天平', '华澳', '工程管理所', '工程建设指挥部', '甘肃信达', '宁夏城际'], trade: '建设' },
+      { keywords: ['宁夏铁路多远', '宁夏铁路多元', '国际旅行', '疾病预防控制所', '后勤保障', '职工培训中心', '金轮实业'], trade: '辅业' },
+      { keywords: ['综合维修'], trade: '高铁基础设施' }
+    ];
+    for (var mi = 0; mi < unitTradeMap.length; mi++) {
+      for (var ki = 0; ki < unitTradeMap[mi].keywords.length; ki++) {
+        if (name.indexOf(unitTradeMap[mi].keywords[ki]) !== -1) return unitTradeMap[mi].trade;
+      }
+    }
+    var tradeKeys = ['高铁基础设施', '综合维修', '基础设施', '客运', '货运', '车务', '机务', '工务', '电务', '供电', '车辆', '房建', '给水'];
+    for (var i = 0; i < tradeKeys.length; i++) {
+      if (name.indexOf(tradeKeys[i]) !== -1) return tradeKeys[i];
+    }
+    if (name.indexOf('通信') !== -1 || name.indexOf('信号') !== -1) return '电务';
+    return name; // 未匹配返回单位名本身（便于排查未归类单位）
+  }
+
+  // 可选专业清单：默认常见专业 + 检查信息中实际出现的专业
+  var DEFAULT_TRADES = ['车务', '货运', '建设', '辅业', '工务', '电务', '供电', '车辆', '机务', '房建', '客运', '高铁基础设施'];
+  function getTrades() {
+    var set = {};
+    DEFAULT_TRADES.forEach(function (t) { set[t] = true; });
+    var issues = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];
+    (issues || []).forEach(function (it) {
+      if (it.unit) { var t = extractTrade(it.unit); if (t) set[t] = true; }
+    });
+    return Object.keys(set).sort(function (a, b) { return a.localeCompare(b, 'zh'); });
+  }
+  function tradesLabel(trades) {
+    if (!trades || !trades.length) return '全部专业';
+    return trades.join('/');
+  }
+
   // 从「应急电话」聚合 线别 → 相关站（站名/线名均来自电话数据，非手工输入）
   function getPhoneLines() {
     var data = [];
@@ -76,6 +116,7 @@
       var c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
       if (c && typeof c === 'object') {
         if (typeof c.enabled === 'undefined') c.enabled = true;
+        if (typeof c.trades === 'undefined' || !Array.isArray(c.trades)) c.trades = []; // 空=全部专业
         // 旧版 {line:'xxx'} 迁移为 {lines:{线名:'ALL'}}
         if (typeof c.lines === 'undefined') {
           c.lines = {};
@@ -90,7 +131,7 @@
         return c;
       }
     } catch (e) {}
-    return { enabled: true, lines: {} };
+    return { enabled: true, lines: {}, trades: [] };
   }
   function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) {} }
   function isEnabled() { return loadCfg().enabled !== false; }
@@ -156,7 +197,10 @@
 
   /* ---------------- 交叉本地检查信息（按时间窗：近两周 + 去年同期同周两周） ---------------- */
   // 仅统计落在「最近两周」与「去年同期同周两周」内的检查信息，并给出同比
-  function matchIssues(keywords) {
+  // opts.trades：选定的专业范围（空数组=全部专业）；统计时按专业过滤并给出各专业分布
+  function matchIssues(keywords, opts) {
+    opts = opts || {};
+    var trades = opts.trades || [];                   // 选定专业；空=不限
     var issues = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];
     issues = issues || [];
     var now = Date.now();
@@ -165,25 +209,55 @@
     var ly = now - 364 * DAY;                         // 去年同期同周（约 52 周前）
     var sameStart = ly - 7 * DAY;                     // 同期两周起点
     var sameEnd = ly + 7 * DAY;                       // 同期两周终点
-    var recent = { total: 0, redline: 0, major: 0 };
-    var same = { total: 0, redline: 0, major: 0 };
-    function tally(bucket, it) {
+    var recent = { total: 0, redline: 0, major: 0, byTrade: {} };
+    var same = { total: 0, redline: 0, major: 0, byTrade: {} };
+    function tally(bucket, it, trade) {
       bucket.total++;
       var nature = (it.性质 || it.nature || '');
       if (/红线/.test(nature)) bucket.redline++;
       else if (/重大/.test(nature)) bucket.major++;
+      if (trade) bucket.byTrade[trade] = (bucket.byTrade[trade] || 0) + 1;
     }
     for (var i = 0; i < issues.length; i++) {
       var it = issues[i] || {};
       var text = ((it.category || '') + ' ' + (it.content || '') + ' ' + (it.regulation || '') + ' ' + (it.unit || '')).toLowerCase();
       var hit = keywords.some(function (k) { return text.indexOf(k.toLowerCase()) !== -1; });
       if (!hit) continue;
+      var trade = extractTrade(it.unit);
+      if (trades.length && trades.indexOf(trade) === -1) continue;   // 专业范围过滤
       var ts = new Date(it.datetime || 0).getTime();
       if (isNaN(ts)) continue;                        // 无日期不参与时间窗统计
-      if (ts >= recentStart && ts <= now) tally(recent, it);
-      else if (ts >= sameStart && ts <= sameEnd) tally(same, it);
+      if (ts >= recentStart && ts <= now) tally(recent, it, trade);
+      else if (ts >= sameStart && ts <= sameEnd) tally(same, it, trade);
     }
-    return { recent: recent, same: same };
+  return { recent: recent, same: same };
+}
+
+  // 隐患是否命中用户所选专业（h.trade 形如 '工务/供电'；含'通用'视为对所有专业相关）
+  function hazardTradeHits(h, selTrades) {
+    if (!selTrades || !selTrades.length) return true; // 空=全部专业
+    var parts = String(h.trade || '').split('/');
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i].trim();
+      if (!p) continue;
+      if (p === '通用') return true;
+      if (selTrades.indexOf(p) !== -1) return true;
+    }
+    return false;
+  }
+
+  // 综合风险等级：天气频次(aggCount) 与 检查信息(m.recent) 共同研判
+  //   高：存在红线问题，或(天气频次≥5 且 近两周有同类问题)
+  //   中：存在重大问题，或(天气频次≥3 且 有近两周问题)，或 天气频次≥7
+  //   低：其余（仅关注）
+  function computeRiskLevel(aggCount, m) {
+    m = m || { recent: { total: 0, redline: 0, major: 0 } };
+    var insp = m.recent.total, red = m.recent.redline, maj = m.recent.major;
+    if (red > 0) return '高';
+    if (aggCount >= 5 && insp > 0) return '高';
+    if (maj > 0 || (aggCount >= 3 && insp > 0) || aggCount >= 7) return '中';
+    if (insp > 0 || aggCount >= 2) return '中';
+    return '低';
   }
 
   /* ---------------- 取管辖范围天气预报 ---------------- */
@@ -240,24 +314,38 @@
   }
 
   /* ---------------- 组装简报文本 ---------------- */
-  function buildSeasonBlock(agg, stations, usedFallback, scopeLabel) {
+  // selTrades：用户选定的专业范围（空=全部）；用于过滤并展示专业分布
+  function buildSeasonBlock(agg, stations, usedFallback, scopeLabel, selTrades) {
     var lines = [];
-    lines.push('【天气研判】管辖范围：' + (scopeLabel || BUREAU) + ' · 共 ' + stations.length + ' 站' + (usedFallback ? '（天气接口暂不可用，按季节研判）' : ''));
+    var tradeScope = tradesLabel(selTrades);
+    lines.push('【天气研判】管辖范围：' + (scopeLabel || BUREAU) + ' · 共 ' + stations.length + ' 站 · 研判专业：' + tradeScope +
+               (usedFallback ? '（天气接口暂不可用，按季节研判）' : ''));
     if (!usedFallback) {
       lines.push('未来7天：管内最高 ' + (agg.maxT > -99 ? agg.maxT + '°C' : '—') +
                  ' / 最低 ' + (agg.minT < 99 ? agg.minT + '°C' : '—') +
                  '，最大风速 ' + (agg.maxWind ? agg.maxWind + 'km/h' : '—') + '。');
       if (agg.dayNotes.length) lines.push('重点天气日：' + agg.dayNotes.slice(0, 6).join('；') + '。');
     }
-    var keys = Object.keys(agg.tally).sort(function (a, b) { return agg.tally[b] - agg.tally[a]; });
-    if (!keys.length) {
-      lines.push('本周管内天气平稳，未见明显极端天气，按季节性常规防控即可。');
+  var keys = Object.keys(agg.tally).sort(function (a, b) { return agg.tally[b] - agg.tally[a]; });
+  if (!keys.length) {
+    lines.push('本周管内天气平稳，未见明显极端天气，按季节性常规防控即可。');
+  } else {
+    // 按所选专业聚焦：仅保留与该专业相关的隐患（空=全部专业，则不过滤）
+    var focusKeys = keys.filter(function (k) {
+      var h = HAZARDS[k]; if (!h) return false;
+      return hazardTradeHits(h, selTrades);
+    });
+    if (!focusKeys.length) {
+      lines.push('研判重点隐患（近两周，按' + tradeScope + '分析）：所选专业范围内本周暂未匹配到对应天气类重点隐患，按季节常规防控即可。');
     } else {
-      lines.push('研判重点隐患（近两周，并对比去年同期同周）：');
-      keys.slice(0, 5).forEach(function (k, idx) {
+      lines.push('研判重点隐患（近两周，并对比去年同期同周，按' + tradeScope + '分析）：');
+      var levels = [];
+      focusKeys.slice(0, 5).forEach(function (k, idx) {
         var h = HAZARDS[k]; if (!h) return;
-        var m = matchIssues(h.keywords);
+        var m = matchIssues(h.keywords, { trades: selTrades });
         var rec = m.recent, sam = m.same;
+        var lvl = computeRiskLevel(agg.tally[k], m);   // 天气频次 + 检查信息 共同定级
+        levels.push({ h: h, lvl: lvl, m: m });
         var recTxt = rec.total
           ? ('近两周相关 ' + rec.total + ' 条' + (rec.redline ? '（红线' + rec.redline + '）' : '') + (rec.major ? '（重大' + rec.major + '）' : ''))
           : '近两周检查信息中暂未匹配到同类问题';
@@ -268,14 +356,75 @@
           else if (rec.total < sam.total) trend = '（同比下降）';
           else trend = '（同比持平）';
         }
-        lines.push((idx + 1) + '. ' + h.label + '（' + h.trade + '，天气频次' + agg.tally[k] + '）：' + recTxt + samTxt + trend + '。建议：' + h.advice);
+        // 专业分布（仅当分布超过 1 个专业时展示，便于从专业角度透视风险）
+        var bdKeys = Object.keys(rec.byTrade).sort(function (a, b) { return rec.byTrade[b] - rec.byTrade[a]; });
+        var bdStr = '';
+        if (bdKeys.length > 1) bdStr = '；专业分布 ' + bdKeys.slice(0, 4).map(function (t) { return t + rec.byTrade[t]; }).join('·');
+        lines.push((idx + 1) + '. ' + h.label + '（' + h.trade + '，天气频次' + agg.tally[k] + '）：' + recTxt + samTxt + trend + bdStr +
+          '。综合风险：' + lvl + '。建议：' + h.advice);
       });
+      // 综合风险研判：天气（频次/强度）叠加管内检查信息（红线/重大/条数）交叉定论
+      var high = levels.filter(function (x) { return x.lvl === '高'; });
+      var mid = levels.filter(function (x) { return x.lvl === '中'; });
+      if (high.length || mid.length) {
+        var parts = [];
+        if (high.length) parts.push('高风险 ' + high.length + ' 项（' + high.map(function (x) { return x.h.label; }).join('、') + '）');
+        if (mid.length) parts.push('中风险 ' + mid.length + ' 项（' + mid.map(function (x) { return x.h.label; }).join('、') + '）');
+        var inspTotal = levels.reduce(function (s, x) { return s + x.m.recent.total; }, 0);
+        var redTotal = levels.reduce(function (s, x) { return s + x.m.recent.redline; }, 0);
+        var majTotal = levels.reduce(function (s, x) { return s + x.m.recent.major; }, 0);
+        lines.push('【综合风险研判】本周以天气（' + (scopeLabel || BUREAU) + '，共 ' + stations.length + ' 站）叠加管内检查信息共同研判：' +
+          parts.join('，') + '；管内近两周相关同类问题 ' + inspTotal + ' 条' +
+          (redTotal ? '（红线 ' + redTotal + '）' : '') + (majTotal ? '（重大 ' + majTotal + '）' : '') +
+          '。整体风险' + (high.length ? '偏高' : '可控') + '，请对' + (high.length ? '高风险' : '中风险') + '项重点防控并跟踪闭环。');
+      }
     }
+  }
     return lines.join('\n');
   }
 
-  // 技术动态：资料库素材优先，LLM 兜底
+  // 联网技术检索：复用 DeepSeek Responses API 的 web_search 工具（与智能对话一致），
+  // 需用户已配置 API Key（ds_api_key_v1）。返回检索到的铁路安全技术要点文本，失败返回 ''。
+  async function webSearchTech() {
+    try {
+      var key = localStorage.getItem('ds_api_key_v1');
+      var url = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+      if (!key) return '';
+      var responsesUrl = (url || '').replace(/\/chat\/completions\/?$/i, '/responses') || 'https://api.deepseek.com/responses';
+      var ctrl = new AbortController();
+      var timer = setTimeout(function () { ctrl.abort(); }, 20000);
+      var resp = await fetch(responsesUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        body: JSON.stringify({
+          model: 'deepseek-v4-flash',
+          instructions: '你是铁路安全监察技术情报助手。基于联网检索到的最新公开信息，输出 3-4 条近期铁路（工务、供电、信号、车务、机务等专业）安全技术应用、设备升级与风险防控的发展趋势要点，聚焦可落地的技术方向与典型应用。每条不超过 55 字，不要编造具体新闻事件，可标注信息时间。',
+          input: '请联网检索并输出本周铁路安全技术应用与发展要点（聚焦防洪、防胀轨、防雷、防断、防风、智能巡检、AI 辅助研判等方向）。',
+          tools: [{ type: 'web_search' }],
+          stream: false,
+          temperature: 0.7,
+          max_output_tokens: 1200
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (!resp.ok) return '';
+      var j = await resp.json();
+      var text = '';
+      if (j && j.output_text) text = j.output_text;
+      else if (j && j.output && Array.isArray(j.output)) {
+        j.output.forEach(function (o) {
+          if (o && o.content && Array.isArray(o.content)) o.content.forEach(function (c) { if (c && c.text) text += c.text; });
+        });
+      }
+      return text ? String(text).trim() : '';
+    } catch (e) { return ''; }
+  }
+
+  // 技术动态：优先「联网检索」(DeepSeek web_search)，其次资料库素材，均无则明确提示（不显示空内容）
   async function buildTechBlock() {
+    var ws = await webSearchTech();
+    if (ws) return '【技术动态·联网检索】\n' + ws;
     var mats = [];
     try { if (typeof window._wrGetAllMaterials === 'function') mats = await window._wrGetAllMaterials(); } catch (e) {}
     var tech = (mats || []).filter(function (m) {
@@ -286,9 +435,7 @@
       tech = tech.slice(0, 3);
       return '【技术动态】（资料库素材）\n' + tech.map(function (m) { return '· ' + (m.title || '未命名'); }).join('\n');
     }
-    var text = await llmTech();
-    if (text) return '【技术动态】（智能生成）\n' + text;
-    return '【技术动态】暂无技术动态素材；可在资料库补充「铁路技术应用/发展」类资料，系统将每周自动汇总推送。';
+    return '【技术动态】本周暂无可联网检索的铁路安全技术动态（未配置 API Key 或网络不可用）；可在资料库补充「铁路技术应用/发展」类资料，系统将每周自动汇总推送。';
   }
 
   async function llmTech() {
@@ -399,13 +546,15 @@
     var weekKey = getWeekKey();
     var stations = getStations();
     var scopeLabel = computeScopeLabel();
+    var cfg = loadCfg();
+    var selTrades = cfg.trades || [];                 // 选定的专业范围（空=全部）
     var agg, usedFallback = false;
     if (navigator.onLine !== false) {
       var wl = await fetchJurisdictionWeather(stations);
       if (wl.length) agg = aggregateWeather(wl);
     }
     if (!agg) { agg = seasonFallback(); usedFallback = true; }
-    var season = buildSeasonBlock(agg, stations, usedFallback, scopeLabel);
+    var season = buildSeasonBlock(agg, stations, usedFallback, scopeLabel, selTrades);
     var tech = await buildTechBlock();
     var brief = { weekKey: weekKey, season: season, tech: tech };
     renderCard(brief);
@@ -425,11 +574,17 @@
     function refreshPreview() {
       if (!previewEl) return;
       var info = getPhoneLines();
-      if (!info.hasData) { previewEl.textContent = '（未导入应急电话，使用默认兰州局范围）'; return; }
+      var linesSum = document.getElementById('wb-brief-lines-summary');
+      if (!info.hasData) {
+        previewEl.textContent = '（未导入应急电话，使用默认兰州局范围）';
+        if (linesSum) linesSum.textContent = '默认兰州局';
+        return;
+      }
       var cfg = loadCfg();
       var keys = Object.keys(cfg.lines || {});
       previewEl.textContent = '已选 ' + getStations().length + ' 站' +
         (keys.length ? '（' + keys.join('、') + '）' : '（全部已导入）');
+      if (linesSum) linesSum.textContent = keys.length ? ('已选 ' + keys.length + ' 条线') : ('全部已导入 ' + info.allStations.length + ' 站');
     }
 
     function lineStationsChecked(wrap, line) {
@@ -473,7 +628,7 @@
         var curSet = (cur === 'ALL') ? null : (Array.isArray(cur) ? cur : []);
 
         var row = document.createElement('div');
-        row.style.cssText = 'border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;background:#fff;';
+        row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:var(--card-bg);';
 
         var head = document.createElement('div');
         head.style.cssText = 'display:flex;align-items:center;gap:8px;';
@@ -481,17 +636,17 @@
         cb.type = 'checkbox'; cb.className = 'wb-line-cb'; cb.dataset.line = line; cb.checked = lineOn;
         var lbl = document.createElement('span');
         lbl.textContent = line + '（' + stations.length + ' 站）';
-        lbl.style.cssText = 'flex:1;font-size:0.82rem;cursor:pointer;color:#1e293b;';
+        lbl.style.cssText = 'flex:1;font-size:0.82rem;cursor:pointer;color:var(--text);';
         var exp = document.createElement('span');
         exp.textContent = '▾'; exp.style.cssText = 'color:#94a3b8;font-size:0.7rem;cursor:pointer;padding:0 4px;';
         head.appendChild(cb); head.appendChild(lbl); head.appendChild(exp);
         row.appendChild(head);
 
         var stBox = document.createElement('div');
-        stBox.style.cssText = 'display:' + (lineOn ? 'flex' : 'none') + ';flex-direction:column;gap:2px;margin:6px 0 2px 24px;';
+        stBox.style.cssText = 'display:none;flex-direction:column;gap:2px;margin:6px 0 2px 24px;';
         stations.forEach(function (st) {
           var srow = document.createElement('label');
-          srow.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#475569;cursor:pointer;';
+          srow.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;';
           var scb = document.createElement('input');
           scb.type = 'checkbox'; scb.className = 'wb-station-cb';
           scb.dataset.line = line; scb.dataset.station = st;
@@ -507,7 +662,6 @@
         lbl.addEventListener('click', function () { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); });
         cb.addEventListener('change', function () {
           stBox.querySelectorAll('.wb-station-cb').forEach(function (sc) { sc.checked = cb.checked; });
-          stBox.style.display = cb.checked ? 'flex' : 'none';
           syncCfg(wrap, info); refreshPreview();
         });
         // 展开/收起站点列表（不改动勾选）
@@ -521,6 +675,48 @@
       refreshPreview();
     }
 
+    /* ---- 专业多选（研判专业范围，持久化，默认全部） ---- */
+    var tradesWrap = document.getElementById('wb-brief-trades');
+    var tradesPreviewEl = document.getElementById('wb-brief-trades-preview');
+    function refreshTradePreview() {
+      if (!tradesPreviewEl) return;
+      var c = loadCfg();
+      var sel = c.trades || [];
+      var total = getTrades().length;
+      if (!sel.length) tradesPreviewEl.textContent = '全部专业（' + total + ' 个）';
+      else tradesPreviewEl.textContent = '已选 ' + sel.length + ' 个：' + sel.join('、');
+      var tradesSum = document.getElementById('wb-brief-trades-summary');
+      if (tradesSum) tradesSum.textContent = sel.length ? ('已选 ' + sel.length + ' 个') : ('全部 ' + total + ' 个');
+    }
+    function buildTradesChecklist() {
+      if (!tradesWrap) return;
+      var trades = getTrades();
+      tradesWrap.innerHTML = '';
+      var cfg = loadCfg();
+      var sel = cfg.trades || [];
+      var allChecked = sel.length === 0; // 空 = 全部专业
+      trades.forEach(function (t) {
+        var row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'wb-trade-cb'; cb.value = t;
+        cb.checked = allChecked ? true : (sel.indexOf(t) !== -1);
+        var sp = document.createElement('span'); sp.textContent = t;
+        row.appendChild(cb); row.appendChild(sp);
+        tradesWrap.appendChild(row);
+      });
+      tradesWrap.addEventListener('change', function () {
+        var checked = [].slice.call(tradesWrap.querySelectorAll('.wb-trade-cb'))
+          .filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+        var c = loadCfg();
+        // 全选等价于“全部专业” → 存空数组（表示不限）
+        c.trades = (checked.length === trades.length) ? [] : checked;
+        saveCfg(c);
+        refreshTradePreview();
+      });
+      refreshTradePreview();
+    }
+
     if (toggle) {
       toggle.checked = isEnabled();
       toggle.addEventListener('change', function () {
@@ -528,6 +724,7 @@
       });
     }
     buildChecklist();
+    buildTradesChecklist();
     if (previewBtn) previewBtn.addEventListener('click', function () { generate({ skipMark: true }); });
   }
 
@@ -542,5 +739,26 @@
     if (now.getDay() === 1 && last !== weekKey) generate();
   }
 
-  window.WeeklyBrief = { init: init, preview: function () { return generate({ skipMark: true }); }, generate: generate };
+  // 设置面板内「线路/专业」折叠块的通用展开/收起（点击头切换，箭头旋转）
+  function toggleBlock(blockId) {
+    var b = document.getElementById(blockId);
+    if (!b) return;
+    var show = b.style.display === 'none';
+    b.style.display = show ? 'block' : 'none';
+    var ch = document.getElementById(blockId.replace('-body', '-chevron'));
+    if (ch) ch.style.transform = show ? 'rotate(180deg)' : 'rotate(0deg)';
+  }
+
+  window.WeeklyBrief = {
+    init: init,
+    preview: function () { return generate({ skipMark: true }); },
+    generate: generate,
+    _toggleBlock: toggleBlock,
+    // 测试/调试用内部函数
+    _matchIssues: matchIssues,
+    _extractTrade: extractTrade,
+    _getTrades: getTrades,
+    _loadCfg: loadCfg,
+    _saveCfg: saveCfg
+  };
 })();

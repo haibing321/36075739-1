@@ -110,7 +110,7 @@
         if (!modal) return;
         modal.style.display = 'flex';
         var list = document.getElementById('ds-material-list');
-        list.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中…</div>';
+        list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-secondary);">加载中…</div>';
         document.getElementById('ds-material-search').value = '';
         document.getElementById('ds-material-type-filter').value = '';
         try {
@@ -159,7 +159,7 @@
     function dsRenderMaterialList(items) {
         var list = document.getElementById('ds-material-list');
         if (!items.length) {
-            list.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">没有匹配的资料</div>';
+            list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-secondary);">没有匹配的资料</div>';
             return;
         }
         var typeMap = {report:'📄 历史报告',inspect:'🔍 检查信息',template:'📋 模版',fault:'⚠️ 故障',notice:'📢 通报',other:'📎 其它'};
@@ -167,10 +167,10 @@
         items.slice(0, 50).forEach(function(m, i) {
             var typeLabel = typeMap[m.type] || '📎 资料';
             var title = (m.title || '无标题').slice(0, 60);
-            html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#f8fafc;border-radius:8px;cursor:pointer;border:1px solid #e2e8f0;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#f8fafc\'">'
+            html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:var(--card-bg);border-radius:8px;cursor:pointer;border:1px solid var(--border);" onmouseover="this.style.background=\'var(--primary-light)\'" onmouseout="this.style.background=\'var(--card-bg)\'">'
                 + '<input type="checkbox" value="'+i+'" class="ds-mat-cb" style="margin-top:2px;flex-shrink:0;">'
                 + '<div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:500;">'+typeLabel+' ' + (title||'无标题') + '</div>'
-                + '<div style="font-size:0.72rem;color:#888;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + ((m.content||'').slice(0,80)) + '</div></div>'
+                + '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + ((m.content||'').slice(0,80)) + '</div></div>'
                 + '</label>';
         });
         list.innerHTML = html;

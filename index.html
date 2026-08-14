@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <title>安监智能辅助系统 · 完整六模块版</title>
     <meta name="theme-color" content="#1a365d">
     <meta name="mobile-web-app-capable" content="yes">
@@ -23,13 +23,17 @@
                    worker-src 'self';
                    child-src https://www.doubao.com;">
 
-    <!-- 暗黑模式：在首屏绘制前应用已保存主题，避免闪烁 -->
+    <!-- 主题模式：首屏绘制前应用已保存主题，避免闪烁（支持 跟随系统 / 亮色 / 暗黑） -->
     <script>
         (function () {
             try {
-                if (localStorage.getItem('darkMode') === '1') {
-                    document.documentElement.setAttribute('data-theme', 'dark');
+                var m = localStorage.getItem('themeMode');
+                if (!m && localStorage.getItem('darkMode') !== null) {
+                    m = localStorage.getItem('darkMode') === '1' ? 'dark' : 'light';
                 }
+                if (!m) m = 'system';
+                var dark = m === 'dark' || (m === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                if (dark) document.documentElement.setAttribute('data-theme', 'dark');
             } catch (e) {}
         })();
     </script>
@@ -154,6 +158,45 @@
     <link rel="stylesheet" href="src/css/unify.css">
 </head>
 <body>
+    <!-- 启动遮罩：首屏立即显示，避免 Edge 等浏览器在脚本加载延迟时长时间停在 LOGO/启动界面。
+         由下方看门狗与 initPage 启动完成后隐藏；4s 兜底强制显示面板，保证永不超过度卡死。 -->
+    <style id="boot-overlay-style">
+      #app-boot-overlay { position:fixed; inset:0; z-index:2147483647; display:flex; flex-direction:column;
+        align-items:center; justify-content:center; gap:16px; background:#0f172a; }
+      #app-boot-overlay .boot-logo { width:72px; height:72px; opacity:.95; }
+      #app-boot-overlay .boot-spin { width:36px; height:36px; border:3px solid rgba(255,255,255,.25);
+        border-top-color:#ffd700; border-radius:50%; animation:bootspin .8s linear infinite; }
+      #app-boot-overlay .boot-text { color:#e2e8f0; font-size:.9rem; letter-spacing:1px; }
+      @keyframes bootspin { to { transform:rotate(360deg); } }
+    </style>
+    <div id="app-boot-overlay">
+        <svg class="boot-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 5 L90 20 L90 50 Q90 75 50 95 Q10 75 10 50 L10 20 Z" fill="#1e4d7b" stroke="#ffd700" stroke-width="1.5"/>
+            <text x="52" y="52" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="46" font-weight="900" fill="#ffd700">铁</text>
+        </svg>
+        <div class="boot-spin"></div>
+        <div class="boot-text">安监智能辅助系统 · 加载中…</div>
+    </div>
+    <script>
+    (function () {
+        function clearBoot() { var ov = document.getElementById('app-boot-overlay'); if (ov) ov.style.display = 'none'; }
+        window.__clearBoot = clearBoot;
+        // 看门狗：4 秒兜底。若脚本迟迟未初始化（DOMContentLoaded 未触发/脚本挂起），
+        // 强制隐藏遮罩并按已保存模块恢复面板，杜绝长时间卡在启动 LOGO。
+        window.__bootTimer = setTimeout(function () {
+            clearBoot();
+            if (!document.querySelector('.panel.active')) {
+                try {
+                    var mod = localStorage.getItem('current_module') || 'issue';
+                    if (typeof window.switchTab === 'function') window.switchTab(mod);
+                    else { var d = document.getElementById('panel-' + mod) || document.getElementById('panel-issue'); if (d) d.classList.add('active'); }
+                } catch (e) {
+                    var d2 = document.getElementById('panel-issue'); if (d2) d2.classList.add('active');
+                }
+            }
+        }, 4000);
+    })();
+    </script>
     <header class="header">
         <div class="header-inner">
             <div class="logo">
@@ -1337,7 +1380,7 @@
     <script src="src/js/modules/unified-enhancements.js" defer></script>
     <!-- 设置面板（全局浮层，不依赖任何tab） -->
     <!-- 设置面板：改为与角色/模型/关联数据/联网一致的下拉窗（从右上角弹出，无全屏遮罩；点外部或再次点击「设置」关闭） -->
-    <div id="settings-panel" style="display:none;position:fixed;top:56px;right:12px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;width:min(340px,92vw);max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(15,23,42,.16);z-index:11000;">
+    <div id="settings-panel" style="display:none;position:fixed;top:56px;right:12px;background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px;width:min(340px,92vw);max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(15,23,42,.16);z-index:11000;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
                 <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
@@ -1353,16 +1396,17 @@
                     </span>
                 </div>
 
-                <!-- 暗黑模式 -->
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">🌙 暗黑模式</span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <span id="darkModeHint" style="font-size:0.7rem;color:#94a3b8;">关闭</span>
-                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
-                            <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode(this.checked)" style="opacity:0;width:0;height:0;">
-                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
-                        </label>
-                    </span>
+                <!-- 主题模式（跟随系统 / 亮色 / 暗黑） -->
+                <div style="padding:10px 14px;background:#f8fafc;border-radius:10px;">
+                    <div style="font-size:0.88rem;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                        <span>🌗 主题模式</span>
+                    </div>
+                    <div id="themeModeSeg" style="display:flex;gap:6px;">
+                        <button type="button" onclick="setThemeMode('system')" data-mode="system" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">🌗 跟随系统</button>
+                        <button type="button" onclick="setThemeMode('light')" data-mode="light" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">☀️ 亮色</button>
+                        <button type="button" onclick="setThemeMode('dark')" data-mode="dark" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">🌙 暗黑</button>
+                    </div>
+                    <div id="themeModeHint" style="font-size:0.7rem;color:#94a3b8;margin-top:6px;"></div>
                 </div>
 
                 <!-- DeepSeek V4 高级能力（默认折叠；复用「数据管理」折叠样式，零行为变更） -->
@@ -1427,9 +1471,35 @@
                         </label>
                     </div>
                     <div style="font-size:0.8rem;color:#475569;">管辖范围（从应急电话导入，可多选线别；长线可只勾部分站）</div>
-                    <div id="wb-brief-lines" style="display:flex;flex-direction:column;gap:6px;"></div>
-                    <div style="font-size:0.78rem;color:#64748b;line-height:1.5;">
-                        已选站：<span id="wb-brief-stations-preview">—</span>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        <!-- 线路：折叠紧凑多选 -->
+                        <div>
+                            <div style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;" onclick="window.WeeklyBrief&&WeeklyBrief._toggleBlock('wb-brief-lines-body')">
+                                <span style="font-size:0.76rem;color:var(--text);font-weight:600;">线路（可多选，长线可只勾部分站）</span>
+                                <span id="wb-brief-lines-summary" style="font-size:0.72rem;color:var(--primary);margin-left:auto;margin-right:4px;"></span>
+                                <span id="wb-brief-lines-chevron" style="color:#94a3b8;font-size:0.7rem;transition:transform .2s;">▾</span>
+                            </div>
+                            <div id="wb-brief-lines-body" style="display:none;margin-top:6px;max-height:210px;overflow:auto;padding-right:4px;">
+                                <div id="wb-brief-lines"></div>
+                            </div>
+                        </div>
+                        <!-- 专业：折叠紧凑多选 -->
+                        <div>
+                            <div style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;" onclick="window.WeeklyBrief&&WeeklyBrief._toggleBlock('wb-brief-trades-body')">
+                                <span style="font-size:0.76rem;color:var(--text);font-weight:600;">研判专业范围（可多选，默认全部）</span>
+                                <span id="wb-brief-trades-summary" style="font-size:0.72rem;color:var(--primary);margin-left:auto;margin-right:4px;"></span>
+                                <span id="wb-brief-trades-chevron" style="color:#94a3b8;font-size:0.7rem;transition:transform .2s;">▾</span>
+                            </div>
+                            <div id="wb-brief-trades-body" style="display:none;margin-top:6px;max-height:210px;overflow:auto;padding-right:4px;">
+                                <div id="wb-brief-trades"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
+                        已选区：<span id="wb-brief-stations-preview">—</span>
+                    </div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
+                        已选专业：<span id="wb-brief-trades-preview">—</span>
                     </div>
                     <button id="wb-brief-preview" style="align-self:flex-start;padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">👁 预览本周简报</button>
                 </div>
@@ -1579,7 +1649,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.0</span> · 2026.08.13</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.1</span> · 2026.08.14</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1588,6 +1658,36 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- v3.1 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.1 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📡 周简报「安全技术前言」联网检索：复用 DeepSeek web_search 实时获取技术动态（需配置 API Key），无网络时回退资料库/提示</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔥 风险研判结合「天气 + 检查信息」共同定级：每条隐患标注综合风险（高/中/低），末尾新增「综合风险研判」结论</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🪟 Edge 浏览器防卡 LOG：新增启动遮罩 + 4 秒看门狗，任何异常都不会长时间停在启动界面</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📱 折叠屏 PWA 状态保持：安装后打开自动恢复到上次页面，并适配安全区（viewport-fit=cover）+ 暗黑模式</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔄 检查更新改为同源版本校验，解决误报「监测失败」问题</span>
+                    </div>
+                </div>
             </div>
 
             <!-- 近期更新（DeepSeek V4 适配） -->
@@ -1701,27 +1801,27 @@
                 </div>
                 <div>• AI智能体：DeepSeek V4（OpenAI 兼容格式）API + ReAct自主执行循环，可调用本地数据/工具完成任务</div>
                 <div>• 数据存储：IndexedDB + localStorage（纯本地离线，上限200MB）</div>
-                <div>• 部署方式：GitHub Pages 静态托管</div>
+                <div>• 部署形态：纯静态站点 + PWA 离线应用（CloudStudio / EdgeOne Pages）</div>
                 <div>• 兼容适配：华为/Chrome/Edge/手机端全面适配</div>
             </div>
 
             <!-- 底部信息 -->
             <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;font-size:0.73rem;color:#9ca3af;">
-                <span>开发者：赵海兵 · 2026.07</span>
+                <span>开发者：赵海兵 · 2026.08</span>
             </div>
         </div>
     </div>
 
     <!-- 写作资料库选择弹窗 -->
     <div id="ds-material-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:11200;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:14px;padding:20px;width:min(500px,95vw);max-height:70vh;overflow-y:auto;">
+        <div style="background:var(--card-bg);border-radius:14px;padding:20px;width:min(500px,95vw);max-height:70vh;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <span style="font-weight:700;font-size:0.97rem;color:var(--primary);">📚 写作资料库</span>
-                <button onclick="document.getElementById('ds-material-modal').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#888;">✕</button>
+                <button onclick="document.getElementById('ds-material-modal').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text-secondary);">✕</button>
             </div>
             <div style="display:flex;gap:8px;margin-bottom:12px;">
                 <input type="text" id="ds-material-search" placeholder="搜索资料..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;" oninput="dsFilterMaterials()">
-                <select id="ds-material-type-filter" onchange="dsFilterMaterials()" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;background:#fff;">
+                <select id="ds-material-type-filter" onchange="dsFilterMaterials()" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;background:var(--card-bg);">
                     <option value="">全部类型</option>
                     <option value="report">写作报告</option>
                     <option value="inspect">检查信息</option>
@@ -1732,7 +1832,7 @@
                 </select>
             </div>
             <div id="ds-material-list" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
-                <div style="text-align:center;padding:20px;color:#888;">加载中…</div>
+                <div style="text-align:center;padding:20px;color:var(--text-secondary);">加载中…</div>
             </div>
             <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
                 <button onclick="document.getElementById('ds-material-modal').style.display='none'" class="btn-outline">取消</button>
@@ -1862,6 +1962,10 @@
                 var _def = document.getElementById('panel-issue') || document.querySelector('.panel');
                 if (_def) _def.classList.add('active');
             }
+
+            // 启动成功：清除启动遮罩与看门狗（避免 Edge 偶发卡在 LOGO）
+            try { if (window.__bootTimer) clearTimeout(window.__bootTimer); } catch (e) {}
+            if (window.__clearBoot) window.__clearBoot();
         }
 
         // 如果 DOM 已就绪，立即执行；否则等待 DOMContentLoaded

@@ -623,33 +623,68 @@ window.showAboutPanel = function() {
     if (p) p.style.display = 'flex';
 };
 
-// 暗黑模式：切换并持久化
-window.toggleDarkMode = function(on) {
+// ==================== 主题模式（跟随系统 / 亮色 / 暗黑） ====================
+function _readThemeMode() {
     try {
-        if (on) {
-            document.documentElement.setAttribute('data-theme', 'dark');
-            localStorage.setItem('darkMode', '1');
-        } else {
-            document.documentElement.removeAttribute('data-theme');
-            localStorage.setItem('darkMode', '0');
+        var m = localStorage.getItem('themeMode');
+        if (!m && localStorage.getItem('darkMode') !== null) {
+            m = localStorage.getItem('darkMode') === '1' ? 'dark' : 'light';
         }
-    } catch (e) {}
-    var hint = document.getElementById('darkModeHint');
-    if (hint) hint.textContent = on ? '开启' : '关闭';
-    // 同步更新主题色（地址栏/状态栏）
+        return m || 'system';
+    } catch (e) { return 'system'; }
+}
+
+function _systemPrefersDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+
+// 依据 themeMode 计算实际明暗并应用到 <html data-theme>
+function applyTheme() {
+    var mode = _readThemeMode();
+    var dark = mode === 'dark' || (mode === 'system' && _systemPrefersDark());
+    if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', on ? '#0f172a' : '#1a365d');
+    if (meta) meta.setAttribute('content', dark ? '#0f172a' : '#1a365d');
+    syncThemeModeUI();
+    return mode;
+}
+
+// 设置主题模式并持久化（兼容旧 darkMode 字段）
+window.setThemeMode = function(mode) {
+    try {
+        localStorage.setItem('themeMode', mode);
+        localStorage.removeItem('darkMode');
+    } catch (e) {}
+    applyTheme();
 };
 
-// 进入设置时同步暗黑模式开关状态
-window.syncDarkModeToggle = function() {
-    var t = document.getElementById('darkModeToggle');
-    if (!t) return;
-    var on = document.documentElement.getAttribute('data-theme') === 'dark';
-    t.checked = on;
-    var hint = document.getElementById('darkModeHint');
-    if (hint) hint.textContent = on ? '开启' : '关闭';
-};
+// 同步三态分段控件选中态 + 提示文字
+function syncThemeModeUI() {
+    var seg = document.getElementById('themeModeSeg');
+    if (!seg) return;
+    var mode = _readThemeMode();
+    var btns = seg.querySelectorAll('button[data-mode]');
+    if (btns.forEach) {
+        btns.forEach(function(b) {
+            var on = b.getAttribute('data-mode') === mode;
+            b.style.background = on ? 'var(--primary)' : 'var(--card-bg)';
+            b.style.color = on ? '#fff' : 'var(--text)';
+            b.style.borderColor = on ? 'var(--primary)' : 'var(--border)';
+            b.style.fontWeight = on ? '700' : '400';
+        });
+    }
+    var hint = document.getElementById('themeModeHint');
+    if (hint) {
+        hint.textContent = mode === 'system'
+            ? ('跟随系统（当前' + (_systemPrefersDark() ? '暗黑' : '亮色') + '）')
+            : (mode === 'dark' ? '已固定为暗黑' : '已固定为亮色');
+    }
+}
+// 兼容旧调用入口
+window.syncDarkModeToggle = function() { syncThemeModeUI(); };
+// 兼容旧开关（如有地方仍以布尔切换）
+window.toggleDarkMode = function(on) { window.setThemeMode(on ? 'dark' : 'light'); };
 
 // DeepSeek V4 能力开关：思考模式 / JSON 输出模式
 window.toggleThinkingMode = function(on) {
@@ -708,10 +743,10 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.0'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
-// 检查更新源：读取已部署在 GitHub Pages 上的 version.json（无需打 GitHub Release，适配纯 Pages 部署）
-// 注意：version.json 在 SW 中走网络策略（不读缓存），可拿到最新部署版本
-const UPDATE_CHECK_URL = 'https://haibing321.github.io/36075739-2/version.json';
+const APP_VERSION = 'v3.1'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+// 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
+// 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
+const UPDATE_CHECK_URL = './version.json';
 // 12 位 SW 缓存版本号（YYYYMMDDHHMMSS），从 sw.js 提取后注入设置/关于面板
 var _SW_VERSION = '';
 
@@ -740,8 +775,22 @@ function _fetchSwVersion() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // 暗黑模式：同步开关与提示（主题已在 <head> 内联脚本中提前应用，避免闪烁）
-    if (window.syncDarkModeToggle) window.syncDarkModeToggle();
+    // 主题模式：旧 darkMode(0/1) 迁移到新的 themeMode，再应用（首屏内联脚本已提前设好，避免闪烁）
+    try {
+        if (!localStorage.getItem('themeMode') && localStorage.getItem('darkMode') !== null) {
+            localStorage.setItem('themeMode', localStorage.getItem('darkMode') === '1' ? 'dark' : 'light');
+            localStorage.removeItem('darkMode');
+        }
+    } catch (e) {}
+    applyTheme();
+    // 跟随系统：OS 主题切换时实时更新（仅在 system 模式下生效）
+    try {
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+                if (_readThemeMode() === 'system') applyTheme();
+            });
+        }
+    } catch (e) {}
     if (window.syncCapabilityToggles) window.syncCapabilityToggles();
     var verSpan = document.getElementById('setting-current-version');
     if (verSpan) verSpan.textContent = APP_VERSION;
@@ -826,8 +875,9 @@ async function performUpdateCheck(url, showStatus) {
         }
     } catch (err) {
         if (showStatus) {
-            statusEl.textContent = '❌ 检查失败：' + err.message;
-            statusEl.style.color = '#dc2626';
+            // 版本服务器不可达（如离线）时不报红错：SW 本地更新通道仍可用（下方 triggerApplyUpdate 已触发），避免误报「监测失败」
+            statusEl.textContent = 'ℹ️ 无法连接版本服务器（可能离线），已尝试检查本地更新';
+            statusEl.style.color = '#64748b';
         }
         console.warn('[Update]', err);
     }

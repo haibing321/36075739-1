@@ -1,5 +1,5 @@
 {
-  "version": "v3.1",
-  "releaseNotes": "v3.1：周简报「安全技术前言」联网检索（DeepSeek web_search）、风险研判结合天气+检查信息共同定级、Edge 防卡 LOG 启动看门狗、折叠屏 PWA 状态保持与暗黑适配、检查更新改为同源版本校验（解决误报监测失败）",
+  "version": "v3.2",
+  "releaseNotes": "v3.2：接入 DeepSeek 视觉多模态实验模型 deepseek-v4-flash-vision-exp——智能对话支持上传图片/现场照片由模型直接「看懂」并分析（图文理解）；视觉模型启用 thinking 思考与 web_search 联网搜索（联网路径改为跟随当前模型）；新增统一 buildVisionMessages 助手把图片转为 image_url 内容块；FIM 中间补全对视觉/非 DeepSeek 模型加守卫；模型列表加入视觉实验模型。",
   "downloadUrl": "./"
 }

@@ -705,8 +705,8 @@
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API 地址</label><input id="ds-pe-url" list="api-url-list" onchange="if(window.dsAutoDetectModel)dsAutoDetectModel()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="https://api.deepseek.com/chat/completions"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-v4-flash"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
-                // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具，需 deepseek-v4-flash
-                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，模型固定 deepseek-v4-flash）</label>';
+                // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具（视觉模型亦可用，会跟随当前模型）
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，跟随当前模型，视觉模型可用）</label>';
                 html += '</div>';
                 html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
                 html += '</div>';
@@ -1221,9 +1221,22 @@
                 const validAttach = (window._dsAttachments || []).filter(Boolean);
                 let finalText = userText;
                 let attachNames = [];
+                let visionUserContent = null; // 真实送审内容（含 image_url 块时非字符串）
                 if (validAttach.length > 0) {
                     attachNames = validAttach.map(function(a) { return a.name; });
-                    finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
+                    // 用统一助手构建：图片转 image_url 块，文本保持纯文本；无图则退化为纯文本 finalText
+                    var _vm = (typeof window.buildVisionMessages === 'function')
+                        ? window.buildVisionMessages(userText, validAttach)
+                        : null;
+                    if (_vm && typeof _vm.content !== 'string') {
+                        visionUserContent = _vm.content; // content 为数组（OpenAI 多模态格式）
+                        // 历史/重渲染仍用纯文本（含图片元信息），保证渲染与重新生成兼容
+                        finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) {
+                            return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
+                        }).join('\n\n');
+                    } else {
+                        finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
+                    }
                     window._dsAttachments = [];
                     document.getElementById('ds-attach-file') && (document.getElementById('ds-attach-file').value = '');
                 }
@@ -1244,15 +1257,16 @@
                     localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
                     dsRenderHistoryList();
                 }
-                dsHistory.push({ role: 'user', content: finalText, displayText: displayText });
+                dsHistory.push({ role: 'user', content: finalText, displayText: displayText, visionContent: visionUserContent || undefined });
                 dsRenderAll();
 
                 // 进入流式生成核心（重新生成复用）
-                await window._dsRunStream(finalText);
+                await window._dsRunStream(finalText, visionUserContent);
             };
 
             // 流式生成核心：普通对话与「重新生成」共用
-            window._dsRunStream = async function(finalText) {
+            // visionUserContent：本次发送附带的真实多模态内容（image_url 数组），无图时为 undefined
+            window._dsRunStream = async function(finalText, visionUserContent) {
                 if (dsStreaming) return;
                 // ---- 4.1 API Key ----
                 const key = dsApiKey || await _getApiKey();
@@ -1311,6 +1325,15 @@
                     { role: 'system', content: systemPrompt },
                     ...dsHistory.slice(-10)
                 ];
+                // 多模态：若本次发送含图片块，将最后一条 user 消息的 content 替换为 image_url 数组
+                if (visionUserContent && messages.length) {
+                    for (var _mi = messages.length - 1; _mi >= 0; _mi--) {
+                        if (messages[_mi].role === 'user') {
+                            messages[_mi] = { role: 'user', content: visionUserContent };
+                            break;
+                        }
+                    }
+                }
 
                 // ---- 4.7 流式对话 ----
                 dsHistory.push({ role: 'assistant', content: '' });
@@ -1387,13 +1410,22 @@
                     var inputItems = dsHistory.slice(-10)
                         .map(function(m) { return { role: m.role, content: (m.content || '') }; })
                         .filter(function(m) { return !!m.content || m.role === 'system'; });
+                    // 联网搜索同样支持多模态：最后一条 user 若有图片块则替换为 image_url 数组
+                    if (visionUserContent && inputItems.length) {
+                        for (var _ii = inputItems.length - 1; _ii >= 0; _ii--) {
+                            if (inputItems[_ii].role === 'user') {
+                                inputItems[_ii] = { role: 'user', content: visionUserContent };
+                                break;
+                            }
+                        }
+                    }
                     var resp;
                     if (useWebSearch) {
                         resp = await fetch(responsesUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
                             body: JSON.stringify({
-                                model: 'deepseek-v4-flash',
+                                model: dsModel,
                                 instructions: systemPrompt,
                                 input: inputItems,
                                 tools: [{ type: 'web_search' }],
@@ -1615,7 +1647,7 @@
                 }
                 const lastUser = dsHistory[dsHistory.length - 1];
                 if (!lastUser || lastUser.role !== 'user') return;
-                window._dsRunStream(lastUser.content);
+                window._dsRunStream(lastUser.content, lastUser.visionContent);
             };
 
             window.dsQuick = function(text) {
@@ -1765,7 +1797,15 @@
             }
 
             // ---- P2 FIM 中间补全（Beta，独立入口，仅非思考） ----
-            window.dsOpenFim = function() { var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'flex'; };
+            window.dsOpenFim = function() {
+                // 守卫：视觉/非 DeepSeek 等不支持 FIM 的模型禁止打开（避免 404/报错）
+                var _cur = dsModel || (localStorage.getItem('ds_model_v1') || DS_DEFAULT_MODEL);
+                if (typeof window.dsModelSupportsFim === 'function' && !window.dsModelSupportsFim(_cur)) {
+                    alert('当前模型「' + _cur + '」不支持 FIM 中间补全（视觉/实验模型等）。\n请切换到 DeepSeek 文本模型（如 deepseek-v4-flash）后再使用此功能。');
+                    return;
+                }
+                var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'flex';
+            };
             window.dsCloseFim = function() { var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'none'; };
             window.dsRunFim = async function() {
                 var _p = document.getElementById('ds-fim-prefix');

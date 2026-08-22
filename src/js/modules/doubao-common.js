@@ -396,5 +396,46 @@
         dsRenderAttachPreview();
     };
 
+    /**
+     * 构建「多模态消息」：把附件中的图片转为真正的 image_url 内容块，文本附件保留为纯文本。
+     * 集中处理视觉模型的图文输入，避免各模块重复拼装。
+     * @param {string} text 用户文本（可为空）
+     * @param {Array} attachments window._dsAttachments 过滤后的有效附件
+     * @returns {{role:'user', content: (string|Array)}} 可直接塞进 messages 的 user 消息
+     *   - 无图片：content 为字符串（兼容现有纯文本逻辑）
+     *   - 有图片：content 为 [{type:'text',text},{type:'image_url',image_url:{url:dataUrl}}]
+     */
+    window.buildVisionMessages = function(text, attachments) {
+        var attach = (attachments || []).filter(Boolean);
+        var images = attach.filter(function(a) { return a.isImage && a.dataUrl; });
+        var texts = attach.filter(function(a) { return !(a.isImage && a.dataUrl); });
+        // 无图片：维持原纯文本拼装（与历史/重新生成逻辑兼容）
+        if (!images.length) {
+            var plain = text || '';
+            if (texts.length) {
+                plain += '\n\n【附件内容】\n' + texts.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
+            }
+            return { role: 'user', content: plain };
+        }
+        // 有图片：构造 content 数组（OpenAI 多模态格式）
+        var blocks = [];
+        var imgDesc = images.map(function(a) { return a.name; }).join('、');
+        var lead = (text || '') + (texts.length ? '\n\n【附件文本】\n' + texts.map(function(a){ return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n') : '');
+        if (lead.trim()) blocks.push({ type: 'text', text: lead + (lead.trim() ? '\n\n（附图片：' + imgDesc + '，请结合图片内容理解）' : '') });
+        else blocks.push({ type: 'text', text: '（附图片：' + imgDesc + '，请结合图片内容理解）' });
+        images.forEach(function(a) {
+            blocks.push({ type: 'image_url', image_url: { url: a.dataUrl } });
+        });
+        return { role: 'user', content: blocks };
+    };
+
+    // 当前模型是否支持 FIM（中间补全）。视觉/非 DeepSeek 等实验模型不支持。
+    window.dsModelSupportsFim = function(modelName) {
+        var m = String(modelName || '');
+        if (/vision|exp|exp$/i.test(m)) return false;       // 视觉实验模型明确不支持
+        if (/deepseek/i.test(m)) return true;                // DeepSeek 文本模型支持
+        return false;                                        // 其他供应商保守关闭
+    };
+
     console.log('✅ doubao-common.js 已加载');
 })();

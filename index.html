@@ -1649,7 +1649,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.1</span> · 2026.08.14</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.2</span> · 2026.08.22</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1660,11 +1660,33 @@
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
             </div>
 
+            <!-- v3.2 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.2 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🖼️ 接入 DeepSeek 视觉多模态实验模型 deepseek-v4-flash-vision-exp：智能对话可上传图片/现场照片，由模型直接「看懂」并分析（图文理解）</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧠 视觉模型启用 thinking 思考模式与 web_search 联网搜索（联网路径改为跟随当前模型，视觉模型亦可联网）</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛡️ 新增统一 buildVisionMessages 助手（图片转 image_url 块）；FIM 中间补全对视觉/非 DeepSeek 模型加守卫；模型列表加入视觉实验模型</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.1 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.1 近期更新</span>
+                    <span>v3.1 更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
@@ -1860,6 +1882,13 @@
                     4. 需要实时联网检索时，可在编辑表单中勾选「🌐 联网搜索」。</div>
                 </div>
                 <div id="ds-model-manager"></div>
+                <!-- 模型名称补全列表（含视觉多模态实验模型） -->
+                <datalist id="api-model-list">
+                    <option value="deepseek-v4-flash">DeepSeek V4 Flash（文本，默认）</option>
+                    <option value="deepseek-v4-flash-vision-exp">DeepSeek V4 Flash Vision（视觉多模态·实验）</option>
+                    <option value="deepseek-chat">DeepSeek Chat</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner（深度思考）</option>
+                </datalist>
             </div>
             <div class="modal-footer" style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">
                 <button onclick="document.getElementById('api-config-modal').style.display='none'" class="btn-outline">关闭</button>

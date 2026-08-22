@@ -300,7 +300,7 @@
                 img.onload = function() {
                     const sizeKB = (file.size / 1024).toFixed(0);
                     const desc = '[图片附件] ' + file.name + '（' + img.width + '×' + img.height + '，' + sizeKB + 'KB）\n'
-                        + '提示：当前对话模型为文本模型，图片内容需由支持多模态的模型解读；已附图片元信息供参考。';
+                        + '图片已作为视觉内容附上，请结合图片理解用户问题。';
                     resolve(desc);
                 };
                 img.onerror = function() {

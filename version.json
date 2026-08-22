@@ -1,5 +1,5 @@
 {
-  "version": "v3.2",
-  "releaseNotes": "v3.2：接入 DeepSeek 视觉多模态实验模型 deepseek-v4-flash-vision-exp——智能对话支持上传图片/现场照片由模型直接「看懂」并分析（图文理解）；视觉模型启用 thinking 思考与 web_search 联网搜索（联网路径改为跟随当前模型）；新增统一 buildVisionMessages 助手把图片转为 image_url 内容块；FIM 中间补全对视觉/非 DeepSeek 模型加守卫；模型列表加入视觉实验模型。",
+  "version": "v3.2.1",
+  "releaseNotes": "v3.2.1：修正上传图片时的提示文案——移除「当前对话模型为文本模型，图片内容需由支持多模态的模型解读」这一过时且自相矛盾的声明（视觉模型现已能直接看图），改为中性说明「图片已作为视觉内容附上，请结合图片理解」。避免 AI 被误导而谎称无法识图。",
   "downloadUrl": "./"
 }

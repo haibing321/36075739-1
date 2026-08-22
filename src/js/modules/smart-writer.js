@@ -676,14 +676,39 @@
                         const ext = file.name.split('.').pop().toLowerCase();
 
                         // 根据文件扩展名选择解析方式
+                        // 【修复 F1】复用与「资料库导入」一致的真实解析能力（mammoth/XLSX/pdf.js），
+                        // 不再使用占位文本函数，确保上传文件正文能被 AI 读取。
                         if (ext === 'txt' || ext === 'md' || ext === 'json' || ext === 'csv') {
                             content = await wrReadTextFile(file);
-                        } else if (ext === 'doc' || ext === 'docx') {
-                            content = await wrReadWordFile(file);
-                        } else if (ext === 'xls' || ext === 'xlsx') {
-                            content = await wrReadExcelFile(file);
+                        } else if (ext === 'docx') {
+                            try {
+                                const parsed = await wrParseDocx(file);
+                                content = parsed.content || parsed.title || '';
+                            } catch (e) { content = '[DOCX解析失败：' + (e.message || '未知错误') + ']'; }
+                        } else if (ext === 'doc') {
+                            content = '[暂不支持 .doc 旧版格式，请另存为 .docx 后上传]';
+                        } else if (ext === 'xlsx' || ext === 'xls') {
+                            try {
+                                const parsed = await wrParseExcel(file);
+                                content = parsed.content || '';
+                            } catch (e) { content = '[Excel解析失败：' + (e.message || '未知错误') + ']'; }
                         } else if (ext === 'pdf') {
-                            content = await wrReadPdfFile(file);
+                            if (typeof pdfjsLib !== 'undefined') {
+                                try {
+                                    const arrayBuffer = await file.arrayBuffer();
+                                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                                    let fullText = '';
+                                    const maxPages = Math.min(pdf.numPages, 50);
+                                    for (let p = 1; p <= maxPages; p++) {
+                                        const page = await pdf.getPage(p);
+                                        const tc = await page.getTextContent();
+                                        fullText += tc.items.map(it => it.str).join(' ') + '\n';
+                                    }
+                                    content = fullText.trim();
+                                } catch (e) { content = '[PDF解析失败：' + (e.message || '未知错误') + ']'; }
+                            } else {
+                                content = '[PDF解析需要 pdf.js 库，请先在「资料库导入」中触发加载后再上传，或直接用「资料库导入」]';
+                            }
                         } else {
                             content = '暂不支持该文件格式：' + ext;
                         }
@@ -1502,12 +1527,29 @@
                 scored.sort((a, b) => b.score - a.score);
 
                 // 返回策略：
-                // 1. 如果有关键词匹配(score>0)的资料，优先返回这些
-                // 2. 如果没有匹配关键词的资料，返回最新的8条资料（确保导入的资料可见）
+                // 1. 有关键词匹配(score>0)的资料，优先返回这些（强相关，噪声可控）
+                // 2. 【修复 C1】无关键词匹配时，不再无脑返回全部资料（会引入无关案例噪声、跑题）。
+                //    改为：仅返回与 parsed.reportType 强相关的资料类型，且数量收紧到 Top-4，
+                //    并提示「仅供参考」，避免稀释主题。
                 const hasMatches = scored.some(x => x.score > 0);
-                const filtered = hasMatches 
-                    ? scored.filter(x => x.score > 0)  // 只返回有匹配的资料
-                    : scored;  // 无匹配时返回所有资料（按时间排序）
+                let filtered;
+                if (hasMatches) {
+                    filtered = scored.filter(x => x.score > 0);
+                } else {
+                    const rt = (materials && materials.parsed && materials.parsed.reportType) || '';
+                    const relatedTypes = ({
+                        monthly: ['stats', 'check', 'fault', 'inspect'],
+                        check:   ['check', 'fault', 'stats', 'inspect'],
+                        accident:['fault', 'stats', 'notice'],
+                        rectify: ['check', 'fault', 'notice'],
+                        summary: ['stats', 'check', 'fault'],
+                        report:  ['report', 'stats', 'fault'],
+                        inspect: ['inspect', 'check', 'stats'],
+                        notice:  ['notice', 'check', 'fault']
+                    })[rt] || ['stats', 'fault', 'check'];
+                    filtered = scored.filter(x => relatedTypes.includes(x.m.matType));
+                    if (filtered.length === 0) filtered = scored.slice(0, 4); // 兜底：仍无则取最新4条
+                }
 
                 // 返回Top-8，但每种类型至多3条（避免单一类型淹没，同时保证足够的数据量）
                 const result = [];
@@ -1554,7 +1596,7 @@
                 return { total, catMap, typicals, dateLabel: parsedQuery.dateLabel || '' };
             }
 
-            function wrBuildPrompt(query, materials) {
+            function wrBuildPrompt(query, materials, uploadedContent) {
                 const { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials } = materials;
                 const today = new Date();
                 const todayStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
@@ -1605,6 +1647,13 @@
 
                 const userLines = ['【用户需求】', query, ''];
 
+                // 【修复 A2】上传文件内容独立成段，明确为"待引用素材"，提升 AI 引用率
+                if (uploadedContent && uploadedContent.trim()) {
+                    userLines.push('【上传的文件内容（重要素材，请在报告中充分引用其中的具体事实、数据、案例，不得忽略或编造）】');
+                    userLines.push(uploadedContent.trim());
+                    userLines.push('');
+                }
+
                 // 模板（从资料库中获取的模板使用 matType 字段）
                 if (template) {
                     const tplType = template.matType || template.category || 'template';
@@ -1622,6 +1671,21 @@
                             .replace(/{{日期}}/g, '【数据:' + realStats.dateLabel + '】');
                     }
                     userLines.push(tplContent.slice(0, 6000) + (tplContent.length > 6000 ? '\n（模板内容过长，已截取前6000字，请严格按模板章节结构输出全部内容）' : ''));
+                    // 【修复 A1】长模板截断会丢失后半段章节，导致 AI 看不到完整结构却被告知"必须输出全部章节"。
+                    // 始终额外注入「章节标题骨架」，确保 AI 能看到全部章节标题，按骨架补全被截断的正文。
+                    if (tplContent.length > 6000) {
+                        const skeleton = tplContent
+                            .split('\n')
+                            .filter(l => /^#{1,6}\s|^\s*[一二三四五六七八九十]+[、.．]|^\s*[（(][一二三四五六七八九十]+[)）]|^\s*\d+[、.．]/.test(l))
+                            .map(l => l.trim())
+                            .filter(Boolean)
+                            .join('\n');
+                        if (skeleton) {
+                            userLines.push('【模板章节标题骨架（务必按以下全部章节标题补全，不得遗漏）】');
+                            userLines.push(skeleton);
+                        }
+                        userLines.push('');
+                    }
                     userLines.push('');
                 } else {
                     userLines.push('【写作模板】');
@@ -1788,10 +1852,12 @@
 
                 // 合并上传的文件内容
                 let enhancedQuery = q;
+                let uploadedContent = '';
                 const uploadedFiles = (window._wrUploadedFiles || []).filter(Boolean);
                 if (uploadedFiles.length) {
-                    enhancedQuery += '\n\n【上传的文件内容】\n';
-                    uploadedFiles.forEach(f => { enhancedQuery += `\n--- 文件：${f.name} ---\n${f.content}\n`; });
+                    const uploadedBlock = uploadedFiles.map(f => `--- 文件：${f.name} ---\n${f.content}`).join('\n\n');
+                    enhancedQuery += '\n\n【上传的文件内容】\n' + uploadedBlock;
+                    uploadedContent = uploadedBlock;
                 }
 
                     if (!isRegenerate && !window._wrSkipLocalSearch) {
@@ -1853,7 +1919,7 @@
                     if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
 
                     // 构建提示词
-                    const { sysPrompt, userPrompt } = wrBuildPrompt(enhancedQuery, materials);
+                    const { sysPrompt, userPrompt } = wrBuildPrompt(q, materials, uploadedContent);
 
                     // 构建消息序列（保留最近4轮对话上下文）
                     const messages = [{ role: 'system', content: sysPrompt }];
@@ -1865,6 +1931,14 @@
                     messages.push({ role: 'user', content: userPrompt });
 
                     _wrAbortController = new AbortController();
+                    // 【修复 E1】整体生成超时（180s），避免 API 假死导致"停止"按钮常显、writeBtn 一直禁用
+                    const _wrTimeoutMs = 180000;
+                    const _wrTimeout = setTimeout(() => {
+                        if (_wrAbortController) {
+                            window._wrTimedOut = true;
+                            try { _wrAbortController.abort(new Error('TimeoutError')); } catch (e) {}
+                        }
+                    }, _wrTimeoutMs);
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -1952,19 +2026,32 @@
 
                     // 保存到历史
                     const isModify = !!window._wrSkipLocalSearch;
-                    const savedId = await wrSaveReport({
-                        title: isModify ? ((window._wrModifyBaseTitle || '报告') + '（修改版）') : (q.slice(0, 30) + (q.length > 30 ? '…' : '')),
-                        category: isModify ? (window._wrModifyCategory || 'other') : parsed.reportType,
-                        query: enhancedQuery,
-                        content: fullText,
-                        materialCount: {
-                            issues:  (materials.issues || []).length,
-                            rules:   (materials.ruleCandidates || []).length,
-                            reports: (materials.similarReports || []).length
-                        },
-                        date: Date.now(),
-                        templateId: template ? template.id : null
-                    });
+                    let savedId = null;
+                    try {
+                        savedId = await wrSaveReport({
+                            title: isModify ? ((window._wrModifyBaseTitle || '报告') + '（修改版）') : (q.slice(0, 30) + (q.length > 30 ? '…' : '')),
+                            category: isModify ? (window._wrModifyCategory || 'other') : (template && template.category ? template.category : parsed.reportType),
+                            query: enhancedQuery,
+                            content: fullText,
+                            materialCount: {
+                                issues:  (materials.issues || []).length,
+                                rules:   (materials.ruleCandidates || []).length,
+                                reports: (materials.similarReports || []).length
+                            },
+                            date: Date.now(),
+                            templateId: template ? template.id : null,
+                            source: 'smart-writer'
+                        });
+                    } catch (saveErr) {
+                        // 【修复 D4】保存失败不应静默：内容已在内存，提示用户可复制
+                        console.error('报告保存失败:', saveErr);
+                        if (streamBubbleContent) {
+                            const tip = document.createElement('div');
+                            tip.style.cssText = 'margin-top:6px;font-size:0.75rem;color:#d97706;';
+                            tip.textContent = '⚠️ 自动保存失败（内容仍可复制）：' + (saveErr && saveErr.message ? saveErr.message : '存储异常');
+                            streamBubbleContent.appendChild(tip);
+                        }
+                    }
                     window._wrCurrentReportId = savedId;
 
                     // 在气泡下方追加操作按钮
@@ -1972,8 +2059,8 @@
                         const actionsDiv = document.createElement('div');
                         actionsDiv.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
                         actionsDiv.innerHTML = `
-                            <button onclick="wrCopyText('${savedId}')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>
-                            <button onclick="wrDownloadText('${savedId}')" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>
+                            <button onclick="${(savedId ? "wrCopyText('" + savedId + "')" : "wrCopyFromMemory()")}" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">📋 复制</button>
+                            <button onclick="${(savedId ? "wrDownloadText('" + savedId + "')" : "wrDownloadFromMemory()")}" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📥 下载</button>
                             ${template && template.templateBuffer ? `<button onclick="wrDownloadDocxFromTemplate()" style="padding:5px 10px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.78rem;cursor:pointer;">📄 导出DOCX</button>` : ''}
                             <button onclick="wrSpeak('${savedId}')" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:var(--radius-sm);background:#fff;font-size:0.78rem;cursor:pointer;">🔊 朗读</button>
 
@@ -1988,9 +2075,18 @@
                     wrUpdateConvBtn();
                 } catch(err) {
                     if (err.name === 'AbortError') {
-                        if (streamBubbleContent) {
-                            streamBubbleContent.style.background = '#eff6ff';
-                            streamBubbleContent.textContent = '⏹️ 已停止生成';
+                        if (window._wrTimedOut) {
+                            // 【修复 E1】生成超时（非用户主动停止）
+                            if (streamBubbleContent) {
+                                streamBubbleContent.style.background = '#fff5f5';
+                                streamBubbleContent.style.color = '#e53e3e';
+                                streamBubbleContent.textContent = '⏱️ 生成超时（' + (_wrTimeoutMs / 1000) + 's）：模型响应时间过长，请稍后重试，或检查网络/API 状态。';
+                            }
+                        } else {
+                            if (streamBubbleContent) {
+                                streamBubbleContent.style.background = '#eff6ff';
+                                streamBubbleContent.textContent = '⏹️ 已停止生成';
+                            }
                         }
                         if (aiBubble) wrAppendRetryBtn(aiBubble);
                     } else {
@@ -2004,9 +2100,11 @@
                         if (aiBubble) wrAppendRetryBtn(aiBubble);
                     }
                 } finally {
+                    clearTimeout(_wrTimeout);
                     if (writeBtn) { writeBtn.disabled = false; writeBtn.textContent = '✍️ 开始写作'; }
                     if (stopBtn) stopBtn.style.display = 'none';
                     _wrAbortController = null;
+                    window._wrTimedOut = false;
                 }
             };
 
@@ -2153,6 +2251,21 @@
             };
 
             // 复制报告全文
+            // 【修复 D4】保存失败时的内存兜底复制（不依赖数据库）
+            window.wrCopyFromMemory = async function() {
+                try {
+                    const text = window._wrCurrentReportContent || '';
+                    if (!text) return alert('暂无可复制内容');
+                    await navigator.clipboard.writeText(text);
+                    alert('已复制到剪贴板！（当前内容来自本次生成，未存入资料库）');
+                } catch(e) { alert('复制失败，请手动选中内容复制。'); }
+            };
+            window.wrDownloadFromMemory = function() {
+                const text = window._wrCurrentReportContent || '';
+                if (!text) return alert('暂无可下载内容');
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                window.downloadBlob(blob, ((window._wrCurrentReportOrigQuery || '报告').slice(0, 20)) + '.txt');
+            };
             window.wrCopyText = async function(id) {
                 try {
                     const reports = await wrDbGetAll(WR_RPT_STORE);

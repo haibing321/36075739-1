@@ -1372,7 +1372,6 @@
     <script src="src/js/modules/agent-memory.js" defer></script>
     <script src="src/js/modules/agent-core.js" defer></script>
     <script src="src/js/modules/agent-goals.js" defer></script>
-    <script src="src/js/modules/weekly-brief.js" defer></script>
     <script src="src/js/modules/backup.js" defer></script>
     <!-- 应用入口：PWA/SW注册、DeepSeek样式、存储检查等 -->
     <script src="src/js/app.js" defer></script>
@@ -1455,53 +1454,6 @@
                         </label>
                     </span>
                 </div>
-                </div>
-
-                <!-- 每周安全简报（主动智能，折叠下拉） -->
-                <div onclick="var s=document.getElementById('set-wb-brief');s.style.display=s.style.display==='none'?'flex':'none';var a=document.getElementById('set-wb-brief-arrow');if(a)a.style.transform=s.style.display==='none'?'rotate(0deg)':'rotate(180deg)';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                    <span style="font-weight:600;color:var(--primary);flex:1;">📅 每周安全简报 <span style="font-size:0.7rem;color:#94a3b8;font-weight:400;">周一推送·天气研判</span></span>
-                    <span id="set-wb-brief-arrow" style="color:#64748b;font-size:0.75rem;transition:transform .2s;transform:rotate(0deg);">▾</span>
-                </div>
-                <div id="set-wb-brief" style="display:none;flex-direction:column;gap:8px;padding:10px 10px 8px;background:#f8fafc;border-radius:8px;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="font-size:0.86rem;">启用简报推送</span>
-                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
-                            <input type="checkbox" id="wb-brief-enabled" style="opacity:0;width:0;height:0;">
-                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
-                        </label>
-                    </div>
-                    <div style="font-size:0.8rem;color:#475569;">管辖范围（从应急电话导入，可多选线别；长线可只勾部分站）</div>
-                    <div style="display:flex;flex-direction:column;gap:10px;">
-                        <!-- 线路：折叠紧凑多选 -->
-                        <div>
-                            <div style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;" onclick="window.WeeklyBrief&&WeeklyBrief._toggleBlock('wb-brief-lines-body')">
-                                <span style="font-size:0.76rem;color:var(--text);font-weight:600;">线路（可多选，长线可只勾部分站）</span>
-                                <span id="wb-brief-lines-summary" style="font-size:0.72rem;color:var(--primary);margin-left:auto;margin-right:4px;"></span>
-                                <span id="wb-brief-lines-chevron" style="color:#94a3b8;font-size:0.7rem;transition:transform .2s;">▾</span>
-                            </div>
-                            <div id="wb-brief-lines-body" style="display:none;margin-top:6px;max-height:210px;overflow:auto;padding-right:4px;">
-                                <div id="wb-brief-lines"></div>
-                            </div>
-                        </div>
-                        <!-- 专业：折叠紧凑多选 -->
-                        <div>
-                            <div style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;" onclick="window.WeeklyBrief&&WeeklyBrief._toggleBlock('wb-brief-trades-body')">
-                                <span style="font-size:0.76rem;color:var(--text);font-weight:600;">研判专业范围（可多选，默认全部）</span>
-                                <span id="wb-brief-trades-summary" style="font-size:0.72rem;color:var(--primary);margin-left:auto;margin-right:4px;"></span>
-                                <span id="wb-brief-trades-chevron" style="color:#94a3b8;font-size:0.7rem;transition:transform .2s;">▾</span>
-                            </div>
-                            <div id="wb-brief-trades-body" style="display:none;margin-top:6px;max-height:210px;overflow:auto;padding-right:4px;">
-                                <div id="wb-brief-trades"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
-                        已选区：<span id="wb-brief-stations-preview">—</span>
-                    </div>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
-                        已选专业：<span id="wb-brief-trades-preview">—</span>
-                    </div>
-                    <button id="wb-brief-preview" style="align-self:flex-start;padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;">👁 预览本周简报</button>
                 </div>
 
                 <!-- 数据管理（可展开） -->
@@ -1649,7 +1601,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.2</span> · 2026.08.22</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.3</span> · 2026.08.23</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1658,6 +1610,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- v3.3 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.3 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🗑️ 移除「每周安全简报」模块：删除设置面板入口、主动推送逻辑、周报联网前言等全部相关代码，精简核心功能</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v3.2 近期更新 -->
@@ -1689,10 +1655,6 @@
                     <span>v3.1 更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📡 周简报「安全技术前言」联网检索：复用 DeepSeek web_search 实时获取技术动态（需配置 API Key），无网络时回退资料库/提示</span>
-                    </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
                         <span>🔥 风险研判结合「天气 + 检查信息」共同定级：每条隐患标注综合风险（高/中/低），末尾新增「综合风险研判」结论</span>

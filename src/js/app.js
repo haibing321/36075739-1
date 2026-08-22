@@ -743,7 +743,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.2.2'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.3'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -798,8 +798,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (aboutVer) aboutVer.textContent = APP_VERSION;
     // 离线获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
     _fetchSwVersion();
-    // 每周安全简报（主动智能）：周一打开应用时生成并推送
-    if (window.WeeklyBrief) window.WeeklyBrief.init();
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）

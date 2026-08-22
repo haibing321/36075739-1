@@ -1,5 +1,5 @@
 {
-  "version": "v3.2.2",
-  "releaseNotes": "v3.2.2：修复智能对话被问「能否识别图片」时仍谎称不能的问题。在 system prompt 注入「视觉能力状态声明」——当前模型为视觉模型(deepseek-v4-flash-vision-exp)时明确告知模型具备图像理解能力、禁止自称无法看图；为纯文本模型时如实说明并引导切换视觉模型。新增 dsModelSupportsVision 判定。",
+  "version": "v3.3",
+  "releaseNotes": "v3.3：移除「每周安全简报」模块（设置面板入口、主动推送逻辑、周报联网前言等全部删除），精简为更聚焦的核心功能。",
   "downloadUrl": "./"
 }

@@ -437,5 +437,13 @@
         return false;                                        // 其他供应商保守关闭
     };
 
+    // 当前模型是否支持图像理解（多模态）。视觉模型（含 vision/exp 标识）支持；DeepSeek 文本模型不支持；其他保守关闭。
+    window.dsModelSupportsVision = function(modelName) {
+        var m = String(modelName || '');
+        if (/vision|exp/i.test(m)) return true;              // 视觉实验模型支持看图
+        if (/deepseek/i.test(m)) return false;               // DeepSeek 纯文本模型不支持
+        return false;                                        // 其他供应商保守关闭
+    };
+
     console.log('✅ doubao-common.js 已加载');
 })();

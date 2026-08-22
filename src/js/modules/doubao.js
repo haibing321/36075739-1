@@ -1391,6 +1391,17 @@
                             }
                         } catch (e) {}
                     }
+                    // 告知模型自身视觉能力状态：避免模型在被问「能否识别图片」时凭通用认知谎称不能
+                    try {
+                        if (messages[0] && messages[0].role === 'system') {
+                            if (window.dsModelSupportsVision && window.dsModelSupportsVision(dsModel)) {
+                                messages[0].content += '\n\n【图像理解已启用】你当前使用的模型具备图像理解（多模态）能力，用户通过「上传附件」传入的图片你可以直接查看、识别并分析。'
+                                    + '当用户上传图片（如现场设备照片、仪表读数、隐患照片、图纸等）并提问时，请基于图片内容作答；严禁声称"我无法识别图像""看不了图片"。';
+                            } else {
+                                messages[0].content += '\n\n【图像理解未启用】你当前使用的模型为纯文本模型，不具备图像识别能力。若用户上传图片或询问能否识别图片，请如实说明当前模型无法看图，并引导：在「设置 → API 配置 → ＋新增模型」中将模型切换为 deepseek-v4-flash-vision-exp（视觉实验模型）后即可看图。';
+                            }
+                        }
+                    } catch (e) {}
                     // DeepSeek V4 能力开关：思考模式 / JSON 输出（仅对 DeepSeek V4 模型生效，其余供应商忽略以免报错）
                     var _isV4 = /deepseek/i.test(dsModel) || /api\.deepseek\.com/i.test(dsApiUrl);
                     var thinkingOn = _isV4 && localStorage.getItem('ds_thinking') !== '0';

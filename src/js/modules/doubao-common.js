@@ -289,19 +289,40 @@
         });
     };
 
-    // 图片附件：读取为 dataURL，获取尺寸，返回描述文本（供 AI 提示词引用；多模态模型可直接消费 dataUrl）
+    // 图片附件：读取为 dataURL，按比例压缩（P7 修复：避免原图 base64 过大导致存储/接口超限），获取尺寸
     window.dsReadImageFile = function(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = function(e) {
                 const dataUrl = e.target.result;
-                file.attachDataUrl = dataUrl;
                 const img = new Image();
                 img.onload = function() {
-                    const sizeKB = (file.size / 1024).toFixed(0);
-                    const desc = '[图片附件] ' + file.name + '（' + img.width + '×' + img.height + '，' + sizeKB + 'KB）\n'
-                        + '图片已作为视觉内容附上，请结合图片理解用户问题。';
-                    resolve(desc);
+                    try {
+                        // 压缩：最长边限制为 1280，输出 JPEG（质量 0.82），显著降低体积
+                        const MAX_EDGE = 1280;
+                        let { width, height } = img;
+                        if (width > MAX_EDGE || height > MAX_EDGE) {
+                            const scale = Math.min(MAX_EDGE / width, MAX_EDGE / height);
+                            width = Math.round(width * scale);
+                            height = Math.round(height * scale);
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+                        file.attachDataUrl = compressed;
+                        const sizeKB = (file.size / 1024).toFixed(0);
+                        const compKB = Math.round((compressed.length * 3) / 4 / 1024);
+                        const desc = '[图片附件] ' + file.name + '（原 ' + img.width + '×' + img.height + '，' + sizeKB + 'KB；处理后 ' + width + '×' + height + '，约 ' + compKB + 'KB）\n'
+                            + '图片已作为视觉内容附上，请结合图片理解用户问题。';
+                        resolve(desc);
+                    } catch (err) {
+                        // 压缩失败（如 canvas 受限）则回退原始 dataURL
+                        file.attachDataUrl = dataUrl;
+                        const sizeKB = (file.size / 1024).toFixed(0);
+                        resolve('[图片附件] ' + file.name + '（' + img.width + '×' + img.height + '，' + sizeKB + 'KB）\n图片已作为视觉内容附上，请结合图片理解用户问题。');
+                    }
                 };
                 img.onerror = function() {
                     resolve('[图片附件] ' + file.name + '（尺寸未知）');

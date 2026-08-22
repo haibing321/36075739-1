@@ -1601,7 +1601,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.3</span> · 2026.08.23</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.4</span> · 2026.08.23</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1610,6 +1610,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- v3.4 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.4 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛡️ 修复智能对话审计问题：纯文本模型发图 400 守卫(P5)、含图历史标题损坏(P1/P2)、localStorage 超限静默丢对话(P3)、仅发图被拦截(P6)、图片压缩(P7)、请求超时(P8)、对话搜索增强(P10)、窄屏气泡溢出(P14)、超50条截断提示(P11)</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v3.3 近期更新 -->
@@ -1625,120 +1639,8 @@
                     </div>
                 </div>
             </div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.2 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
-            <!-- v3.2 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.2 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🖼️ 接入 DeepSeek 视觉多模态实验模型 deepseek-v4-flash-vision-exp：智能对话可上传图片/现场照片，由模型直接「看懂」并分析（图文理解）</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🧠 视觉模型启用 thinking 思考模式与 web_search 联网搜索（联网路径改为跟随当前模型，视觉模型亦可联网）</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🛡️ 新增统一 buildVisionMessages 助手（图片转 image_url 块）；FIM 中间补全对视觉/非 DeepSeek 模型加守卫；模型列表加入视觉实验模型</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v3.1 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.1 更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔥 风险研判结合「天气 + 检查信息」共同定级：每条隐患标注综合风险（高/中/低），末尾新增「综合风险研判」结论</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🪟 Edge 浏览器防卡 LOG：新增启动遮罩 + 4 秒看门狗，任何异常都不会长时间停在启动界面</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📱 折叠屏 PWA 状态保持：安装后打开自动恢复到上次页面，并适配安全区（viewport-fit=cover）+ 暗黑模式</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔄 检查更新改为同源版本校验，解决误报「监测失败」问题</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 近期更新（DeepSeek V4 适配） -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>近期更新（DeepSeek V4 适配）</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🧠 思考模式（V4）：先输出思考过程（可折叠），再给答案，复杂问题更可靠</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🛠 工具调用（V4）：智能体自主调用规章制度 / 检查信息 / 手册 / 电话 / 资料等 14 个本地工具完成检索查证</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔣 JSON 输出模式：结构化结果便于导出与二次处理</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔒 前缀续写 / ✂️ FIM 补全（Beta）：固定起手式、快速填空补段，均非思考模式</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>⚙️ 设置面板「DeepSeek V4 高级能力」折叠归组，首屏更清爽</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v3.0 版本（大版本） -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v3.0</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌐 智能对话联网搜索：输入栏地球图标按钮，点击展开说明菜单开关；关闭时遇到新闻、天气、行情等实时问题仍自动联网，问「最新版 / 新规 / 修订 / 现行有效 / 新标准」等时效内容自动核实最新规定</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🧠 角色提示词专家化：电务/工务/供电/车务/机务/车辆/通信/房建/客运/货运等各专业角色，升级为「专业领域 + 应熟悉规章 + 典型风险 + 分析框架 + 引用纪律」的结构化专家人设，并统一注入专业准则，回答更准更可信</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎨 视觉与体验：纯色统一按钮、暗黑模式、PWA 持续打磨，与角色/模型等工具按钮风格一致</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v2.93 版本 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🎉</span>
-                    <span>v2.93</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌐 智能对话联网搜索按钮交互优化：输入栏地球图标按钮，点击展开说明菜单，明确「开启（每次提问都联网）/ 关闭（仅实时类问题自动联网）」两个选项；手机端与桌面端一致</span>
-                    </div>
-                </div>
-            </div>
 
             <!-- 核心功能 -->
             <div style="margin-bottom:14px;">

@@ -92,8 +92,10 @@
     width: 100%;
     margin: 0 auto;
 }
-.ds-bubble-user { max-width: 82%; }
-.ds-bubble-assistant { max-width: 94%; }
+.ds-bubble-user { max-width: 82%; overflow-wrap: anywhere; word-break: break-word; }
+.ds-bubble-assistant { max-width: 94%; overflow-wrap: anywhere; word-break: break-word; }
+/* P14 修复：长串（URL/base64/代码）不撑破气泡，允许内部横向滚动而非溢出容器 */
+.ds-bubble-assistant pre, .ds-bubble-user pre { max-width: 100%; overflow-x: auto; }
 
 /* —— 工具栏（角色/模型/关联数据）精简 pill —— */
 .ds-toolbar {
@@ -166,6 +168,8 @@
     min-height: 24px;
     color: var(--text, #1e293b);
     font-family: inherit;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 .ds-input-textarea::placeholder { color: #94a3b8; }
 .ds-input-bar {

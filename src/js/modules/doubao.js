@@ -236,7 +236,31 @@
             function dsSaveConversations() {
                 try {
                     localStorage.setItem(DS_CONVERSATIONS_STORAGE, JSON.stringify(dsConversations));
-                } catch(e) {}
+                } catch(e) {
+                    // P3 修复：localStorage 写入超限（多为图片 base64 过大）时，降级移除对话中的图片块后重试，
+                    // 避免静默丢失全部对话历史。仍失败则提示用户。
+                    try {
+                        var slim = (dsConversations || []).map(function(c) {
+                            if (!c || !Array.isArray(c.messages)) return c;
+                            c.messages = c.messages.map(function(m) {
+                                if (m && m.visionContent) {
+                                    // 移除图片块，仅保留纯文本（已是 content 字符串），丢弃视觉数组
+                                    delete m.visionContent;
+                                }
+                                // 防止 content 本身为数组（异常残留）写入失败
+                                if (m && Array.isArray(m.content)) {
+                                    m.content = (m.displayText || '[图片对话]');
+                                }
+                                return m;
+                            });
+                            return c;
+                        });
+                        localStorage.setItem(DS_CONVERSATIONS_STORAGE, JSON.stringify(slim));
+                        if (window.Toast && window.Toast.warn) window.Toast.warn('对话包含图片体积过大，已精简图片后保存（图片不再本地留存）。');
+                    } catch (e2) {
+                        if (window.Toast && window.Toast.error) window.Toast.error('对话历史保存失败：存储空间不足，请清理部分旧对话。');
+                    }
+                }
             }
 
             // 生成唯一ID
@@ -248,7 +272,16 @@
             function dsGetConvTitle(messages) {
                 const firstUserMsg = messages.find(m => m.role === 'user');
                 if (firstUserMsg) {
-                    return firstUserMsg.content.slice(0, 25) + (firstUserMsg.content.length > 25 ? '...' : '');
+                    // P2 修复：content 可能为数组（含图片块多模态消息），优先用 displayText 字符串；
+                    // 否则对数组取文本块拼接，避免 [object Object] 损坏标题。
+                    var _c = firstUserMsg.displayText || firstUserMsg.content;
+                    if (Array.isArray(_c)) {
+                        _c = _c.filter(function(b) { return b && b.type === 'text'; })
+                                 .map(function(b) { return b.text || ''; })
+                                 .join('') || '[图片对话]';
+                    }
+                    _c = String(_c || '');
+                    return _c.slice(0, 25) + (_c.length > 25 ? '...' : '');
                 }
                 return '新对话';
             }
@@ -504,7 +537,17 @@
 
                 const kw = (_dsHistoryFilter || '').trim().toLowerCase();
                 let list = dsConversations.slice();
-                if (kw) list = list.filter(c => (c.title || '新对话').toLowerCase().indexOf(kw) !== -1);
+                if (kw) list = list.filter(function(c) {
+                    // P10 增强：标题或最近消息内容命中即匹配
+                    var _titleHit = (c.title || '新对话').toLowerCase().indexOf(kw) !== -1;
+                    if (_titleHit) return true;
+                    var _msgs = c.messages || [];
+                    return _msgs.some(function(m) {
+                        var _ct = m.displayText || m.content;
+                        if (Array.isArray(_ct)) _ct = _ct.map(function(b){ return b.text || ''; }).join('');
+                        return String(_ct || '').toLowerCase().indexOf(kw) !== -1;
+                    });
+                });
 
                 if (list.length === 0) {
                     listEl.innerHTML = '<div class="ds-history-empty">' + (kw ? '未找到匹配的对话' : '暂无历史记录') + '</div>';
@@ -1135,7 +1178,11 @@
                 if (dsStreaming) return;
                 const input = document.getElementById('ds-user-input');
                 let userText = input.value.trim();
-                if (!userText) return;
+                // P6 修复：仅发图（无文字但带附件）也应允许发送，不再被空输入拦截
+                const hasAttachOnly = !userText && (window._dsAttachments || []).filter(Boolean).length > 0;
+                if (!userText && !hasAttachOnly) return;
+                // 仅发图且无文字时，给一个占位文本，便于后续路由/标题生成
+                if (!userText && hasAttachOnly) userText = '（见附件）';
 
                 const rawUserText = userText;
 
@@ -1228,14 +1275,26 @@
                     var _vm = (typeof window.buildVisionMessages === 'function')
                         ? window.buildVisionMessages(userText, validAttach)
                         : null;
-                    if (_vm && typeof _vm.content !== 'string') {
+                    // P5 守卫：仅当当前模型具备图像理解能力时才保留 image_url 块；
+                    // 纯文本模型若直接送 image_url 会被 API 以 400 拒绝。此时退化为纯文本描述（图片元信息仍写入 finalText）。
+                    var _visionOk = (typeof window.dsModelSupportsVision === 'function')
+                        ? window.dsModelSupportsVision(dsModel || (localStorage.getItem('ds_model_v1') || ''))
+                        : false;
+                    if (_vm && typeof _vm.content !== 'string' && _visionOk) {
                         visionUserContent = _vm.content; // content 为数组（OpenAI 多模态格式）
                         // 历史/重渲染仍用纯文本（含图片元信息），保证渲染与重新生成兼容
                         finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) {
                             return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
                         }).join('\n\n');
                     } else {
-                        finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
+                        // 纯文本模型 / 无图：统一退化为纯文本（图片以文字说明形式附带）
+                        finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) {
+                            return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
+                        }).join('\n\n');
+                        if (_vm && typeof _vm.content !== 'string' && !_visionOk) {
+                            // 提示用户图片不会被识别（避免误以为已看图）
+                            finalText += '\n\n（提示：当前模型为纯文本模型，图片无法被识别，仅作为附件说明提交。如需识别图片，请在设置中切换到 deepseek-v4-flash-vision-exp）';
+                        }
                     }
                     window._dsAttachments = [];
                     document.getElementById('ds-attach-file') && (document.getElementById('ds-attach-file').value = '');
@@ -1355,6 +1414,13 @@
                         sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>';
                     }
                     window._dsAbortController = new AbortController();
+                    // P8 修复：整体请求超时（默认 120s），超时主动 abort 并提示，避免无限挂起
+                    var _reqTimeoutMs = 120000;
+                    var _reqTimer = setTimeout(function() {
+                        if (window._dsAbortController) {
+                            try { window._dsAbortController.abort(new DOMException('请求超时', 'TimeoutError')); } catch (e) {}
+                        }
+                    }, _reqTimeoutMs);
                     var isFrontendRole = selectedRole === 'frontend';
                     var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
                     var maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
@@ -1605,7 +1671,13 @@
                     }
 
                 } catch(err) {
-                    if (err.name === 'AbortError') {
+                    if (err.name === 'TimeoutError') {
+                        // P8：请求超时（非用户主动停止）
+                        dsHistory[assistantIdx].content = '❌ 请求超时（' + (_reqTimeoutMs / 1000) + 's）：模型响应时间过长，请稍后重试，或检查网络/API 状态。';
+                        var _tBox = document.getElementById('ds-chat-box');
+                        if (_tBox) { var _lb = _tBox.querySelector('.ds-bubble-assistant:last-of-type'); if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx); }
+                        dsRenderAll();
+                    } else if (err.name === 'AbortError') {
                         var chatBox2 = document.getElementById('ds-chat-box');
                         if (chatBox2) {
                             var cursors2 = chatBox2.querySelectorAll('.ds-cursor');
@@ -1628,6 +1700,7 @@
                         dsRenderAll();
                     }
                 } finally {
+                    if (_reqTimer) { clearTimeout(_reqTimer); _reqTimer = null; }
                     window._dsAbortController = null;
                     dsStreaming = false;
                     window.__dsStreaming = false;
@@ -1837,6 +1910,10 @@
                 if (_suffix.trim()) _body.suffix = _suffix;
                 _r.innerHTML = '⏳ 补全中…';
                 var _ac = new AbortController();
+                // P8 修复：FIM 请求超时（60s）
+                var _fimTimer = setTimeout(function() {
+                    try { _ac.abort(new DOMException('请求超时', 'TimeoutError')); } catch (e) {}
+                }, 60000);
                 try {
                     var _resp = await fetch(_fimUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _key }, body: JSON.stringify(_body), signal: _ac.signal });
                     if (!_resp.ok) {
@@ -1848,7 +1925,10 @@
                     var _text = (_jj.choices && _jj.choices[0] && _jj.choices[0].text) || '';
                     _r.innerHTML = '<pre class="ds-fim-pre">' + (typeof dsEsc === 'function' ? dsEsc(_text) : _text) + '</pre>';
                 } catch (e) {
-                    _r.innerHTML = '❌ ' + (e && e.message ? e.message : String(e));
+                    if (e && e.name === 'TimeoutError') _r.innerHTML = '❌ 请求超时（60s），请稍后重试。';
+                    else _r.innerHTML = '❌ ' + (e && e.message ? e.message : String(e));
+                } finally {
+                    if (_fimTimer) { clearTimeout(_fimTimer); _fimTimer = null; }
                 }
             };
 
@@ -1982,6 +2062,8 @@
 
             function dsSaveHistory() {
                 try {
+                    // P11 修复：本地仅保留最近 50 条，超出部分被丢弃（纯前端无后端存储）
+                    var _trimmed = dsHistory.length > 50;
                     localStorage.setItem(DS_CHAT_STORAGE, JSON.stringify(dsHistory.slice(-50)));
                     if (dsCurrentConvId) {
                         const currentConv = dsConversations.find(c => c.id === dsCurrentConvId);
@@ -1993,7 +2075,23 @@
                             // 【性能优化】sidebar 重建移至流结束后单独触发
                         }
                     }
-                } catch(e) {}
+                    if (_trimmed && !window.__dsTrimWarnShown) {
+                        window.__dsTrimWarnShown = true; // 仅提示一次，避免刷屏
+                        if (window.Toast && window.Toast.info) window.Toast.info('当前对话已超过 50 条，较早的消息不再本地留存（仅保留最近 50 条）。');
+                    }
+                } catch(e) {
+                    // P3 修复：写入失败时降级（丢弃图片块）重试，避免静默丢对话
+                    try {
+                        var slim = (dsHistory || []).map(function(m) {
+                            if (m && m.visionContent) delete m.visionContent;
+                            if (m && Array.isArray(m.content)) m.content = (m.displayText || '[图片对话]');
+                            return m;
+                        });
+                        localStorage.setItem(DS_CHAT_STORAGE, JSON.stringify(slim.slice(-50)));
+                    } catch (e2) {
+                        if (window.Toast && window.Toast.error) window.Toast.error('对话历史保存失败：存储空间不足。');
+                    }
+                }
             }
 
             // 等待 DOM 就绪后初始化

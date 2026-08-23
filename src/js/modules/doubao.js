@@ -1474,8 +1474,10 @@
                     var jsonOn = localStorage.getItem('ds_json_mode') === '1';
                     // P2 对话前缀续写（Beta，默认关）：锁死助手开场白（本系统固定 OpenAI 风格，故恒可用）
                     var _prefixOn = localStorage.getItem('ds_prefix') === '1';
-                    // P1 Tool Calls：仅 DeepSeek V4 模型 + 开关开启时生效；与 JSON 模式互斥（避免 tools 与 response_format 冲突）
-                    var _useTools = _isV4 && localStorage.getItem('ds_tool_calls') === '1' && !jsonOn;
+                    // P1 Tool Calls：仅 DeepSeek V4 模型 + 开关开启 + 工具 schema/执行器均可用时生效；与 JSON 模式互斥（避免 tools 与 response_format 冲突）
+                    // D1：增加 _agentToolsParam/_agentExecuteTool 可用性守卫——agent-core 未加载时降级为普通对话，避免向 API 发送 tools:null 导致 400 或工具静默失效
+                    var _toolsReady = (typeof window._agentToolsParam === 'function') && (typeof window._agentExecuteTool === 'function');
+                    var _useTools = _isV4 && localStorage.getItem('ds_tool_calls') === '1' && !jsonOn && _toolsReady;
                     // 前缀续写开启：强制关闭思考（Beta 仅非思考）+ 工具 + JSON，避免组合复杂化
                     if (_prefixOn) { thinkingOn = false; _useTools = false; jsonOn = false; }
                     var _toolsParamArr = (_useTools && typeof window._agentToolsParam === 'function') ? window._agentToolsParam() : null;
@@ -1608,6 +1610,11 @@
                         while (_useTools && _toolExec && _pendingToolCalls.length && _tcRound < _maxTcRounds) {
                             _tcRound++;
                             _pendingToolCalls = _pendingToolCalls.filter(Boolean);
+                            // D2：回灌前规范化 arguments——模型未生成参数时为空串，必须补为 '{}' 合法 JSON，否则 API 报 400
+                            _pendingToolCalls.forEach(function(_c) {
+                                if (!_c.function) _c.function = { name: '', arguments: '{}' };
+                                if (typeof _c.function.arguments !== 'string' || _c.function.arguments.trim() === '') _c.function.arguments = '{}';
+                            });
                             messages.push({ role: 'assistant', content: null, tool_calls: _pendingToolCalls });
                             for (var _k = 0; _k < _pendingToolCalls.length; _k++) {
                                 var _call = _pendingToolCalls[_k];
@@ -1616,6 +1623,16 @@
                                 dsHistory[assistantIdx].content = '🔧 正在调用工具：' + _call.function.name + ' …';
                                 (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
                                 var _exec = await _toolExec(_call.function.name, _args);
+                                // D3：工具结果可视化——在气泡中追加简短摘要（✅ 共N条 / ❌ 错误），提升调用过程可观测性，与智能体透明卡片对齐
+                                var _summary = '';
+                                if (_exec && _exec.ok) {
+                                    if (_exec.result && typeof _exec.result.total === 'number') _summary = '✅ ' + _call.function.name + '：共 ' + _exec.result.total + ' 条';
+                                    else _summary = '✅ ' + _call.function.name + '：执行成功';
+                                } else {
+                                    _summary = '❌ ' + _call.function.name + '：' + ((_exec && _exec.error) || '执行失败');
+                                }
+                                dsHistory[assistantIdx].content = '🔧 ' + _summary;
+                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
                                 var _tcContent = JSON.stringify(_exec && _exec.result !== undefined ? _exec.result : _exec, null, 2);
                                 messages.push({ role: 'tool', tool_call_id: _call.id, content: _tcContent });
                             }

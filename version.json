@@ -1,5 +1,5 @@
 {
-  "version": "v3.7",
-  "releaseNotes": "v3.7：修复智能体（agent-core）审计问题——规章/手册搜索 total 统计改为未截断真实总数(A1)、search 工具 id 反查改用 Map O(1) 提速并100%准确(A2)、天气站名坐标字典去重+精确优先匹配避免子串误匹配(A3)。",
+  "version": "v3.8",
+  "releaseNotes": "v3.8：检测并修复智能对话工具调用能力——_useTools 增加工具 schema/执行器可用性守卫(D1，agent-core 未加载降级普通对话避免发 tools:null)、回灌 tool_calls 空 arguments 规范为 '{}'(D2 防 API 400)、工具执行后气泡追加结果摘要提升可观测性(D3)；Node 验证 14 工具 schema 合法且 search_issues→get_issue_detail 链路闭环。",
   "downloadUrl": "./"
 }

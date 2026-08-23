@@ -709,6 +709,45 @@
                             } else {
                                 content = '[PDF解析需要 pdf.js 库，请先在「资料库导入」中触发加载后再上传，或直接用「资料库导入」]';
                             }
+                        } else if (/^image\//.test(file.type) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) {
+                            // 【视觉模型接入】图片附件：复用 doubao-common 的压缩读取，得到 dataUrl 供视觉模型理解
+                            if (typeof window.dsReadImageFile === 'function') {
+                                await window.dsReadImageFile(file); // 内部把压缩后的 dataUrl 挂到 file.attachDataUrl
+                                const dataUrl = file.attachDataUrl || null;
+                                const sizeKB = (file.size / 1024).toFixed(0);
+                                window._wrUploadedFiles.push({
+                                    name: file.name,
+                                    content: '[图片附件] ' + file.name + '（' + sizeKB + 'KB）\n图片已作为视觉内容附上，请结合图片理解用户写作需求。',
+                                    type: ext,
+                                    isImage: true,
+                                    dataUrl: dataUrl
+                                });
+                                // 显示图片标签（缩略图）
+                                if (tagsEl) {
+                                    tagsEl.style.display = 'flex';
+                                    const tag = document.createElement('span');
+                                    tag.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;font-size:0.78rem;color:#4338ca;';
+                                    const idx = window._wrUploadedFiles.length - 1;
+                                    if (dataUrl) {
+                                        const thumb = document.createElement('img');
+                                        thumb.src = dataUrl;
+                                        thumb.style.cssText = 'width:20px;height:20px;object-fit:cover;border-radius:4px;flex-shrink:0;';
+                                        tag.appendChild(thumb);
+                                    }
+                                    tag.appendChild(document.createTextNode('🖼️ ' + file.name));
+                                    const x = document.createElement('button');
+                                    x.textContent = '×';
+                                    x.style.cssText = 'background:none;border:none;cursor:pointer;color:#999;font-size:0.95rem;padding:0;line-height:1;margin-left:2px;';
+                                    x.onclick = function() { wrRemoveUploadedFile(idx, tag); };
+                                    tag.appendChild(x);
+                                    tagsEl.appendChild(tag);
+                                }
+                                // 显示到对话框（写作历史区域）
+                                wrShowUploadedFileInChat(file.name, '[图片附件] ' + file.name);
+                                continue; // 图片不入 content 文本，交予视觉块处理
+                            } else {
+                                content = '[图片上传需要 doubao-common.js 加载]';
+                            }
                         } else {
                             content = '暂不支持该文件格式：' + ext;
                         }
@@ -1928,7 +1967,16 @@
                         if (h.role === 'user' && h.content !== enhancedQuery) messages.push({ role: 'user', content: h.content });
                         else if (h.role === 'assistant') messages.push({ role: 'assistant', content: h.content.slice(0, 1500) });
                     });
-                    messages.push({ role: 'user', content: userPrompt });
+                    // 【视觉模型接入】若上传文件含图片且当前模型支持视觉，则把末条 user 改为多模态 content 数组
+                    const _wrVisionOk = (typeof window.dsModelSupportsVision === 'function')
+                        ? window.dsModelSupportsVision(model) : false;
+                    const _wrImgAttach = (uploadedFiles || []).filter(f => f && f.isImage && f.dataUrl);
+                    let _wrFinalUser = userPrompt;
+                    if (_wrImgAttach.length && _wrVisionOk && typeof window.buildVisionMessages === 'function') {
+                        const _vm = window.buildVisionMessages(userPrompt, _wrImgAttach);
+                        if (_vm && typeof _vm.content !== 'string') _wrFinalUser = _vm.content; // 多模态数组（OpenAI 格式）
+                    }
+                    messages.push({ role: 'user', content: _wrFinalUser });
 
                     _wrAbortController = new AbortController();
                     // 【修复 E1】整体生成超时（180s），避免 API 假死导致"停止"按钮常显、writeBtn 一直禁用

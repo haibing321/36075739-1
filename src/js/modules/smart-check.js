@@ -2009,6 +2009,20 @@
                 try {
                     window._dsAbortController = new AbortController();
                     console.log('[AI对规] fetch 开始...', apiUrl);
+                    // 【视觉模型接入】若当前附件含图片且模型支持视觉，把 user 消息转为多模态数组（纯新增；无图时走原纯文本）
+                    let _checkUserMsg = _buildAICheckUserMsg(query);
+                    try {
+                        const _visionOk = (typeof window.dsModelSupportsVision === 'function') ? window.dsModelSupportsVision(model) : false;
+                        if (_visionOk && typeof window.buildVisionMessages === 'function') {
+                            const _imgs = (window._dsAttachments || []).filter(Boolean)
+                                .filter(a => a && a.isImage && a.dataUrl)
+                                .map(a => ({ name: a.name, dataUrl: a.dataUrl, isImage: true }));
+                            if (_imgs.length) {
+                                const _vm = window.buildVisionMessages(_buildAICheckUserMsg(query), _imgs);
+                                if (_vm && typeof _vm.content !== 'string') _checkUserMsg = _vm.content;
+                            }
+                        }
+                    } catch (_e) { /* 视觉注入失败则退化为纯文本 */ }
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -2016,7 +2030,7 @@
                             model: model,
                             messages: [
                                 { role: 'system', content: sysPrompt },
-                                { role: 'user', content: _buildAICheckUserMsg(query) }
+                                { role: 'user', content: _checkUserMsg }
                             ],
                             temperature: 0.0,
                             max_tokens: 1024,

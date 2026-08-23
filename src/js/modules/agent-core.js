@@ -477,6 +477,19 @@
     if (!apiKey) throw new Error('请先在设置中配置 API Key');
     var controller = new AbortController();
     window.__agentAbort = controller; // 供停止按钮中断当前请求
+    // 【视觉模型接入】若本轮携带图片且模型支持视觉，把首条 user 消息的 content 转为多模态数组
+    var _vision = (typeof window.__agentVisionContent !== 'undefined') ? window.__agentVisionContent : null;
+    if (_vision && typeof window.dsModelSupportsVision === 'function' && window.dsModelSupportsVision(model)) {
+      for (var _mi = 0; _mi < messages.length; _mi++) {
+        if (messages[_mi].role === 'user' && typeof messages[_mi].content === 'string') {
+          var _imgBlocks = (Array.isArray(_vision) ? _vision : [_vision]).map(function(u) {
+            return { type: 'image_url', image_url: { url: u } };
+          });
+          messages[_mi] = { role: 'user', content: [{ type: 'text', text: messages[_mi].content }, ..._imgBlocks] };
+          break;
+        }
+      }
+    }
     var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 4000 };
     if (withTools) body.tools = _toolsParam();
     var resp;
@@ -513,7 +526,9 @@
   }
 
   // ========== ReAct 执行循环 ==========
-  window._agentRun = async function(userMessage) {
+  window._agentRun = async function(userMessage, visionContent) {
+    // 【视觉模型接入】记录本轮图片（dataUrl 数组），供 _callLLM 注入首条 user（纯新增，旧调用不传则无影响）
+    window.__agentVisionContent = (visionContent && Array.isArray(visionContent) && visionContent.length) ? visionContent : null;
     // B#9: 密钥预检，未配置直接返回友好提示，避免白跑 ReAct 循环
     if (!localStorage.getItem('ds_api_key_v1')) {
       return { messages: [{ role: 'assistant', content: '⚠️ 尚未配置 API Key，请先在「设置 → 智能助手」中填写 DeepSeek API Key，再使用智能体。' }], taskId: null };

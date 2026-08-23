@@ -750,6 +750,8 @@
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
                 // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具（视觉模型亦可用，会跟随当前模型）
                 html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，跟随当前模型，视觉模型可用）</label>';
+                // 【视觉模型快捷预设】一键填好名称/URL/模型名，免手敲（纯新增，不影响默认文本模型）
+                html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 快捷填入视觉模型</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">填入 DeepSeek-V4-Flash-Vision-Exp（看图/识别照片）</span></div>';
                 html += '</div>';
                 html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
                 html += '</div>';
@@ -768,6 +770,17 @@
                 document.getElementById('ds-provider-edit-title').textContent = '新增模型';
                 f.dataset.pid = '';
             }
+            // 【视觉模型快捷预设】一键填入 DeepSeek V4 Flash Vision Exp 配置（纯新增，不改动默认模型）
+            window.dsFillVisionModel = function() {
+                var f = document.getElementById('ds-provider-edit');
+                if (!f) return;
+                f.style.display = 'block';
+                if (document.getElementById('ds-pe-name')) document.getElementById('ds-pe-name').value = 'DeepSeek 视觉模型';
+                if (document.getElementById('ds-pe-url')) document.getElementById('ds-pe-url').value = 'https://api.deepseek.com/chat/completions';
+                if (document.getElementById('ds-pe-model')) document.getElementById('ds-pe-model').value = 'deepseek-v4-flash-vision-exp';
+                if (document.getElementById('ds-provider-edit-title')) document.getElementById('ds-provider-edit-title').textContent = '新增视觉模型';
+                f.dataset.pid = '';
+            };
             function dsEditProvider(id) {
                 var arr = getProviders(), p = arr.filter(function(x){ return x.id === id; })[0];
                 if (!p) return;
@@ -2816,6 +2829,20 @@
               { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。\n【重要约束】你只能引用下方【检查信息】真实汇总数据中的统计数字、案例与日期，严禁虚构任何统计数字、事故案例或时间；若某方面数据不足，必须如实说明"数据不足"，不得编造或推测具体数字。' },
               { role: 'user', content: userMsg }
             ];
+            // 【视觉模型接入】若当前附件含图片且模型支持视觉，把首条 user 消息 content 改为多模态数组
+            (function() {
+              try {
+                var _rModel = localStorage.getItem('ds_model_v1') || 'deepseek-v4-flash';
+                var _visionOk = (typeof window.dsModelSupportsVision === 'function') ? window.dsModelSupportsVision(_rModel) : false;
+                if (!_visionOk) return;
+                var _imgs = (window._dsAttachments || []).filter(Boolean).filter(function(a){ return a && a.isImage && a.dataUrl; }).map(function(a){ return a.dataUrl; });
+                if (!_imgs.length) return;
+                messages[1] = { role: 'user', content: [
+                  { type: 'text', text: userMsg + '\n\n（附图片：' + _imgs.length + ' 张，请结合图片中的现场照片/图表/仪表等视觉信息一并研判）' },
+                  ..._imgs.map(function(u){ return { type: 'image_url', image_url: { url: u } }; })
+                ] };
+              } catch (_e) {}
+            })();
           } else {
             messages = (window._riskCtx || []);
             var refineInput = document.getElementById('risk-refine-input');
@@ -3348,7 +3375,13 @@
         historyEl.innerHTML += '<div id="' + loadingId + '" style="color:#6b7280;font-size:0.85rem;margin:4px 0;">⏳ 思考中…</div>';
 
         try {
-          var result = await window._agentRun(msg);
+          // 【视觉模型接入】收集当前附件中的图片，传给智能体（纯新增；无图时传空数组，向后兼容）
+          var _agentImgs = [];
+          try {
+            var _atts = (window._dsAttachments || []).filter(Boolean);
+            _agentImgs = _atts.filter(function(a) { return a && a.isImage && a.dataUrl; }).map(function(a) { return a.dataUrl; });
+          } catch (_e) { _agentImgs = []; }
+          var result = await window._agentRun(msg, _agentImgs);
           // 移除加载提示
           var ld = document.getElementById(loadingId);
           if (ld) ld.remove();

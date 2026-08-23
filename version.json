@@ -1,5 +1,5 @@
 {
-  "version": "v3.9",
-  "releaseNotes": "v3.9：测试并修复智能体（agent-core）工具调用——_agentRun 主循环回灌 assistant tool_calls 给 API 前规范化 id/type/arguments(E1，模型缺 id 或空 arguments 时防 API 400 与 tool_call_id 配对失败，与智能对话 D2 同源)；Node 端到端验证正常多轮(2 次 fetch: tool_calls+最终答案)与缺陷边界(缺 id/空 arguments 规范化后配对一致)均通过。",
+  "version": "v3.10",
+  "releaseNotes": "v3.10：视觉模型（DeepSeek-V4-Flash-Vision-Exp）全模块接入——① 模型管理面板新增「📷 快捷填入视觉模型」按钮（免手敲，开箱即用）；② 智能写作放开图片上传（复用 dsReadImageFile 压缩+视觉块注入）；③ 智能体/智能写作/智能对规/智能风险研判四模块统一复用 buildVisionMessages+dsModelSupportsVision 注入 image_url 块（纯新增、向后兼容、无图退化为纯文本）；④ 联网(Responses)路径已支持多模态。Node 契约验证 17/17 通过。",
   "downloadUrl": "./"
 }

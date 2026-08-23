@@ -320,6 +320,45 @@
                 return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
             }
 
+            // 构建 AI 对规的 user 消息：在"检查问题"基础上补充本地匹配摘要，
+            // 让 AI 基于"本地匹配结果 + 用户问题 + 候选条款"做有依据的选择（修复 X2）
+            function _buildAICheckUserMsg(query) {
+                var lines = ['检查问题：' + query, ''];
+                var ctxParts = [];
+                // 本地匹配的历史案例摘要（top 5）
+                var issues = (window._lastACIssues || []).slice(0, 5);
+                if (issues.length) {
+                    ctxParts.push('【本地匹配到的相关历史案例（供参考，前' + issues.length + '条）】');
+                    issues.forEach(function(iss, i) {
+                        var nature = iss['性质'] || iss.nature || '';
+                        var cat = iss.category || '';
+                        var content = (iss.content || '').trim();
+                        content = content.length > 80 ? content.slice(0, 80) + '…' : content;
+                        ctxParts.push('  ' + (i + 1) + '. ' + (cat ? '[' + cat + '] ' : '') + (nature ? '[' + nature + '] ' : '') + (content || '(无描述)'));
+                    });
+                    ctxParts.push('');
+                }
+                // 本地召回的规章候选摘要（top 5）
+                var ruleList = window._lastACRules || [];
+                if (ruleList.length) {
+                    var rcs = ruleList.slice(0, 5).map(function(x){ return x && x.rule ? x.rule : x; });
+                    ctxParts.push('【本地匹配到的相关规章（供参考，前' + rcs.length + '条）】');
+                    rcs.forEach(function(r, i) {
+                        var t = (r.title || '').trim();
+                        var c = (r.clause || r.content || '').replace(/\s+/g, ' ').trim();
+                        c = c.length > 80 ? c.slice(0, 80) + '…' : c;
+                        ctxParts.push('  ' + (i + 1) + '. 《' + t + '》' + (c ? '：' + c : ''));
+                    });
+                    ctxParts.push('');
+                }
+                if (ctxParts.length) {
+                    lines.push('以下为本地匹配到的相关内容摘要，请结合候选条款列表一并判断：');
+                    lines.push.apply(lines, ctxParts);
+                }
+                lines.push('请在上方【候选条款列表】中挑选与检查问题最相关的条款，并输出要求的 JSON。');
+                return lines.join('\n');
+            }
+
             // JS 字符串转义（用于内联事件属性里注入的动态值，如 onclick="fn('...')"）
             // 关键：必须用反斜杠转义单/双引号，而非 HTML 实体（HTML 实体会在解析属性值后被还原，导致 JS 字符串提前闭合 → DOM XSS）
             function acEscJsStr(s) {
@@ -791,7 +830,7 @@
             function acDoLocalMatch(keywords) {
                 // 显示加载中
                 const container = document.getElementById('autoCheck-results');
-                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>正在使用关键词 [' + keywords.join(', ') + '] 进行匹配...</span></div>';
+                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>正在使用关键词 [' + keywords.map(function(k){ return acEscHtml(k); }).join(', ') + '] 进行匹配...</span></div>';
                 container.style.display = 'block';
                 
                 // 延迟执行，让UI更新
@@ -893,8 +932,17 @@
                     }
                 });
                 // 排序：AND模式优先，同模式按得分排序
+                // X5 修复：缺失 trade 字段但高命中的规章，应优先于"异专业"规章，
+                // 而非被简单归入 otherTrade 后可能被截断丢失
+                function _tradeRank(rule, baseTrade) {
+                    if (!rule.trade) return 1;                 // 缺 trade：置于同专业之后、异专业之前
+                    if (rule.trade === baseTrade) return 0;    // 同专业：最优先
+                    return 2;                                  // 异专业：最后
+                }
                 matchedRules.sort(function(a, b) {
                     if (a.mode !== b.mode) return a.mode === 'and' ? 1 : -1; // and 优先
+                    var ta = _tradeRank(a.rule, _pmTrade), tb = _tradeRank(b.rule, _pmTrade);
+                    if (ta !== tb) return ta - tb;
                     return b.matchScore - a.matchScore;
                 });
                 var scoredRules = matchedRules.slice(0, 10);
@@ -1946,7 +1994,7 @@
                         if (c.title) line += '《' + c.title + '》';
                         if (c.fileNumber) line += '（' + c.fileNumber + '）';
                         if (c.article)  line += ' 第' + c.article + '条';
-                        if (c.clause)   line += ' "' + c.clause.slice(0, 200) + '"';
+                        if (c.clause)   line += ' "' + c.clause.slice(0, 400) + '"';
                         return line;
                     }).join('\n'),
                     '',
@@ -1968,7 +2016,7 @@
                             model: model,
                             messages: [
                                 { role: 'system', content: sysPrompt },
-                                { role: 'user', content: '检查问题：' + query }
+                                { role: 'user', content: _buildAICheckUserMsg(query) }
                             ],
                             temperature: 0.0,
                             max_tokens: 1024,
@@ -2210,11 +2258,49 @@
                     var _cardEl = document.getElementById('ac-conclusion-card');
                     if (_cardEl) _cardEl.setAttribute('data-conclusion', conclusionPlain);
 
+                    // X4：对规结论持久化（刷新/切换后可在历史中回溯）
+                    try {
+                        var histKey = 'ac_check_history_v1';
+                        var hist = [];
+                        try { hist = JSON.parse(localStorage.getItem(histKey) || '[]'); } catch (e) { hist = []; }
+                        if (!Array.isArray(hist)) hist = [];
+                        hist.unshift({
+                            id: Date.now(),
+                            time: new Date().toISOString(),
+                            query: (correctedQuery || query),
+                            issueCount: issueCount,
+                            ruleCount: ruleCount,
+                            plain: conclusionPlain
+                        });
+                        // 仅保留最近 30 条，避免容量膨胀
+                        if (hist.length > 30) hist = hist.slice(0, 30);
+                        localStorage.setItem(histKey, JSON.stringify(hist));
+                    } catch (e) {
+                        // 容量超限等：静默降级，不影响本次结论展示
+                        console.warn('[对规] 历史持久化失败:', e.message);
+                    }
+
                     // 保存供后续使用
                     window._lastACRules = validIds.map(id => {
                         const c = _globalCandidatesMap[id];
                         return { title: c.title, fileNumber: c.fileNumber, article: c.article, snippet: c.clause };
                     });
+
+                    // X7：AI 对规成功渲染后，统一复位两态按钮到本地匹配态
+                    try {
+                        const _sb = document.getElementById('autoCheck-smartBtn');
+                        if (_sb) {
+                            _sb.dataset.state = 'local';
+                            _sb.className = 'btn btn-primary';
+                            _sb.style.flex = '1';
+                            _sb.style.minWidth = '';
+                            _sb.style.fontWeight = '600';
+                            _sb.textContent = '🔍 本地匹配';
+                            _sb.classList.remove('state-ai');
+                        }
+                        const _hint = document.getElementById('autoCheck-ai-hint');
+                        if (_hint) _hint.style.display = 'none';
+                    } catch (e) {}
 
                 } catch(err) {
                     if (err.name === 'AbortError') {
@@ -2379,20 +2465,11 @@
                                 const hint = document.getElementById('autoCheck-ai-hint');
                                 if (hint) hint.style.display = 'block';
                             } else {
-                                // 第二次点击：AI 对规（带相似度检查）
+                                // 第二次点击：AI 对规（跳过相似度门禁，force 路径，状态由 force 完成后复位）
                                 _acHasLocalResult = false; // 解除锁定
-                                window.autoCheckAI();
-                                // 完成后恢复到本地匹配
-                                smartBtn.dataset.state = 'local';
-                                smartBtn.className = 'btn btn-primary';
-                                smartBtn.style.flex = '1';
-                                smartBtn.style.minWidth = '';
-                                smartBtn.style.fontWeight = '600';
-                                smartBtn.textContent = '🔍 本地匹配';
-                                smartBtn.classList.remove('state-ai');
-                                // 隐藏提示
-                                const hint = document.getElementById('autoCheck-ai-hint');
-                                if (hint) hint.style.display = 'none';
+                                window.autoCheckAI_force();
+                                // 注：按钮状态（回到本地匹配）在 autoCheckAI_force 渲染成功后统一复位，
+                                // 避免在 AI 因相似度不足/异常 return 时状态机与 UI 不一致（X7）
                             }
                         };
                     }

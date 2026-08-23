@@ -2808,13 +2808,29 @@
             if (refineInput) refineInput.value = '';
           }
 
-          var resp = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-            body: JSON.stringify({ model: model, messages: messages, temperature: 0.3, max_tokens: 6000, stream: false })
-          });
+          // Y1：增加整体超时（180s），避免长报告（max_tokens 6000）假死、不可中断
+          var _riskAbort = new AbortController();
+          var _riskTimeout = setTimeout(function() {
+            try { _riskAbort.abort(new Error('TimeoutError')); } catch (e) {}
+          }, 180000);
+          var resp;
+          try {
+            resp = await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+              body: JSON.stringify({ model: model, messages: messages, temperature: 0.3, max_tokens: 6000, stream: false }),
+              signal: _riskAbort.signal
+            });
+          } finally {
+            clearTimeout(_riskTimeout);
+          }
 
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          if (!resp.ok) {
+            var _statusHints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 404:'模型不存在(请检查当前模型)', 429:'请求过于频繁' };
+            var _hintMsg = _statusHints[resp.status] || ('HTTP ' + resp.status);
+            // 404 多为模型名错误；CORS 由 catch 的 Failed to fetch 捕获
+            throw new Error(_hintMsg);
+          }
           var data = await resp.json();
           var report = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '无响应';
 
@@ -2861,7 +2877,13 @@
             refineArea.style.flexDirection = 'column';
           }
         } catch(e) {
-          container.innerHTML = '<div style="color:#dc2626;padding:20px;">❌ ' + (e.message || '分析失败') + '</div>';
+          var _errMsg = e && e.message ? e.message : '分析失败';
+          if (e && e.name === 'TimeoutError') {
+            _errMsg = '请求超时（180s）：模型响应时间过长。请稍后重试，或检查网络/API 状态；也可缩短时间范围、减少数据量后重试。';
+          } else if (_errMsg.indexOf('Failed to fetch') !== -1 || _errMsg.indexOf('NetworkError') !== -1) {
+            _errMsg = '网络错误（CORS 跨域限制）：当前 API 端点不允许浏览器直接访问。建议切换为 DeepSeek 官方端点（https://api.deepseek.com/chat/completions）。';
+          }
+          container.innerHTML = '<div style="color:#dc2626;padding:20px;">❌ ' + _errMsg + '</div>';
         }
       };
 
@@ -2954,12 +2976,25 @@
         try {
           var hbData = typeof window.getHandbookData === 'function' ? window.getHandbookData() : [];
           if (hbData.length) {
-            // 抽样：手册条目可能很多，展示前10条格式
-            var sampled = hbData.length > 10 ? hbData.slice(0, 10) : hbData;
-            parts.push('【检查手册】总计'+hbData.length+'条，展示前10条目录：');
-            sampled.forEach(function(r, i) {
+            var hbFocus = (riskFocus || '').trim();
+            // Y2：若用户填写了研判重点，优先筛选与重点相关的手册条目并展示实质内容，
+            // 而非仅展示前 10 条目录（避免手册内容被浪费）
+            var hbSampled;
+            if (hbFocus) {
+              var hbRel = hbData.filter(function(r) {
+                var t = [r.chapter, r.section, r.item, r.subitem, r.content, r.title].filter(Boolean).join(' ');
+                return t.indexOf(hbFocus) !== -1;
+              });
+              hbSampled = hbRel.length ? hbRel : hbData.slice(0, 10);
+            } else {
+              hbSampled = hbData.length > 10 ? hbData.slice(0, 10) : hbData;
+            }
+            parts.push('【检查手册】总计'+hbData.length+'条，' + (hbFocus ? ('与重点「'+hbFocus+'」相关 '+hbSampled.length+' 条') : '展示前'+hbSampled.length+'条') + '：');
+            hbSampled.forEach(function(r, i) {
               var path = [r.chapter, r.section, r.item, r.subitem].filter(Boolean).join(' > ');
-              parts.push((i+1)+'. ['+path+']');
+              var c = (r.content || '').replace(/\s+/g, ' ').trim();
+              var cSnippet = c.length > 150 ? c.slice(0, 150) + '…' : c;
+              parts.push((i+1)+'. ['+path+']' + (cSnippet ? ' ' + cSnippet : ''));
             });
           }
         } catch(e) {}
@@ -2996,7 +3031,7 @@
                 parts.push('\n▪ 专业：' + tr);
                 byTrade[tr].forEach(function(r){
                   var c = (r.content || '').replace(/\s+/g, ' ').trim();
-                  var snippet = c.length > 120 ? c.slice(0, 120) + '…' : c;
+                  var snippet = c.length > 200 ? c.slice(0, 200) + '…' : c;
                   parts.push('  - 《' + (r.title || '未命名') + '》' + (snippet ? '：' + snippet : ''));
                 });
               });

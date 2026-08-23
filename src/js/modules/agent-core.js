@@ -601,6 +601,14 @@
       }
 
       if (toolCalls && toolCalls.length) {
+        // E1: 规范化每条 tool_call 的 id 与 arguments，避免回灌 API 时因缺 id/空 arguments 致 400 或配对失败
+        for (var _ti = 0; _ti < toolCalls.length; _ti++) {
+          var _tcx = toolCalls[_ti];
+          if (!_tcx.id) _tcx.id = 'call_' + loop + '_' + _ti;
+          if (!_tcx.type) _tcx.type = 'function';
+          if (!_tcx.function) _tcx.function = { name: '', arguments: '{}' };
+          if (typeof _tcx.function.arguments !== 'string' || _tcx.function.arguments.trim() === '') _tcx.function.arguments = '{}';
+        }
         // C#12: 渲染工具调用前的计划说明（仅首次）
         if (!planShown) {
           var preText = (assistantMsg.content || '').replace(/```json[\s\S]*?```/gi, '').trim();

@@ -1,5 +1,5 @@
 {
-  "version": "v3.8",
-  "releaseNotes": "v3.8：检测并修复智能对话工具调用能力——_useTools 增加工具 schema/执行器可用性守卫(D1，agent-core 未加载降级普通对话避免发 tools:null)、回灌 tool_calls 空 arguments 规范为 '{}'(D2 防 API 400)、工具执行后气泡追加结果摘要提升可观测性(D3)；Node 验证 14 工具 schema 合法且 search_issues→get_issue_detail 链路闭环。",
+  "version": "v3.9",
+  "releaseNotes": "v3.9：测试并修复智能体（agent-core）工具调用——_agentRun 主循环回灌 assistant tool_calls 给 API 前规范化 id/type/arguments(E1，模型缺 id 或空 arguments 时防 API 400 与 tool_call_id 配对失败，与智能对话 D2 同源)；Node 端到端验证正常多轮(2 次 fetch: tool_calls+最终答案)与缺陷边界(缺 id/空 arguments 规范化后配对一致)均通过。",
   "downloadUrl": "./"
 }

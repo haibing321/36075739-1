@@ -193,14 +193,17 @@ document.addEventListener('DOMContentLoaded', function() {
         return { total: matched.length, groups: groups };
     };
 
-    /** 搜索规章制度 */
+    /** 搜索规章制度（返回 {total:未截断匹配数, items:截断列表}，与 search_issues 一致，避免 AI 统计相关条数时被 limit 截断） */
     window._agentGetRules = function(keyword, limit) {
         var rules = [];
         try {
             if (typeof window.getRulesData === 'function') rules = window.getRulesData();
-        } catch(e) { return []; }
-        if (!rules.length) return [];
-        return _fuzzyFilter(rules, keyword, ['title','content','trade'], limit || 10);
+        } catch(e) { return { total: 0, items: [] }; }
+        if (!rules.length) return { total: 0, items: [] };
+        var lim = (typeof limit === 'number' && limit > 0) ? limit : 10;
+        // 先用未截断的全量匹配统计真实总数，再按 lim 截取引用列表
+        var matchedFull = _fuzzyFilter(rules, keyword, ['title','content','trade'], Number.MAX_SAFE_INTEGER);
+        return { total: matchedFull.length, items: matchedFull.slice(0, lim) };
     };
 
     /** 写入工作日志（支持结构化 issueIds） */
@@ -241,14 +244,16 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch(e) { return { ok: false, error: e.message }; }
     };
 
-    /** 搜索手册 */
+    /** 搜索手册（返回 {total:未截断匹配数, items:截断列表}，与 search_issues 一致） */
     window._agentGetHandbook = function(keyword, limit) {
         var hb = [];
         try {
             if (typeof window.getHandbookData === 'function') hb = window.getHandbookData();
-        } catch(e) { return []; }
-        if (!hb.length) return [];
-        return _fuzzyFilter(hb, keyword, ['chapter','section','item','subitem','content'], limit || 10);
+        } catch(e) { return { total: 0, items: [] }; }
+        if (!hb.length) return { total: 0, items: [] };
+        var lim = (typeof limit === 'number' && limit > 0) ? limit : 10;
+        var matchedFull = _fuzzyFilter(hb, keyword, ['chapter','section','item','subitem','content'], Number.MAX_SAFE_INTEGER);
+        return { total: matchedFull.length, items: matchedFull.slice(0, lim) };
     };
 
     /** 按 id(数组下标) 取单条完整记录，供智能体按需获取全文 */
@@ -743,7 +748,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.6'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.7'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

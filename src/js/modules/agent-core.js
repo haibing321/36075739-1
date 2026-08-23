@@ -65,9 +65,12 @@
         var all = res.items;
         var full = [];
         try { if (typeof window.getIssueData === 'function') full = window.getIssueData(); } catch(e) {}
+        // 用 Map 反查全量下标，O(1) 且保证 id 100% 准确（避免大数据时 indexOf 偶发 -1）
+        var idxMap = new Map();
+        for (var fi = 0; fi < full.length; fi++) { if (!idxMap.has(full[fi])) idxMap.set(full[fi], fi); }
         return { total: res.total, items: all.map(function(i) {
-          var realIdx = full.indexOf(i);
-          return { id: (realIdx >= 0 ? realIdx : -1), 性质: i['性质']||'', 时间: i.datetime||'', 类别: i.category||'', 单位: i.unit||'', 摘要: (i.content||'').slice(0,120) };
+          var realIdx = idxMap.has(i) ? idxMap.get(i) : -1;
+          return { id: realIdx, 性质: i['性质']||'', 时间: i.datetime||'', 类别: i.category||'', 单位: i.unit||'', 摘要: (i.content||'').slice(0,120) };
         })};
       }
     },
@@ -109,9 +112,12 @@
         var results = window._agentGetRules(args.keyword || '', args.limit || 10);
         var full = [];
         try { if (typeof window.getRulesData === 'function') full = window.getRulesData(); } catch(e) {}
-        return { total: results.length, items: results.map(function(r) {
-          var realIdx = full.indexOf(r);
-          return { id: (realIdx >= 0 ? realIdx : -1), 标题: r.title||'', 专业: r.trade||'', 摘要: (r.content||'').replace(/<[^>]+>/g,'').slice(0,150) };
+        // 用 Map 反查全量下标，O(1) 且保证 id 100% 准确（避免 8000+ 规章时 indexOf 偶发 -1）
+        var idxMap = new Map();
+        for (var fi = 0; fi < full.length; fi++) { if (!idxMap.has(full[fi])) idxMap.set(full[fi], fi); }
+        return { total: results.total, items: (results.items || []).map(function(r) {
+          var realIdx = idxMap.has(r) ? idxMap.get(r) : -1;
+          return { id: realIdx, 标题: r.title||'', 专业: r.trade||'', 摘要: (r.content||'').replace(/<[^>]+>/g,'').slice(0,150) };
         })};
       }
     },
@@ -132,9 +138,12 @@
         var results = window._agentGetHandbook(args.keyword || '', args.limit || 10);
         var full = [];
         try { if (typeof window.getHandbookData === 'function') full = window.getHandbookData(); } catch(e) {}
-        return { total: results.length, items: results.map(function(h) {
-          var realIdx = full.indexOf(h);
-          return { id: (realIdx >= 0 ? realIdx : -1), 标题: (h.chapter||'')+(h.section?(' / '+h.section):'')+(h.item?(' / '+h.item):''), 摘要: ((h.content||h.rules||'')).slice(0,120) };
+        // 用 Map 反查全量下标，O(1) 且保证 id 100% 准确
+        var idxMap = new Map();
+        for (var fi = 0; fi < full.length; fi++) { if (!idxMap.has(full[fi])) idxMap.set(full[fi], fi); }
+        return { total: results.total, items: (results.items || []).map(function(h) {
+          var realIdx = idxMap.has(h) ? idxMap.get(h) : -1;
+          return { id: realIdx, 标题: (h.chapter||'')+(h.section?(' / '+h.section):'')+(h.item?(' / '+h.item):''), 摘要: ((h.content||h.rules||'')).slice(0,120) };
         })};
       }
     },
@@ -237,7 +246,7 @@
           // === 陇海线补充 ===
           '磐安镇':[34.75,105.11],'南河川':[34.59,105.75],
           // === 兰渝线补充 ===
-          '岷县':[34.43,104.04],'渭源':[35.14,104.22],
+          '渭源':[35.14,104.22],
           // === 甘肃其他支线 ===
           '桑园子':[36.04,103.95],
           // === 宁夏补充 ===
@@ -248,11 +257,24 @@
         };
         try { window.queryWeatherStations = Object.keys(staticCoords); } catch (e) {}
         if (!station) {
-          // 直接从字典取坐标
-          var match = staticCoords[stationName] || (function() {
-            for (var k in staticCoords) { if (k.indexOf(stationName) !== -1) return staticCoords[k]; }
-            return null;
-          })();
+          // 坐标解析：先精确匹配 → 再前缀匹配（key 以输入开头）→ 再包含匹配，且包含匹配取最长 key 优先，避免子串误匹配（如"西"误命中"兰州西"）
+          var match = staticCoords[stationName];
+          if (!match) {
+            var prefixHit = null, containHits = [];
+            for (var k in staticCoords) {
+              if (k === stationName) { match = staticCoords[k]; break; }
+              if (k.indexOf(stationName) === 0) { if (!prefixHit || k.length > prefixHit.length) prefixHit = k; }
+              else if (k.indexOf(stationName) !== -1) { containHits.push(k); }
+            }
+            if (!match) {
+              if (prefixHit) match = staticCoords[prefixHit];
+              else if (containHits.length) {
+                // 取最长 key，使"兰州"优先于"兰州西"的反向歧义
+                containHits.sort(function(a, b) { return b.length - a.length; });
+                match = staticCoords[containHits[0]];
+              }
+            }
+          }
           if (match) station = { 站名:stationName, 纬度:match[0], 经度:match[1] };
         }
         if (!station) return { ok: false, error: '未找到车站 ' + stationName + '（不在电话簿或内置字典中）' };

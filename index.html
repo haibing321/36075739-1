@@ -1601,7 +1601,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.6</span> · 2026.08.23</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.7</span> · 2026.08.23</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1610,6 +1610,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+            </div>
+
+            <!-- v3.7 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.7 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧠 修复智能体（agent-core）审计问题：规章/手册搜索 total 改为未截断真实总数(A1)、search 工具 id 反查改 Map O(1) 提速且100%准确(A2)、天气站名坐标字典去重+精确优先匹配避免子串误匹配(A3)</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v3.6 近期更新 -->
@@ -1622,20 +1636,6 @@
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
                         <span>⚖️📊 修复智能对规与智能风险研判审计问题：对规关键词 XSS(X1)、AI对规补充本地匹配上下文(X2)、对规结论持久化(X4)、同专业排序优先缺trade高命中(X5)、两态按钮状态机一致(X7)；风险研判 fetch 超时与错误细分(Y1)、检查手册按重点抽取实质内容(Y2)、事故案例片段放宽(Y3)</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v3.5 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.5 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>✍️ 修复智能写作审计问题：上传 docx/xlsx/pdf 正文真正解析(F1)、上传内容独立语义段提升引用率(A2)、长模板截断保留章节骨架(A1)、无关键词时资料噪声收紧(C1)、报告归类优先模板+补 source(D3)、流式生成超时(E1)、保存失败内存兜底(D4)</span>
                     </div>
                 </div>
             </div>

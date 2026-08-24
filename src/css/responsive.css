@@ -165,6 +165,20 @@
     .card-header, .card-body { padding: 12px; }
 }
 
+/* 折叠屏半折叠态适配（中等高度竖屏，常见于 Galaxy Z Fold 等合盖到一半）
+   高度落在 500–720px 且为竖屏时，采用紧凑布局，避免内容被压扁导致误判需重渲染 */
+@media (min-height: 501px) and (max-height: 720px) and (orientation: portrait) {
+    .logo { padding: 6px 0; font-size: 0.95rem; }
+    .header { padding: 6px 10px; }
+    .main { padding: 10px; }
+    .card { margin-bottom: 10px; }
+    .card-header, .card-body { padding: 10px 12px; }
+    /* 输入区适度压缩，减少折叠态高度突变时的布局抖动 */
+    textarea { max-height: 160px; }
+}
+
+/* 折叠屏展开态（大屏竖屏）保持原有布局，无需额外适配 */
+
 /* 打印优化 */
 @media print {
     .header, .nav, .nav-toggle, .btn, .stats-bar, .diary-card-actions { display: none !important; }

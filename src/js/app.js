@@ -365,6 +365,7 @@ window.onclick = function(e) {
 
     var _manualUpdateCheck = false;  // 仅手动「检查更新」时才弹新版本提示
     var _pendingReload = false;      // 手动更新后，新 SW 接管即刷新
+    var _pendingReloadAt = 0;        // _pendingReload 置位时间戳，用于有效期判断（防折叠屏误重载）
 
     // 离线优先策略：SW 默认直接从缓存秒开页面，打开时不联网拉取 HTML/JS/CSS，
     // 也不在打开时自动检查更新。新版本仅由用户点击「设置→检查更新」触发下载。
@@ -393,8 +394,16 @@ window.onclick = function(e) {
     // 新 SW 接管页面后，若本次为手动更新则刷新以应用新版本
     navigator.serviceWorker.addEventListener('controllerchange', function() {
         _fetchSwVersion(); // 刷新离线获取的 12 位版本号
+        // 修复：_pendingReload 仅在有效期内（10s）生效，过期作废。
+        // 避免折叠屏文档重建偶然触发历史残留 reload（用户曾点过「立即更新」但未真正生效），
+        // 导致「明明没更新却重启」的误重载。
+        if (_pendingReloadAt && (Date.now() - _pendingReloadAt) > 10000) {
+            _pendingReload = false;
+            _pendingReloadAt = 0;
+        }
         if (_pendingReload) {
             _pendingReload = false;
+            _pendingReloadAt = 0;
             window.location.reload();
         }
     });
@@ -447,7 +456,9 @@ window.onclick = function(e) {
             // 也不要在此同步 reload()——否则新 SW 尚未激活、页面仍在旧 SW 控制下刷新，
             // 会导致「检测到新版本→点更新→仍是旧版→再次检测」死循环。
             // 真正刷新交由下方 controllerchange 事件（新 SW 确实接管后才触发）。
+            // 记录时间戳，供 controllerchange 判断是否仍在有效期（防止折叠屏重建误触发）
             _pendingReload = true;
+            _pendingReloadAt = Date.now();
             navigator.serviceWorker.getRegistration().then(function(reg) {
                 var target = (reg && reg.waiting) ? reg.waiting : navigator.serviceWorker.controller;
                 if (target) target.postMessage({ type: 'SKIP_WAITING' });
@@ -748,7 +759,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.10'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.11'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -803,6 +814,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (aboutVer) aboutVer.textContent = APP_VERSION;
     // 离线获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
     _fetchSwVersion();
+    // 折叠屏/旋转会话状态恢复：文档重建后还原模块、滚动位置、草稿、弹窗
+    if (window._restorePageState) {
+        try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
+    }
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）

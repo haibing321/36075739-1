@@ -2,12 +2,17 @@
  * page-state.js · 折叠屏/旋转 会话状态快照与恢复
  * ===================================================
  * 解决：折叠屏展开/折叠时 Android WebView（尤其 PWA standalone）会销毁并重建
- *       DOM 文档，导致当前模块的滚动位置、未提交草稿、打开的弹窗全部丢失，
- *       表现为「页面被重置 / 重启」。
+ *       DOM 文档，导致当前模块的滚动位置、未提交草稿、打开的弹窗、以及已渲染的
+ *       列表/数据全部丢失，表现为「页面被重置 / 重启 / 空白」。
  *
- * 策略：在页面即将被系统销毁（pagehide / visibilitychange→隐藏）时，把易失状态
- *       快照到 sessionStorage；文档重建后 DOMContentLoaded 时还原。
- *       仅恢复「易失、未持久化」的状态，已存 localStorage/IndexedDB 的数据不重复处理。
+ * v3.13 升级：在「易失状态快照」(v3.11) 与「编辑态保持」(v3.12) 基础上，
+ *   新增【整页 DOM 快照】——把每个 panel 已渲染好的 innerHTML（含数据）一并序列化，
+ *   文档重建后直接还原，使「数据和界面」都保持；仅由 CSS 响应式按新尺寸自动重排，
+ *   不再依赖 onShow_ 重新拉取 IndexedDB（避免重建后出现空白/无数据）。
+ *
+ * 策略：pagehide / visibilitychange→隐藏 / resize / visualViewport.resize 时
+ *       序列化易失状态 + 各 panel innerHTML 到 sessionStorage；
+ *       DOMContentLoaded 后直接还原 DOM（不触发 onShow_ 重拉），再还原滚动/弹窗/编辑态。
  *
  * 纯新增模块，不修改任何现有业务逻辑的 reload/存储行为。
  * ===================================================
@@ -70,6 +75,30 @@
     return drafts;
   }
 
+  // ===== 整页 DOM 快照（v3.13）：序列化每个 panel 已渲染的 innerHTML（含数据）=====
+  // 仅当总序列化体积 < 阈值时才保存，避免撑爆 sessionStorage 配额（约 5MB）而抛错。
+  var _MAX_PANEL_HTML_BYTES = 3.5 * 1024 * 1024; // 3.5MB 安全线
+  function _collectPanelHTML() {
+    var map = {};
+    var total = 0;
+    var ids = ['handbook', 'issue', 'rule', 'phone', 'doubao', 'diary', 'material'];
+    for (var i = 0; i < ids.length; i++) {
+      var p = document.getElementById('panel-' + ids[i]);
+      if (!p) continue;
+      var html = '';
+      try { html = p.innerHTML; } catch (e) { continue; }
+      // 粗略字节估算（UTF-16 → 按 2 字节计，留余量）
+      var approx = html.length * 2;
+      if (total + approx > _MAX_PANEL_HTML_BYTES) {
+        // 超出配额：放弃整页快照，降级为 v3.12 行为（不存 panelHTML）
+        return null;
+      }
+      total += approx;
+      map[ids[i]] = html;
+    }
+    return map;
+  }
+
   function savePageState() {
     try {
       var snap = {
@@ -77,10 +106,44 @@
         module: _currentModule(),
         scroll: _activePanelScroll(),
         modals: _openModals(),
-        drafts: _collectDrafts()
+        drafts: _collectDrafts(),
+        editSession: _editSession,
+        // v3.13：整页 DOM（含已渲染数据）。为 null 表示超配额降级。
+        panelHTML: _collectPanelHTML()
       };
       sessionStorage.setItem(KEY, JSON.stringify(snap));
     } catch (e) { /* sessionStorage 不可用（隐私模式/配额）时静默跳过 */ }
+  }
+
+  // 直接还原整页 DOM（不触发 onShow_ 重拉，避免重建后空白）
+  function _restorePanelDOM(snap) {
+    if (!snap.panelHTML) return false; // 无快照：降级
+    var ok = false;
+    Object.keys(snap.panelHTML).forEach(function (mod) {
+      var p = document.getElementById('panel-' + mod);
+      if (!p) return;
+      try {
+        p.innerHTML = snap.panelHTML[mod];
+        ok = true;
+      } catch (e) {}
+    });
+    if (!ok) return false;
+    // 激活目标模块（仅改 class，不调用 switchTab，避免 onShow_ 重拉清空刚还原的 DOM）
+    try {
+      document.querySelectorAll('.nav-btn').forEach(function (t) { t.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+      var btn = document.getElementById('tab-' + snap.module);
+      if (btn) btn.classList.add('active');
+      var ap = document.getElementById('panel-' + snap.module);
+      if (ap) ap.classList.add('active');
+      // 同步移动端当前 Tab 标签（避免折叠后顶部标签仍显示旧模块）
+      var labelEl = document.getElementById('navCurrentLabel');
+      if (labelEl) {
+        var labels = { handbook: '检查手册', issue: '检查信息', rule: '规章制度', phone: '应急电话', doubao: '智能助手', diary: '工作日志', material: '资料中心' };
+        labelEl.textContent = labels[snap.module] || '';
+      }
+    } catch (e) {}
+    return true;
   }
 
   function restorePageState() {
@@ -91,16 +154,22 @@
     try { snap = JSON.parse(raw); } catch (e) { return; }
     if (!snap || !snap.module) return;
 
-    // 1) 恢复模块（用 switchTab 而非直接改 class，保证 onShow_ 钩子触发）
-    try {
-      if (typeof window.switchTab === 'function') window.switchTab(snap.module);
-      else {
-        var btn = document.getElementById('tab-' + snap.module);
-        if (btn) btn.click();
-      }
-    } catch (e) {}
+    // 1) 先还原整页 DOM（含数据），确保「数据和界面都保持」，不触发重拉
+    var domRestored = false;
+    try { domRestored = _restorePanelDOM(snap); } catch (e) { domRestored = false; }
 
-    // 2) 等一帧让面板渲染完成再还原滚动/草稿/弹窗
+    // 2) 降级分支：若整页快照不可用，退回到 v3.12 的 switchTab 行为
+    if (!domRestored) {
+      try {
+        if (typeof window.switchTab === 'function') window.switchTab(snap.module);
+        else {
+          var btn = document.getElementById('tab-' + snap.module);
+          if (btn) btn.click();
+        }
+      } catch (e) {}
+    }
+
+    // 3) 等一帧让面板渲染完成再还原滚动/草稿/弹窗/编辑态
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
         // 滚动位置
@@ -135,6 +204,21 @@
         }
       });
     });
+
+    // 4) 编辑态恢复（多帧，避免被后续渲染覆盖）
+    if (snap.editSession && snap.editSession.module) {
+      var ctx = snap.editSession;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            var hook = window['restoreEdit_' + ctx.module];
+            if (typeof hook === 'function') {
+              try { hook(ctx); } catch (e) { console.warn('restoreEdit_' + ctx.module + ' 失败', e); }
+            }
+          });
+        });
+      });
+    }
   }
 
   // ===== 挂监听：页面即将被系统销毁时保存（折叠屏重建必经此路）=====
@@ -191,44 +275,9 @@
   function _getEditSession() { return _editSession; }
   function _clearEditSession() { _setEditSession(null); }
 
-  // 在 savePageState 里把 _editSession 一并写入（完整重写，避免原始函数覆盖丢失）
-  savePageState = function () {
-    try {
-      var snap = {
-        t: Date.now(),
-        module: _currentModule(),
-        scroll: _activePanelScroll(),
-        modals: _openModals(),
-        drafts: _collectDrafts(),
-        editSession: _editSession
-      };
-      sessionStorage.setItem(KEY, JSON.stringify(snap));
-    } catch (e) { /* sessionStorage 不可用（隐私模式/配额）时静默跳过 */ }
-  };
-
-  // 恢复：模块恢复后，若有编辑会话，调用对应 restoreEdit_<module> 钩子
-  var _origRestore = restorePageState;
-  restorePageState = function () {
-    _origRestore();
-    var raw;
-    try { raw = sessionStorage.getItem(KEY); } catch (e) { return; }
-    if (!raw) return;
-    var snap;
-    try { snap = JSON.parse(raw); } catch (e) { return; }
-    if (!snap || !snap.editSession || !snap.editSession.module) return;
-    var ctx = snap.editSession;
-    // 等模块渲染 + 编辑重开完成（多帧，避免被 onShow_ 重渲染覆盖）
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          var hook = window['restoreEdit_' + ctx.module];
-          if (typeof hook === 'function') {
-            try { hook(ctx); } catch (e) { console.warn('restoreEdit_' + ctx.module + ' 失败', e); }
-          }
-        });
-      });
-    });
-  };
+  // v3.13：savePageState / restorePageState 主函数已统一处理 panelHTML + editSession，
+  //   此处不再覆盖重写（覆盖会丢失 panelHTML 字段），仅保留 _editSession 协议暴露。
+  //   _setEditSession 已通过合并写入 sessionStorage 确保 fold 重建前最后一刻 editSession 不丢。
 
   // 暴露协议接口
   window._editSession = {

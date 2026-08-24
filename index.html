@@ -1602,7 +1602,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.9</span> · 2026.08.23</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.13</span> · 2026.08.24</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1613,30 +1613,30 @@
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
             </div>
 
-            <!-- v3.9 近期更新 -->
+            <!-- v3.13 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.9 近期更新</span>
+                    <span>v3.13 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🤖 测试并修复智能体（agent-core）工具调用：_agentRun 主循环回灌 assistant tool_calls 给 API 前规范化 id/type/arguments(E1，模型缺 id 或空 arguments 时防 API 400 与 tool_call_id 配对失败，与智能对话 D2 同源)；Node 端到端验证正常多轮与缺陷边界均通过</span>
+                        <span>📐 折叠屏「整页保持」：在 v3.11(易失状态快照)+v3.12(编辑态保持) 基础上，新增整页 DOM 快照——折叠重建后直接还原各 panel 已渲染的 innerHTML（含列表/数据），不再触发 onShow_ 重新拉取 IndexedDB，彻底消除折叠后空白/无数据；仅由 CSS 响应式按新尺寸重排。超 3.5MB 自动降级。</span>
                     </div>
                 </div>
             </div>
 
-            <!-- v3.8 近期更新 -->
+            <!-- v3.12 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.8 近期更新</span>
+                    <span>v3.12 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>💬 检测并修复智能对话工具调用能力：_useTools 增加工具 schema/执行器可用性守卫(D1，agent-core 未加载降级普通对话防发 tools:null)、回灌 tool_calls 空 arguments 规范为 '{}'(D2 防 API 400)、工具执行后气泡追加结果摘要提升可观测性(D3)；Node 验证 14 工具 schema 合法且 search_issues→get_issue_detail 链路闭环</span>
+                        <span>✏️ 编辑态保持：新增通用「编辑会话」协议 window._editSession(set/get/clear) + restoreEdit_&lt;module&gt; 钩子；日记编辑页、写作模板编辑弹窗在折叠重建后自动重开并回填，修复 savePageState 覆盖丢失 editSession 的 bug。</span>
                     </div>
                 </div>
             </div>

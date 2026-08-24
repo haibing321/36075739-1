@@ -428,6 +428,29 @@
                 if (sel) sel.value = tab;
                 if (typeof updateModeStatus === 'function') updateModeStatus();
             };
+            // v3.29：折叠/刷新整页还原后，子视图 DOM（display:flex 的内联样式随 innerHTML 快照保留）
+            //   已还原为折叠前的视图，但 _dsCurrentSub 仍是 dsInit 时设置的初始值 'chat'，
+            //   且下拉框 value（property，不进 innerHTML）被重置。从 DOM 推断当前显示的子视图，
+            //   同步闭包变量 + 下拉框 + 模式标签，避免「界面是风险研判、标签却显示智能对话」的错乱。
+            window.dsSyncSubFromDOM = function() {
+                var ids = { check: 'ds-sub-check', chat: 'ds-sub-chat', writer: 'ds-sub-writer', risk: 'ds-sub-risk', agent: 'ds-sub-agent', doubao: 'ds-sub-doubao' };
+                var found = null;
+                Object.keys(ids).forEach(function (k) {
+                    var el = document.getElementById(ids[k]);
+                    if (el && getComputedStyle(el).display !== 'none') found = k;
+                });
+                if (!found) return;
+                _dsCurrentSub = found;
+                var sel = document.getElementById('ds-sub-select');
+                if (sel) sel.value = found;
+                if (typeof updateModeStatus === 'function') updateModeStatus();
+            };
+            // 整页还原完成后同步（page-state 派发，与草稿回填同帧）
+            window.addEventListener('pageSnapshotRestored', function () {
+                if (typeof window.dsSyncSubFromDOM === 'function') {
+                    try { window.dsSyncSubFromDOM(); } catch (e) { console.warn('[doubao] 子视图同步失败', e); }
+                }
+            });
             function updateModeStatus() {
                 var sub = _dsCurrentSub || 'chat';
                 var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', agent: '🧠 智能体', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };

@@ -35,6 +35,10 @@
     'wr-query-input',          // 智能写作查询输入
     'wr-modify-instruction',   // 智能写作修改指令
     'risk-refine-input',       // 风险研判细化输入
+    'risk-date-start',         // 风险研判起止日期（input[date]，value 不进 innerHTML，v3.29 补）
+    'risk-date-end',           // 风险研判结束日期
+    'risk-unit',               // 风险研判责任单位筛选
+    'risk-focus',              // 风险研判重点
     'hb-searchInput',          // 检查手册搜索
     'phone-searchInput',       // 应急电话搜索
     'diary-search-input',      // 工作日志搜索
@@ -122,6 +126,26 @@
     return map;
   }
 
+  // v3.29：弹窗内容快照 —— 查看全文等独立 modal（rule-fullViewModal 等）不在 panel 内，
+  // 其 innerHTML 不随 panel 快照保存，折叠/刷新还原后只剩空壳。这里把「当前打开的 modal」
+  // 的内容一并序列化，还原时回填。仅快照 active 的 modal（体积可控，上限 512KB）。
+  var _MAX_MODAL_HTML_BYTES = 512 * 1024;
+  function _collectModalHTML() {
+    var map = {};
+    var total = 0;
+    document.querySelectorAll('.modal.active, .panel-modal.active').forEach(function (m) {
+      if (!m.id) return;
+      try {
+        var html = m.innerHTML;
+        var approx = html.length * 2;
+        if (total + approx > _MAX_MODAL_HTML_BYTES) return;
+        total += approx;
+        map[m.id] = html;
+      } catch (e) {}
+    });
+    return map;
+  }
+
   function savePageState() {
     try {
       var snap = {
@@ -132,7 +156,9 @@
         drafts: _collectDrafts(),
         editSession: _editSession,
         // v3.13：整页 DOM（含已渲染数据）。为 null 表示超配额降级。
-        panelHTML: _collectPanelHTML()
+        panelHTML: _collectPanelHTML(),
+        // v3.29：打开的弹窗内容（查看全文正文等，不随 panel 快照保存）
+        modalHTML: _collectModalHTML()
       };
       sessionStorage.setItem(KEY, JSON.stringify(snap));
     } catch (e) { /* sessionStorage 不可用（隐私模式/配额）时静默跳过 */ }
@@ -242,7 +268,15 @@
           }
         });
       }
-      // 弹窗恢复
+      // 弹窗内容回填（v3.29：查看全文等独立 modal 的内容，还原后不为空壳）
+      if (snap.modalHTML) {
+        Object.keys(snap.modalHTML).forEach(function (mid) {
+          var m = document.getElementById(mid);
+          if (!m) return;
+          try { m.innerHTML = snap.modalHTML[mid]; } catch (e) {}
+        });
+      }
+      // 弹窗恢复（active 类）
       if (snap.modals && snap.modals.length) {
         snap.modals.forEach(function (id) {
           var m = document.getElementById(id);

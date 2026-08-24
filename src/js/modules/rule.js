@@ -2038,8 +2038,22 @@
                 refreshTradeSelect();
                 updateTotalBadge();
                 updateStorageInfo();
-                document.getElementById('rule-resultsList').style.display = 'none';
-                document.querySelector('#panel-rule .results-header').style.display = 'none';
+                // v3.29：折叠/刷新后 page-state 已在 DOMContentLoaded 同步整页还原
+                //   （含折叠前搜索结果的显示状态）。本 init 是 async，await 之后才执行到此处，
+                //   晚于还原，若无条件隐藏会把「搜索结果」重新藏掉（用户反馈：刷新/折叠后
+                //   搜索结果不保留）。仅当无快照还原时才隐藏，还原过则保留当前显示状态。
+                var _snapRestored = false;
+                try {
+                    var _raw = sessionStorage.getItem('page_state_snapshot_v1');
+                    if (_raw) {
+                        var _snap = JSON.parse(_raw);
+                        _snapRestored = !!( _snap && _snap.panelHTML && _snap.panelHTML.rule);
+                    }
+                } catch (e) {}
+                if (!_snapRestored) {
+                    document.getElementById('rule-resultsList').style.display = 'none';
+                    document.querySelector('#panel-rule .results-header').style.display = 'none';
+                }
                 // v3.13 兼容：初始化时对容器做幂等处理（空则加 1 行，已有行则同步计数器）。
                 // 折叠屏恢复时 page-state 会在本模块 init 之后覆盖 panel innerHTML，
                 // 故另监听 pageSnapshotRestored 事件，在还原完成后再同步一次（见下方定义）。

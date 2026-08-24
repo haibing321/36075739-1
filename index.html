@@ -1688,20 +1688,20 @@
                 </div>
             </div>
 
-            <!-- v3.20 近期更新 -->
+            <!-- v3.22 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.20 近期更新</span>
+                    <span>v3.22 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🍎 关于系统面板补充苹果支持说明：技术特性「兼容适配」一行明确写入「苹果 iPhone（添加到主屏幕 PWA，含启动屏与安全区适配）」，与 v3.18 iPhone 适配、v3.19 鸿蒙适配保持一致，让用户一眼看到移动端覆盖情况。</span>
+                        <span>🔘 修复智能助手输入栏「关联数据 / 联网搜索」等下拉按钮「大多时间点击无响应」。根因：v3.13 整页 DOM 快照还原会重写面板 innerHTML、替换节点，导致脚本加载时绑定的 click 事件随旧节点销毁而丢失。现把角色/模型/关联数据/联网搜索四个下拉的事件绑定全部改为「委托到静态父容器 #ds-sub-chat」，无论面板如何重建，绑定永久有效。</span>
                     </div>
                 </div>
             </div>
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.19 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.20 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

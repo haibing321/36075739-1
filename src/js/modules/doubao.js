@@ -470,25 +470,36 @@
                     }
                     build();
                     sel.addEventListener('ds-rebuild', build);
-                    btn.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        var willOpen = !menu.classList.contains('open');
-                        document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
-                        menu.classList.toggle('open', willOpen);
-                    });
-                    menu.addEventListener('click', function(e) {
-                        var item = e.target.closest ? e.target.closest('.ds-dropdown-item') : null;
-                        if (!item) return;
-                        var val = item.getAttribute('data-val');
-                        if (sel.value !== val) {
-                            sel.value = val;
-                            var ev = document.createEvent('HTMLEvents');
-                            ev.initEvent('change', true, true);
-                            sel.dispatchEvent(ev);
+                    // 【v3.21-fix】事件委托：绑定挂到静态父容器 #ds-sub-chat，
+                    // 避免 v3.13 整页 innerHTML 还原重建节点后丢失绑定导致按钮无响应。
+                    var _ddRoot = document.getElementById('ds-sub-chat') || document;
+                    _ddRoot.addEventListener('click', function(e) {
+                        var t = e.target;
+                        if (!t || !t.closest) return;
+                        // 点击角色/模型按钮：toggle 对应菜单（互斥关闭其它）
+                        if (t.closest('#' + btnId)) {
+                            e.stopPropagation();
+                            var willOpen = !menu.classList.contains('open');
+                            document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+                            menu.classList.toggle('open', willOpen);
+                            return;
                         }
-                        Array.prototype.forEach.call(menu.children, function(c){ c.classList.toggle('active', c === item); });
-                        menu.classList.remove('open');
-                        if (typeof updateModeStatus === 'function') updateModeStatus();
+                        // 点击菜单项：选中并应用
+                        if (menu.contains(t)) {
+                            var item = t.closest('.ds-dropdown-item');
+                            if (!item) return;
+                            e.stopPropagation();
+                            var val = item.getAttribute('data-val');
+                            if (sel.value !== val) {
+                                sel.value = val;
+                                var ev = document.createEvent('HTMLEvents');
+                                ev.initEvent('change', true, true);
+                                sel.dispatchEvent(ev);
+                            }
+                            Array.prototype.forEach.call(menu.children, function(c){ c.classList.toggle('active', c === item); });
+                            menu.classList.remove('open');
+                            if (typeof updateModeStatus === 'function') updateModeStatus();
+                        }
                     });
                 }
                 setup('role');
@@ -922,49 +933,59 @@
                     syncAllBox();
                 }
 
-                // 按钮：点击切换下拉（与角色/模型/联网一致）
-                btn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    var willOpen = !menu.classList.contains('open');
-                    document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
-                    if (willOpen) loadDsCfg();
-                    menu.classList.toggle('open', willOpen);
-                });
-
-                // 全选 / 单项同步
-                var allBox = document.getElementById('ds-dialog-all');
-                if (allBox) allBox.addEventListener('change', function(){
-                    var v = allBox.checked;
-                    ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
-                        var el = document.getElementById('ds-dialog-' + k); if (el) el.checked = v;
-                    });
-                });
-                ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
-                    var el = document.getElementById('ds-dialog-' + k);
-                    if (el) el.addEventListener('change', syncAllBox);
-                });
-
-                // 取消：仅收起
-                var cancelBtn = menu.querySelector('.ds-ds-btn--cancel');
-                if (cancelBtn) cancelBtn.addEventListener('click', function(e){ e.stopPropagation(); menu.classList.remove('open'); });
-
-                // 确认使用：应用选择 + 有输入则发送
-                var confirmBtn = menu.querySelector('.ds-ds-btn--confirm');
-                if (confirmBtn) confirmBtn.addEventListener('click', function(e){
-                    e.stopPropagation();
-                    var cfg = getDsCfg();
-                    if (cfg.remember) {
-                        _sessionDataSource = cfg;
-                        try { localStorage.setItem('ds_datasource_v1', JSON.stringify(cfg)); } catch(e){}
-                    } else {
-                        try { localStorage.removeItem('ds_datasource_v1'); } catch(e){}
-                        _sessionDataSource = cfg;
+                // 【v3.21-fix】事件委托：绑定挂到静态父容器 #ds-sub-chat，
+                // 避免 v3.13 整页 innerHTML 还原重建节点后丢失绑定导致按钮无响应。
+                var _dsRoot = document.getElementById('ds-sub-chat') || document;
+                _dsRoot.addEventListener('click', function(e) {
+                    var t = e.target;
+                    if (!t || !t.closest) return;
+                    // 点击关联数据按钮：toggle 菜单（互斥关闭其它下拉）
+                    if (t.closest('#ds-reset-datasource-btn')) {
+                        e.stopPropagation();
+                        if (!menu) return;
+                        var willOpen = !menu.classList.contains('open');
+                        document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+                        if (willOpen) loadDsCfg();
+                        menu.classList.toggle('open', willOpen);
+                        return;
                     }
-                    window._tempDataSrc = cfg;
-                    menu.classList.remove('open');
-                    var inputEl = document.getElementById('ds-user-input');
-                    if (inputEl && inputEl.value.trim() && typeof window.dsSendMsg === 'function') {
-                        window.dsSendMsg();
+                    if (!menu || !menu.contains(t)) return;
+                    // 取消：仅收起
+                    if (t.closest('.ds-ds-btn--cancel')) {
+                        e.stopPropagation(); menu.classList.remove('open'); return;
+                    }
+                    // 确认使用：应用选择 + 有输入则发送
+                    if (t.closest('.ds-ds-btn--confirm')) {
+                        e.stopPropagation();
+                        var cfg = getDsCfg();
+                        if (cfg.remember) {
+                            _sessionDataSource = cfg;
+                            try { localStorage.setItem('ds_datasource_v1', JSON.stringify(cfg)); } catch(e){}
+                        } else {
+                            try { localStorage.removeItem('ds_datasource_v1'); } catch(e){}
+                            _sessionDataSource = cfg;
+                        }
+                        window._tempDataSrc = cfg;
+                        menu.classList.remove('open');
+                        var inputEl = document.getElementById('ds-user-input');
+                        if (inputEl && inputEl.value.trim() && typeof window.dsSendMsg === 'function') {
+                            window.dsSendMsg();
+                        }
+                        return;
+                    }
+                });
+                // 复选框 change 委托（全选 / 单项）
+                _dsRoot.addEventListener('change', function(e) {
+                    var t = e.target;
+                    if (!t || !t.id || !menu || !menu.contains(t)) return;
+                    if (t.id === 'ds-dialog-all') {
+                        var v = t.checked;
+                        ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
+                            var el = document.getElementById('ds-dialog-' + k); if (el) el.checked = v;
+                        });
+                        syncAllBox();
+                    } else if (t.id.indexOf('ds-dialog-') === 0) {
+                        syncAllBox();
                     }
                 });
             })();
@@ -3251,24 +3272,32 @@
           var on = localStorage.getItem('ds_web_search') === '1';
           setWs(!on);
         };
-        // 点击按钮：先关闭其它已展开的菜单，再 toggle 自身（与角色/模型/关联数据一致，保证一次只开一个）
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var willOpen = !(menu && menu.classList.contains('open'));
-          document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
-          if (menu) menu.classList.toggle('open', willOpen);
+        // 【v3.21-fix】事件委托：绑定挂到静态父容器 #ds-sub-chat，
+        // 避免 v3.13 整页 innerHTML 还原重建节点后丢失绑定导致按钮无响应。
+        var _wsRoot = document.getElementById('ds-sub-chat') || document;
+        _wsRoot.addEventListener('click', function(e) {
+          var t = e.target;
+          if (!t) return;
+          // 点击按钮：toggle 自身菜单（互斥关闭其它）
+          if (t.closest('#ds-websearch-btn')) {
+            e.stopPropagation();
+            var willOpen = !(menu && menu.classList.contains('open'));
+            document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+            if (menu) menu.classList.toggle('open', willOpen);
+            return;
+          }
+          // 点击菜单项：开启 / 关闭
+          var item = t.closest('.ds-dropdown-item');
+          if (item && menu && menu.contains(item)) {
+            e.stopPropagation();
+            setWs(item.getAttribute('data-ws') === '1');
+          }
         });
-        // 菜单项：选择开启 / 关闭
-        if (menu) {
-          menu.querySelectorAll('.ds-dropdown-item').forEach(function(it) {
-            it.addEventListener('click', function(e) {
-              e.stopPropagation();
-              setWs(it.getAttribute('data-ws') === '1');
-            });
-          });
-        }
-        // 点击页面其它位置收起菜单
-        document.addEventListener('click', function() { closeMenu(); });
+        // 点击面板外任意处收起菜单（委托到 document，且排除自身节点）
+        document.addEventListener('click', function(e) {
+          if (e.target && e.target.closest && e.target.closest('#ds-websearch-btn')) return;
+          closeMenu();
+        });
         window.dsSyncWebSearchBtn();
       })();
 

@@ -219,6 +219,14 @@
         });
       });
     }
+
+    // 5) 派发「快照已还原」事件，通知各模块按还原后的 DOM 重新同步内部状态
+    //    （如规章制度/检查信息的关键词计数器，init 时容器为空已加 1 行，此处按还原后的 N 行纠正，避免多一个框）
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        try { window.dispatchEvent(new Event('pageSnapshotRestored')); } catch (e) {}
+      });
+    });
   }
 
   // ===== 挂监听：页面即将被系统销毁时保存（折叠屏重建必经此路）=====

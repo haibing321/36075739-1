@@ -654,6 +654,31 @@
                 updateAddBtn();
             }
 
+            // v3.13：折叠屏恢复后，page-state 已将 panel-rule 的 innerHTML 还原（含 N 个关键词行）。
+            // 此处根据当前 DOM 重新同步计数器并规范 id/标签/按钮，避免与 addKeywordInput 叠加导致「多一个框」。
+            function syncRuleKeywordFromDOM() {
+                var c = document.getElementById('rule-keywordContainer');
+                if (!c) return;
+                var rows = c.querySelectorAll('.keyword-row');
+                window.ruleKeywordCount = 0;
+                rows.forEach(function (item) {
+                    window.ruleKeywordCount++;
+                    item.id = 'rule-kw_' + window.ruleKeywordCount;
+                    var label = item.querySelector('label');
+                    if (label) label.textContent = '关键词' + window.ruleKeywordCount;
+                    var input = item.querySelector('input');
+                    if (input) { input.id = 'rule-input_' + window.ruleKeywordCount; input.placeholder = '输入关键词' + window.ruleKeywordCount; }
+                    var btn = item.querySelector('.btn-remove');
+                    if (btn) {
+                        if (window.ruleKeywordCount === 1) btn.remove();
+                        else btn.setAttribute('onclick', 'removeRuleKeyword(' + window.ruleKeywordCount + ')');
+                    }
+                });
+                updateAddBtn();
+            }
+            // 折叠屏恢复完成后，由 page-state 派发此事件，重新同步关键词计数
+            window.addEventListener('pageSnapshotRestored', function () { syncRuleKeywordFromDOM(); });
+
             window.removeRuleKeyword = function(n) {
                 const el = document.getElementById('rule-kw_' + n);
                 if (el) el.remove();
@@ -2012,7 +2037,15 @@
                 updateStorageInfo();
                 document.getElementById('rule-resultsList').style.display = 'none';
                 document.querySelector('#panel-rule .results-header').style.display = 'none';
-                addKeywordInput();
+                // v3.13 兼容：初始化时对容器做幂等处理（空则加 1 行，已有行则同步计数器）。
+                // 折叠屏恢复时 page-state 会在本模块 init 之后覆盖 panel innerHTML，
+                // 故另监听 pageSnapshotRestored 事件，在还原完成后再同步一次（见下方定义）。
+                (function ruleKeywordInit() {
+                    var c = document.getElementById('rule-keywordContainer');
+                    if (!c) { addKeywordInput(); return; }
+                    if (c.querySelectorAll('.keyword-row').length > 0) syncRuleKeywordFromDOM();
+                    else addKeywordInput();
+                })();
 
                 document.getElementById('rule-searchBtn').addEventListener('click', renderResults);
                 document.getElementById('rule-clearSearchBtn').addEventListener('click', clearSearch);

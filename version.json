@@ -1,5 +1,6 @@
 {
-  "version": "v3.13",
-  "releaseNotes": "v3.13：折叠屏「整页保持」升级——在 v3.11(易失状态快照)+v3.12(编辑态保持) 基础上，新增整页 DOM 快照：pagehide/visibilitychange/resize/visualViewport.resize 时把每个 panel 已渲染好的 innerHTML（含列表/数据）一并序列化进 sessionStorage；文档重建后直接还原 DOM，不再触发 onShow_ 重新拉取 IndexedDB，彻底消除折叠后「空白/无数据」问题。仅由 CSS 响应式按新尺寸自动重排，符合「数据和界面都保持、只做大小适配」诉求。超 3.5MB 配额自动降级为 v3.12 行为。Node 验证逻辑通过。",
-  "downloadUrl": "./"
+  "version": "v3.14",
+  "sw": "20260824101200",
+  "date": "2026-08-24",
+  "note": "修复折叠屏恢复后规章制度/检查信息关键词输入框重复新增的问题"
 }

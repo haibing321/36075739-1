@@ -1602,7 +1602,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.14</span> · 2026.08.24</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.15</span> · 2026.08.24</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1613,16 +1613,16 @@
                 铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
             </div>
 
-            <!-- v3.13 近期更新 -->
+            <!-- v3.15 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.13 近期更新</span>
+                    <span>v3.15 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📐 折叠屏「整页保持」：在 v3.11(易失状态快照)+v3.12(编辑态保持) 基础上，新增整页 DOM 快照——折叠重建后直接还原各 panel 已渲染的 innerHTML（含列表/数据），不再触发 onShow_ 重新拉取 IndexedDB，彻底消除折叠后空白/无数据；仅由 CSS 响应式按新尺寸重排。超 3.5MB 自动降级。</span>
+                        <span>⚡ 移除首屏 BM25 全量索引预构建：原先在 idle/3s 后对 8000+ 条规章+检查信息全量建索引，导致打开/刷新界面后停留几秒出现 3-4 秒主线程卡滞（界面/数据已通过整页快照恢复却仍在「加载」）。改为首次搜索时懒建（已有 !bm25 守卫幂等复用），首屏不再卡顿。</span>
                     </div>
                 </div>
             </div>

@@ -2395,12 +2395,12 @@
         return bm25Issues;
       }
 
-      // 【性能优化】页面空闲时预构建 BM25 索引，避免首次查询时 200-500ms 同步卡顿
-      if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(function() { getBM25Rules(); getBM25Issues(); }, { timeout: 5000 });
-      } else {
-        setTimeout(function() { getBM25Rules(); getBM25Issues(); }, 3000);
-      }
+      // 【性能优化调整 v3.15】移除首屏 BM25 预构建：
+      // 原先在 idle/3s 后对 8000+ 条规章+检查信息全量建索引，导致打开/刷新界面后
+      // 停留几秒出现 3-4 秒主线程卡滞（用户感知「在加载数据」，但界面/数据已通过
+      // 整页快照恢复）。改为首次搜索时懒建（getBM25Rules/Issues 已有 !bm25Rules 守卫，
+      // 幂等复用，不重复构建），首屏不再卡顿，首次查询的 200-500ms 建索引在主动操作
+      // 语境下可接受。
 
       // ---------- 5. 本地检索 RAG ----------
       async function retrieveLocalData(query, options) {

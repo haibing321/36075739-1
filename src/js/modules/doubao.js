@@ -751,9 +751,9 @@
                 // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具（视觉模型亦可用，会跟随当前模型）
                 html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，跟随当前模型，视觉模型可用）</label>';
                 // 【视觉模型快捷预设】一键填好名称/URL/模型名，免手敲（纯新增，不影响默认文本模型）
-                html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 快捷填入视觉模型</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">填入 DeepSeek-V4-Flash-Vision-Exp（看图/识别照片）</span></div>';
+                html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" class="ds-vision-btn" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 快捷填入视觉模型</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">填入 DeepSeek-V4-Flash-Vision-Exp（看图/识别照片）</span></div>';
                 html += '</div>';
-                html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
+                html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button class="ds-cancel-btn" onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
                 html += '</div>';
                 box.innerHTML = html;
                 var sel = document.getElementById('ds-active-model-select');

@@ -299,3 +299,21 @@
 [data-theme="dark"] .att-cat-公 { background: #64748b !important; }
 [data-theme="dark"] .att-cat-假 { background: #ef4444 !important; }
 [data-theme="dark"] .att-cat-培 { background: #ec4899 !important; }
+
+/* ---------- 11. 大模型 API 配置：新增/编辑模型框暗黑适配 ---------- */
+/* 编辑表单容器：内联 background:#f8fafc 已被第9节批量兜底覆盖，此处补边框 */
+[data-theme="dark"] #ds-provider-edit { border-color: var(--border) !important; }
+/* 视觉模型快捷按钮（内联浅蓝底/紫字）：暗黑下改为深底浅字蓝边 */
+[data-theme="dark"] .ds-vision-btn {
+    background: #2a3a52 !important;
+    color: #c7d2fe !important;
+    border-color: #3f4d6b !important;
+}
+[data-theme="dark"] .ds-vision-btn:hover { background: #334155 !important; }
+/* 取消按钮（内联白底/灰字）：暗黑下改为深底浅字 */
+[data-theme="dark"] .ds-cancel-btn {
+    background: #1e293b !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+[data-theme="dark"] .ds-cancel-btn:hover { background: #2a3a52 !important; }

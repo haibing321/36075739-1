@@ -1674,6 +1674,20 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.27 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.27 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>💾 彻底修复「刷新 / 折叠屏折叠展开后，已输入的数据不保留」：根因是页面状态快照的草稿输入框 id 列表大量过时——原 12 个 id 中 9 个在页面中根本不存在（智能对话输入框被误写成不存在的 ds-input，真实 id 是 ds-user-input），导致 input 类输入框的用户内容从未被快照，折叠重建后自然丢失。本次按各模块真实 id 全面校正（智能对话 / 智能体 / 历史搜索 / 写作查询 / 写作修改指令 / 风险研判细化 / 手册搜索 / 电话搜索 / 日志搜索 / 日志正文 / 备忘时间 / 备忘内容），并新增「动态关键词容器」支持：规章制度与检查信息的关键词输入框 id 随数量动态编号（rule-input_N / issue-input_N），现按容器整组快照、按索引回填，且支持还原后自动补齐关键词框数量。经自动化测试（Edge 真实浏览器，10 类草稿整页还原）全部保留通过。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.26 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1688,34 +1702,7 @@
                 </div>
             </div>
 
-            <!-- v3.25 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.25 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎛️ 智能助手底部七个按钮改为「互斥展开」：角色 / 模型 / 关联数据 / 联网搜索 / FIM 中间补全 / 上传附件，同一时刻只允许打开一个，点开新的自动关闭之前的（点击已打开的按钮则收起自身）。新增统一互斥函数 dsCloseAllChatPopups，六个弹出入口全部接入，全部动态查询节点——折叠屏/刷新整页还原后互斥依然有效。经自动化测试（Edge 真实浏览器，首次加载 + 整页还原两轮，六个按钮逐一互斥切换）全部通过。</span>
-                    </div>
-                </div>
-            </div>
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.23 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
-            <!-- v3.24 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.24 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔘 彻底修复「折叠屏 / 反复刷新后 关联数据 / 联网搜索 / 模型 / 角色」按钮点击无响应（二次修复，本次根治）。v3.23 虽把事件委托挂到了永不被替换的 #panel-doubao，但委托回调闭包里仍持有还原前的旧菜单/下拉节点引用——整页 innerHTML 还原后这些旧节点已脱离文档（幽灵节点），对其 classList/contains 操作毫无效果，故菜单仍打不开。本次把三处委托回调（关联数据 / 联网搜索 / 模型角色）与菜单同步函数全部改为「每次点击动态查询最新节点」，并让模型菜单的 ds-rebuild 重建事件改为冒泡到 document 动态监听。经自动化测试（Edge 真实浏览器 + 连续 3 轮整页还原）验证：四个按钮每次都能正常展开菜单。</span>
-                    </div>
-                </div>
-            </div>
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.22 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.25 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

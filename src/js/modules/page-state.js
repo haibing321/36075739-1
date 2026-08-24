@@ -24,19 +24,29 @@
 
   // 各模块「未提交草稿」输入框的稳定 id（仅抓取值，不干扰业务）
   // 仅收集「明显的草稿类输入」，避免误存密码/已提交内容
+  // v3.27 修正：原列表大量 id 已过时（ds-input/wr-topic-input/issue-search/rule-search/
+  //   phone-search/handbook-search/diary-title/memo-input 均不存在），导致折叠/刷新后
+  //   用户输入不保留。现按各模块真实 id 校正；textarea 内容随整页 innerHTML 快照已保留，
+  //   此处重点保障 input 类（value 不进 innerHTML）的草稿。
   var DRAFT_INPUT_IDS = [
-    'ds-input',            // 智能对话输入框
-    'ds-agent-input',      // 智能体输入框
-    'wr-topic-input',      // 智能写作主题
-    'wr-outline-input',    // 智能写作大纲
-    'wr-modify-instruction', // 智能写作修改指令
-    'issue-search',        // 检查信息搜索框
-    'rule-search',         // 规章搜索框
-    'phone-search',        // 应急电话搜索
-    'handbook-search',     // 手册搜索
-    'diary-title',         // 日志标题
-    'memo-input'           // 备忘输入
+    'ds-user-input',           // 智能对话输入框
+    'ds-agent-input',          // 智能体输入框
+    'ds-history-search',       // 智能助手历史对话搜索
+    'wr-query-input',          // 智能写作查询输入
+    'wr-modify-instruction',   // 智能写作修改指令
+    'risk-refine-input',       // 风险研判细化输入
+    'hb-searchInput',          // 检查手册搜索
+    'phone-searchInput',       // 应急电话搜索
+    'diary-search-input',      // 工作日志搜索
+    'diary-work',              // 工作日志正文
+    'memo-datetime',           // 备忘提醒时间(input[datetime-local]，value 不进 innerHTML)
+    'memo-content'             // 备忘内容(textarea，随 innerHTML 保留，这里再加一道单值兜底)
   ];
+  // 注意：原列表中的 #memo-title（index.html:1200）是「🔔 新建备忘提醒」弹窗标题 div，
+  //   并非输入框，永远无 value，已从列表移除；备忘真实草稿仅 datetime + content。
+  // v3.27：动态关键词容器（规章制度 rule-input_N / 检查信息 issue-input_N），
+  // 输入框 id 随数量动态编号，按容器收集整个数组。
+  var DRAFT_KEYWORD_BOXES = ['rule-keywordContainer', 'issue-keywordContainer'];
 
   // 主滚动容器：各 panel 内部的可滚动区域（结构为 .panel.active 内的 .module-scroll 或 panel 自身）
   function _activePanelScroll() {
@@ -71,6 +81,19 @@
       if (val && val.trim && val.trim().length > 0) {
         drafts[id] = val;
       }
+    });
+    // v3.27：动态关键词容器（rule-input_N / issue-input_N）按数组收集
+    DRAFT_KEYWORD_BOXES.forEach(function (cid) {
+      var box = document.getElementById(cid);
+      if (!box) return;
+      var vals = [];
+      box.querySelectorAll('input[type="text"]').forEach(function (inp) {
+        vals.push(inp.value || '');
+      });
+      // 去掉尾随空串（用户未填的空框不算草稿），保留中间空值以维持索引对齐
+      while (vals.length > 0 && (!vals[vals.length - 1] || !vals[vals.length - 1].trim())) vals.pop();
+      var has = vals.some(function (v) { return v && v.trim().length > 0; });
+      if (has) drafts[cid] = vals;
     });
     return drafts;
   }
@@ -183,6 +206,29 @@
         // 草稿回填（仅当输入框当前为空，避免覆盖用户已输入的新内容）
         if (snap.drafts) {
           Object.keys(snap.drafts).forEach(function (id) {
+            var val = snap.drafts[id];
+            // v3.27：动态关键词容器（rule-input_N / issue-input_N）数组回填
+            if (Array.isArray(val)) {
+              var box = document.getElementById(id);
+              if (!box) return;
+              var inputs = box.querySelectorAll('input[type="text"]');
+              // 若还原后容器 input 数量少于快照（理论不应发生，innerHTML 已还原行），
+              // 通过各模块暴露的 add 函数补齐，保证按索引回填不落空。
+              if (inputs.length < val.length) {
+                var addFn = id === 'rule-keywordContainer' ? window.ruleAddKeyword : window.issueAddKeyword;
+                if (typeof addFn === 'function') {
+                  for (var k = inputs.length; k < val.length; k++) { try { addFn(); } catch (e) { break; } }
+                  inputs = box.querySelectorAll('input[type="text"]');
+                }
+              }
+              val.forEach(function (v, i) {
+                if (inputs[i] && v && !inputs[i].value) {
+                  inputs[i].value = v;
+                  if (inputs[i].dispatchEvent) inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+                }
+              });
+              return;
+            }
             var el = document.getElementById(id);
             if (!el) return;
             var cur = (el.value !== undefined) ? el.value : (el.textContent || '');

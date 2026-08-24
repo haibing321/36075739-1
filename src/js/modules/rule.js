@@ -679,6 +679,9 @@
             // 折叠屏恢复完成后，由 page-state 派发此事件，重新同步关键词计数
             window.addEventListener('pageSnapshotRestored', function () { syncRuleKeywordFromDOM(); });
 
+            // v3.27：暴露「添加关键词框」供 page-state 草稿回填补齐数量（与 issue.js 的 issueAddKeyword 对称）
+            window.ruleAddKeyword = addKeywordInput;
+
             window.removeRuleKeyword = function(n) {
                 const el = document.getElementById('rule-kw_' + n);
                 if (el) el.remove();

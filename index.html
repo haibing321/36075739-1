@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-    <title>安监智能辅助系统 · 完整六模块版</title>
+    <title>安监智能辅助系统</title>
     <meta name="theme-color" content="#1a365d">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -648,7 +648,7 @@
                                 <option value="agent">🧠 智能体</option>
                                 <option value="check">⚖️ 智能对规</option>
                                 <option value="writer">✍️ 智能写作</option>
-                                <option value="risk">📊 智能风险研判</option>
+                                <option value="risk">📊 风险研判</option>
                                 <option value="doubao">🤖 豆包网页版</option>
                             </select>
                         </div>
@@ -1602,7 +1602,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.15</span> · 2026.08.24</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.16</span> · 2026.08.24</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1610,7 +1610,7 @@
 
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
-                铁路安全监察智能辅助系统。集成 AI 智能体（DeepSeek V4 ReAct 自主规划执行 + 工具调用）、智能对规、智能写作、风险研判、检查信息管理、规章管理、安全手册、工作日志、应急电话、资料中心，支持全模块离线使用。
+                铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
             <!-- v3.15 近期更新 -->
@@ -1627,16 +1627,16 @@
                 </div>
             </div>
 
-            <!-- v3.14 近期更新 -->
+            <!-- v3.16 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.14 近期更新</span>
+                    <span>v3.16 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔧 修复 v3.13 整页保持带来的副作用：规章制度/检查信息面板折叠恢复后关键词输入框重复新增（每刷新多一个）。改为 page-state 还原 DOM 后派发 pageSnapshotRestored 事件，两模块按还原后的实际行数重算计数器并规范 id/标签/删除按钮，不再叠加追加。</span>
+                        <span>📝 校准关于系统面板用语与功能描述：模块名统一（安全手册→检查手册）、风险研判命名一致、补充资料中心/智能查询、部署形态修正为 CloudStudio / GitHub Pages 双地址、存储配额改为动态描述、标题去除过时「六模块版」。</span>
                     </div>
                 </div>
             </div>
@@ -1671,8 +1671,12 @@
                         <span>应急电话</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>🤖</span>
-                        <span>智能助手</span>
+                        <span>📚</span>
+                        <span>资料中心</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
+                        <span>🔍</span>
+                        <span>智能查询</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
                         <span>🌙</span>
@@ -1686,10 +1690,10 @@
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
                     <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
                 </div>
-                <div>• AI智能体：DeepSeek V4（OpenAI 兼容格式）API + ReAct自主执行循环，可调用本地数据/工具完成任务</div>
-                <div>• 数据存储：IndexedDB + localStorage（纯本地离线，上限200MB）</div>
-                <div>• 部署形态：纯静态站点 + PWA 离线应用（CloudStudio / EdgeOne Pages）</div>
-                <div>• 兼容适配：华为/Chrome/Edge/手机端全面适配</div>
+                <div>• AI 能力：支持多模型 API（DeepSeek V4 等 OpenAI 兼容格式）+ 智能体 ReAct 自主执行循环，可调用本地数据/工具完成任务</div>
+                <div>• 数据存储：IndexedDB + localStorage，全部数据存于本地，支持离线使用（配额随浏览器与磁盘空间动态分配）</div>
+                <div>• 部署形态：纯静态站点 + PWA 离线应用（CloudStudio / GitHub Pages 双地址同步发布）</div>
+                <div>• 兼容适配：华为/Chrome/Edge/手机端（含折叠屏）全面适配</div>
             </div>
 
             <!-- 底部信息 -->
@@ -1739,7 +1743,7 @@
                 <!-- 注册目的与配置方法说明 -->
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:0.8rem;color:#92400e;line-height:1.65;">
                     <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;">📌 为什么要配置（注册目的）</div>
-                    <div style="margin-bottom:8px;">本系统的智能助手（智能对话 / 智能体 / 智能对规 / 智能写作 / 智能风险研判）均依赖大模型 API 生成回答。<b>未配置 API Key 时无法使用任何 AI 功能</b>；配置后所有模块统一调用「当前使用模型」，切换立即对全部模块生效。</div>
+                    <div style="margin-bottom:8px;">本系统的智能助手（智能对话 / 智能体 / 智能对规 / 智能写作 / 风险研判）均依赖大模型 API 生成回答。<b>未配置 API Key 时无法使用任何 AI 功能</b>；配置后所有模块统一调用「当前使用模型」，切换立即对全部模块生效。</div>
                     <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;">🛠️ 如何配置（方法）</div>
                     <div>1. 在模型厂商官网<b>注册账号并获取 API Key</b>（如 DeepSeek、阿里通义、智谱 GLM、OpenAI 等）；<br>
                     2. 点击右上「＋ 新增模型」，填写 <b>名称 / API 地址 / 模型名称 / API Key</b>；<br>

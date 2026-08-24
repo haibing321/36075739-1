@@ -192,63 +192,67 @@
       } catch (e) {}
     }
 
-    // 3) 等一帧让面板渲染完成再还原滚动/草稿/弹窗/编辑态
+    // 3) 下一帧还原滚动/草稿/弹窗/编辑态（v3.28 优化：由 rAF×2 提前为 rAF×1，
+    //    整页 innerHTML 替换在 DOMContentLoaded 同步完成，单帧后 DOM 已稳定可写，
+    //    滚动位置/草稿更早恢复到位，用户感知还原更即时）
     requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        // 滚动位置
-        if (snap.scroll) {
-          var panel = document.querySelector('.panel.active');
-          if (panel) {
-            var el = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area') || panel;
-            try { el.scrollTop = snap.scroll.top || 0; el.scrollLeft = snap.scroll.left || 0; } catch (e) {}
-          }
+      // 滚动位置
+      if (snap.scroll) {
+        var panel = document.querySelector('.panel.active');
+        if (panel) {
+          var el = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area') || panel;
+          try { el.scrollTop = snap.scroll.top || 0; el.scrollLeft = snap.scroll.left || 0; } catch (e) {}
         }
-        // 草稿回填（仅当输入框当前为空，避免覆盖用户已输入的新内容）
-        if (snap.drafts) {
-          Object.keys(snap.drafts).forEach(function (id) {
-            var val = snap.drafts[id];
-            // v3.27：动态关键词容器（rule-input_N / issue-input_N）数组回填
-            if (Array.isArray(val)) {
-              var box = document.getElementById(id);
-              if (!box) return;
-              var inputs = box.querySelectorAll('input[type="text"]');
-              // 若还原后容器 input 数量少于快照（理论不应发生，innerHTML 已还原行），
-              // 通过各模块暴露的 add 函数补齐，保证按索引回填不落空。
-              if (inputs.length < val.length) {
-                var addFn = id === 'rule-keywordContainer' ? window.ruleAddKeyword : window.issueAddKeyword;
-                if (typeof addFn === 'function') {
-                  for (var k = inputs.length; k < val.length; k++) { try { addFn(); } catch (e) { break; } }
-                  inputs = box.querySelectorAll('input[type="text"]');
-                }
+      }
+      // 草稿回填（仅当输入框当前为空，避免覆盖用户已输入的新内容）
+      if (snap.drafts) {
+        Object.keys(snap.drafts).forEach(function (id) {
+          var val = snap.drafts[id];
+          // v3.27：动态关键词容器（rule-input_N / issue-input_N）数组回填
+          if (Array.isArray(val)) {
+            var box = document.getElementById(id);
+            if (!box) return;
+            var inputs = box.querySelectorAll('input[type="text"]');
+            // 若还原后容器 input 数量少于快照（理论不应发生，innerHTML 已还原行），
+            // 通过各模块暴露的 add 函数补齐，保证按索引回填不落空。
+            if (inputs.length < val.length) {
+              var addFn = id === 'rule-keywordContainer' ? window.ruleAddKeyword : window.issueAddKeyword;
+              if (typeof addFn === 'function') {
+                for (var k = inputs.length; k < val.length; k++) { try { addFn(); } catch (e) { break; } }
+                inputs = box.querySelectorAll('input[type="text"]');
               }
-              val.forEach(function (v, i) {
-                if (inputs[i] && v && !inputs[i].value) {
-                  inputs[i].value = v;
-                  if (inputs[i].dispatchEvent) inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-                }
-              });
-              return;
             }
-            var el = document.getElementById(id);
-            if (!el) return;
-            var cur = (el.value !== undefined) ? el.value : (el.textContent || '');
-            if (!cur || !cur.trim || cur.trim().length === 0) {
-              try {
-                if (el.value !== undefined) { el.value = snap.drafts[id]; if (el.dispatchEvent) el.dispatchEvent(new Event('input', { bubbles: true })); }
-                else { el.textContent = snap.drafts[id]; }
-                if (typeof window.autoResize === 'function') window.autoResize(el);
-              } catch (e) {}
-            }
-          });
-        }
-        // 弹窗恢复
-        if (snap.modals && snap.modals.length) {
-          snap.modals.forEach(function (id) {
-            var m = document.getElementById(id);
-            if (m && typeof m.classList !== 'undefined') m.classList.add('active');
-          });
-        }
-      });
+            val.forEach(function (v, i) {
+              if (inputs[i] && v && !inputs[i].value) {
+                inputs[i].value = v;
+                if (inputs[i].dispatchEvent) inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            });
+            return;
+          }
+          var el = document.getElementById(id);
+          if (!el) return;
+          var cur = (el.value !== undefined) ? el.value : (el.textContent || '');
+          if (!cur || !cur.trim || cur.trim().length === 0) {
+            try {
+              if (el.value !== undefined) { el.value = snap.drafts[id]; if (el.dispatchEvent) el.dispatchEvent(new Event('input', { bubbles: true })); }
+              else { el.textContent = snap.drafts[id]; }
+              if (typeof window.autoResize === 'function') window.autoResize(el);
+            } catch (e) {}
+          }
+        });
+      }
+      // 弹窗恢复
+      if (snap.modals && snap.modals.length) {
+        snap.modals.forEach(function (id) {
+          var m = document.getElementById(id);
+          if (m && typeof m.classList !== 'undefined') m.classList.add('active');
+        });
+      }
+      // 派发「快照已还原」事件（v3.28 优化：与滚动/草稿同帧，关键词计数同步更早完成）
+      // 通知各模块按还原后的 DOM 重新同步内部状态
+      //    （如规章制度/检查信息的关键词计数器，init 时容器为空已加 1 行，此处按还原后的 N 行纠正，避免多一个框）
+      try { window.dispatchEvent(new Event('pageSnapshotRestored')); } catch (e) {}
     });
 
     // 4) 编辑态恢复（多帧，避免被后续渲染覆盖）
@@ -265,32 +269,38 @@
         });
       });
     }
-
-    // 5) 派发「快照已还原」事件，通知各模块按还原后的 DOM 重新同步内部状态
-    //    （如规章制度/检查信息的关键词计数器，init 时容器为空已加 1 行，此处按还原后的 N 行纠正，避免多一个框）
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        try { window.dispatchEvent(new Event('pageSnapshotRestored')); } catch (e) {}
-      });
-    });
   }
 
-  // ===== 挂监听：页面即将被系统销毁时保存（折叠屏重建必经此路）=====
+  // ===== 保存调度（v3.28 优化）：高频事件防抖合并，页面销毁前立即 flush =====
+  // 折叠瞬间 pagehide/visibilitychange/resize/visualViewport 会连续触发多次保存，
+  // 每次都要序列化全部 panel innerHTML(~60KB) + 写 sessionStorage。低端手机折叠瞬间
+  // 主线程繁忙会加剧卡顿。统一为单一调度：resize/visualViewport 只防抖调度一次；
+  // pagehide/visibilitychange(hidden) 视为「页面即将销毁」，立即 flush 最新状态。
+  var _saveTimer = null;
+  function _scheduleSave(delay) {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function () {
+      _saveTimer = null;
+      savePageState();
+    }, delay || 250);
+  }
+  function _flushSave() {
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+    // 无论是否有 pending 都保存一次：确保销毁前最后一刻状态（草稿/滚动/弹窗）不丢
+    savePageState();
+  }
+
   // pagehide 在页面卸载/销毁前必触发（比 beforeunload 更可靠，且不阻塞）
-  window.addEventListener('pagehide', savePageState);
-  // visibilitychange→隐藏：折叠屏合上时先触发隐藏，提前存一份
+  window.addEventListener('pagehide', _flushSave);
+  // visibilitychange→隐藏：折叠屏合上时先触发隐藏，立即存一份
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') savePageState();
+    if (document.visibilityState === 'hidden') _flushSave();
   });
-  // 兜底：页面 resize 结束（折叠/旋转完成）也存一次，确保最新滚动位置不丢
-  var _rsTimer = null;
-  window.addEventListener('resize', function () {
-    if (_rsTimer) clearTimeout(_rsTimer);
-    _rsTimer = setTimeout(savePageState, 300);
-  });
+  // 兜底：页面 resize 结束（折叠/旋转完成）防抖存一次，确保最新滚动位置不丢
+  window.addEventListener('resize', function () { _scheduleSave(300); });
 
   // 折叠屏专用：visualViewport 尺寸变化（折叠/展开动作本身）防抖处理。
-  // 仅做轻量布局重算 + 存快照，不触发任何业务重渲染，避免折叠抖动导致页面重构。
+  // 仅做轻量布局重算 + 防抖存快照，不触发任何业务重渲染，避免折叠抖动导致页面重构。
   if (window.visualViewport) {
     var _vvTimer = null;
     window.visualViewport.addEventListener('resize', function () {
@@ -304,7 +314,7 @@
             if (el && el.scrollHeight < el.scrollTop) el.scrollTop = el.scrollHeight;
           }
         } catch (e) {}
-        savePageState();
+        _scheduleSave(250);
       }, 250);
     });
   }

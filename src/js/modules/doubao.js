@@ -152,8 +152,8 @@
                 sel.innerHTML = html;
                 sel.onchange = function(){ setActiveProvider(sel.value); if (window.updateModeStatus) window.updateModeStatus(); };
                 if (window.updateModeStatus) window.updateModeStatus();
-                // 通知下拉菜单重建（模型列表可能变化）
-                try { sel.dispatchEvent(new Event('ds-rebuild')); } catch(e){}
+                // 通知下拉菜单重建（模型列表可能变化）；bubbles:true 供 document 级动态监听（v3.24：还原后旧节点监听失效）
+                try { sel.dispatchEvent(new Event('ds-rebuild', { bubbles: true })); } catch(e){}
             }
 
             // ---- 初始化 ----
@@ -469,7 +469,17 @@
                         }).join('');
                     }
                     build();
-                    sel.addEventListener('ds-rebuild', build);
+                    // 【v3.24-fix】ds-rebuild 也改为动态监听：整页还原后旧 sel 上的监听随旧节点失效，
+                    //   改挂 document 并按目标 id 过滤，还原后模型配置变化时菜单仍能重建。
+                    document.addEventListener('ds-rebuild', function(e) {
+                        if (!e.target || e.target.id !== selId) return;
+                        var _sel = document.getElementById(selId);
+                        var _menu = document.getElementById(menuId);
+                        if (!_sel || !_menu) return;
+                        _menu.innerHTML = Array.prototype.slice.call(_sel.options).map(function(o) {
+                            return '<div class="ds-dropdown-item' + (o.selected ? ' active' : '') + '" data-val="' + dsEsc(o.value) + '">' + dsEsc(o.text) + '</div>';
+                        }).join('');
+                    });
                     // 【v3.23-fix】事件委托：绑定挂到静态父容器 #panel-doubao（它自身不会被
                     //   page-state.js 的 p.innerHTML 还原替换，仅子节点被替换），从而折叠屏/
                     //   刷新经整页 DOM 还原后委托依然有效。v3.22 误挂 #ds-sub-chat（会被替换）。
@@ -477,6 +487,12 @@
                     _ddRoot.addEventListener('click', function(e) {
                         var t = e.target;
                         if (!t || !t.closest) return;
+                        // 【v3.24-fix】每次点击动态查询节点：v3.23 委托虽挂在 #panel-doubao 上
+                        //   永久有效，但回调闭包仍持有还原前的旧 menu/sel 引用（幽灵节点，已脱离
+                        //   文档），classList/contains 操作无效果——必须动态查询最新节点。
+                        var menu = document.getElementById(menuId);
+                        var sel = document.getElementById(selId);
+                        if (!menu || !sel) return;
                         // 点击角色/模型按钮：toggle 对应菜单（互斥关闭其它）
                         if (t.closest('#' + btnId)) {
                             e.stopPropagation();
@@ -941,17 +957,21 @@
                 _dsRoot.addEventListener('click', function(e) {
                     var t = e.target;
                     if (!t || !t.closest) return;
+                    // 【v3.24-fix】每次点击动态查询菜单节点：v3.23 委托虽挂在 #panel-doubao 上
+                    //   永久有效，但闭包 menu 仍指向还原前的旧节点（幽灵节点），classList 操作
+                    //   无效果——必须动态查询最新节点。
+                    var menu = document.getElementById('ds-datasource-menu');
+                    if (!menu) return;
                     // 点击关联数据按钮：toggle 菜单（互斥关闭其它下拉）
                     if (t.closest('#ds-reset-datasource-btn')) {
                         e.stopPropagation();
-                        if (!menu) return;
                         var willOpen = !menu.classList.contains('open');
                         document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
                         if (willOpen) loadDsCfg();
                         menu.classList.toggle('open', willOpen);
                         return;
                     }
-                    if (!menu || !menu.contains(t)) return;
+                    if (!menu.contains(t)) return;
                     // 取消：仅收起
                     if (t.closest('.ds-ds-btn--cancel')) {
                         e.stopPropagation(); menu.classList.remove('open'); return;
@@ -979,7 +999,10 @@
                 // 复选框 change 委托（全选 / 单项）
                 _dsRoot.addEventListener('change', function(e) {
                     var t = e.target;
-                    if (!t || !t.id || !menu || !menu.contains(t)) return;
+                    if (!t || !t.id) return;
+                    // 【v3.24-fix】动态查询菜单节点（同上，避免还原后幽灵节点 contains 恒 false）
+                    var menu = document.getElementById('ds-datasource-menu');
+                    if (!menu || !menu.contains(t)) return;
                     if (t.id === 'ds-dialog-all') {
                         var v = t.checked;
                         ['rules','issue','handbook','wr-all','phone','diary'].forEach(function(k){
@@ -3237,12 +3260,14 @@
       // ========== 联网搜索开关（输入栏按钮：带文字说明菜单，与「模型管理」面板复选框共用 ds_web_search）==========
       (function initWebSearchToggle() {
         var btn = document.getElementById('ds-websearch-btn');
-        var menu = document.getElementById('ds-websearch-menu');
         if (!btn) return;
+        // 【v3.24-fix】syncMenuActive/closeMenu/openMenu 全部动态查询菜单节点，
+        //   避免整页 innerHTML 还原后闭包 menu 指向幽灵节点（已脱离文档）导致操作无效果。
         function syncMenuActive() {
-          if (!menu) return;
+          var m = document.getElementById('ds-websearch-menu');
+          if (!m) return;
           var on = localStorage.getItem('ds_web_search') === '1';
-          menu.querySelectorAll('.ds-dropdown-item').forEach(function(it) {
+          m.querySelectorAll('.ds-dropdown-item').forEach(function(it) {
             it.classList.toggle('active', (it.getAttribute('data-ws') === '1') === on);
           });
         }
@@ -3257,8 +3282,8 @@
             : '联网搜索：已关闭（点击查看选项）';
           syncMenuActive();
         };
-        function closeMenu() { if (menu) menu.classList.remove('open'); }
-        function openMenu() { if (menu) menu.classList.add('open'); }
+        function closeMenu() { var m = document.getElementById('ds-websearch-menu'); if (m) m.classList.remove('open'); }
+        function openMenu() { var m = document.getElementById('ds-websearch-menu'); if (m) m.classList.add('open'); }
         function setWs(on) {
           localStorage.setItem('ds_web_search', on ? '1' : '0');
           window.dsSyncWebSearchBtn();
@@ -3281,6 +3306,10 @@
         _wsRoot.addEventListener('click', function(e) {
           var t = e.target;
           if (!t) return;
+          // 【v3.24-fix】每次点击动态查询菜单节点：v3.23 委托虽挂在 #panel-doubao 上
+          //   永久有效，但闭包 menu 仍指向还原前的旧节点（幽灵节点），classList/contains
+          //   操作无效果——必须动态查询最新节点。
+          var menu = document.getElementById('ds-websearch-menu');
           // 点击按钮：toggle 自身菜单（互斥关闭其它）
           if (t.closest('#ds-websearch-btn')) {
             e.stopPropagation();

@@ -413,6 +413,27 @@
 
             // 子模块切换：智能对规 / 智能对话 / 智能写作
             let _dsCurrentSub = 'chat'; // 默认显示智能对话
+            // ---- 豆包网页版懒加载：仅容器显示时才联网加载 iframe，隐藏时卸回 about:blank 停止联网 ----
+            // 初衷：原 iframe 的 src 硬编码为 doubao.com，浏览器对 display:none 的 iframe 仍会预加载，
+            //   导致「平时未切到豆包网页版也在联网」。改为初始 src=about:blank，激活时才注入真实地址。
+            window.__DOUBAO_WEB_SRC = 'https://www.doubao.com/chat/';
+            window.loadDoubaoWebview = function(container) {
+                if (!container) return;
+                try {
+                    var iframe = container.querySelector('iframe');
+                    if (!iframe) return;
+                    var realSrc = iframe.getAttribute('data-src') || window.__DOUBAO_WEB_SRC;
+                    if (iframe.getAttribute('src') !== realSrc) iframe.src = realSrc;
+                } catch (e) {}
+            };
+            window.unloadDoubaoWebview = function(container) {
+                if (!container) return;
+                try {
+                    var iframe = container.querySelector('iframe');
+                    if (iframe && iframe.getAttribute('src') !== 'about:blank') iframe.src = 'about:blank';
+                } catch (e) {}
+            };
+
             window.dsSwitchSub = function(tab) {
                 var panels = {
                     check:  document.getElementById('ds-sub-check'),
@@ -423,6 +444,8 @@
                     doubao: document.getElementById('ds-sub-doubao')
                 };
                 Object.values(panels).forEach(function(p) { if (p) p.style.display = 'none'; });
+                // 切走豆包网页版子视图时卸载 iframe（停止联网）
+                if (typeof window.unloadDoubaoWebview === 'function') window.unloadDoubaoWebview(panels.doubao);
                 // 防智能体运行锁死（通过 window 函数跨 IIFE 通信）
                 if (_dsCurrentSub === 'agent' && tab !== 'agent' && typeof window.clearAgentRunning === 'function') {
                     window.clearAgentRunning();
@@ -432,6 +455,8 @@
                 }
                 var panel = panels[tab];
                 if (panel) panel.style.display = 'flex';
+                // 切到豆包网页版子视图时懒加载 iframe（联网）
+                if (tab === 'doubao' && typeof window.loadDoubaoWebview === 'function') window.loadDoubaoWebview(panel);
                 _dsCurrentSub = tab;
                 if (tab === 'writer' && typeof wrInit === 'function') wrInit();
                 var sel = document.getElementById('ds-sub-select');
@@ -463,6 +488,12 @@
                 if (typeof window.dsSyncSubFromDOM === 'function') {
                     try { window.dsSyncSubFromDOM(); } catch (e) { console.warn('[doubao] 子视图同步失败', e); }
                 }
+                // 还原后若豆包网页版是当前视图，确保联网加载（防御快照保存瞬间 iframe 尚未注入真实 src 的极端情况）
+                try {
+                    if (_dsCurrentSub === 'doubao' && typeof window.loadDoubaoWebview === 'function') {
+                        window.loadDoubaoWebview(document.getElementById('ds-sub-doubao'));
+                    }
+                } catch (e) {}
             });
             function updateModeStatus() {
                 var sub = _dsCurrentSub || 'chat';
@@ -728,8 +759,14 @@
                 var subWriter = document.getElementById('ds-sub-writer');
                 var agentToolbar = document.getElementById('agent-toolbar');
 
-                // 豆包网页版：未配置 API 时显示
-                if (webview) webview.style.display = hasApiKey ? 'none' : 'flex';
+                // 豆包网页版：未配置 API 时显示（并懒加载 iframe）；已配置则隐藏并卸载（停止联网）
+                if (webview) {
+                    webview.style.display = hasApiKey ? 'none' : 'flex';
+                    if (typeof window.unloadDoubaoWebview === 'function') {
+                        if (hasApiKey) window.unloadDoubaoWebview(webview);
+                        else window.loadDoubaoWebview(webview);
+                    }
+                }
                 // 子模块 Tab 栏：配置 API 后显示
                 if (subTabs) subTabs.style.display = hasApiKey ? 'flex' : 'none';
                 // 工具栏：配置 API 后显示

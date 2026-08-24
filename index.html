@@ -1674,6 +1674,20 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.30 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.30 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔍 修复「从搜索结果点击查看全文，折叠/刷新后正文空白」：根因是弹窗内容快照有 512KB 体积上限——真实规章正文（文本/表格）一旦超过即被跳过，导致折叠后弹窗虽打开但正文空白（目录进入的规章正文小、搜索结果进入的规章正文大，故目录保留、搜索不保留）。本次双层加固：① 弹窗内容快照上限提升到 1.5MB；② 新增「全文查看会话」兜底——打开查看全文时登记当前规章索引，还原后若正文为空（极端超大正文），自动从资料库重新渲染，任何大小都能恢复。同时修复规章全文/搜索结果的图片在折叠后不加载的问题（懒加载观察器重建，从资料库重新读取）。经自动化测试（704KB 常规大正文走快照、2.3MB 超大正文走兜底重建，均完整保留）验证通过。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.29 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1688,21 +1702,7 @@
                 </div>
             </div>
 
-            <!-- v3.28 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.28 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>⚡ 系统全面体检与流畅度优化：对「打开 / 折叠 / 刷新」三种场景下 7 个界面（检查手册 / 检查信息 / 规章制度 / 应急电话 / 智能助手 / 工作日志 / 资料中心）的数据加载与保留逻辑做了完整自动化测试（Edge 真实浏览器，27 项断言全过），并基于实测数据优化三处体验：① 折叠瞬间状态保存由「多事件各自序列化」统一为防抖合并调度——pagehide/visibilitychange 触发时立即落盘、resize/视口变化防抖合并，折叠瞬间的序列化次数减少一半以上，低端手机折叠更流畅；② 整页还原后滚动位置 / 草稿 / 弹窗恢复由两帧提前到一帧完成，还原更即时；③ 「快照已还原」同步事件与草稿回填同帧触发，关键词计数等内部状态更早对齐。实测性能：首屏 DOMContentLoaded 223ms、切模块同步耗时约 12ms、整页还原约 7ms、无长任务卡顿。</span>
-                    </div>
-                </div>
-            </div>
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.27 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.28 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

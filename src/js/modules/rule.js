@@ -146,6 +146,57 @@
                 container.querySelectorAll('img[data-img-id]').forEach(img => observer.observe(img));
             }
 
+            // v3.30：折叠/刷新整页还原后，规章图片懒加载 observer 不会随 DOM 重建——
+            //   ① 已加载的图片 src 是 blob: URL（仅当前文档会话有效），还原后失效空白；
+            //   ② 未加载的 img[data-img-id]（src 为空）因 observer 丢失而永不触发加载。
+            //   还原后重建：把失效 blob URL 的 img 重置回懒加载占位态，再重新挂 observer，
+            //   由 IntersectionObserver 从 IndexedDB 重新读取图片。用于查看全文正文与搜索结果列表。
+            window.ruleFvRebuildImages = function(container) {
+                if (!container) return;
+                container.querySelectorAll('img[data-img-id][src^="blob:"]').forEach(function(img) {
+                    img._loaded = false;
+                    img.removeAttribute('src');
+                    img.classList.add('rule-lazy-img');
+                    img.style.opacity = '';
+                });
+                try { setupLazyImageObserver(container); } catch (e) {}
+            };
+            // 还原完成后（page-state 派发，与草稿回填同帧）：查看全文弹窗若打开、搜索结果若可见，
+            // 重建其中的规章图片懒加载，避免「只保留空表/图片全空白」。
+            window.addEventListener('pageSnapshotRestored', function() {
+                try {
+                    var fv = document.getElementById('rule-fullViewModal');
+                    if (fv && fv.classList.contains('active')) {
+                        var body = document.getElementById('rule-fullContentBody');
+                        if (body) window.ruleFvRebuildImages(body);
+                    }
+                    var rl = document.getElementById('rule-resultsList');
+                    if (rl && getComputedStyle(rl).display !== 'none') {
+                        window.ruleFvRebuildImages(rl);
+                    }
+                } catch (e) {}
+            });
+
+            // v3.30：还原「全文查看会话」兜底 —— 折叠/刷新后若弹窗 active 但正文为空
+            //   （modalHTML 快照超限等极端情况），从 IndexedDB 重新渲染规章正文。
+            //   由 page-state 在还原后调用 restoreEdit_<module> 钩子（rAF×3，晚于 modalHTML 回填）。
+            window.restoreEdit_rule = function(ctx) {
+                if (!ctx || ctx.type !== 'fullview') return;
+                // 折叠前弹窗必须处于打开态（还原后 active 已恢复）
+                var m = document.getElementById('rule-fullViewModal');
+                if (!m || !m.classList.contains('active')) return;
+                // 正文已有内容（modalHTML 快照成功）→ 无需重建
+                var body = document.getElementById('rule-fullContentBody');
+                if (body && body.innerHTML.trim().length > 50) return;
+                try {
+                    if (typeof ctx.paraIdx !== 'undefined' && typeof window.ruleViewFullTextAndScroll === 'function') {
+                        window.ruleViewFullTextAndScroll(ctx.idx, ctx.paraIdx);
+                    } else if (typeof window.ruleViewFullText === 'function') {
+                        window.ruleViewFullText(ctx.idx);
+                    }
+                } catch (e) { console.warn('[rule] 全文查看会话还原失败', e); }
+            };
+
             // 通用文件下载函数，兼容所有浏览器（含华为/Edge/Safari/微信/iOS等）
             // 统一走全局移动端兼容下载（utils.js: window.downloadBlob），避免多套实现
             function downloadBlob(blob, filename) {
@@ -1754,6 +1805,11 @@
                 }
 
                 openModal('rule-fullViewModal');
+                // v3.30：登记「全文查看会话」——还原时若正文为空（modalHTML 超限等）由
+                //   restoreEdit_rule 从 IndexedDB 重建，保证大正文规章折叠/刷新后不丢内容。
+                try {
+                    if (window._editSession) window._editSession.set({ module: 'rule', type: 'fullview', idx: idx, keywords: keywords, ts: Date.now() });
+                } catch (e) {}
                 if (typeof _fvScrollbarReset === 'function') _fvScrollbarReset();
                 // 模态框打开后滚动到目标位置（延迟确保DOM渲染完成）
                 if (_fvHighlights.length > 0) {
@@ -1921,6 +1977,10 @@
                 }
 
                 openModal('rule-fullViewModal');
+                // v3.30：登记「全文查看会话」（含目标段落索引，供还原后重建并定位）
+                try {
+                    if (window._editSession) window._editSession.set({ module: 'rule', type: 'fullview', idx: ruleIdx, paraIdx: paraIdx, keywords: keywords, ts: Date.now() });
+                } catch (e) {}
                 if (typeof _fvScrollbarReset === 'function') _fvScrollbarReset();
                 
                 // 延迟滚动到目标段落

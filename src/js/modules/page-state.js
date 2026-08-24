@@ -128,8 +128,10 @@
 
   // v3.29：弹窗内容快照 —— 查看全文等独立 modal（rule-fullViewModal 等）不在 panel 内，
   // 其 innerHTML 不随 panel 快照保存，折叠/刷新还原后只剩空壳。这里把「当前打开的 modal」
-  // 的内容一并序列化，还原时回填。仅快照 active 的 modal（体积可控，上限 512KB）。
-  var _MAX_MODAL_HTML_BYTES = 512 * 1024;
+  // 的内容一并序列化，还原时回填。仅快照 active 的 modal（体积可控）。
+  // v3.30：上限 512KB→1.5MB —— 真实规章正文（文本/表格）可能超 512KB，超限跳过导致
+  //   「弹窗打开但正文空白」；超 1.5MB 的极端情况由 rule.js 的 restoreEdit_rule 兜底重建。
+  var _MAX_MODAL_HTML_BYTES = 1.5 * 1024 * 1024;
   function _collectModalHTML() {
     var map = {};
     var total = 0;

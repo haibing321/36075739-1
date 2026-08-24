@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260824103737';
+var CACHE_VERSION = '20260824111154';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -136,6 +136,35 @@ function fetchWithTimeout(req, ms) {
   });
 }
 
+// v3.17 新增：离线/network 失败且缓存中也没有 index.html 时，
+// 返回带「自动跳转」的 200 HTML 兜底页，确保浏览器一定能在合理时间内拿到
+// 一个完整的 HTML 文档并结束 splash，绝不让 navigate 阻塞到永久挂起。
+function _fallbackShell() {
+  var origin = self.location && self.location.origin ? self.location.origin : '';
+  var retry = origin ? (origin + '/') : '/';
+  var html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>安监智能辅助系统</title>' +
+    '<style>html,body{margin:0;padding:0;height:100%;background:#0f172a;color:#e2e8f0;' +
+    'font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;' +
+    'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;}' +
+    '.spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,.18);' +
+    'border-top-color:#ffd700;border-radius:50%;animation:r .9s linear infinite;}' +
+    '@keyframes r{to{transform:rotate(360deg)}}' +
+    'a{color:#ffd700;text-decoration:none;border:1px solid #ffd700;border-radius:18px;' +
+    'padding:6px 16px;font-size:.9rem;margin-top:6px;display:inline-block;}</style></head>' +
+    '<body><div class="spinner"></div>' +
+    '<div>正在准备本地资源…</div>' +
+    '<a href="' + retry + '" onclick="location.replace(this.href);return false;">点此重试</a>' +
+    '<script>setTimeout(function(){location.replace("' + retry + '")},3000);<\/script>' +
+    '</body></html>';
+  return new Response(html, {
+    status: 200,
+    statusText: 'OK',
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
+}
+
 // ========== 事件监听 ==========
 
 // 安装：预缓存核心资源
@@ -189,17 +218,17 @@ self.addEventListener('fetch', function(event) {
         caches.match(req, { cacheName: CACHE_NAME })
           .then(function(c) { return c || caches.match('./index.html', { cacheName: CACHE_NAME }); })
           .then(function(c) {
-            return c || new Response('离线模式 - 请检查网络连接', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
+            return c || _fallbackShell();
           })
       );
       return;
     }
     // 在线：优先联网获取最新页面（带超时，避免永久挂起），失败再回退缓存
+    // v3.17 改进：超时从 5s 缩到 3s（多数网络下 3s 拿不到即可认为失败），
+    // 失败时若当前 cache 也无 index.html，返回内置「启动中」HTML 而非 503 ，
+    // 杜绝 PWA 冷启动在弱网/版本刚切换时主进程等不到首屏、长时间卡系统 splash 的现象。
     event.respondWith(
-      fetchWithTimeout(req, 5000).then(function(resp) {
+      fetchWithTimeout(req, 3000).then(function(resp) {
         if (resp.ok) {
           var clone = resp.clone();
           caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
@@ -209,10 +238,7 @@ self.addEventListener('fetch', function(event) {
         return caches.match(req, { cacheName: CACHE_NAME })
           .then(function(c) { return c || caches.match('./index.html', { cacheName: CACHE_NAME }); })
           .then(function(c) {
-            return c || new Response('离线模式 - 请检查网络连接', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
+            return c || _fallbackShell();
           });
       })
     );

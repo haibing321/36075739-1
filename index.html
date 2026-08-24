@@ -179,22 +179,53 @@
     </div>
     <script>
     (function () {
-        function clearBoot() { var ov = document.getElementById('app-boot-overlay'); if (ov) ov.style.display = 'none'; }
-        window.__clearBoot = clearBoot;
-        // 看门狗：4 秒兜底。若脚本迟迟未初始化（DOMContentLoaded 未触发/脚本挂起），
-        // 强制隐藏遮罩并按已保存模块恢复面板，杜绝长时间卡在启动 LOGO。
-        window.__bootTimer = setTimeout(function () {
-            clearBoot();
-            if (!document.querySelector('.panel.active')) {
-                try {
-                    var mod = localStorage.getItem('current_module') || 'issue';
-                    if (typeof window.switchTab === 'function') window.switchTab(mod);
-                    else { var d = document.getElementById('panel-' + mod) || document.getElementById('panel-issue'); if (d) d.classList.add('active'); }
-                } catch (e) {
-                    var d2 = document.getElementById('panel-issue'); if (d2) d2.classList.add('active');
-                }
+        function clearBoot() {
+            var ov = document.getElementById('app-boot-overlay');
+            if (ov) {
+                ov.style.transition = 'opacity .25s ease';
+                ov.style.opacity = '0';
+                setTimeout(function(){ if (ov.parentNode) ov.parentNode.removeChild(ov); }, 260);
             }
-        }, 4000);
+        }
+        window.__clearBoot = clearBoot;
+        function setBootText(t) {
+            var el = document.querySelector('#app-boot-overlay .boot-text');
+            if (el) el.textContent = t;
+        }
+        window.__setBootText = setBootText;
+
+        // 兜底：极端慢启动时强制显示一个面板并隐藏遮罩，
+        // 防止用户长时间卡在启动 LOGO。
+        function _forceShowPanel() {
+            try {
+                if (document.querySelector('.panel.active')) return;
+                var mod = localStorage.getItem('current_module') || 'issue';
+                if (typeof window.switchTab === 'function') { window.switchTab(mod); return; }
+                var d = document.getElementById('panel-' + mod) || document.getElementById('panel-issue');
+                if (d) d.classList.add('active');
+            } catch (e) {
+                try { var d2 = document.getElementById('panel-issue'); if (d2) d2.classList.add('active'); } catch (_) {}
+            }
+        }
+
+        // 渐进式 splash 看门狗（v3.17 升级）：
+        //   2s → 提示「正在同步本地数据」；
+        //   5s → 提示「网络较慢」；
+        //   9s → 再做一次 panel 显示尝试；仍不显示则 9s 强制清掉遮罩。
+        // 之所以分阶段：原 4s 单一 timer 在首次冷启动 + 模块 cache miss 时太短，
+        // 出现过 splash 清除后下方主面板仍未渲染（看起来「依然停在启动页」），
+        // 关闭重开后因为缓存命中一切正常。本次给出更宽裕的总时长，并渐进给
+        // 用户文字反馈，避免「页面没反应」的假死感。
+        window.__bootTimer = setTimeout(function () {
+            setBootText('正在同步本地数据…');
+        }, 2000);
+        var _bT2 = setTimeout(function () { setBootText('网络较慢，正在加载资源…'); }, 5000);
+        var _bT3 = setTimeout(function () {
+            _forceShowPanel();
+            clearBoot();
+        }, 9000);
+        // 暴露给 initPage 用于一次性清除全部 timer（兼容旧 clearTimeout(__bootTimer) 调用）
+        window.__bootTimers = [_bT2, _bT3];
     })();
     </script>
     <header class="header">
@@ -1602,7 +1633,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.16</span> · 2026.08.24</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.17</span> · 2026.08.24</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1613,16 +1644,17 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
-            <!-- v3.15 近期更新 -->
+            <!-- v3.17 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.15 近期更新</span>
+                    <span>v3.17 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>⚡ 移除首屏 BM25 全量索引预构建：原先在 idle/3s 后对 8000+ 条规章+检查信息全量建索引，导致打开/刷新界面后停留几秒出现 3-4 秒主线程卡滞（界面/数据已通过整页快照恢复却仍在「加载」）。改为首次搜索时懒建（已有 !bm25 守卫幂等复用），首屏不再卡顿。</span>
+                        <span>🛡️ 修复偶尔卡在启动 LOGO：把 4s 单次兜底改为「2s 提示正在同步 / 5s 提示网络较慢 / 9s 强制清掉遮罩并显式显示主面板」的渐进式看门狗；消除「清掉遮罩后下方主面板仍未渲染」的假死感，并让 initPage 完成时一次性清掉全部 timer。
+同步改进 sw.js：navigate 路径超时由 5s 缩到 3s，缓存兜底改为内置「自动跳转」HTML 而非 503，确保冷启动在最差网络下首屏也在约 3s 内拿到响应，杜绝长时间停留在 splash。</span>
                     </div>
                 </div>
             </div>
@@ -1862,7 +1894,10 @@
             }
 
             // 启动成功：清除启动遮罩与看门狗（避免 Edge 偶发卡在 LOGO）
-            try { if (window.__bootTimer) clearTimeout(window.__bootTimer); } catch (e) {}
+            try {
+                if (window.__bootTimer) clearTimeout(window.__bootTimer);
+                if (Array.isArray(window.__bootTimers)) window.__bootTimers.forEach(function (t) { clearTimeout(t); });
+            } catch (e) {}
             if (window.__clearBoot) window.__clearBoot();
         }
 

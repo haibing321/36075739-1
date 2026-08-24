@@ -2386,6 +2386,21 @@
                 document.getElementById('wr-tpl-content').value = t.content || '';
                 document.getElementById('wr-tpl-modal')._editId = id;
                 document.getElementById('wr-tpl-modal').style.display = 'flex';
+                // 登记编辑会话（折叠屏重建后自动重开此模板编辑弹窗）
+                if (window._editSession) window._editSession.set({ module: 'writer', recordId: id, kind: 'template' });
+            };
+            // 折叠屏/旋转重建后，自动重开写作模板编辑弹窗
+            window.restoreEdit_writer = function(ctx) {
+                if (!ctx || !ctx.recordId) return;
+                if (typeof window.wrEditTemplate === 'function') {
+                    try { window.wrEditTemplate(ctx.recordId); } catch (e) { console.warn('restoreEdit_writer 失败', e); }
+                }
+            };
+
+            window.wrCloseTemplateModal = function() {
+                const modal = document.getElementById('wr-tpl-modal');
+                if (modal) { modal.style.display = 'none'; modal._editId = null; }
+                if (window._editSession) window._editSession.clear();
             };
 
             window.wrSaveTemplate = async function() {
@@ -2405,6 +2420,8 @@
                 }
                 await wrDbPut(WR_TPL_STORE, item);
                 modal.style.display = 'none';
+                modal._editId = null;
+                if (window._editSession) window._editSession.clear();
                 wrRenderTplList();
                 alert('模板保存成功！');
             };

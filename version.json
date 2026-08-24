@@ -1,5 +1,5 @@
 {
-  "version": "v3.11",
+  "version": "v3.12",
   "releaseNotes": "v3.11：折叠屏会话保持——新增 page-state.js，在 pagehide/visibilitychange/resize 时将当前模块、滚动位置、未提交草稿、打开弹窗快照到 sessionStorage，文档重建后自动恢复（折叠/旋转不丢页面）；修复 SW controllerchange 误重载（_pendingReload 加 10s 有效期，防折叠重建偶然触发历史残留 reload）；responsive.css 新增折叠半折叠态（501-720px 竖屏）紧凑布局适配。纯新增不改现有业务逻辑。Node 验证 17/17 通过。",
   "downloadUrl": "./"
 }

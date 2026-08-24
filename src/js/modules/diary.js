@@ -206,6 +206,7 @@
                 // 重置编辑状态
                 isEditMode = false;
                 currentEditDate = null;
+                if (window._editSession) window._editSession.clear(); // 折叠重建时不再重开此编辑态
 
                 // 清空输入框（自动保存不清空，用户还在输入）
                 if (noToast) {
@@ -247,6 +248,8 @@
                 if (!diary) return;
                 isEditMode = true; // 标记为编辑模式
                 currentEditDate = diary.date; // 记录原始编辑日期
+                // 登记编辑会话（折叠屏重建后可自动重开编辑态）
+                if (window._editSession) window._editSession.set({ module: 'diary', recordId: diary.date });
                 // 切换到输入视图（会清空媒体缓存和预览）
                 await showInputView(true);
                 // 加载目标日记的内容和媒体
@@ -255,6 +258,13 @@
                 autoResize(document.getElementById('diary-work'));
                 renderIssueFields(diary.issues || [], diary.regulations || []);
                 await loadDiaryMedia(diary);
+            };
+            // 折叠屏/旋转重建后，自动重开 diary 编辑态（内容由 IndexedDB 自动载入）
+            window.restoreEdit_diary = function(ctx) {
+                if (!ctx || !ctx.recordId) return;
+                if (typeof window.editDiary === 'function') {
+                    try { window.editDiary(ctx.recordId); } catch (e) { console.warn('restoreEdit_diary 失败', e); }
+                }
             };
             window.deleteDiary = function(date) {
                 if (!confirm('确定要删除该日期的记录吗？')) return;

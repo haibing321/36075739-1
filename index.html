@@ -1026,7 +1026,7 @@
         <div style="background:#fff;border-radius:14px;padding:20px;width:min(600px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span id="wr-tpl-modal-title" style="font-weight:700;font-size:1rem;color:var(--primary);">📝 自定义模板</span>
-                <button onclick="document.getElementById('wr-tpl-modal').style.display='none'" class="btn-close">✕</button>
+                <button onclick="wrCloseTemplateModal()" class="btn-close">✕</button>
             </div>
             <div style="font-size:0.8rem;color:var(--text-secondary);padding:6px 10px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">💡 自定义模板：可将历史报告文本粘贴于此，保存后在撰写报告时可选用。支持 {{占位符}} 格式。</div>
             <div style="display:flex;flex-direction:column;gap:8px;">
@@ -1052,7 +1052,7 @@
                     style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.87rem;resize:vertical;line-height:1.7;font-family:inherit;"></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button onclick="document.getElementById('wr-tpl-modal').style.display='none'" style="padding:9px 20px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;cursor:pointer;">取消</button>
+                <button onclick="wrCloseTemplateModal()" style="padding:9px 20px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;cursor:pointer;">取消</button>
                 <button onclick="wrSaveTemplate()" style="padding:9px 20px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-weight:600;cursor:pointer;">保存模板</button>
             </div>
         </div>

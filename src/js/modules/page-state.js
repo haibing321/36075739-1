@@ -171,6 +171,71 @@
     });
   }
 
+  // ===== 通用「编辑会话」快照协议 =====
+  // 问题：折叠屏重建文档后，动态生成的编辑态（如 diary.editDiary 打开的编辑页、
+  //       资料库编辑弹窗、写作编辑区）会因 onShow_ 重渲染而丢失，固定 id 的草稿
+  //       快照无法覆盖。解决方案：让各编辑入口把「编辑会话」序列化到 _editSession，
+  //       重建后由对应模块的 restoreEdit_<module>(ctx) 钩子重开编辑态并回填。
+  var _editSession = null;       // { module, recordId, content, ts }
+  function _setEditSession(ctx) {
+    try {
+      _editSession = ctx || null;
+      // 与页面快照一起落盘，确保 fold 重建前最后一刻也能拿到
+      var raw = sessionStorage.getItem(KEY);
+      var snap = raw ? JSON.parse(raw) : {};
+      snap.editSession = _editSession;
+      snap.t = Date.now();
+      sessionStorage.setItem(KEY, JSON.stringify(snap));
+    } catch (e) {}
+  }
+  function _getEditSession() { return _editSession; }
+  function _clearEditSession() { _setEditSession(null); }
+
+  // 在 savePageState 里把 _editSession 一并写入（完整重写，避免原始函数覆盖丢失）
+  savePageState = function () {
+    try {
+      var snap = {
+        t: Date.now(),
+        module: _currentModule(),
+        scroll: _activePanelScroll(),
+        modals: _openModals(),
+        drafts: _collectDrafts(),
+        editSession: _editSession
+      };
+      sessionStorage.setItem(KEY, JSON.stringify(snap));
+    } catch (e) { /* sessionStorage 不可用（隐私模式/配额）时静默跳过 */ }
+  };
+
+  // 恢复：模块恢复后，若有编辑会话，调用对应 restoreEdit_<module> 钩子
+  var _origRestore = restorePageState;
+  restorePageState = function () {
+    _origRestore();
+    var raw;
+    try { raw = sessionStorage.getItem(KEY); } catch (e) { return; }
+    if (!raw) return;
+    var snap;
+    try { snap = JSON.parse(raw); } catch (e) { return; }
+    if (!snap || !snap.editSession || !snap.editSession.module) return;
+    var ctx = snap.editSession;
+    // 等模块渲染 + 编辑重开完成（多帧，避免被 onShow_ 重渲染覆盖）
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          var hook = window['restoreEdit_' + ctx.module];
+          if (typeof hook === 'function') {
+            try { hook(ctx); } catch (e) { console.warn('restoreEdit_' + ctx.module + ' 失败', e); }
+          }
+        });
+      });
+    });
+  };
+
+  // 暴露协议接口
+  window._editSession = {
+    set: _setEditSession,
+    get: _getEditSession,
+    clear: _clearEditSession
+  };
   // 暴露给 app.js 在 DOMContentLoaded 后调用
   window._restorePageState = restorePageState;
   window._savePageState = savePageState;

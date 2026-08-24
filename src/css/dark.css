@@ -301,8 +301,8 @@
 [data-theme="dark"] .att-cat-培 { background: #ec4899 !important; }
 
 /* ---------- 11. 大模型 API 配置：新增/编辑模型框暗黑适配 ---------- */
-/* 编辑表单容器：内联 background:#f8fafc 已被第9节批量兜底覆盖，此处补边框 */
-[data-theme="dark"] #ds-provider-edit { border-color: var(--border) !important; }
+/* 编辑表单容器：内联 background:#f8fafc / border:#e2e8f0 在暗黑下改为深色卡片（直接精确覆盖，不依赖第9节模糊子串匹配） */
+[data-theme="dark"] #ds-provider-edit { background: var(--card-bg) !important; border-color: var(--border) !important; }
 /* 视觉模型快捷按钮（内联浅蓝底/紫字）：暗黑下改为深底浅字蓝边 */
 [data-theme="dark"] .ds-vision-btn {
     background: #2a3a52 !important;
@@ -317,3 +317,9 @@
     border-color: var(--border) !important;
 }
 [data-theme="dark"] .ds-cancel-btn:hover { background: #2a3a52 !important; }
+/* 模型列表里每个模型的「编辑」小按钮（内联 #f8fafc 浅灰底/灰字）：暗黑下深底浅字 */
+[data-theme="dark"] .ds-edit-mini-btn {
+    background: #1e293b !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}

@@ -734,7 +734,7 @@
                     html += '<div style="font-size:0.72rem;color:#718096;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsEsc(p.model) + ' · ' + dsEsc(p.apiUrl) + '</div></div>';
                     html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
                     if (!isActive) html += '<button onclick="dsSetActiveProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #86efac;border-radius:6px;background:#f0fdf4;color:#166534;font-size:0.72rem;cursor:pointer;">设为当前</button>';
-                    html += '<button onclick="dsEditProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#475569;font-size:0.72rem;cursor:pointer;">编辑</button>';
+                    html += '<button class="ds-edit-mini-btn" onclick="dsEditProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#475569;font-size:0.72rem;cursor:pointer;">编辑</button>';
                     html += '<button onclick="dsDeleteProvider(\'' + p.id + '\')" style="padding:4px 8px;border:1px solid #fca5a5;border-radius:6px;background:#fef2f2;color:#dc2626;font-size:0.72rem;cursor:pointer;">删除</button>';
                     html += '</div></div></div>';
                 });

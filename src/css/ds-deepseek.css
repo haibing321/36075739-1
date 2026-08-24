@@ -452,7 +452,9 @@
     left: -300px;
     width: 260px;
     height: 100vh;
+    height: 100dvh;
     max-height: 100vh;
+    max-height: 100dvh;
     z-index: 9999;
     display: flex;
     flex-direction: column;

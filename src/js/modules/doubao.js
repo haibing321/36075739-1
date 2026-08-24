@@ -3144,7 +3144,21 @@
 
       // ========== 语音朗读 ==========
       window.dsSpeak = function(btn) {
-        if (typeof window.speechSynthesis === 'undefined') return;
+        if (typeof window.speechSynthesis === 'undefined') {
+          // 鸿蒙/华为浏览器等无 Web Speech API：静默 return 会让用户误以为失效，改为友好提示。
+          // 仅首次提示一次，避免反复打扰；按钮文字保持原样。
+          if (!window.__dsSpeakUnsupportedWarned) {
+            window.__dsSpeakUnsupportedWarned = true;
+            try {
+              var t = document.createElement('div');
+              t.textContent = '当前浏览器（如鸿蒙/华为浏览器）不支持语音朗读';
+              t.style.cssText = 'position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:10px 16px;border-radius:10px;font-size:.85rem;z-index:99999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.25);';
+              document.body.appendChild(t);
+              setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 320); }, 2600);
+            } catch (_) {}
+          }
+          return;
+        }
         if (window.speechSynthesis.speaking) {
           window.speechSynthesis.cancel();
           btn.textContent = '🔊 朗读';

@@ -383,7 +383,7 @@ window.onclick = function(e) {
             var sw = reg.installing;
             sw.addEventListener('statechange', function() {
                 if (sw.state === 'installed' && navigator.controller) {
-                    if (_manualUpdateCheck) showUpdateToast();
+                    if (_manualUpdateCheck && window.switchUpdateBtn) window.switchUpdateBtn('update');
                 }
             });
         });
@@ -414,9 +414,9 @@ window.onclick = function(e) {
         navigator.serviceWorker.getRegistration().then(function(reg) {
             if (!reg) { _manualUpdateCheck = false; return; }
             // 浏览器已自动检测到等待中的新 SW：直接提示应用
-            if (reg.waiting) { showUpdateToast(); return; }
+            if (reg.waiting) { if (window.switchUpdateBtn) window.switchUpdateBtn('update'); return; }
             var done = false;
-            var onReady = function(r) { if (r && r.waiting && !done) { done = true; showUpdateToast(); } };
+            var onReady = function(r) { if (r && r.waiting && !done) { done = true; if (window.switchUpdateBtn) window.switchUpdateBtn('update'); } };
             reg.update().then(function() {
                 // updatefound 会处理；兜底 2s 后再查一次 waiting 状态
                 setTimeout(function() { navigator.serviceWorker.getRegistration().then(onReady); }, 2000);
@@ -428,52 +428,66 @@ window.onclick = function(e) {
     }
     window.triggerApplyUpdate = triggerApplyUpdate;
 
-    // SW 更新提示 Toast
-    function showUpdateToast() {
-        if (document.getElementById('_sw_update_toast')) return;
-        var toast = document.createElement('div');
-        toast.id = '_sw_update_toast';
-        toast.innerHTML = [
-            '<span>🔄 发现新版本</span>',
-            '<button id="_sw_update_btn" style="',
-            '  background:var(--primary);color:#fff;border:none;border-radius:16px;',
-            '  padding:4px 14px;font-size:0.82rem;font-weight:700;cursor:pointer;margin-left:8px;',
-            '">立即更新</button>'
-        ].join('');
-        Object.assign(toast.style, {
-            position:'fixed', top:'12px', left:'50%', transform:'translateX(-50%)',
-            background:'rgba(26,54,93,0.95)', color:'#fff',
-            display:'flex', alignItems:'center', gap:'6px',
-            padding:'10px 20px', zIndex:'100000', borderRadius:'24px',
-            fontSize:'0.88rem', fontWeight:'600', boxShadow:'0 4px 16px rgba(0,0,0,.3)',
-            transition:'opacity .3s ease'
-        });
-        document.body.appendChild(toast);
-        document.getElementById('_sw_update_btn').onclick = function() {
-            // 通知「等待中」的新 SW 立即接管以应用新版本。
-            // 关键：SKIP_WAITING 必须发给 reg.waiting（等待中的新 SW），
-            // 不能发给 navigator.serviceWorker.controller（当前控制的旧 SW，收了也不会激活）。
-            // 也不要在此同步 reload()——否则新 SW 尚未激活、页面仍在旧 SW 控制下刷新，
-            // 会导致「检测到新版本→点更新→仍是旧版→再次检测」死循环。
-            // 真正刷新交由下方 controllerchange 事件（新 SW 确实接管后才触发）。
-            // 记录时间戳，供 controllerchange 判断是否仍在有效期（防止折叠屏重建误触发）
-            _pendingReload = true;
-            _pendingReloadAt = Date.now();
-            navigator.serviceWorker.getRegistration().then(function(reg) {
-                var target = (reg && reg.waiting) ? reg.waiting : navigator.serviceWorker.controller;
-                if (target) target.postMessage({ type: 'SKIP_WAITING' });
-            }).catch(function() {});
-            // 兜底：若 1.5s 内 controllerchange 未触发（极端情况），强制刷新一次确保生效
-            setTimeout(function() {
-                if (_pendingReload) {
-                    _pendingReload = false;
-                    window.location.reload();
-                }
-            }, 1500);
-        };
-        // 30秒后自动消失
-        setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 310); }, 30000);
+    // 【v3.26】执行「立即更新」：通知等待中的新 SW 立即接管（SKIP_WAITING），
+    // 由 controllerchange 触发刷新应用新版本。设置面板原位按钮与各入口共用。
+    // 关键：SKIP_WAITING 必须发给 reg.waiting（等待中的新 SW），不能发给
+    // navigator.serviceWorker.controller（当前控制的旧 SW，收了也不会激活）。
+    // 也不要在此同步 reload()——否则新 SW 尚未激活、页面仍在旧 SW 控制下刷新，
+    // 会导致「检测到新版本→点更新→仍是旧版→再次检测」死循环。
+    // 真正刷新交由 controllerchange 事件（新 SW 确实接管后才触发）。
+    function applyPendingUpdate() {
+        _pendingReload = true;
+        _pendingReloadAt = Date.now();
+        navigator.serviceWorker.getRegistration().then(function(reg) {
+            var target = (reg && reg.waiting) ? reg.waiting : navigator.serviceWorker.controller;
+            if (target) target.postMessage({ type: 'SKIP_WAITING' });
+        }).catch(function() {});
+        // 兜底：若 1.5s 内 controllerchange 未触发（极端情况），强制刷新一次确保生效
+        setTimeout(function() {
+            if (_pendingReload) {
+                _pendingReload = false;
+                window.location.reload();
+            }
+        }, 1500);
     }
+    window.applyPendingUpdate = applyPendingUpdate;
+
+    // 【v3.26】设置面板「检查更新」按钮原位切换（v3.25 起：发现新版本时，
+    // 立即更新按钮直接覆盖在检查更新按钮位置；更新完成/无新版本时恢复检查更新）。
+    // mode: 'normal'(检查更新) | 'checking'(检查中) | 'update'(循环图标立即更新)
+    function switchUpdateBtn(mode) {
+        var btn = document.getElementById('check-update-btn');
+        if (!btn) return;
+        var title = document.getElementById('check-update-title');
+        var arrow = document.getElementById('check-update-arrow');
+        var ver = document.getElementById('setting-current-version');
+        if (mode === 'update') {
+            btn.onclick = function() { applyPendingUpdate(); };
+            btn.style.background = 'var(--primary)';
+            btn.style.borderColor = 'var(--primary)';
+            btn.style.color = '#fff';
+            if (title) { title.textContent = '🔄 立即更新'; title.style.color = '#fff'; }
+            if (arrow) arrow.textContent = '点击应用 →';
+            if (ver) ver.style.color = 'rgba(255,255,255,.85)';
+        } else if (mode === 'checking') {
+            btn.onclick = function() { checkForUpdate(); };
+            btn.style.background = 'var(--card-bg)';
+            btn.style.borderColor = 'var(--border)';
+            btn.style.color = 'inherit';
+            if (title) { title.textContent = '⏳ 正在检查…'; title.style.color = 'inherit'; }
+            if (arrow) arrow.textContent = '';
+            if (ver) ver.style.color = '#94a3b8';
+        } else { // normal
+            btn.onclick = function() { checkForUpdate(); };
+            btn.style.background = 'var(--card-bg)';
+            btn.style.borderColor = 'var(--border)';
+            btn.style.color = 'inherit';
+            if (title) { title.textContent = '🔄 检查更新'; title.style.color = 'inherit'; }
+            if (arrow) arrow.textContent = '点击检查 →';
+            if (ver) ver.style.color = '#94a3b8';
+        }
+    }
+    window.switchUpdateBtn = switchUpdateBtn;
 
     window.addEventListener('beforeinstallprompt', function(e) {
         if (localStorage.getItem('pwa_install_dismissed') === '1') return;
@@ -759,7 +773,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.25'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.26'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -824,6 +838,8 @@ document.addEventListener('DOMContentLoaded', function() {
 async function checkForUpdate() {
     const statusEl = document.getElementById('update-status');
     if (!statusEl) return;
+    // v3.26：检查中按钮显示为「⏳ 正在检查…」
+    if (window.switchUpdateBtn) window.switchUpdateBtn('checking');
     statusEl.textContent = '⏳ 正在检查...';
     statusEl.style.color = 'var(--primary)';
     await performUpdateCheck(UPDATE_CHECK_URL, true);
@@ -877,8 +893,10 @@ async function performUpdateCheck(url, showStatus) {
         if (isNew) {
             document.getElementById('tab-settings')?.classList.add('has-update-badge');
             localStorage.setItem('_has_update', 'true');
+            // v3.26：「立即更新」按钮原位覆盖「检查更新」按钮（循环图标样式）
+            if (window.switchUpdateBtn) window.switchUpdateBtn('update');
             if (showStatus) {
-                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已下载，点击下方「立即更新」或重新打开即可生效';
+                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已就绪，点击上方「🔄 立即更新」应用新版本';
                 statusEl.style.color = '#dc2626';
             }
             // 自动预备 SW 更新（离线优先策略下，更新仅在此触发）
@@ -886,6 +904,8 @@ async function performUpdateCheck(url, showStatus) {
         } else {
             document.getElementById('tab-settings')?.classList.remove('has-update-badge');
             localStorage.removeItem('_has_update');
+            // v3.26：无新版本/更新完成 → 恢复「检查更新」按钮
+            if (window.switchUpdateBtn) window.switchUpdateBtn('normal');
             if (showStatus) {
                 statusEl.textContent = '✅ 已是最新版 (' + APP_VERSION + ')';
                 statusEl.style.color = '#16a34a';
@@ -897,6 +917,8 @@ async function performUpdateCheck(url, showStatus) {
             statusEl.textContent = 'ℹ️ 无法连接版本服务器（可能离线），已尝试检查本地更新';
             statusEl.style.color = '#64748b';
         }
+        // v3.26：检查失败恢复「检查更新」按钮
+        if (window.switchUpdateBtn) window.switchUpdateBtn('normal');
         console.warn('[Update]', err);
     }
 }

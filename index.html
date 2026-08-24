@@ -1640,10 +1640,10 @@
             </div>
             <!-- 版本更新检查 -->
             <div style="border-top:1px solid #e5e7eb; padding-top:12px; margin-top:12px;">
-                <button onclick="checkForUpdate()" style="display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 14px; background:#f8fafc; border:1px solid var(--border); border-radius:10px; cursor:pointer; font-size:0.85rem; text-align:left; transition:all 0.2s;"
+                <button id="check-update-btn" onclick="checkForUpdate()" style="display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 14px; background:var(--card-bg); border:1px solid var(--border); border-radius:10px; cursor:pointer; font-size:0.85rem; text-align:left; transition:all 0.2s;"
                         onmouseover="this.style.borderColor='#93c5fd'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span><span style="font-weight:600;">🔄 检查更新</span> <span style="font-size:0.7rem; color:#94a3b8;" id="setting-current-version">v2.6</span></span>
-                    <span style="font-size:0.7rem; color:#3b82f6;">点击检查 →</span>
+                    <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span style="font-size:0.7rem; color:#94a3b8;" id="setting-current-version">v2.6</span></span>
+                    <span id="check-update-arrow" style="font-size:0.7rem; color:#3b82f6;">点击检查 →</span>
                 </button>
                 <div id="update-status" style="font-size:0.75rem; color:#64748b; margin-top:4px;"></div>
             </div>
@@ -1674,6 +1674,20 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.26 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.26 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔄 设置 - 检查更新：发现新版本时「立即更新」按钮原位覆盖「检查更新」按钮（蓝色循环按钮样式），点击即应用新版本；更新完成 / 无新版本 / 检查失败时自动恢复「检查更新」按钮；检查中显示「⏳ 正在检查…」。原先悬浮在页面顶部的更新提示改为设置面板内原位按钮，点击检查更新即可直接更新，不再需要另找「立即更新」入口。经自动化测试（模拟发现新版本 / 更新完成后两种场景）验证通过。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.25 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1687,7 +1701,7 @@
                     </div>
                 </div>
             </div>
-
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.23 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
             <!-- v3.24 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">

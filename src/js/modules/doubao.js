@@ -199,6 +199,16 @@
                 });
                 // 根据 API Key 状态切换豆包网页版/本地模块
                 toggleDoubaoMode();
+                // v3.31：恢复上次使用的子视图（localStorage 持久化，折叠/刷新后即使整页
+                //   快照降级也能回到折叠前的子模块，而非默认智能对话）
+                try {
+                    var _lastSub = localStorage.getItem('ds_sub_view');
+                    if (_lastSub && _lastSub !== 'chat') {
+                        var _p = { check: 'ds-sub-check', chat: 'ds-sub-chat', writer: 'ds-sub-writer', risk: 'ds-sub-risk', agent: 'ds-sub-agent', doubao: 'ds-sub-doubao' };
+                        var _el = document.getElementById(_p[_lastSub]);
+                        if (_el && typeof window.dsSwitchSub === 'function') window.dsSwitchSub(_lastSub);
+                    }
+                } catch (e) {}
                 // 渲染 chat 工具栏模型选择下拉
                 renderChatModelSelect();
                 // 角色/模型圆形图标按钮下拉初始化（与附件/发送同款）
@@ -427,6 +437,9 @@
                 var sel = document.getElementById('ds-sub-select');
                 if (sel) sel.value = tab;
                 if (typeof updateModeStatus === 'function') updateModeStatus();
+                // v3.31：把当前子视图持久化到 localStorage —— 折叠/刷新后即使整页快照
+                //   降级（panelHTML 超限等）无法还原 DOM，dsInit 也能据此恢复子视图。
+                try { localStorage.setItem('ds_sub_view', tab); } catch (e) {}
             };
             // v3.29：折叠/刷新整页还原后，子视图 DOM（display:flex 的内联样式随 innerHTML 快照保留）
             //   已还原为折叠前的视图，但 _dsCurrentSub 仍是 dsInit 时设置的初始值 'chat'，

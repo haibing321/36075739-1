@@ -102,13 +102,22 @@
     return drafts;
   }
 
-  // ===== 整页 DOM 快照（v3.13）：序列化每个 panel 已渲染的 innerHTML（含数据）=====
-  // 仅当总序列化体积 < 阈值时才保存，避免撑爆 sessionStorage 配额（约 5MB）而抛错。
-  var _MAX_PANEL_HTML_BYTES = 3.5 * 1024 * 1024; // 3.5MB 安全线
+  // ===== 整页 DOM 快照（v3.13）：序列化 panel 已渲染的 innerHTML（含数据）=====
+  // v3.31：按用户诉求「折叠/刷新只保留当前页面及数据，其它历史浏览界面不再保留」，
+  //   只序列化「当前激活面板」——快照体积从「全部 7 个 panel」降为「1 个」，
+  //   彻底规避 sessionStorage 配额超限导致的整页降级（此前用户数据大时 panelHTML 超限
+  //   整体放弃，表现为「数据还在但界面跳回智能对话」）。
+  //   其它面板切换时走 onShow_/初始渲染重新加载，输入类草稿由 DRAFT_INPUT_IDS/
+  //   DRAFT_KEYWORD_BOXES 独立快照兜底，不依赖 panelHTML。
+  var _MAX_PANEL_HTML_BYTES = 4.2 * 1024 * 1024; // 单个 panel 上限（实际远达不到）
   function _collectPanelHTML() {
     var map = {};
     var total = 0;
-    var ids = ['handbook', 'issue', 'rule', 'phone', 'doubao', 'diary', 'material'];
+    var activePanel = document.querySelector('.panel.active');
+    var ids = [];
+    if (activePanel && activePanel.id && activePanel.id.indexOf('panel-') === 0) {
+      ids.push(activePanel.id.replace('panel-', ''));
+    }
     for (var i = 0; i < ids.length; i++) {
       var p = document.getElementById('panel-' + ids[i]);
       if (!p) continue;
@@ -116,10 +125,7 @@
       try { html = p.innerHTML; } catch (e) { continue; }
       // 粗略字节估算（UTF-16 → 按 2 字节计，留余量）
       var approx = html.length * 2;
-      if (total + approx > _MAX_PANEL_HTML_BYTES) {
-        // 超出配额：放弃整页快照，降级为 v3.12 行为（不存 panelHTML）
-        return null;
-      }
+      if (approx > _MAX_PANEL_HTML_BYTES) continue; // 单面板超限跳过（几乎不可能）
       total += approx;
       map[ids[i]] = html;
     }

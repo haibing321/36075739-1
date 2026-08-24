@@ -1674,6 +1674,20 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.31 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.31 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>💡 状态保存策略优化：折叠/刷新时**只保留当前所在界面及其数据**，其它历史浏览过的界面不再整体还原（切过去时正常重新加载）——快照体积从「全部 7 个模块」降为「当前 1 个」，彻底解决数据量大时快照超限导致的「数据还在但界面跳回智能对话」问题；同时所有输入类草稿（各模块输入框、规章/检查信息关键词、风险研判筛选参数）独立保存不受影响。另将智能助手「当前子模块」（风险研判/智能对规/智能写作等）持久化到本地存储，即使快照异常也能恢复到折叠前的子模块而非默认智能对话。经自动化测试（超大面板场景、子视图降级场景等 10 套件）全部通过。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.30 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1688,21 +1702,7 @@
                 </div>
             </div>
 
-            <!-- v3.29 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.29 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔧 修复「刷新/折叠后 规章制度搜索结果与查看全文、智能助手非对话子模块界面不保留」：① 规章搜索结果——规则模块初始化是 async，await 读库之后才执行「隐藏结果列表」，晚于整页还原执行，把刚还原的搜索结果又藏掉了，改为有快照还原时不再隐藏；② 查看全文弹窗——其内容不在主面板内、不随整页快照保存，还原后只剩空壳，新增「弹窗内容快照」（打开的弹窗 innerHTML 一并序列化，还原时回填）；③ 智能助手子模块——风险研判/智能对规/智能写作等视图的 DOM 虽随快照保留，但「当前子视图」是 JS 变量、下拉框选中态也不进快照，还原后被重置成「智能对话」，界面与标签错乱，新增从 DOM 反推当前子视图并同步下拉与模式标签；④ 顺带补齐风险研判的日期/单位/重点筛选参数快照。经自动化测试（Edge 真实浏览器，规章搜索命中+查看全文+风险研判子视图共 8 项）全部保留通过。</span>
-                    </div>
-                </div>
-            </div>
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.28 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.29 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

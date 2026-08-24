@@ -1674,16 +1674,16 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
-            <!-- v3.21 近期更新 -->
+            <!-- v3.23 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.21 近期更新</span>
+                    <span>v3.23 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 设置 - 大模型 API 配置：新增/编辑模型框补齐暗黑模式适配。该弹窗此前在暗黑主题下为亮色白卡片浮于暗背景，现「编辑表单容器边框、📷 视觉模型快捷按钮、取消按钮」均随暗黑主题变为深底浅字；输入框本就已被全局暗黑规则覆盖，本次一并确认。与现有 dark.css 作用域 + !important 覆盖风格保持一致。</span>
+                        <span>🔘 彻底修复「折叠屏/刷新后 关联数据 / 联网搜索 / 模型 / 角色」按钮再次失效。v3.22 把事件委托挂到 #ds-sub-chat，但该节点本身也会被 page-state.js 的整页 innerHTML 还原替换，故折叠屏重建后委托随之丢失。现改为委托到静态父容器 #panel-doubao（整页还原只替换其子节点、元素自身永不被替换），绑定一次即永久有效。关闭浏览器重开 / 反复刷新 / 折叠屏展开后点这些按钮均可正常响应。</span>
                     </div>
                 </div>
             </div>
@@ -1697,7 +1697,7 @@
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔘 修复智能助手输入栏「关联数据 / 联网搜索」等下拉按钮「大多时间点击无响应」。根因：v3.13 整页 DOM 快照还原会重写面板 innerHTML、替换节点，导致脚本加载时绑定的 click 事件随旧节点销毁而丢失。现把角色/模型/关联数据/联网搜索四个下拉的事件绑定全部改为「委托到静态父容器 #ds-sub-chat」，无论面板如何重建，绑定永久有效。</span>
+                        <span>🔘 修复智能助手输入栏「关联数据 / 联网搜索」等下拉按钮「大多时间点击无响应」。根因：v3.13 整页 DOM 快照还原会重写面板 innerHTML、替换节点，导致脚本加载时绑定的 click 事件随旧节点销毁而丢失。现把角色/模型/关联数据/联网搜索四个下拉的事件绑定全部改为「事件委托到静态父容器」，无论面板如何重建，绑定永久有效。</span>
                     </div>
                 </div>
             </div>

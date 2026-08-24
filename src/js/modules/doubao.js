@@ -470,9 +470,10 @@
                     }
                     build();
                     sel.addEventListener('ds-rebuild', build);
-                    // 【v3.21-fix】事件委托：绑定挂到静态父容器 #ds-sub-chat，
-                    // 避免 v3.13 整页 innerHTML 还原重建节点后丢失绑定导致按钮无响应。
-                    var _ddRoot = document.getElementById('ds-sub-chat') || document;
+                    // 【v3.23-fix】事件委托：绑定挂到静态父容器 #panel-doubao（它自身不会被
+                    //   page-state.js 的 p.innerHTML 还原替换，仅子节点被替换），从而折叠屏/
+                    //   刷新经整页 DOM 还原后委托依然有效。v3.22 误挂 #ds-sub-chat（会被替换）。
+                    var _ddRoot = document.getElementById('panel-doubao') || document;
                     _ddRoot.addEventListener('click', function(e) {
                         var t = e.target;
                         if (!t || !t.closest) return;
@@ -933,9 +934,10 @@
                     syncAllBox();
                 }
 
-                // 【v3.21-fix】事件委托：绑定挂到静态父容器 #ds-sub-chat，
-                // 避免 v3.13 整页 innerHTML 还原重建节点后丢失绑定导致按钮无响应。
-                var _dsRoot = document.getElementById('ds-sub-chat') || document;
+                // 【v3.23-fix】事件委托：绑定挂到静态父容器 #panel-doubao（它自身不会被
+                //   page-state.js 的 p.innerHTML 还原替换，仅子节点被替换），从而折叠屏/
+                //   刷新经整页 DOM 还原后委托依然有效。v3.22 误挂 #ds-sub-chat（会被替换）。
+                var _dsRoot = document.getElementById('panel-doubao') || document;
                 _dsRoot.addEventListener('click', function(e) {
                     var t = e.target;
                     if (!t || !t.closest) return;
@@ -3272,9 +3274,10 @@
           var on = localStorage.getItem('ds_web_search') === '1';
           setWs(!on);
         };
-        // 【v3.21-fix】事件委托：绑定挂到静态父容器 #ds-sub-chat，
-        // 避免 v3.13 整页 innerHTML 还原重建节点后丢失绑定导致按钮无响应。
-        var _wsRoot = document.getElementById('ds-sub-chat') || document;
+        // 【v3.23-fix】事件委托：绑定挂到静态父容器 #panel-doubao（它自身不会被
+        //   page-state.js 的 p.innerHTML 还原替换，仅子节点被替换），从而折叠屏/
+        //   刷新经整页 DOM 还原后委托依然有效。v3.22 误挂 #ds-sub-chat（会被替换）。
+        var _wsRoot = document.getElementById('panel-doubao') || document;
         _wsRoot.addEventListener('click', function(e) {
           var t = e.target;
           if (!t) return;

@@ -87,11 +87,29 @@
     };
 
     // ---- +号附件菜单 ----
+    // v3.25：智能助手底部七个按钮「点开一个、关闭其它」互斥——打开任一弹出前先关闭
+    // 所有其它弹出（四个下拉菜单 / 附件弹层 / FIM 弹窗）。exceptEl 为当前要打开的元素，
+    // 不会被误关。全部动态查询节点，折叠屏整页还原后依然有效。
+    window.dsCloseAllChatPopups = function(exceptEl) {
+        // 四个下拉菜单（角色/模型/关联数据/联网搜索，.ds-dropdown-menu.open）
+        document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m) {
+            if (m !== exceptEl) m.classList.remove('open');
+        });
+        // 附件弹层
+        var am = document.getElementById('ds-attach-menu');
+        if (am && am !== exceptEl && getComputedStyle(am).display !== 'none') am.style.display = 'none';
+        // FIM 弹窗
+        var fim = document.getElementById('ds-fim-modal');
+        if (fim && fim !== exceptEl && getComputedStyle(fim).display !== 'none') fim.style.display = 'none';
+    };
+
     window.dsToggleAttachMenu = function() {
         var menu = document.getElementById('ds-attach-menu');
         if (!menu) return;
         // 用 computed style 判断：菜单默认隐藏由 CSS 提供（内联 style.display 初始为空串）
         var shown = getComputedStyle(menu).display !== 'none';
+        // v3.25 互斥：本次是「打开」时，先关闭其它所有弹出
+        if (!shown && typeof window.dsCloseAllChatPopups === 'function') window.dsCloseAllChatPopups(menu);
         menu.style.display = shown ? 'none' : 'block';
     };
     document.addEventListener('click', function(e) {

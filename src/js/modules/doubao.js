@@ -493,11 +493,11 @@
                         var menu = document.getElementById(menuId);
                         var sel = document.getElementById(selId);
                         if (!menu || !sel) return;
-                        // 点击角色/模型按钮：toggle 对应菜单（互斥关闭其它）
+                        // 点击角色/模型按钮：toggle 对应菜单（v3.25 互斥：点开一个关闭其它所有弹出）
                         if (t.closest('#' + btnId)) {
                             e.stopPropagation();
                             var willOpen = !menu.classList.contains('open');
-                            document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+                            if (typeof window.dsCloseAllChatPopups === 'function') window.dsCloseAllChatPopups(menu);
                             menu.classList.toggle('open', willOpen);
                             return;
                         }
@@ -962,11 +962,11 @@
                     //   无效果——必须动态查询最新节点。
                     var menu = document.getElementById('ds-datasource-menu');
                     if (!menu) return;
-                    // 点击关联数据按钮：toggle 菜单（互斥关闭其它下拉）
+                    // 点击关联数据按钮：toggle 菜单（v3.25 互斥：点开一个关闭其它所有弹出）
                     if (t.closest('#ds-reset-datasource-btn')) {
                         e.stopPropagation();
                         var willOpen = !menu.classList.contains('open');
-                        document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+                        if (typeof window.dsCloseAllChatPopups === 'function') window.dsCloseAllChatPopups(menu);
                         if (willOpen) loadDsCfg();
                         menu.classList.toggle('open', willOpen);
                         return;
@@ -1964,7 +1964,10 @@
                     alert('当前模型「' + _cur + '」不支持 FIM 中间补全（视觉/实验模型等）。\n请切换到 DeepSeek 文本模型（如 deepseek-v4-flash）后再使用此功能。');
                     return;
                 }
-                var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'flex';
+                // v3.25 互斥：打开 FIM 弹窗前关闭其它所有弹出（四个下拉 + 附件弹层）
+                var m = document.getElementById('ds-fim-modal');
+                if (typeof window.dsCloseAllChatPopups === 'function') window.dsCloseAllChatPopups(m);
+                if (m) m.style.display = 'flex';
             };
             window.dsCloseFim = function() { var m = document.getElementById('ds-fim-modal'); if (m) m.style.display = 'none'; };
             window.dsRunFim = async function() {
@@ -3310,11 +3313,11 @@
           //   永久有效，但闭包 menu 仍指向还原前的旧节点（幽灵节点），classList/contains
           //   操作无效果——必须动态查询最新节点。
           var menu = document.getElementById('ds-websearch-menu');
-          // 点击按钮：toggle 自身菜单（互斥关闭其它）
+          // 点击按钮：toggle 自身菜单（v3.25 互斥：点开一个关闭其它所有弹出）
           if (t.closest('#ds-websearch-btn')) {
             e.stopPropagation();
             var willOpen = !(menu && menu.classList.contains('open'));
-            document.querySelectorAll('.ds-dropdown-menu.open').forEach(function(m){ if (m !== menu) m.classList.remove('open'); });
+            if (typeof window.dsCloseAllChatPopups === 'function') window.dsCloseAllChatPopups(menu);
             if (menu) menu.classList.toggle('open', willOpen);
             return;
           }

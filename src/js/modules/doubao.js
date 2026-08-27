@@ -496,6 +496,13 @@
                 } catch (e) {}
             });
             function updateModeStatus() {
+                // 模型名简称（手机端显示，避免占位过宽）：去掉 deepseek- 前缀并映射常见变体
+                function dsShortModel(n) {
+                    if (!n) return n;
+                    var s = String(n).replace(/^deepseek-v4-/, '').replace(/^deepseek-/, '');
+                    var map = { 'flash': 'v4-flash', 'flash-vision-exp': 'v4-vision', 'chat': 'chat', 'reasoner': '推理', 'v4-flash': 'v4-flash', 'v4-flash-vision-exp': 'v4-vision' };
+                    return map[s] || (s.length > 10 ? s.slice(0, 9) + '…' : s);
+                }
                 var sub = _dsCurrentSub || 'chat';
                 var labelMap = { chat: '💬 智能对话', check: '⚖️ 智能对规', writer: '✍️ 智能写作', agent: '🧠 智能体', risk: '📊 风险研判', doubao: '🤖 豆包网页版' };
                 var modeLabel = document.getElementById('ds-current-mode-label');
@@ -513,11 +520,23 @@
                     var mName = (mi >= 0 && modelSel.options[mi]) ? modelSel.options[mi].text : '';
                     // 简化默认模型展示：去掉「默认模型 (xxx)」前缀，仅保留模型标识
                     mName = mName.replace(/^默认模型\s*[（(](.+?)[）)]\s*$/, '$1');
-                    modelLabel.textContent = mName || '未配置模型';
+                    // 手机端模型名过长占位太宽 → 显示简称（全称存 title 供悬停查看）
+                    var _isNarrow = window.innerWidth <= 768;
+                    modelLabel.textContent = _isNarrow ? dsShortModel(mName) : (mName || '未配置模型');
+                    modelLabel.title = mName || '未配置模型';
+                    modelLabel.style.maxWidth = _isNarrow ? '92px' : '';
+                    modelLabel.style.overflow = 'hidden';
+                    modelLabel.style.textOverflow = 'ellipsis';
+                    modelLabel.style.whiteSpace = 'nowrap';
                 }
             }
             // 暴露给全局，使 index.html initPage 的首屏角色/模式状态刷新生效（此前因未挂 window 而成为死调用）
             window.updateModeStatus = updateModeStatus;
+            // 视口变化（手机/桌面切换）时刷新模型名简称显示
+            if (!window._dsModeStatusResizeBound) {
+                window._dsModeStatusResizeBound = true;
+                window.addEventListener('resize', function () { if (window.updateModeStatus) window.updateModeStatus(); });
+            }
 
             // 角色/模型：圆形图标按钮 + 下拉菜单（与附件/发送同款风格）
             function dsInitDropdowns() {

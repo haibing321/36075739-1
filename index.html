@@ -1673,6 +1673,24 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.35 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.35 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎨 智能对话模块按钮统一 deepseek 扁平化：「历史·新对话·角色·模型·数据关联·联网·FIM·上传·发送·资料中心」全部对齐 deepseek 控件风格——次按钮 light 浅灰实底 (#f3f5f8) / dark 深底 (#2a3548)、圆角 10px；发送置灰、激活主蓝 (#4d6bfe)、停止深灰；新对话主蓝 CTA。同时排除 dark 全局兜底对这些按钮的涂抹，恢复 deepseek 区分度。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📱 模型名称手机端显示简称：智能对话头部「当前模型」标签在窄屏 (≤768px) 自动切为简称（如 deepseek-v4-flash → v4-flash、deepseek-v4-flash-vision-exp → v4-vision、deepseek-reasoner → 推理），全称存 title 供悬停查看；并加 resize 监听，桌面/手机切换实时刷新，避免站位过宽。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.34 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1691,21 +1709,9 @@
                 </div>
             </div>
 
-            <!-- v3.33 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.33 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🛡️ 离线可用性修复：设置面板在「离线刷新后打不开」问题已根除。根因是设置开关依赖运行时挂载到 `window` 的 `toggleSettingsPanel`（来自 app.js），离线刷新一旦取不到 app.js 即失效、面板无法打开。修复方案在 `index.html` 的 `head` 注入**内联兜底脚本**，使设置开关不再依赖任何外部 JS 文件——app.js 在线时行为不变、离线缺失时兜底版照常开/关。经自动化验证（强制 app.js 失败 + 断网刷新）设置面板仍可正常打开与收起，0 报错。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.33 已归档（最近 2 版本为 v3.35 / v3.34） -->
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.32 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.33 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

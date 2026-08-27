@@ -354,7 +354,7 @@ html.flat-mode button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-li
 }
 /* 裸 button（设置面板/API配置模态/搜索导航/弹窗）dark 下浅色块统一深底；
    保留内联主蓝的语义按钮（导出/下载/保存等）。!important 压内联 style。 */
-html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
+html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-ico-btn):not(.ds-attach-btn):not(.ds-icon-btn):not(.ds-sidebar-foot-btn):not(.ds-switch-material):not(.ds-send-circle):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
   background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
   border-radius: var(--ds-radius) !important;
 }
@@ -398,3 +398,66 @@ html.flat-mode[data-theme="dark"] .btn-stats {
   border: none !important;
   border-radius: 10px !important;
 }
+
+/* ---------- 19. 智能对话模块按钮 deepseek 化（历史/新对话/角色/模型/数据关联/联网/FIM/上传/发送/资料中心） ----------
+   这些按钮原本是 ds-deepseek.css 的「透明圆形图标按钮」，light 下无底色（用户反馈「底色未改」），
+   dark 下又被 16c 全局兜底统一涂成 #334155 丢失区分。此处给它们一致的 deepseek 实底：
+   次按钮 light 浅灰 / dark 深底；主按钮（发送·新对话）主蓝；选中/开启态保留蓝调。!important 压 ds-deepseek.css。*/
+/* 19a. 次按钮：角色 / 模型 / 数据关联 / 联网 / FIM / 上传 / 历史 / 清空选项 / 资料中心 —— light 浅灰实底 */
+html.flat-mode .ds-ico-btn,
+html.flat-mode .ds-attach-btn,
+html.flat-mode .ds-icon-btn,
+html.flat-mode .ds-sidebar-foot-btn,
+html.flat-mode .ds-switch-material {
+  background: var(--ds-gray-100) !important;
+  color: var(--ds-gray-700) !important;
+  border: 1px solid var(--ds-gray-200) !important;
+  border-radius: var(--ds-radius) !important;
+}
+html.flat-mode[data-theme="dark"] .ds-ico-btn,
+html.flat-mode[data-theme="dark"] .ds-attach-btn,
+html.flat-mode[data-theme="dark"] .ds-icon-btn,
+html.flat-mode[data-theme="dark"] .ds-sidebar-foot-btn,
+html.flat-mode[data-theme="dark"] .ds-switch-material {
+  background: #2a3548 !important;
+  color: #cbd5e1 !important;
+  border-color: #3a475d !important;
+}
+/* 19b. 选中/开启态高亮：联网开启(ds-ws-on) / 历史展开(ds-icon-btn.on) 保留深seek 蓝调 */
+html.flat-mode .ds-ico-btn.ds-ws-on,
+html.flat-mode .ds-icon-btn.on {
+  background: #e8ecfd !important;
+  color: var(--ds-blue) !important;
+  border-color: #c7d2fe !important;
+}
+html.flat-mode[data-theme="dark"] .ds-ico-btn.ds-ws-on,
+html.flat-mode[data-theme="dark"] .ds-icon-btn.on {
+  background: #1e3354 !important;
+  color: #93c5fd !important;
+  border-color: #2a4a6e !important;
+}
+/* 19c. 新对话：主蓝 CTA（侧栏主操作） */
+html.flat-mode .ds-newchat-btn {
+  background: var(--ds-blue) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: var(--ds-radius) !important;
+}
+html.flat-mode[data-theme="dark"] .ds-newchat-btn {
+  background: var(--ds-blue) !important;
+  color: #fff !important;
+}
+/* 19d. 发送：置灰灰底 / 激活深seek 主蓝 / 停止深灰（保留 .on / .stopping 语义） */
+html.flat-mode .ds-send-circle {
+  background: #d5dbe5 !important;
+  color: #fff !important;
+  border-radius: var(--ds-radius) !important;
+}
+html.flat-mode[data-theme="dark"] .ds-send-circle {
+  background: #3a475d !important;
+  color: #cbd5e1 !important;
+}
+html.flat-mode .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
+html.flat-mode[data-theme="dark"] .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
+html.flat-mode .ds-send-circle.stopping,
+html.flat-mode[data-theme="dark"] .ds-send-circle.stopping { background: #37404f !important; color: #fff !important; }

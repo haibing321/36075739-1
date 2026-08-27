@@ -1104,7 +1104,7 @@
 
                 // ── 结果置信度说明 ──
                 html += '<div style="margin-top:12px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:0.78rem;color:var(--text-secondary);border:1px solid #e2e8f0;">';
-                html += '💡 <strong>结果说明：</strong>本地匹配基于关键词检索，仅展示与输入描述相关的内容供参考，不代表最终对规结论。如需精准对规，请使用「AI 对规」功能。';
+                html += '💡 <strong>结果说明：</strong>本地匹配仅作参考，不代表最终对规结论；精准对规请用「AI 对规」。';
                 html += '</div>';
 
                 container.innerHTML = html;

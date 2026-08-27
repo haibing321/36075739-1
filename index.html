@@ -554,7 +554,7 @@
                                     <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                                 </label>
                             </div>
-                            <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容将插入到光标所在的文本框（可使用输入法自带的语音输入 🎤）</div>
+                            <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容插入到光标处（可用输入法语音 🎤）</div>
                             <!-- 多媒体预览区 -->
                             <div id="media-preview" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
                             <!-- 关闭按钮 -->
@@ -615,7 +615,7 @@
                         <div class="card-title-icon">📚</div>
                         资料中心
                     </div>
-                    <div class="card-subtitle">写作资料 · 检查信息 · 规章制度 · 工作日志 · 各模块报告，一处统一查阅</div>
+                    <div class="card-subtitle">写作资料 / 检查信息 / 规章 / 日志 / 报告，统一查阅</div>
                     <button onclick="switchTab('doubao')" class="btn-close" title="关闭资料中心" style="position:absolute;top:14px;right:14px;font-size:1.3rem;line-height:1;">✕</button>
                 </div>
                 <div class="card-body">
@@ -634,8 +634,8 @@
                             </div>
                             <!-- 说明栏 -->
                             <div style="padding:8px 12px;background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe;font-size:0.8rem;color:#1e3a8a;line-height:1.6;">
-                                <strong>📌 资料类型：</strong>写作模版、历史报告、检查信息、故障报告、通报文电、其它（导入时手动选类）。<br>
-                                <strong>🔗 全模块数据：</strong>点此可一键查看检查信息台账、规章制度、工作日志等各模块数据（只读）。
+                                <strong>📌 资料类型：</strong>模板 / 报告 / 检查信息 / 故障 / 文电 / 其它，导入时选类。<br>
+                                <strong>🔗 全模块数据：</strong>点此查看各模块台账（只读）。
                             </div>
                             <!-- 子类分类Tab（合并后） -->
                             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-bottom:2px solid var(--border);padding-bottom:8px;">
@@ -747,7 +747,7 @@
                                 </div>
                                 
                                 <div style="padding:6px 8px;background:#f8fafc;border-radius:6px;font-size:0.75rem;color:var(--text-secondary);">
-                                    💡 点击候选词选中/取消，或点击"➕"添加自定义词，然后点击「本地匹配」开始搜索。
+                                    💡 点候选词选中/取消，或用「➕」加自定义词，再点「本地匹配」搜索。
                                 </div>
                             </div>
                             
@@ -1071,7 +1071,7 @@
                 <button onclick="wrImportWithType('dispatch')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📨 通报文电</button>
                 <button onclick="wrImportWithType('other')" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">📄 其它</button>
             </div>
-            <div style="font-size:0.78rem;color:var(--text-secondary);padding:6px 10px;background:#f8fafc;border-radius:6px;">💡 支持格式：DOCX · PDF · Excel（.xlsx/.xls）· JSON · TXT<br>故障统计可归入「故障报告」，会议纪要可归入「通报文电」</div>
+            <div style="font-size:0.78rem;color:var(--text-secondary);padding:6px 10px;background:#f8fafc;border-radius:6px;">💡 支持：DOCX · PDF · Excel · JSON · TXT<br>故障统计归入「故障报告」，会议纪要归入「通报文电」</div>
         </div>
     </div>
 
@@ -1667,7 +1667,21 @@
 
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
-                铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
+                铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.39 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.39 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📝 全模块界面文字说明优化：资料中心、智能对规、智能写作、API 配置、关于系统等说明性文字统一精简，去除冗余表述、更直观体现模块功能（如「注册目的」→「配置用途」、「如何配置（方法）」→「配置步骤」、资料类型说明压缩为短列表）。</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v3.38 近期更新 -->
@@ -1696,25 +1710,7 @@
                 </div>
             </div>
 
-            <!-- v3.37 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.37 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎨 智能对话与资料中心小按钮统一为「融入背景」风格：角色 / 模型 / 数据关联 / 联网 / FIM / 上传 / 历史 / 资料中心 等图标按钮默认透明、与页面底色一致，hover 才显浅底，不再各自灰底，对齐 deepseek 网页版控件；选中/开启态（联网·历史展开）保留主蓝高亮。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 退出提示条「再次滑入退出」暗黑化：dark 下由亮蓝块 (rgba(26,54,93,.96)) 改为与背景一致的深色实底 (rgba(8,12,20,.97))，消除亮白块，整页深色风格统一。</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v3.36 已归档（最近 2 版本为 v3.38 / v3.37） -->
+            <!-- v3.37 已归档（最近 2 版本为 v3.39 / v3.38） -->
 
             <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.36 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
@@ -1818,9 +1814,9 @@
             <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 2px 0 0;">
                 <!-- 注册目的与配置方法说明 -->
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:0.8rem;color:#92400e;line-height:1.65;">
-                    <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;">📌 为什么要配置（注册目的）</div>
+                    <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;">📌 配置用途</div>
                     <div style="margin-bottom:8px;">本系统的智能助手（智能对话 / 智能体 / 智能对规 / 智能写作 / 风险研判）均依赖大模型 API 生成回答。<b>未配置 API Key 时无法使用任何 AI 功能</b>；配置后所有模块统一调用「当前使用模型」，切换立即对全部模块生效。</div>
-                    <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;">🛠️ 如何配置（方法）</div>
+                    <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;">🛠️ 配置步骤</div>
                     <div>1. 在模型厂商官网<b>注册账号并获取 API Key</b>（如 DeepSeek、阿里通义、智谱 GLM、OpenAI 等）；<br>
                     2. 点击右上「＋ 新增模型」，填写 <b>名称 / API 地址 / 模型名称 / API Key</b>；<br>
                     3. 点击「保存模型」，并点「设为当前」使其成为默认模型；<br>

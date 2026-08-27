@@ -403,25 +403,40 @@ html.flat-mode[data-theme="dark"] .btn-stats {
    这些按钮原本是 ds-deepseek.css 的「透明圆形图标按钮」，light 下无底色（用户反馈「底色未改」），
    dark 下又被 16c 全局兜底统一涂成 #334155 丢失区分。此处给它们一致的 deepseek 实底：
    次按钮 light 浅灰 / dark 深底；主按钮（发送·新对话）主蓝；选中/开启态保留蓝调。!important 压 ds-deepseek.css。*/
-/* 19a. 次按钮：角色 / 模型 / 数据关联 / 联网 / FIM / 上传 / 历史 / 清空选项 / 资料中心 —— light 浅灰实底 */
+/* 19a. 次按钮：角色 / 模型 / 数据关联 / 联网 / FIM / 上传 / 历史 / 清空选项 / 资料中心
+   —— 背景与页面底色一致（deepseek 网页版图标按钮风格：默认透明融入背景，hover 才显浅底），不再各自灰底 */
 html.flat-mode .ds-ico-btn,
 html.flat-mode .ds-attach-btn,
 html.flat-mode .ds-icon-btn,
 html.flat-mode .ds-sidebar-foot-btn,
 html.flat-mode .ds-switch-material {
-  background: var(--ds-gray-100) !important;
+  background: transparent !important;
   color: var(--ds-gray-700) !important;
-  border: 1px solid var(--ds-gray-200) !important;
+  border: 1px solid transparent !important;
   border-radius: var(--ds-radius) !important;
+}
+html.flat-mode .ds-ico-btn:hover,
+html.flat-mode .ds-attach-btn:hover,
+html.flat-mode .ds-icon-btn:hover,
+html.flat-mode .ds-sidebar-foot-btn:hover,
+html.flat-mode .ds-switch-material:hover {
+  background: var(--ds-gray-100) !important;
 }
 html.flat-mode[data-theme="dark"] .ds-ico-btn,
 html.flat-mode[data-theme="dark"] .ds-attach-btn,
 html.flat-mode[data-theme="dark"] .ds-icon-btn,
 html.flat-mode[data-theme="dark"] .ds-sidebar-foot-btn,
 html.flat-mode[data-theme="dark"] .ds-switch-material {
-  background: #2a3548 !important;
-  color: #cbd5e1 !important;
-  border-color: #3a475d !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  border-color: transparent !important;
+}
+html.flat-mode[data-theme="dark"] .ds-ico-btn:hover,
+html.flat-mode[data-theme="dark"] .ds-attach-btn:hover,
+html.flat-mode[data-theme="dark"] .ds-icon-btn:hover,
+html.flat-mode[data-theme="dark"] .ds-sidebar-foot-btn:hover,
+html.flat-mode[data-theme="dark"] .ds-switch-material:hover {
+  background: rgba(255,255,255,0.07) !important;
 }
 /* 19b. 选中/开启态高亮：联网开启(ds-ws-on) / 历史展开(ds-icon-btn.on) 保留深seek 蓝调 */
 html.flat-mode .ds-ico-btn.ds-ws-on,
@@ -569,3 +584,9 @@ html.flat-mode[data-theme="dark"] #rule-fullViewHlBar {
 /* dark 模式 sheet 背景与手柄色 */
 html.flat-mode[data-theme="dark"] .sheet-modal .modal-content { background: var(--card-bg) !important; }
 html.flat-mode[data-theme="dark"] .sheet-modal .modal-content::before { background: #334155; }
+
+/* ---------- 21. 退出提示条「再次滑入退出」：改为与背景一致的深色，消除 dark 下亮蓝块 ----------
+   该条由 index.html 内联注入 background:rgba(26,54,93,.96)（深蓝亮块），dark 下偏亮（用户反馈"白色为黑"）。
+   纯 CSS 覆盖内联样式，改为与页面背景一致的深色实底。零侵入其他文件。*/
+html.flat-mode #_exit_bar { background: rgba(15,23,42,0.96) !important; color: #fff !important; }
+html.flat-mode[data-theme="dark"] #_exit_bar { background: rgba(8,12,20,0.97) !important; color: #e2e8f0 !important; }

@@ -1670,6 +1670,32 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.38 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.38 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>💬 智能对话「发送」圆形按钮融入背景：默认/激活/停止三态均为透明，仅图标色区分（禁用灰 / 激活主蓝 / 停止红），不再有灰底或蓝底实心块，与整体「控件融入背景」一致。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>👤 智能对话右上角角色/模型标签透明化：原浅灰 / 深蓝 pill（通用 / deepseek-v4-flash）改为透明底、仅保留文字色，与页面底色一致。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🌙 规章制度搜索「搜索条件」提示条暗黑化：dark 下容器浅蓝 #f0f9ff、「全部包含」白底 #fff、关键词浅蓝 #e0f2fe 均改为深底，纯 CSS 覆盖内联样式（不动 rule.js），深搜结果区无亮白块。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📴 离线优先 + 红点更新：SW 导航改为 CacheFirst，系统默认打开完全使用离线内容、不再从远程重新下载；打开时不再静默检查更新。发现新版本时「设置」tab 与「检查更新」按钮均显示红色脉冲点，点击「立即更新」应用；红点用 localStorage 持久化，离线打开仍可见，更新后自动清除。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.37 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1688,31 +1714,9 @@
                 </div>
             </div>
 
-            <!-- v3.36 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.36 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📜 规章制度「目录 / 编辑 / 全文查看」三个弹窗统一改为底部下扩展 sheet：去居中 modal + 蓝渐变 header + 白底卡片包裹（扁平化一致）；桌面 720px 贴底，手机端真正占满全宽（不再被 max-width 500px 压窄），顶部圆角 + 拖拽手柄 + 滑入动画，与搜索结果面板一致。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>✕ 关闭按钮全部移到弹窗右上角：目录 / 编辑 / 全文 三个 sheet 弹窗统一 `<button class="sheet-close">✕</button>` 绝对定位贴右上角（30px 圆钮，light 浅灰/dark 深底），移除底部 footer 中的「关闭/取消」文字按钮，仅保留真正操作按钮（清空·保存·导出本条）。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 全文查看弹窗「全部包含」暗黑化：暗黑模式下正文区由内联亮白 #f7fafc → #0f172a 深底、关键词命中栏 #fef9e7 浅黄 → #2a2410 暗暖底，深搜时不再有亮白块刺眼；亮色下保持原浅底确保阅读舒适。整页深色风格一致，无残留浅底。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.36 已归档（最近 2 版本为 v3.38 / v3.37） -->
 
-            <!-- v3.35 及以前已归档（最近 2 版本为 v3.37 / v3.36） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.35 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.36 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

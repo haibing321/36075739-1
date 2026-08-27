@@ -374,9 +374,9 @@ window.onclick = function(e) {
     navigator.serviceWorker.register('sw.js').then(function(reg) {
         console.log('[PWA] SW 注册成功');
 
-        // 静默检查 SW 更新（不弹提示）：加速新版本在已安装 PWA 上生效，
-        // 避免已安装应用长期停留在旧的缓存壳（可能含外部 CDN 脚本，致移动端卡在启动图标）。
-        try { reg.update(); } catch(e) {}
+        // 【v3.38】离线优先：打开时【不】调用 reg.update()，避免在后台静默从远程重新下载新 SW/资源。
+        // 系统默认打开完全使用离线内容（SW 已 CacheFirst 提供页面）。
+        // 新版本仅在用户点击「设置 → 检查更新」时通过 triggerApplyUpdate() 主动拉取并预备（waiting 状态）。
 
         // 检测新版本：仅手动检查时才提示，避免打开即打扰
         reg.addEventListener('updatefound', function() {
@@ -438,6 +438,10 @@ window.onclick = function(e) {
     function applyPendingUpdate() {
         _pendingReload = true;
         _pendingReloadAt = Date.now();
+        // 应用更新：清除红点标记（刷新后由新版本接管，_has_update 不再成立）
+        try { localStorage.removeItem('_has_update'); } catch (e) {}
+        document.getElementById('tab-settings')?.classList.remove('has-update-badge');
+        document.getElementById('check-update-btn')?.classList.remove('has-update-badge');
         navigator.serviceWorker.getRegistration().then(function(reg) {
             var target = (reg && reg.waiting) ? reg.waiting : navigator.serviceWorker.controller;
             if (target) target.postMessage({ type: 'SKIP_WAITING' });
@@ -463,6 +467,7 @@ window.onclick = function(e) {
         var ver = document.getElementById('setting-current-version');
         if (mode === 'update') {
             btn.onclick = function() { applyPendingUpdate(); };
+            btn.classList.add('has-update-badge');
             btn.style.background = 'var(--primary)';
             btn.style.borderColor = 'var(--primary)';
             btn.style.color = '#fff';
@@ -479,6 +484,7 @@ window.onclick = function(e) {
             if (ver) ver.style.color = '#94a3b8';
         } else { // normal
             btn.onclick = function() { checkForUpdate(); };
+            btn.classList.remove('has-update-badge');
             btn.style.background = 'var(--card-bg)';
             btn.style.borderColor = 'var(--border)';
             btn.style.color = 'inherit';
@@ -773,7 +779,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.37'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.38'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -828,6 +834,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (aboutVer) aboutVer.textContent = APP_VERSION;
     // 离线获取 SW 缓存版本号（12位精确时间戳），追加显示到版本号后
     _fetchSwVersion();
+    // 离线恢复更新红点：若此前检测到新版本但未应用，离线打开仍提示（不联网拉取）
+    try {
+      if (localStorage.getItem('_has_update') === 'true') {
+        document.getElementById('tab-settings')?.classList.add('has-update-badge');
+        document.getElementById('check-update-btn')?.classList.add('has-update-badge');
+      }
+    } catch (e) {}
     // 折叠屏/旋转会话状态恢复：文档重建后还原模块、滚动位置、草稿、弹窗
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
@@ -892,6 +905,7 @@ async function performUpdateCheck(url, showStatus) {
         const isNew = compareVersions(remoteVersion, APP_VERSION) > 0;
         if (isNew) {
             document.getElementById('tab-settings')?.classList.add('has-update-badge');
+            document.getElementById('check-update-btn')?.classList.add('has-update-badge');
             localStorage.setItem('_has_update', 'true');
             // v3.26：「立即更新」按钮原位覆盖「检查更新」按钮（循环图标样式）
             if (window.switchUpdateBtn) window.switchUpdateBtn('update');
@@ -903,6 +917,7 @@ async function performUpdateCheck(url, showStatus) {
             if (window.triggerApplyUpdate) window.triggerApplyUpdate();
         } else {
             document.getElementById('tab-settings')?.classList.remove('has-update-badge');
+            document.getElementById('check-update-btn')?.classList.remove('has-update-badge');
             localStorage.removeItem('_has_update');
             // v3.26：无新版本/更新完成 → 恢复「检查更新」按钮
             if (window.switchUpdateBtn) window.switchUpdateBtn('normal');

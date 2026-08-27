@@ -462,20 +462,21 @@ html.flat-mode[data-theme="dark"] .ds-newchat-btn {
   background: var(--ds-blue) !important;
   color: #fff !important;
 }
-/* 19d. 发送：置灰灰底 / 激活深seek 主蓝 / 停止深灰（保留 .on / .stopping 语义） */
+/* 19d. 发送：与背景一致（透明，仅图标色区分）—— 默认禁用灰 / 激活主蓝 / 停止红，无实心色块 */
 html.flat-mode .ds-send-circle {
-  background: #d5dbe5 !important;
-  color: #fff !important;
-  border-radius: var(--ds-radius) !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  border: none !important;
+  border-radius: 50% !important;
 }
 html.flat-mode[data-theme="dark"] .ds-send-circle {
-  background: #3a475d !important;
-  color: #cbd5e1 !important;
+  background: transparent !important;
+  color: #64748b !important;
 }
-html.flat-mode .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
-html.flat-mode[data-theme="dark"] .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
+html.flat-mode .ds-send-circle.on { background: transparent !important; color: var(--ds-blue) !important; }
+html.flat-mode[data-theme="dark"] .ds-send-circle.on { background: transparent !important; color: #6b8cff !important; }
 html.flat-mode .ds-send-circle.stopping,
-html.flat-mode[data-theme="dark"] .ds-send-circle.stopping { background: #37404f !important; color: #fff !important; }
+html.flat-mode[data-theme="dark"] .ds-send-circle.stopping { background: transparent !important; color: #ef4444 !important; }
 
 /* ---------- 20. 规章制度「目录 / 查看全文 / 编辑」弹窗改为底部下扩展 sheet ----------
    原 rule-catalogModal 等是居中 modal（max-width 500px），手机端内容被压窄、header 蓝渐变 + 白底包裹未扁平化。
@@ -590,3 +591,30 @@ html.flat-mode[data-theme="dark"] .sheet-modal .modal-content::before { backgrou
    纯 CSS 覆盖内联样式，改为与页面背景一致的深色实底。零侵入其他文件。*/
 html.flat-mode #_exit_bar { background: rgba(15,23,42,0.96) !important; color: #fff !important; }
 html.flat-mode[data-theme="dark"] #_exit_bar { background: rgba(8,12,20,0.97) !important; color: #e2e8f0 !important; }
+
+/* ---------- 22. 智能对话右上角角色/模型标签：透明融入背景（消除浅灰/深蓝 pill） ----------
+   原 .ds-chat-role 在 light 为浅灰底 #eef2f7、dark 为深蓝底 #1b2740，与扁平页面底色不一致。
+   flat-mode 下改为透明底、仅保留文字色（角色主蓝 / 模式次要色），与整体"控件融入背景"一致。*/
+html.flat-mode .ds-chat-mode { background: transparent !important; }
+html.flat-mode .ds-chat-role { background: transparent !important; border: none !important; padding: 2px 0 !important; }
+html.flat-mode[data-theme="dark"] .ds-chat-role { background: transparent !important; color: #8ab4ff !important; }
+
+/* ---------- 23. 规章制度搜索结果「搜索条件」提示条暗黑化（不改 rule.js，纯 CSS 覆盖内联样式）----------
+   rule.js 用内联样式注入：容器 background:#f0f9ff（浅蓝）、"全部包含" span background:#fff（白）、
+   关键词标签 background:#e0f2fe（浅蓝）。dark 下这些偏亮，与暗黑界面冲突。
+   用 [style*="..."] 属性选择器精准命中内联色，flat-mode dark 下改为深底。*/
+html.flat-mode[data-theme="dark"] .result-list div[style*="background:#f0f9ff"] {
+  background: #0f1e2e !important;
+  border-color: #1e3a52 !important;
+  color: #7dd3fc !important;
+}
+html.flat-mode[data-theme="dark"] .result-list div[style*="background:#f0f9ff"] span[style*="background:#fff"] {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #93c5fd !important;
+}
+html.flat-mode[data-theme="dark"] .result-list div[style*="background:#f0f9ff"] span[style*="background:#e0f2fe"] {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #93c5fd !important;
+}

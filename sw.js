@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260827192448';
+var CACHE_VERSION = '20260827194446';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -207,39 +207,26 @@ self.addEventListener('fetch', function(event) {
 
   // --- 策略选择 ---
 
-  // 1. 导航请求（HTML 页面）：在线时「网络优先」(NetworkFirst) 获取最新页面，
-  //    确保已安装的 PWA 不会一直使用旧的、含外部 CDN <script> 的缓存壳，
-  //    从而避免移动端弱网/被墙时该脚本挂起、页面卡在启动图标界面(load 永不触发)。
-  //    离线时直接返回缓存(秒开)，不联网等待。
+  // 1. 导航请求（HTML 页面）：离线优先(CacheFirst)。
+  //    【v3.38】改为完全离线优先——打开时直接返回缓存页面，不再每次联网重新下载 HTML，
+  //    确保"系统默认打开完全使用离线内容"。新版本仅在用户点击「设置→检查更新→立即更新」时，
+  //    由新 SW 的 precache（新缓存名）落盘、skipWaiting 激活、controllerchange 刷新后生效。
+  //    仅当缓存缺失（如首次安装/清缓存）才联网兜底并写入缓存；离线且缓存缺失时返回内置启动页。
   if (req.mode === 'navigate') {
-    // 离线：直接返回缓存中的页面，避免无网络时长时间等待/白屏
-    if (self.navigator && self.navigator.onLine === false) {
-      event.respondWith(
-        caches.match(req, { cacheName: CACHE_NAME })
-          .then(function(c) { return c || caches.match('./index.html', { cacheName: CACHE_NAME }); })
-          .then(function(c) {
-            return c || _fallbackShell();
-          })
-      );
-      return;
-    }
-    // 在线：优先联网获取最新页面（带超时，避免永久挂起），失败再回退缓存
-    // v3.17 改进：超时从 5s 缩到 3s（多数网络下 3s 拿不到即可认为失败），
-    // 失败时若当前 cache 也无 index.html，返回内置「启动中」HTML 而非 503 ，
-    // 杜绝 PWA 冷启动在弱网/版本刚切换时主进程等不到首屏、长时间卡系统 splash 的现象。
     event.respondWith(
-      fetchWithTimeout(req, 3000).then(function(resp) {
-        if (resp.ok) {
-          var clone = resp.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
-        }
-        return resp;
-      }).catch(function() {
-        return caches.match(req, { cacheName: CACHE_NAME })
-          .then(function(c) { return c || caches.match('./index.html', { cacheName: CACHE_NAME }); })
-          .then(function(c) {
-            return c || _fallbackShell();
-          });
+      caches.match(req, { cacheName: CACHE_NAME }).then(function(c) {
+        if (c) return c;                       // 离线优先：命中缓存直接返回，不联网
+        // 缓存未命中（首次安装/清缓存）才联网获取并写回缓存
+        return fetchWithTimeout(req, 3000).then(function(resp) {
+          if (resp.ok) {
+            var clone = resp.clone();
+            caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
+          }
+          return resp;
+        }).catch(function() {
+          return caches.match('./index.html', { cacheName: CACHE_NAME })
+            .then(function(c2) { return c2 || _fallbackShell(); });
+        });
       })
     );
     return;

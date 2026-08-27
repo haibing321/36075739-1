@@ -461,3 +461,111 @@ html.flat-mode .ds-send-circle.on { background: var(--ds-blue) !important; color
 html.flat-mode[data-theme="dark"] .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
 html.flat-mode .ds-send-circle.stopping,
 html.flat-mode[data-theme="dark"] .ds-send-circle.stopping { background: #37404f !important; color: #fff !important; }
+
+/* ---------- 20. 规章制度「目录 / 查看全文 / 编辑」弹窗改为底部下扩展 sheet ----------
+   原 rule-catalogModal 等是居中 modal（max-width 500px），手机端内容被压窄、header 蓝渐变 + 白底包裹未扁平化。
+   改为从底部展开的全宽 sheet：手机端占满宽度，桌面端 720px 居中贴底；去蓝渐变 header 与白底包裹，与智能搜索结果面板一致。
+   共享类 .sheet-modal 挂在 rule-catalogModal / rule-fullViewModal / rule-editModal 上。纯 CSS，openModal/closeModal 机制不变。*/
+@keyframes dsSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+html.flat-mode .sheet-modal {
+  align-items: flex-end;          /* 贴底展开 */
+  justify-content: center;
+  padding: 0;                     /* 全宽，无外边距 */
+}
+html.flat-mode .sheet-modal .modal-content {
+  width: 100%;
+  max-width: 720px;
+  max-height: 88vh;
+  margin: 0 auto;
+  border-radius: 18px 18px 0 0;  /* 仅顶部圆角 */
+  background: var(--card-bg);
+  border: none;
+  box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.18);
+  animation: dsSheetUp 0.28s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* 顶部拖拽手柄（移动端提示） */
+html.flat-mode .sheet-modal .modal-content::before {
+  content: "";
+  display: block;
+  width: 40px; height: 4px;
+  border-radius: 999px;
+  background: var(--border, #e2e8f0);
+  margin: 10px auto 4px;
+  flex-shrink: 0;
+}
+/* header：去蓝渐变，扁平化（与搜索结果面板一致） */
+html.flat-mode .sheet-modal .modal-header {
+  background: transparent !important;
+  color: var(--text);
+  padding: 8px 20px 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  position: relative;
+  padding-right: 46px;          /* 给右上角 × 留位 */
+}
+html.flat-mode .sheet-modal .modal-title { color: var(--text); font-weight: 600; }
+html.flat-mode .sheet-modal .modal-title span { color: var(--text-secondary); opacity: 0.7; }
+html.flat-mode .sheet-modal .modal-body {
+  background: transparent !important;
+  padding: 0 16px 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+html.flat-mode .sheet-modal .modal-footer {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+/* 目录弹窗：过滤行手机端纵向堆叠占满宽度 */
+html.flat-mode #rule-catalogModal .modal-body > div:first-child { flex-wrap: wrap; gap: 8px; }
+html.flat-mode #rule-catalogModal #rule-catalogFilter { flex: 1; min-width: 0; }
+html.flat-mode #rule-catalogModal #rule-catalogTradeFilter { width: auto; flex: 0 0 auto; }
+html.flat-mode #rule-catalogModal .catalog-list { max-height: none; padding: 4px 0; }
+/* 统一右上角关闭钮：目录 / 编辑 / 全文 三个 sheet 弹窗的关闭交互都移到 header 右上角 */
+html.flat-mode .sheet-close {
+  position: absolute;
+  top: 10px; right: 14px;
+  width: 30px; height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--ds-gray-100);
+  color: var(--text);
+  font-size: 15px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+}
+html.flat-mode .sheet-close:hover { background: var(--ds-gray-200); }
+html.flat-mode[data-theme="dark"] .sheet-close {
+  background: #2a3548 !important;
+  color: #e2e8f0 !important;
+  border-color: #3a475d !important;
+}
+html.flat-mode[data-theme="dark"] .sheet-close:hover { background: #34425a !important; }
+/* 全文查看：暗黑模式下正文区与高亮栏改为深底，消除亮白块 */
+html.flat-mode[data-theme="dark"] #rule-fullContentBody {
+  background: #0f172a !important;
+  border-left-color: var(--info) !important;
+}
+html.flat-mode[data-theme="dark"] #rule-fullViewHlBar {
+  background: #2a2410 !important;
+  border-color: #5c4d1a !important;
+  color: #e8d8a0 !important;
+}
+/* 手机端占满宽度 */
+@media (max-width: 480px) {
+  html.flat-mode .sheet-modal .modal-content {
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+  }
+}
+/* dark 模式 sheet 背景与手柄色 */
+html.flat-mode[data-theme="dark"] .sheet-modal .modal-content { background: var(--card-bg) !important; }
+html.flat-mode[data-theme="dark"] .sheet-modal .modal-content::before { background: #334155; }

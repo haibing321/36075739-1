@@ -1673,6 +1673,24 @@
                 铁路安全监察智能辅助系统。涵盖检查手册、检查信息、规章制度、应急电话、工作日志等基础业务模块，以及「智能助手」下的智能对话、智能体（ReAct 自主规划+工具调用）、智能对规、智能写作、风险研判、智能查询、资料中心、豆包网页版等 AI 能力，全部数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.34 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.34 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎨 全站扁平化 UI（参考 deepseek 网页版）：去卡片/统计栏包裹，改用「留白 + 1px 细分隔线」分区，手机端内容范围更大、界面更简洁；与暗黑模式兼容。控件（按钮/输入框）统一 deepseek 风格——主蓝 #4d6bfe、圆角 10px、纯色实底无渐变。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧹 各查询模块移除「储存/数量」展示，仅在设置面板常显「总储存量」（navigator.storage.estimate）；修复智能对话切换角色后未按新角色答题——切换角色时自动重置对话上下文（旧对话保留在侧栏），确保「介绍一下你自己」等按新角色从零回答，不再复述旧角色历史。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.33 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1687,21 +1705,7 @@
                 </div>
             </div>
 
-            <!-- v3.32 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.32 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌐 豆包网页版联网优化：默认不联网，改为**仅当切换到「豆包网页版」视图时才加载**（iframe 初始 `about:blank`，激活时注入真实地址、隐藏时卸回 `about:blank`，彻底消除平时后台联网开销）；同时为该 iframe 增加 `allow="compute-pressure"` 属性，消除豆包侧 PressureObserver 被浏览器权限策略拦截产生的控制台噪声。经自动化测试（平时 0 请求、切到才加载、切走即卸载）全部通过。</span>
-                    </div>
-                </div>
-            </div>
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.31 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.32 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

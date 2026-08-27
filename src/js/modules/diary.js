@@ -355,9 +355,9 @@
             };
             // escapeHtml 已统一到 utils.js (window.escapeHtml)，此处不再重复定义
 
-            // 更新记录数显示
+            // 记录数展示已移除（统一在设置面板显示「总储存量」）
             function updateDiaryCount() {
-                document.getElementById('diary-count').textContent = diaries.length + ' 条';
+                // 原逻辑渲染 diary-count，已移除
             }
 
             // 生成单条日记卡片 HTML（供今日记录与搜索结果共用）

@@ -17,18 +17,9 @@
             function saveToStorage() {
                 try { localStorage.setItem(STORAGE_KEY, JSON.stringify(phoneData)); updateStats(); updatePhoneSuggestions(); } catch (e) { alert('保存失败：' + e.message); }
             }
+            // 储存/数量展示已移除（统一在设置面板显示「总储存量」）
             function updateStats() {
-                const count = phoneData.length;
-                document.getElementById('phone-recordCount').textContent = count + ' 条';
-                let sizeMB = 0;
-                if (count > 0) { const jsonStr = JSON.stringify(phoneData); sizeMB = (new Blob([jsonStr]).size / 1024 / 1024).toFixed(2); }
-                document.getElementById('phone-storageText').textContent = sizeMB + ' MB';
-                const percent = Math.min((sizeMB / 10) * 100, 100);
-                const bar = document.getElementById('phone-storageBar');
-                bar.style.width = percent + '%';
-                if (percent > 80) bar.className = 'storage-fill danger';
-                else if (percent > 60) bar.className = 'storage-fill warning';
-                else bar.className = 'storage-fill';
+                // 原逻辑渲染 phone-recordCount / phone-storageText / phone-storageBar，已移除
             }
             function updatePhoneSuggestions() {
                 const keywords = new Set();

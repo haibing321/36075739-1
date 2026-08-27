@@ -1,0 +1,400 @@
+/* ========== flat.css - 无包裹统一格式（参考 deepseek 网页版） ==========
+   启用方式：在 index.html 的 <html> 标签加 class="flat-mode"
+   设计目标：
+   - 模块/子模块内容直接落在页面底色上，用「留白 + 1px 细分隔线」分区，
+     不再用白底圆角卡片包裹 → 手机端内容显示范围更大、界面更简单。
+   - 仅扁平化「大区块包裹」（卡片/统计栏/结果卡/容器），保留控件样式：
+     输入框、按钮、标签、弹窗(modal)、对话气泡、下拉等均不变。
+   - 与暗黑模式兼容：扁平后卡片透明，自然露出 --bg（暗黑为深色底）。
+*/
+
+/* ---------- 0. 页面底色调淡，更接近 deepseek 的干净观感 ---------- */
+html.flat-mode body { background: var(--bg); }
+
+/* ---------- 1. 主容器：内容更舒展；移动端近乎满宽 ---------- */
+html.flat-mode .main { max-width: 1500px; padding: 20px 24px; }
+@media (max-width: 768px) {
+  html.flat-mode .main { padding: 12px 12px 84px; }   /* 底部留白避开移动端导航 */
+}
+@media (max-width: 480px) {
+  html.flat-mode .main { padding: 10px 10px 80px; }
+}
+
+/* ---------- 2. 卡片 → 无包裹：透明底、去边框/阴影/圆角，仅用间距分区（!important 抵御内联样式与子级覆盖） ---------- */
+html.flat-mode .card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  margin-bottom: 22px;
+  overflow: visible !important;
+}
+html.flat-mode .card:hover { box-shadow: none !important; transform: none !important; }
+
+/* 卡片标题作为「分区标题」：保留图标色块，去渐变底，下方细线 */
+html.flat-mode .card-header {
+  background: transparent !important;
+  padding: 2px 0 12px !important;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+html.flat-mode .card-body {
+  padding: 0 !important;
+  background: transparent !important;  /* 覆盖 dark.css 的 var(--card-bg) */
+}
+
+/* ---------- 3. 统计栏：去底色框，仅留间距（!important 抵御 unify.css:342 浅灰 / :510 dark #1e293b） ---------- */
+html.flat-mode .stats-bar {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0;
+  padding: 0 0 6px;
+  margin-bottom: 16px;
+}
+/* .control-btns 容器去多余内边距，避免里面按钮被撑成全宽条带 */
+html.flat-mode .control-btns,
+html.flat-mode .btn-group {
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* ---------- 4. 通用容器块（若有白底包裹）扁平化 ---------- */
+html.flat-mode .container {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* ---------- 5. 结果卡（检查信息/隐患列表）：保留左侧语义色条，去白底渐变 ---------- */
+html.flat-mode .result-card {
+  background: transparent !important;
+  border: none !important;
+  border-left: 3px solid var(--border) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 12px 0 12px 14px !important;
+  margin-bottom: 12px !important;
+}
+html.flat-mode .result-card:hover { box-shadow: none !important; transform: none !important; }
+html.flat-mode .result-card.level-a { border-left-color: var(--accent) !important; }
+html.flat-mode .result-card.level-b { border-left-color: var(--warning) !important; }
+html.flat-mode .result-card.level-c { border-left-color: var(--info) !important; }
+html.flat-mode .result-card.level-hongxian { border-left-color: #742a2a !important; }
+html.flat-mode .result-card.level-kongbai { border-left-color: #718096 !important; }
+
+/* ---------- 6. 顶栏：去浮起阴影，保留品牌渐变（不再像悬浮盒子） ---------- */
+html.flat-mode .header { box-shadow: none; }
+html.flat-mode .nav-btn.active { background: rgba(255,255,255,0.16); }
+
+/* ---------- 7. 列表型条目：保留细分隔线风格（已是 deepseek 式分隔），仅去掉多余底白 ---------- */
+html.flat-mode .diary-card { background: transparent !important; border-color: var(--border) !important; }
+html.flat-mode .rule-item { background: transparent; }
+html.flat-mode .catalog-item { background: transparent; }
+
+/* ---------- 8. 设置/关于面板内层白卡：改为透明（原内联 background:#fff 在 flat 下去掉包裹感） ---------- */
+html.flat-mode #settings-panel .card,
+html.flat-mode #about-panel .card { background: transparent; border: none; box-shadow: none; }
+
+/* ---------- 9. 移动端：卡片间距收紧，进一步放大可用范围 ---------- */
+@media (max-width: 768px) {
+  html.flat-mode .card { margin-bottom: 16px; }
+  html.flat-mode .card-body { padding: 0; }
+  html.flat-mode .result-card { padding: 10px 0 10px 12px !important; margin-bottom: 10px !important; }
+}
+
+/* ---------- 10. 子区块容器（搜索框/筛选条等）：去底色框，用留白区分 ---------- */
+/* 这些是模块内"白底圆角"的二级包裹，统一扁平化为纯留白 + 细分隔线 */
+html.flat-mode .search-box,
+html.flat-mode .filter-box,
+html.flat-mode .editor-area,
+html.flat-mode .input-area,
+html.flat-mode .panel-toolbar,
+html.flat-mode .toolbar {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 12px 0 !important;
+  margin: 0 !important;
+}
+
+/* ---------- 11. 修复 .btn-add 变全宽椭圆 ----------
+   原版：.btn-add { width:100%; border-radius:50%; display:inline-block }，
+   被 .search-box 的 20px padding "挤成"窄长小按钮（看起来正常）。
+   flat 把 .search-box padding 去掉后，width:100% + radius:50% 直接横贯整宽
+   形成一个浅蓝大椭圆长条——视觉上像「多了一个滑动条」。
+   修复：还原为"内容宽度 + 胶囊圆角 + 居中"的小按钮。 */
+html.flat-mode .btn-add {
+  display: block !important;
+  width: max-content !important;
+  margin: 8px auto 0 !important;
+  border-radius: 999px !important;
+  padding: 8px 18px !important;
+}
+
+/* ---------- 12. 检查信息模块统计区：压平 issue.js 内联白底包裹块 ----------
+   issue.js 用 style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px"
+   绘制「性质分布/类别排行/分组统计」白底卡，并用 class="stats-card" 绘制彩色渐变卡。
+   仅用 flat-mode 作用域 + !important 在「flat 模式」下压平（不删 issue.js 源码、不破坏原版视觉、
+   可一键回退）。属性选择器只命中 background:#fff，不误伤进度条/按钮/色块。 */
+html.flat-mode #issue-statsContent div[style*="background:#fff"] {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 12px 0 !important;
+}
+html.flat-mode #issue-statsContent .stats-card {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html.flat-mode #issue-statsContent .stats-card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ---------- 13. dark 模式残留卡片底色（覆盖 dark.css 的 var(--card-bg)） ----------
+   dark.css 第 53/57 行给 .card-header / .card-body 强制上色，flat 模式应一并透明。
+   同时压平 handbook 模块左右分栏底色（.hb-outline-wrap / .hb-outline-tree 深蓝灰）；
+   内容文本块 .hb-content-text（左侧色条保留，去白底圆角）；
+   列表卡片背景（.diary-card / .stat-card）。*/
+html.flat-mode[data-theme="dark"] .card-header {
+  background: transparent !important;
+}
+html.flat-mode[data-theme="dark"] .card-body,
+html.flat-mode[data-theme="dark"] .hb-outline-wrap,
+html.flat-mode[data-theme="dark"] .hb-outline-tree,
+html.flat-mode[data-theme="dark"] .hb-content-text {
+  background: transparent !important;
+}
+html.flat-mode[data-theme="dark"] .diary-card,
+html.flat-mode[data-theme="dark"] .stat-card {
+  background: transparent !important;
+}
+
+/* handbook 左右分栏：保留 1px 分隔线，去圆角（视觉上左右仍有边界，但不"包裹"） */
+html.flat-mode .hb-outline-wrap {
+  border-radius: 8px !important;
+  border: 1px solid var(--border) !important;
+  padding: 0 !important;
+}
+html.flat-mode .hb-outline-tree {
+  border-right: 1px solid var(--border) !important;
+}
+html.flat-mode .hb-content-text {
+  border-radius: 0 !important;
+  border-left: 3px solid var(--primary) !important;
+  padding: 16px 0 16px 16px !important;
+}
+
+/* ---------- 14. 卡片标题去除顶端圆角（与 flat 容器对齐） ---------- */
+html.flat-mode .card-header {
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+/* ---------- 15. 控件 deepseek 风格：按钮 + 输入框 ----------
+   对齐 chat.deepseek.com：主色 var(--ds-blue)=#4d6bfe、圆角 --ds-radius=10px、
+   淡灰描边 --ds-gray-200、克制 hover（轻背景变化，不浮起）、focus 主色 + 淡光晕。
+   输入框已由 unify.css 全局统一（第 5 节），此处补齐「按钮系列」+ 局部输入框覆盖，
+   仅扁平化主题下生效（可一键回退）。*/
+html.flat-mode .btn {
+  border-radius: var(--ds-radius) !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+html.flat-mode .btn:hover { transform: none !important; box-shadow: none !important; }
+
+/* 主按钮：纯色实底（禁用渐变，铁律），hover 略深 */
+html.flat-mode .btn-primary { background: var(--ds-blue) !important; color: #fff !important; border-radius: var(--ds-radius) !important; }
+html.flat-mode .btn-primary:hover { background: var(--ds-blue-dark) !important; }
+/* 次按钮：浅灰底 + 淡描边，hover 略深（deepseek 次级操作风格） */
+html.flat-mode .btn-secondary {
+  background: var(--ds-gray-100) !important; color: var(--ds-gray-700) !important;
+  border: 1px solid var(--ds-gray-200) !important; border-radius: var(--ds-radius) !important;
+}
+html.flat-mode .btn-secondary:hover { background: var(--ds-gray-200) !important; }
+/* 语义色按钮：保留语义，纯色实底、hover 略深 */
+html.flat-mode .btn-success,
+html.flat-mode .btn-warning,
+html.flat-mode .btn-danger,
+html.flat-mode .btn-info,
+html.flat-mode .btn-primary-sm { border-radius: var(--ds-radius) !important; }
+html.flat-mode .btn-success:hover { background: #3d7560 !important; }
+html.flat-mode .btn-warning:hover { background: #9c6530 !important; }
+html.flat-mode .btn-danger:hover { background: var(--accent-light) !important; }
+html.flat-mode .btn-info:hover { background: #3d6e9c !important; }
+
+/* 小按钮圆角统一 */
+html.flat-mode .btn-small,
+html.flat-mode .btn-tiny { border-radius: var(--radius-md) !important; }
+
+/* 胶囊标签按钮（deepseek 标签风格） */
+html.flat-mode .btn-chip {
+  border-radius: var(--ds-radius-pill) !important;
+  background: var(--ds-gray-100) !important; color: var(--ds-gray-600) !important;
+  border: 1px solid var(--ds-gray-200) !important;
+}
+html.flat-mode .btn-chip:hover { background: var(--ds-gray-200) !important; color: var(--ds-gray-700) !important; }
+html.flat-mode .btn-chip.active,
+html.flat-mode .btn-chip.wr-mat-tab-active {
+  background: var(--ds-blue) !important; border-color: var(--ds-blue) !important; color: #fff !important;
+  box-shadow: none !important;
+}
+
+/* 描边 / 小主按钮（deepseek 次级按钮风格） */
+html.flat-mode .btn-outline {
+  background: transparent !important; border: 1px solid var(--ds-gray-200) !important;
+  color: var(--ds-gray-600) !important; border-radius: var(--ds-radius) !important;
+}
+html.flat-mode .btn-outline:hover { background: var(--ds-gray-100) !important; }
+html.flat-mode .btn-primary-sm {
+  background: var(--ds-blue) !important; border-radius: var(--ds-radius) !important; box-shadow: none !important;
+}
+html.flat-mode .btn-primary-sm:hover { background: var(--ds-blue-dark) !important; transform: none !important; box-shadow: none !important; }
+
+/* 业务语义浅底按钮（保留语义色，统一圆角/hover，去重阴影） */
+html.flat-mode .btn-data-sm,
+html.flat-mode .btn-data-blue,
+html.flat-mode .btn-data-green,
+html.flat-mode .btn-data-red,
+html.flat-mode .wr-mat-btn,
+html.flat-mode .wr-mat-btn-view,
+html.flat-mode .wr-mat-btn-template,
+html.flat-mode .wr-mat-btn-delete { border-radius: var(--ds-radius) !important; }
+html.flat-mode .btn-data-blue:hover,
+html.flat-mode .btn-data-green:hover,
+html.flat-mode .btn-data-red:hover,
+html.flat-mode .wr-mat-btn-view:hover,
+html.flat-mode .wr-mat-btn-template:hover,
+html.flat-mode .wr-mat-btn-delete:hover { filter: brightness(0.97); }
+
+/* 资料卡片按钮基础类 + 关闭 X：圆角统一（保留语义色） */
+html.flat-mode .wr-mat-btn { border-radius: var(--ds-radius) !important; }
+html.flat-mode .btn-close { border-radius: var(--radius-md) !important; }
+
+/* 输入框局部归一（对齐 deepseek 圆角/描边；!important 盖内联 style） */
+html.flat-mode input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.flat-mode select,
+html.flat-mode textarea { border-radius: var(--ds-radius) !important; }
+html.flat-mode .keyword-row input,
+html.flat-mode .form-select,
+html.flat-mode .search-box input,
+html.flat-mode .phone-search-bar input,
+html.flat-mode .ds-sidebar-search input,
+html.flat-mode .hb-search-box input { border-radius: var(--ds-radius) !important; }
+
+/* 暗黑：输入框/下拉去白底，用深色（deepseek 暗色输入框），focus 主色 + 淡光晕 */
+html.flat-mode[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.flat-mode[data-theme="dark"] select,
+html.flat-mode[data-theme="dark"] textarea,
+html.flat-mode[data-theme="dark"] .keyword-row input,
+html.flat-mode[data-theme="dark"] .form-select,
+html.flat-mode[data-theme="dark"] .search-box input,
+html.flat-mode[data-theme="dark"] .phone-search-bar input,
+html.flat-mode[data-theme="dark"] .hb-search-box input {
+  background: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important;
+}
+html.flat-mode[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+html.flat-mode[data-theme="dark"] select:focus,
+html.flat-mode[data-theme="dark"] textarea:focus,
+html.flat-mode[data-theme="dark"] .keyword-row input:focus,
+html.flat-mode[data-theme="dark"] .form-select:focus,
+html.flat-mode[data-theme="dark"] .search-box input:focus,
+html.flat-mode[data-theme="dark"] .hb-search-box input:focus {
+  border-color: var(--ds-blue) !important;
+  box-shadow: 0 0 0 3px rgba(77,107,254,0.22) !important;
+  outline: none !important;
+}
+
+/* ---------- 16. 子模块控件深穿透：圆角统一 + dark 浅块消除 ----------
+   覆盖第 15 节未触达的：裸 button（设置面板/弹窗/搜索导航）、.btn-small 圆角残留、
+   dark 下 .btn-secondary/.btn-chip/.btn-small 浅灰块、设置面板内联浅灰按钮、
+   输入框包裹 #keyword-select-area 白底。仅扁平化主题生效，零侵入其他文件。*/
+/* 16a. 所有 .btn 系列圆角统一 10px（覆盖 6/4/0 残留） */
+html.flat-mode .btn,
+html.flat-mode .btn-small,
+html.flat-mode .btn-lg,
+html.flat-mode .btn-tiny { border-radius: var(--ds-radius) !important; }
+
+/* 16b. dark 下非语义 .btn 系列深底浅字（消除浅灰/黄浅块） */
+html.flat-mode[data-theme="dark"] .btn:not(.btn-primary):not(.btn-success):not(.btn-warning):not(.btn-danger):not(.btn-info):not(.btn-primary-sm):not(.btn-data-sm):not(.btn-data-blue):not(.btn-data-green):not(.btn-data-red):not(.btn-stats) {
+  background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
+}
+html.flat-mode[data-theme="dark"] .btn:hover:not(.btn-primary):not(.btn-success):not(.btn-warning):not(.btn-danger):not(.btn-info):not(.btn-primary-sm):not(.btn-stats) {
+  background: #3d4d63 !important;
+}
+/* 胶囊标签 dark 深底 */
+html.flat-mode[data-theme="dark"] .btn-chip {
+  background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
+}
+/* 警告按钮 dark 下转深橙（dark.css 的 --warning 仍是浅黄，需纠正） */
+html.flat-mode[data-theme="dark"] .btn-warning {
+  background: #d97706 !important; border-color: #b45309 !important; color: #fff !important;
+}
+/* 多媒体录入按钮：unify.css 用 #id !important 锁死浅黄，需在 flat dark 下以等价 id 级覆盖 */
+html.flat-mode[data-theme="dark"] #btn-multimedia-toggle {
+  background: #d97706 !important; border-color: #b45309 !important; color: #fff !important;
+}
+/* 业务语义浅底按钮 dark 深化（保留语义，消除刺眼浅块） */
+html.flat-mode[data-theme="dark"] .btn-data-blue { background: #1e3a5f !important; color: #93c5fd !important; border-color: #2a4a6e !important; }
+html.flat-mode[data-theme="dark"] .btn-data-green { background: #14532d !important; color: #86efac !important; border-color: #1f6b3a !important; }
+html.flat-mode[data-theme="dark"] .btn-data-red { background: #7f1d1d !important; color: #fca5a5 !important; border-color: #9b2c2c !important; }
+
+/* 16c. 裸 button（无 .btn 类：设置面板/弹窗/搜索导航等）圆角 10px */
+html.flat-mode button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn) {
+  border-radius: var(--ds-radius) !important;
+}
+/* 裸 button（设置面板/API配置模态/搜索导航/弹窗）dark 下浅色块统一深底；
+   保留内联主蓝的语义按钮（导出/下载/保存等）。!important 压内联 style。 */
+html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
+  background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
+  border-radius: var(--ds-radius) !important;
+}
+
+/* 16d. 输入框包裹底色去除（智能对规 #keyword-select-area 等白底块） */
+html.flat-mode #keyword-select-area { background: transparent !important; }
+
+/* ---------- 17. 规章制度「目录」弹窗扁平化（去列表卡片底色） ----------
+   目录弹窗每条规章 .catalog-item 原本 light 白底 / dark 深底（unify.css 用 !important 锁死），
+   flat 模式下去掉块底色，仅用 1px 底部细线分隔；modal-body 去掉第二层底色，
+   让列表直接落在弹窗底色上。弹窗边界 (modal-content) 保留。零侵入其他文件。*/
+html.flat-mode .catalog-item {
+  background: transparent !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+html.flat-mode .catalog-item:hover {
+  background: rgba(77,107,254,0.06) !important;
+  box-shadow: none !important;
+}
+/* dark 下 modal-body 被 unify.css 用 !important 强上 #1e293b，去掉这层多余底色 */
+html.flat-mode[data-theme="dark"] .modal-body {
+  background: transparent !important;
+}
+
+/* ---------- 18b. 检查信息「📊 统计」按钮：内联紫 #8b5cf6 → deepseek 主蓝（与目录/智能搜索主按钮一致） ----------
+   该按钮带内联 style="background:#8b5cf6"（优先级最高），普通规则压不住；且 light 下仍是紫色需改。
+   dark 下第 16 节把 .btn 压成 #334155 深灰，这里用同 specificity + 后置定义赢回来，保持主蓝。零侵入其他文件。*/
+html.flat-mode .btn-stats {
+  background: var(--ds-blue) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+}
+html.flat-mode[data-theme="dark"] .btn-stats {
+  background: var(--ds-blue) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+}

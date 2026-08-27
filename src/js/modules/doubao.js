@@ -579,6 +579,10 @@
                                 var ev = document.createEvent('HTMLEvents');
                                 ev.initEvent('change', true, true);
                                 sel.dispatchEvent(ev);
+                                // 【修复】切换角色：旧角色问答已污染对话上下文，若当前对话有内容则开新对话
+                                //   （旧对话保留在侧栏），确保切换后「介绍一下你自己」等按新角色从零答题，
+                                //   而非复述旧角色历史（表现为「秒回答且答案未变」）。
+                                if (typeof window.dsNewChat === 'function' && dsHistory.length > 0) window.dsNewChat(true);
                             }
                             Array.prototype.forEach.call(menu.children, function(c){ c.classList.toggle('active', c === item); });
                             menu.classList.remove('open');

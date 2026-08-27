@@ -436,11 +436,9 @@
                 } catch(e) { handbookData = []; }
             }
 
+            // 储存/数量展示已移除（统一在设置面板显示「总储存量」）
             function updateStats() {
-                var t = document.getElementById('handbook-total');
-                var s = document.getElementById('handbook-size');
-                if (t) t.textContent = handbookData.length;
-                if (s) s.textContent = (JSON.stringify(handbookData).length / 1024).toFixed(1) + ' KB';
+                // 原逻辑渲染 handbook-total / handbook-size，已移除
             }
 
             window.clearHandbookData = function() {

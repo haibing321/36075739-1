@@ -379,28 +379,12 @@
                     return false;
                 }
             }
+            // 储存/数量展示已移除（统一在设置面板显示「总储存量」）
             function updateStorageInfo() {
-                try {
-                    const jsonStr = JSON.stringify(rules);
-                    const size = new Blob([jsonStr]).size;
-                    const percent = Math.min(100, (size / MAX_STORAGE_SIZE) * 100);
-                    const bar = document.getElementById('rule-storageBar');
-                    if (bar) bar.style.width = percent + '%';
-                    const text = document.getElementById('rule-storageText');
-                    if (text) text.textContent = (size / 1024 / 1024).toFixed(2) + '/500MB';
-                    if (bar) {
-                        bar.classList.remove('warning', 'danger');
-                        if (percent > 80) bar.classList.add('danger');
-                        else if (percent > 60) bar.classList.add('warning');
-                    }
-                } catch (e) {
-                    const text = document.getElementById('rule-storageText');
-                    if (text) text.textContent = '未知';
-                }
+                // 原逻辑渲染 rule-storageBar / rule-storageText，已移至设置面板
             }
             function updateTotalBadge() {
-                const badge = document.getElementById('rule-totalBadge');
-                if (badge) badge.textContent = rules.length + ' 条';
+                // rule-totalBadge（模块数据条数）展示已移除
                 const count = document.getElementById('rule-resultCount');
                 if (count) count.textContent = rules.length + ' 项';
             }
@@ -2147,7 +2131,6 @@
                         renderResults();
                     }
                 });
-                document.getElementById('rule-totalBadge').addEventListener('click', showCatalog);
                 document.getElementById('rule-tradeSelect').addEventListener('change', renderResults);
                 document.getElementById('rule-catalogFilter')?.addEventListener('input', renderCatalog);
                 document.getElementById('rule-catalogTradeFilter')?.addEventListener('change', renderCatalog);

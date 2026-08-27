@@ -814,6 +814,14 @@
                     var v = await getters[k]();
                     el.textContent = typeof v === 'number' ? v + '条' : v;
                 }
+                // 总储存量（仅设置面板显示，统一替代各模块分散的存储/数量展示）
+                var tsEl = document.getElementById('settings-total-storage');
+                if (tsEl && window.storageManager && typeof window.storageManager.checkQuota === 'function') {
+                    try {
+                        var q = await window.storageManager.checkQuota();
+                        tsEl.textContent = (q.usageMB != null ? q.usageMB : '—') + ' MB / ' + (q.quotaMB != null ? q.quotaMB : '—') + ' MB';
+                    } catch (e) { tsEl.textContent = '—'; }
+                }
             };
         })();
 

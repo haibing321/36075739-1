@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="flat-mode">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
@@ -224,6 +224,7 @@
     <link rel="stylesheet" href="src/css/responsive.css">
     <link rel="stylesheet" href="src/css/dark.css">
     <link rel="stylesheet" href="src/css/unify.css">
+    <link rel="stylesheet" href="src/css/flat.css">
 </head>
 <body>
     <!-- 启动遮罩：首屏立即显示，避免 Edge 等浏览器在脚本加载延迟时长时间停在 LOGO/启动界面。
@@ -357,13 +358,6 @@
                     <div class="card-subtitle">四层级目录 · 多专业检查项点定位</div>
                 </div>
                 <div class="card-body">
-                    <div class="stats-bar">
-                        <div class="stats-left">
-                            <div class="stat-item"><span class="stat-label">📚 条目总数</span><span class="stat-value" id="handbook-total">0</span></div>
-                            <div class="stat-item"><span class="stat-label">💾 存储</span><span class="stat-value" id="handbook-size">0 KB</span><div class="storage-bar"><div class="storage-fill" id="handbook-storageBar" style="width:0%"></div></div></div>
-                        </div>
-                        <div class="btn-group" style="display:none;"></div>
-                    </div>
 
                     <!-- 浏览模式切换 -->
                     <div class="hb-view-toggle">
@@ -404,17 +398,6 @@
                 </div>
                 <div class="card-body">
                     <div class="stats-bar">
-                        <div class="stats-left">
-                            <div class="stat-item">
-                                <span class="stat-label">💾 存储:</span>
-                                <span class="stat-value" id="issue-storageText">计算中...</span>
-                                <div class="storage-bar"><div class="storage-fill" id="issue-storageBar" style="width:0%"></div></div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">记录数:</span>
-                                <span class="stat-value" id="issue-recordCount">0 条</span>
-                            </div>
-                        </div>
                         <div class="btn-group">
                             <button class="btn btn-stats" onclick="issueShowStats()" style="background:#8b5cf6;color:#fff;border:none;">📊 统计</button>
                         </div>
@@ -471,14 +454,6 @@
                 </div>
                 <div class="card-body">
                     <div class="control-bar stats-bar">
-                        <div class="control-stats stats-left">
-                            <span class="control-label">📚</span>
-                            <span class="control-value stat-value" id="rule-totalBadge" style="cursor:pointer;">0 条</span>
-                            <span class="control-divider">|</span>
-                            <span class="control-label">💾</span>
-                            <div class="storage-bar-mini storage-bar"><div class="storage-fill" id="rule-storageBar" style="width:0%"></div></div>
-                            <span class="control-value-small stat-value" id="rule-storageText">0/500MB</span>
-                        </div>
                         <div class="control-btns btn-group">
                             <button class="btn btn-catalog btn-info" id="rule-catalogBtn">🗂️ 目录</button>
                         </div>
@@ -528,12 +503,6 @@
                 <div class="card-body">
                     <!-- 统计栏+按钮组（重新布局） -->
                     <div class="stats-bar">
-                        <div class="stats-left">
-                            <div class="stat-item">
-                                <span class="stat-label">📝 记录数:</span>
-                                <span class="stat-value" id="diary-count">0 条</span>
-                            </div>
-                        </div>
                         <div class="btn-group" id="diary-btn-group">
                             <button class="btn btn-secondary" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
                             <button class="btn btn-success" onclick="openMemoModal()">🔔 备忘</button>
@@ -617,22 +586,8 @@
                     </div>
                     <div class="card-subtitle">多单位通讯录 · 搜索一键拨号</div>
                 </div>
-                <div class="card-body">
-                    <div class="stats-bar">
-                        <div class="stats-left">
-                            <div class="stat-item">
-                                <span class="stat-label">💾 存储:</span>
-                                <span class="stat-value" id="phone-storageText">0 MB</span>
-                                <div class="storage-bar"><div class="storage-fill" id="phone-storageBar" style="width:0%"></div></div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">记录数:</span>
-                                <span class="stat-value" id="phone-recordCount">0 条</span>
-                            </div>
-                        </div>
-                        <div class="btn-group" style="display:none;"></div>
-                    </div>
-                    <input type="file" id="phone-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
+                    <div class="card-body">
+                        <input type="file" id="phone-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
 
                     <div class="search-box">
                         <div class="phone-search-bar">
@@ -1554,6 +1509,12 @@
                         </label>
                     </span>
                 </div>
+                </div>
+
+                <!-- 总储存量（始终可见，替代各模块分散的存储/数量展示） -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f1f5f9;border-radius:10px;">
+                    <span style="font-size:0.88rem;color:#475569;">💾 总储存量</span>
+                    <span style="font-size:0.82rem;color:var(--primary);font-weight:600;" id="settings-total-storage">计算中…</span>
                 </div>
 
                 <!-- 数据管理（可展开） -->

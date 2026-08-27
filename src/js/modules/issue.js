@@ -91,39 +91,15 @@
                 });
             }
 
-            // 渲染存储文本 + 进度条（统一三处重复逻辑）
-            function issueRenderStorage(sizeMB, displayQuotaMB) {
-                const textEl = document.getElementById('issue-storageText');
-                const bar = document.getElementById('issue-storageBar');
-                if (textEl) textEl.textContent = parseFloat(sizeMB) + ' / ' + displayQuotaMB + ' MB';
-                if (bar) {
-                    const percent = Math.min((parseFloat(sizeMB) / displayQuotaMB) * 100, 100);
-                    bar.style.width = percent + '%';
-                    if (percent > 80) bar.className = 'storage-fill danger';
-                    else if (percent > 60) bar.className = 'storage-fill warning';
-                    else bar.className = 'storage-fill';
-                }
-            }
-
+            // 各查询模块的储存/数量展示已移除（统一在设置面板显示「总储存量」）
             async function updateStorage() {
                 try {
-                    const data = await loadData(), count = data.length;
-                    let sizeMB = 0;
-                    if (count > 0) {
-                        // 使用 JSON.stringify 精确计算当前模块数据大小
-                        const jsonStr = JSON.stringify(data);
-                        sizeMB = (jsonStr.length / 1024 / 1024).toFixed(2);
-                    }
-                    document.getElementById('issue-recordCount').textContent = count + ' 条';
-
-                    // 显示上限固定 200MB；storageManager.checkQuota 仅用于触发配额预警，结果不直接用于显示
-                    const displayQuotaMB = 200;
+                    // 仍调用 checkQuota 以触发配额预警（侧效应保留）
                     if (window.storageManager) {
                         try {
                             await window.storageManager.checkQuota();
-                        } catch(qe) { /* 配额检测失败不影响存储条渲染 */ }
+                        } catch(qe) { /* 配额检测失败不影响主流程 */ }
                     }
-                    issueRenderStorage(sizeMB, displayQuotaMB);
                 } catch (e) {}
                 issueRefreshCategorySelect();
             }

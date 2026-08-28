@@ -52,13 +52,31 @@
   // 输入框 id 随数量动态编号，按容器收集整个数组。
   var DRAFT_KEYWORD_BOXES = ['rule-keywordContainer', 'issue-keywordContainer'];
 
-  // 主滚动容器：各 panel 内部的可滚动区域（结构为 .panel.active 内的 .module-scroll 或 panel 自身）
+  // 主滚动容器：优先取模块内声明的滚动容器；没有则向上找「真正可滚动的祖先」。
+  // 注意：.module-scroll / .scroll-area 这两个类在本项目里其实从未使用过，
+  // 原实现永远退化成 panel 自身，而 panel 只是普通容器并不滚动 ——
+  // 结果 snapshot.scroll 恒为 {top:0,left:0}，折叠/刷新后滚动位置永远恢复不了。
+  function _findScroller(node) {
+    var el = node;
+    while (el && el !== document.body && el !== document.documentElement) {
+      try {
+        var oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') &&
+            (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)) {
+          return el;
+        }
+      } catch (e) {}
+      el = el.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
   function _activePanelScroll() {
     var panel = document.querySelector('.panel.active');
     if (!panel) return null;
     // 优先取模块内声明的滚动容器
-    var sc = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area');
-    var el = sc || panel;
+    var el = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area');
+    if (!el) el = _findScroller(panel);
     return { top: el.scrollTop || 0, left: el.scrollLeft || 0 };
   }
 
@@ -180,7 +198,13 @@
       var p = document.getElementById('panel-' + mod);
       if (!p) return;
       try {
-        p.innerHTML = snap.panelHTML[mod];
+        // 快照来自「上次渲染结果」，其中混有规章名、检查信息字段等用户输入。
+        // 任一渲染路径存在转义遗漏时，内联 onclick（如 copy('...')）就会被原样还原 → DOM XSS。
+        // 这里统一剥掉所有 on* 内联事件（业务交互全部走委托监听，不依赖内联事件）。
+        var cleaned = String(snap.panelHTML[mod])
+          .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, ' ')
+          .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, ' ');
+        p.innerHTML = cleaned;
         ok = true;
       } catch (e) {}
     });
@@ -211,6 +235,10 @@
     try { snap = JSON.parse(raw); } catch (e) { return; }
     if (!snap || !snap.module) return;
 
+    // 把编辑会话回填到模块级变量：快照里的 editSession 只在下面第 4 步用于调钩子，
+    // 不回填的话 _getEditSession() 在还原后仍返回 null，模块拿不到「我正在编辑哪条」。
+    try { if (snap.editSession && snap.editSession.module) _editSession = snap.editSession; } catch (e) {}
+
     // 1) 先还原整页 DOM（含数据），确保「数据和界面都保持」，不触发重拉
     var domRestored = false;
     try { domRestored = _restorePanelDOM(snap); } catch (e) { domRestored = false; }
@@ -230,13 +258,12 @@
     //    整页 innerHTML 替换在 DOMContentLoaded 同步完成，单帧后 DOM 已稳定可写，
     //    滚动位置/草稿更早恢复到位，用户感知还原更即时）
     requestAnimationFrame(function () {
-      // 滚动位置
+      // 滚动位置（定位逻辑必须与保存端 _activePanelScroll 完全一致，否则存 A 恢复 B）
       if (snap.scroll) {
         var panel = document.querySelector('.panel.active');
-        if (panel) {
-          var el = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area') || panel;
-          try { el.scrollTop = snap.scroll.top || 0; el.scrollLeft = snap.scroll.left || 0; } catch (e) {}
-        }
+        var scEl = panel ? (panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area')) : null;
+        if (!scEl) scEl = _findScroller(panel || document.body);
+        try { scEl.scrollTop = snap.scroll.top || 0; scEl.scrollLeft = snap.scroll.left || 0; } catch (e) {}
       }
       // 草稿回填（仅当输入框当前为空，避免覆盖用户已输入的新内容）
       if (snap.drafts) {

@@ -73,21 +73,24 @@
         break;
       case 'panel-handbook':
         safePart('handbook', () => {
-          const total = (document.getElementById('handbook-total') || {}).textContent || '0';
-          return `当前在【检查手册】模块，共 ${total} 条目`;
+          // 原实现从 #handbook-total 读，但该元素已随改版移除，取到的恒为 '0'，
+          // 导致智能体在手册模块时始终认为「共 0 条目」。改为直接读数据源。
+          const data = (typeof window.getHandbookData === 'function') ? window.getHandbookData() : [];
+          return `当前在【检查手册】模块，共 ${data.length} 条目`;
         });
         break;
       case 'panel-diary':
         safePart('diary', () => {
-          const count = (document.getElementById('diary-count') || {}).textContent || '0';
-          return `当前在【工作日志】模块，已有 ${count} 条日志`;
+          // 同上：#diary-count 不存在，恒为 '0'
+          const diary = (typeof window.getDiaryData === 'function') ? window.getDiaryData() : [];
+          return `当前在【工作日志】模块，已有 ${diary.length} 条日志`;
         });
         break;
       case 'panel-phone':
         safePart('phone', () => {
-          const raw = (document.getElementById('phone-recordCount') || {}).textContent || '0';
-          const count = String(raw).replace(/条/g, '').trim() || '0';
-          return `当前在【应急电话】模块，共 ${count} 条通讯录`;
+          // 同上：#phone-recordCount 不存在，恒为 '0'
+          const phones = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : [];
+          return `当前在【应急电话】模块，共 ${phones.length} 条通讯录`;
         });
         break;
     }
@@ -164,11 +167,10 @@
   function renderCard(html) {
     if (!window.ENABLE_UNIFIED) return html;
     if (!html) return html;
-    // 1) 先净化 AI 产出（原本 dsMarkdown 不净化，这里补一层安全防护）
-    if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-      try { html = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'data-rule', 'data-phone'] }); } catch (e) {}
-    }
-    // 2) 规章引用《xxx》转为可点击卡片
+    // 1) 规章引用《xxx》转为可点击卡片
+    // 注意顺序：净化必须放在【所有字符串拼接之后】。data-rule / data-phone 的值直接来自
+    // 正则捕获组（未转义），若先净化再拼接，值里的引号会提前闭合属性，
+    // 例如 《"><img src=x onerror=alert(1)》 会注入可执行标签，净化形同虚设。
     html = html.replace(/《([^》]+)》/g, '<span class="rule-ref" data-rule="$1">《$1》</span>');
     // 3) 风险等级加图标
     const riskMap = { '高风险': '🔴', '中风险': '🟡', '低风险': '🟢', '橙色': '🔴', '黄色': '🟡', '蓝色': '🟢' };
@@ -181,6 +183,10 @@
     // 4) 电话号码自动加拨号按钮（不使用内联 onclick，改用事件委托）
     html = html.replace(/(\d{3,4}-\d{7,8}|\d{11})/g,
       '<span class="phone-number" data-phone="$1">$1 <button type="button" class="btn-call" data-phone="$1">📞 拨号</button></span>');
+    // 5) 最后统一净化 AI 产出（原本 dsMarkdown 不净化，这里补一层安全防护）
+    if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+      try { html = DOMPurify.sanitize(html, { ADD_ATTR: ['target'] }); } catch (e) {}
+    }
     return html;
   }
 
@@ -212,8 +218,9 @@
         bubble.innerHTML = reasoningHtml + renderCard(md(entry.content));
         bubble._enhContent = entry.content;
         // 重新挂载反馈按钮（复制/下载/有用/无用/重生成/朗读）
+        // 必须带上本轮下标，否则「重生成」会退化成重生成最后一轮
         if (typeof window._addFeedbackButtons === 'function') {
-          try { window._addFeedbackButtons(bubble, entry.content); } catch (e) {}
+          try { window._addFeedbackButtons(bubble, entry.content, idx); } catch (e) {}
         }
       } catch (e) {}
       _enhancing = false;
@@ -368,8 +375,12 @@
             results.slice(0, 5).forEach(it => {
               ans += `\n• ${it.站名 || ''} ${it.单位 || ''} 路电:${it.路电 || '-'} 市电:${it.市电 || '-'}`;
             });
+            // 必须同时补上用户这条消息：否则聊天区只冒出 AI 回答，
+            // 用户刚问的话没有气泡，与同一函数内复合天气分支的行为也不一致
+            _pushUser(question);
             _pushAssistant(ans);
             input.value = '';
+            if (input.style) input.style.height = '';
             return;
           }
         }
@@ -392,8 +403,10 @@
                   // 强任务：交给原路由（天气站名已随 question 带入任务文本，不抢答）
                 } else if (!COMPOSITE_HINT.test(question)) {
                   // 纯天气询问：直接返回卡片
+                  _pushUser(question);
                   _pushAssistant(formatWeather(w, st));
                   input.value = '';
+                  if (input.style) input.style.height = '';
                   return;
                 } else {
                   // 复合问题：注入天气上下文，直接走 AI 流综合回答（气泡仍显示用户原话）
@@ -434,8 +447,10 @@
       // 语义缓存命中
       const cached = getCachedAnswer(question, ctx);
       if (cached) {
+        _pushUser(question);
         _pushAssistant(cached + '\n\n📌 来自缓存（如需最新可重新提问）');
         input.value = '';
+        if (input.style) input.style.height = '';
         return;
       }
 
@@ -451,6 +466,14 @@
         }
       } catch (e) {}
     };
+  }
+
+  // 将用户消息推入历史（不渲染，由随后的 _pushAssistant 统一触发 dsRenderAll）
+  function _pushUser(text) {
+    if (typeof window.getDsHistory === 'function') {
+      var hist = window.getDsHistory();
+      if (hist) hist.push({ role: 'user', content: text });
+    }
   }
 
   // 将一条助手消息推入历史并触发渲染（复用已暴露的 dsRenderAll）

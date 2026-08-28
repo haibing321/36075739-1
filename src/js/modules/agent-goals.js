@@ -16,8 +16,11 @@
   var CHECK_INTERVAL = 5 * 60 * 1000; // 5 分钟
 
   function getGoals() {
-    try { return JSON.parse(localStorage.getItem(GOALS_KEY)) || []; }
-    catch (e) { return []; }
+    try {
+      var v = JSON.parse(localStorage.getItem(GOALS_KEY));
+      // 只判真假不够：存进去的是 {} 或字符串时会通过，后续 .filter/.push 直接抛错
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
   }
   function saveGoals(goals) {
     try { localStorage.setItem(GOALS_KEY, JSON.stringify(goals)); } catch (e) {}
@@ -31,8 +34,13 @@
     if (!cond.type) cond.type = 'issue';
     if (cond.keyword == null) cond.keyword = String(description || '').trim();
     if (!cond.minCount) cond.minCount = 1;
+    var gid = Date.now().toString(36);
+    // 同一毫秒内连续添加（脚本批量/快速回车）会撞 id，导致 removeGoal 一次删掉多个
+    while (goals.some(function (g) { return g && g.id === gid; })) {
+      gid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
     var goal = {
-      id: Date.now().toString(36),
+      id: gid,
       description: description || '',
       condition: cond,
       active: true,
@@ -54,15 +62,23 @@
 
   // 后台检查：进页面立即一次 + 每 5 分钟一次
   function checkGoals() {
-    var goals = getGoals().filter(function (g) { return g.active; });
+    // 必须读写【完整列表】：原先先 filter(active) 再 saveGoals(过滤后的数组)，
+    // 一旦有目标被标记 inactive（或缺少 active 字段），它会被静默永久删除。
+    var goals = getGoals();
     if (!goals.length) return;
+    // 数据尚未从 IndexedDB 载入时 getIssueData() 返回 []：
+    // 此刻记录基线或判定「新增」，都会把整库数据当成新增，5 分钟后误弹告警
+    if (!window.__issueDataReady) return;
     var issues = [];
     try { if (typeof window.getIssueData === 'function') issues = window.getIssueData(); } catch (e) {}
     var changed = false;
     goals.forEach(function (goal) {
+      if (!goal || !goal.active) return;
       var cond = goal.condition || {};
       if (cond.type === 'issue') {
-        var kw = String(cond.keyword || '');
+        var kw = String(cond.keyword || '').trim();
+        // 空关键词必须跳过：indexOf('') 恒为 0，会把整库当成命中并立刻触发告警
+        if (!kw) return;
         var matched = issues.filter(function (item) {
           return (item.content || '').indexOf(kw) !== -1 || (item.category || '').indexOf(kw) !== -1;
         });
@@ -73,11 +89,20 @@
           changed = true;
           return;
         }
-        // 匹配数较上次增加且达到阈值时才提醒
-        if (matched.length >= (cond.minCount || 1) && matched.length > (goal.lastMatched || 0)) {
-          showNotification('📢 目标“' + (goal.description || kw) + '”触发！发现 ' + matched.length + ' 条相关记录。');
-          goal.lastTriggered = new Date().toISOString();
-          goal.lastMatched = matched.length;
+        var n = matched.length;
+        var base = goal.lastMatched || 0;
+        if (n > base) {
+          // 匹配数增加且达到阈值时提醒
+          if (n >= (cond.minCount || 1)) {
+            showNotification('📢 目标“' + (goal.description || kw) + '”触发！发现 ' + n + ' 条相关记录。');
+            goal.lastTriggered = new Date().toISOString();
+          }
+          goal.lastMatched = n;
+          changed = true;
+        } else if (n < base) {
+          // 数据被删/重导后匹配数回落：基线必须跟着下调，
+          // 否则 lastMatched 卡在历史峰值，之后新增的记录永远触发不了告警
+          goal.lastMatched = n;
           changed = true;
         }
       }
@@ -87,15 +112,26 @@
   }
 
   // 通知：优先浏览器 Notification（已授权时），同时应用内 toast
+  // 注意：不要在 5 分钟定时检查里申请权限 —— 没有用户手势，浏览器会直接忽略/静默拒绝，
+  // 反而可能把权限状态打成 denied。授权统一放到用户主动执行 /goal 时申请。
   function showNotification(message) {
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification('安监智能体', { body: message });
-      } else if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        Notification.requestPermission();
       }
     } catch (e) {}
     _toast(message);
+  }
+
+  // 在用户手势中申请通知权限（供 /goal 添加流程调用）
+  function requestNotificationPermission() {
+    try {
+      if (typeof Notification === 'undefined') return;
+      if (Notification.permission !== 'default') return;
+      if (typeof Notification.requestPermission !== 'function') return;
+      var p = Notification.requestPermission();
+      if (p && typeof p.then === 'function') p.then(function() {}, function() {});
+    } catch (e) {}
   }
 
   // 应用内轻量 toast（自建容器，不依赖特定元素 id；暗黑风格跟随全局深色）
@@ -141,6 +177,8 @@
         var desc = msg.slice(6).trim();
         if (!desc) return '⚠️ 用法：/goal <关键词>，如 /goal 信号机故障';
         addGoal(desc);
+        // 用户主动添加目标属于明确手势，此时申请通知权限才可能被浏览器接受
+        requestNotificationPermission();
         return '✅ 已添加盯控目标：' + desc + '（后台每 5 分钟检查，首次仅记录基线，不弹通知）';
       }
     } catch (e) { return null; }

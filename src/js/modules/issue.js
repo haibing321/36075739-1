@@ -45,27 +45,42 @@
 
             async function saveData(dataArray) {
                 if (!db || !ensureStoreExists()) await initDB();
-                await clearAllData();
-                const batchSize = 500;
-                for (let i = 0; i < dataArray.length; i += batchSize) {
-                    await insertBatch(dataArray.slice(i, i + batchSize));
-                }
+                await replaceAllData(dataArray);
                 dataCache = dataArray;
+                // 显式写入即视为数据已就绪（供后台盯控等外部模块判断可读）
+                window.__issueDataReady = true;
                 // 数据已变更，使 Fuse 索引失效，下次搜索时重建（避免覆盖导入同条数后命中长期缓存）
                 _fuseInstance = null;
-                _fuseDataVersion = 0;
+                _fuseDataRef = null;
             }
 
-            function insertBatch(batch) {
+            /**
+             * 用「单个事务」完成 清空 + 全量写入。
+             * 原实现是 clear（独立事务）后再分批 put（每批又是独立事务），不是原子操作：
+             * 写入阶段一旦失败（配额不足 / 事务被中断 / 切后台），旧数据已清空而新数据只写了一半，
+             * 用户看到「导入失败」的同时原来整库数据也没了。放进同一事务可由 IndexedDB 自动回滚。
+             */
+            function replaceAllData(dataArray) {
                 return new Promise((resolve, reject) => {
+                    const list = dataArray || [];
                     const transaction = db.transaction([STORE_NAME], 'readwrite');
                     const store = transaction.objectStore(STORE_NAME);
-                    let count = 0;
-                    batch.forEach(item => {
-                        const request = store.put(item);
-                        request.onsuccess = () => { count++; if (count === batch.length) resolve(); };
-                        request.onerror = () => reject(request.error);
-                    });
+                    let settled = false;
+                    const fail = (err) => { if (settled) return; settled = true; reject(err); };
+
+                    // 以事务整体结束作为成功信号（比逐条 request.onsuccess 计数更可靠：
+                    // 空数组时逐条计数永远不会 resolve）
+                    transaction.oncomplete = () => { if (!settled) { settled = true; resolve(); } };
+                    transaction.onerror = () => fail(transaction.error || new Error('写入事务失败'));
+                    transaction.onabort = () => fail(transaction.error || new Error('写入事务被中断'));
+
+                    try {
+                        store.clear();
+                        for (let i = 0; i < list.length; i++) store.put(list[i]);
+                    } catch (e) {
+                        try { transaction.abort(); } catch (e2) {}
+                        fail(e);
+                    }
                 });
             }
 
@@ -238,7 +253,7 @@
                 var sc=Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,8);
                 var mc=Math.max(1,sc.length?sc[0][1]:1);
                 var cg=[['#8b5cf6','#a78bfa'],['#6366f1','#818cf8'],['#3b82f6','#60a5fa'],['#06b6d4','#22d3ee'],['#10b981','#34d399'],['#f59e0b','#fbbf24'],['#ef4444','#f87171'],['#ec4899','#f472b6']];
-                sc.forEach(function(e,i){var n=e[0],v=e[1],p=Math.round(v/Math.max(data.length,1)*100),w=Math.max(2,Math.round(v/mc*100)),g=cg[i]||['#64748b','#94a3b8'];html+='<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:0.75rem"><span style="font-weight:600;color:#334155">'+n+'</span><span style="color:#64748b">'+v+'('+p+'%)</span></div><div style="background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden"><div class="stats-bar-fill" style="width:0;height:100%;background:linear-gradient(90deg,'+g[0]+','+g[1]+');border-radius:6px" data-w="'+w+'%"></div></div></div>';});
+                sc.forEach(function(e,i){var n=e[0],v=e[1],p=Math.round(v/Math.max(data.length,1)*100),w=Math.max(2,Math.round(v/mc*100)),g=cg[i]||['#64748b','#94a3b8'];html+='<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:0.75rem"><span style="font-weight:600;color:#334155">'+escapeHtml(n)+'</span><span style="color:#64748b">'+v+'('+p+'%)</span></div><div style="background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden"><div class="stats-bar-fill" style="width:0;height:100%;background:linear-gradient(90deg,'+g[0]+','+g[1]+');border-radius:6px" data-w="'+w+'%"></div></div></div>';});
                 html += '</div></div>';
                 // ===== 分组统计：可按 专业 / 部专业 / 单位 切换 =====
                 html += '<div style="width:100%;margin-top:8px;">';
@@ -336,6 +351,19 @@
                 }
             };
 
+            // 统一复位搜索态：清空数据 / 清空搜索时若不同步这些全局量，
+            // 翻页、「低匹配度」开关等入口仍会从 allFilteredResults 重新渲染出已删除的记录，
+            // 且统计条数/总页数显示的都是失效数据。
+            function resetSearchState() {
+                _searchSeq++;               // 作废仍在途的搜索回调
+                allFilteredResults = [];
+                currentResults = [];
+                currentKeywords = [];
+                currentPage = 1;
+                totalPages = 1;
+                showLowMatch = false;
+            }
+
             window.issueClearSearch = function() {
                 document.getElementById('issue-keywordContainer').innerHTML = '';
                 keywordNum = 0;
@@ -343,7 +371,7 @@
                 document.getElementById('issue-results').innerHTML = '';
                 document.getElementById('issue-lowMatchResults').innerHTML = '';
                 document.getElementById('issue-statsBar').style.display = 'none';
-                showLowMatch = false;
+                resetSearchState();
                 var catSelect = document.getElementById('issue-categorySelect');
                 if (catSelect) catSelect.value = '';
             };
@@ -361,7 +389,9 @@
             // 替代原来的 O(n) 线性 includes() 扫描
             // 支持模糊匹配、加权评分、容错输入
             var _fuseInstance = null;   // Fuse 实例缓存
-            var _fuseDataVersion = 0;   // 数据版本号（变化时重建索引）
+            var _fuseDataRef = null;    // 建索引时使用的数据集引用（必须是引用而非条数：
+                                        // 按专业过滤后条数可能相同但内容完全不同，用条数做键会
+                                        // 复用上一批数据的索引，导致结果错乱且 indexOf 恒为 -1）
 
             /**
              * 获取/创建 Fuse 实例（懒初始化 + 缓存）
@@ -370,7 +400,7 @@
              */
             function getFuseInstance(data) {
                 if (typeof Fuse === 'undefined') return null;
-                if (_fuseInstance && _fuseDataVersion === data.length) return _fuseInstance;
+                if (_fuseInstance && _fuseDataRef === data) return _fuseInstance;
 
                 try {
                     _fuseInstance = new Fuse(data, {
@@ -389,7 +419,7 @@
                         ignoreLocation: true,      // 忽略词位置（短文本场景更适合）
                         findAllMatches: true       // 找所有匹配项而非仅最佳匹配
                     });
-                    _fuseDataVersion = data.length;
+                    _fuseDataRef = data;
                     console.log('[search] Fuse.js 索引已创建 (' + data.length + ' 条)');
                     return _fuseInstance;
                 } catch(e) {
@@ -462,8 +492,22 @@
                 return { results: results, method: 'fuse' };
             }
 
+            // 搜索请求序号：函数内有两个 await + 一个 setTimeout，期间会让出主线程。
+            // 连续搜索时旧回调可能后到并覆盖新结果（统计条数、分页、高亮全是旧的），
+            // 用序号丢弃过期回调。
+            var _searchSeq = 0;
+            var LIB_FUSE_ISSUE = 'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js';
+            var LIB_XLSX_ISSUE = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
             window.issueDoSearch = async function() {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js');
+                var seq = ++_searchSeq;
+                // 关键：这里绝不能让异常外泄。fuse.js 走 CDN，离线/弱网必然失败，
+                // 原来直接 `await loadScript(...)` 会把整个 issueDoSearch 打成 rejected，
+                // 导致下面第 530 行写好的「线性扫描 fallback」永远走不到 ——
+                // 离线时搜索 100% 不可用，且界面卡在「正在搜索...」。
+                // 用 requireLib（silent）+ 后续 fuseSearch 返回 null 自动降级即可。
+                await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js', { silent: true });
+                if (seq !== _searchSeq) return; // 已发起更新的搜索，本次直接作废
                 if (window.perfMonitor) perfMonitor.start('search_issue');
                 const keywords = [];
                 for (let i = 1; i <= keywordNum; i++) {
@@ -482,6 +526,7 @@
                 }
 
                 setTimeout(() => {
+                    if (seq !== _searchSeq) return; // 过期结果，禁止覆盖新搜索
                     // ===== 优先使用 Fuse.js 模糊搜索 =====
                     var fuseResult = fuseSearch(data, keywords);
 
@@ -603,7 +648,7 @@
                 // 长文本折叠 + 相关性反馈（👍/👎）
                 const isLong = content.length > 120;
                 const fb = issueGetFeedback(item);
-                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + xingzhi + '</span><span class="tag tag-category">' + (item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + (item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button><span style="margin-left:auto;display:flex;gap:4px;"><button class="btn-copy ' + (fb === 'good' ? 'fb-good' : '') + '" title="相关/准确" onclick="issueMarkRelevance(this,\'good\')">👍</button><button class="btn-copy ' + (fb === 'bad' ? 'fb-bad' : '') + '" title="不相关/不准" onclick="issueMarkRelevance(this,\'bad\')">👎</button></span></div><div class="result-text" ' + (isLong ? 'style="max-height:4.8em;overflow:hidden;"' : '') + ' data-content="' + encodeURIComponent(content) + '">' + content + '</div>' + (isLong ? '<button class="btn-link" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;padding:4px 0;" onclick="issueToggleExpand(this)">展开全文 ▼</button>' : '') + regulationHtml + '</div></div>';
+                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + escapeHtml(xingzhi) + '</span><span class="tag tag-category">' + escapeHtml(item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + escapeHtml(item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button><span style="margin-left:auto;display:flex;gap:4px;"><button class="btn-copy ' + (fb === 'good' ? 'fb-good' : '') + '" title="相关/准确" onclick="issueMarkRelevance(this,\'good\')">👍</button><button class="btn-copy ' + (fb === 'bad' ? 'fb-bad' : '') + '" title="不相关/不准" onclick="issueMarkRelevance(this,\'bad\')">👎</button></span></div><div class="result-text" ' + (isLong ? 'style="max-height:4.8em;overflow:hidden;"' : '') + ' data-content="' + encodeURIComponent(content) + '">' + content + '</div>' + (isLong ? '<button class="btn-link" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;padding:4px 0;" onclick="issueToggleExpand(this)">展开全文 ▼</button>' : '') + regulationHtml + '</div></div>';
             }
 
             window.issueCopyContent = function(btn) {
@@ -691,9 +736,14 @@
                 } catch (err) { window.hideProgress(); alert('JSON导入失败: ' + err.message); }
             }
             window.issueHandleExcel = async function(e) {
-                window.showProgress(5, '正在解析 Excel 文件…');
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
                 const file = e.target.files[0]; if (!file) return;
+                window.showProgress(5, '正在解析 Excel 文件…');
+                // 先取文件再加载库；失败时收起进度条并复位 input（原来会卡在 5% 且无法重试）
+                if (!(await window.requireLib(LIB_XLSX_ISSUE, { feature: 'Excel 导入' }))) {
+                    window.hideProgress();
+                    try { e.target.value = ''; } catch (e2) {}
+                    return;
+                }
                 openModal('issue-importModal');
                 try {
                     const data = await file.arrayBuffer(), workbook = XLSX.read(data, { type: 'array' }), firstSheet = workbook.Sheets[workbook.SheetNames[0]], jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
@@ -768,7 +818,7 @@
             };
 
             window.issueDownloadTemplate = async function() {
-                await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+                if (!(await window.requireLib(LIB_XLSX_ISSUE, { feature: '模板下载' }))) return;
                 if (typeof XLSX === 'undefined') { alert('XLSX 库未加载，请检查网络连接后重试'); return; }
                 const template = [{ '性质': 'A类', '时间': '2025-12-29 17:09', '类别': '消防安全', '问题描述': '示例：A类问题描述...', '规章依据': '《消防法》第XX条', '单位': 'XX站段' }, { '性质': 'B类', '时间': '2025-12-29 16:32', '类别': '规章制度', '问题描述': '示例：B类问题描述...', '规章依据': '《铁路安全管理条例》第XX条', '单位': 'XX站段' }, { '性质': 'C类', '时间': '2025-12-29 10:00', '类别': '设备管理', '问题描述': '示例：C类问题描述...', '单位': 'XX站段' }, { '性质': '红线', '时间': '2025-12-29 09:00', '类别': '安全红线', '问题描述': '示例：红线问题描述...', '规章依据': '《安全红线管理办法》第XX条', '单位': 'XX站段' }, { '性质': '空白', '时间': '2025-12-29 08:00', '类别': '待分类', '问题描述': '示例：空白性质问题描述...', '单位': 'XX站段' }];
                 const ws = XLSX.utils.json_to_sheet(template), wb = XLSX.utils.book_new();
@@ -791,7 +841,7 @@
             window.issueShowClear = function() { document.getElementById('issue-clearCount').textContent = dataCache.length; openModal('issue-clearModal'); };
             window.issueHideModal = function(id) { closeModal(id); };
             window.issueConfirmClear = async function() {
-                try { await clearAllData(); dataCache = []; await updateStorage(); closeModal('issue-clearModal'); document.getElementById('issue-results').innerHTML = ''; document.getElementById('issue-lowMatchResults').innerHTML = ''; document.getElementById('issue-statsBar').style.display = 'none'; alert('所有数据已清空'); } catch (e) { alert('清空失败: ' + e.message); }
+                try { await clearAllData(); dataCache = []; resetSearchState(); _fuseInstance = null; _fuseDataRef = null; await updateStorage(); closeModal('issue-clearModal'); document.getElementById('issue-results').innerHTML = ''; document.getElementById('issue-lowMatchResults').innerHTML = ''; document.getElementById('issue-statsBar').style.display = 'none'; alert('所有数据已清空'); } catch (e) { alert('清空失败: ' + e.message); }
             };
 
             // ========== 结果卡片：展开/收起 ==========
@@ -878,6 +928,10 @@
                     })();
                     const data = await loadData();
                     if (data.length === 0) await issueLoadDemoData();
+                    // 标记「数据已就绪」：后台盯控（agent-goals）在 DOMContentLoaded 就开始跑，
+                    // 而本模块是在 window.load 里才从 IndexedDB 读完数据。
+                    // 若拿空数组当基线，5 分钟后会误报「新增 N 条相关记录」。
+                    window.__issueDataReady = true;
                 } catch (e) {
                     console.error('[issue] 初始化失败:', e.message);
                     // IndexedDB 版本冲突通常是临时的，刷新可恢复

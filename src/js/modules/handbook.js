@@ -9,9 +9,9 @@
             let subItemsMap = {};
             let contentMap = {};
 
-            const totalSpan = document.getElementById('handbook-total');
-            const sizeSpan = document.getElementById('handbook-size');
-            const storageBar = document.getElementById('handbook-storageBar');
+            // 注：handbook-total / handbook-size / handbook-storageBar 三个元素已随
+            // 「储存量统一在设置面板展示」的改版从 index.html 移除（updateStats 也已清空逻辑）。
+            // 原先在模块顶部无条件 getElementById 并保留引用，取到的恒为 null 且从未使用，属死代码，已删除。
 
             const chineseNumMap = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,
                 '十一':11,'十二':12,'十三':13,'十四':14,'十五':15,'十六':16,'十七':17,'十八':18,'十九':19,'二十':20 };
@@ -99,8 +99,12 @@
             });
 
             // 解析单个DOCX文件
+            var LIB_MAMMOTH_HB = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js';
+
             async function _parseDocxFile(file) {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js');
+                // 用 requireLib：直接 await loadScript 在离线时抛错，
+                // 调用方若无 catch 会导致整个导入流程中断且 input 未复位（同一文件无法再次选择）
+                if (!(await window.requireLib(LIB_MAMMOTH_HB, { feature: 'Word 导入' }))) return null;
                 if (typeof mammoth === 'undefined') {
                     alert('mammoth 库未加载，请检查网络连接');
                     return null;
@@ -156,7 +160,9 @@
                     // 第1级：第X章 / 一、/ 1. / 1、/ 第一章 / Part I
                     { level: 1, re: /^第[一二三四五六七八九十百千\d]+[章节部分篇]\s*/, maxLen: 60 },
                     { level: 1, re: /^[一二三四五六七八九十]+、/, maxLen: 60 },
-                    { level: 1, re: /^\d+[、.．]\s*/, maxLen: 50 },
+                    // 末尾加 (?!\d)：否则 "1.1 安全责任" 会被这条先吃掉判成一级，
+                    // 四级目录（章/节/条/款）整体塌成两级
+                    { level: 1, re: /^\d+[、.．](?!\d)\s*/, maxLen: 50 },
                     // 第2级：第X节 / (一) / 1.1 / 1.1.1
                     { level: 2, re: /^第[一二三四五六七八九十百千\d]+节\s*/, maxLen: 80 },
                     { level: 2, re: /^[（(][一二三四五六七八九十]+[)）]/, maxLen: 80 },

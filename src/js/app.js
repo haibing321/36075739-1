@@ -779,7 +779,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.39'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.40'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -875,11 +875,21 @@ async function performUpdateCheck(url, showStatus) {
     if (showStatus === undefined) showStatus = false;
     const statusEl = document.getElementById('update-status');
     try {
-        const resp = await fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            cache: 'no-cache'
-        });
+        // 必须带超时：「连上 WiFi 但没有外网」时 fetch 不会立即失败，
+        // 而是长时间挂起，按钮会一直停在「⏳ 正在检查…」，用户以为卡死。
+        const _uctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const _utimer = _uctrl ? setTimeout(function() { try { _uctrl.abort(); } catch (e) {} }, 8000) : null;
+        let resp;
+        try {
+            resp = await fetch(url, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-cache',
+                signal: _uctrl ? _uctrl.signal : undefined
+            });
+        } finally {
+            if (_utimer) clearTimeout(_utimer);
+        }
         // 404 = version.json 不存在（部署配置异常）
         if (resp.status === 404) {
             if (showStatus) {

@@ -45,7 +45,9 @@
         };
 
         // ===== 模块切换历史记录（最近5次）=====
-        const TAB_ORDER = ['handbook','issue','rule','phone','doubao','diary'];
+        // 顺序与 index.html 中面板的物理顺序保持一致（资料中心位于「应急电话」与「智能助手」之间），
+        // 否则侧滑手势会在资料中心处死锁：切进去后找不到 tab-material 按钮，再也滑不出来。
+        const TAB_ORDER = ['handbook','issue','rule','phone','material','doubao','diary'];
         const _tabHistory = []; // 最近5次切换记录 [{from, to, label}]
 
         window.switchTab = function(tab, fromSwipe) {
@@ -56,9 +58,15 @@
             try { localStorage.setItem('current_module', tab); } catch (e) {}
 
             // 记录历史（侧滑或手动切换都记录）
+            // 与 swipe.js 保持一致：优先取激活面板，因为「资料中心」等面板没有对应导航按钮
+            const prevActivePanel = document.querySelector('.panel.active');
             const prevActiveBtn = document.querySelector('.nav-btn.active');
             let prevTab = null;
-            if (prevActiveBtn) {
+            if (prevActivePanel) {
+                const pm = prevActivePanel.id.match(/^panel-(.+)$/);
+                if (pm) prevTab = pm[1];
+            }
+            if (!prevTab && prevActiveBtn) {
                 const m = prevActiveBtn.id.match(/^tab-(.+)$/);
                 if (m) prevTab = m[1];
             }
@@ -99,13 +107,16 @@
             if (window.perfMonitor) perfMonitor.end('tab_switch', { targetTab: tab });
         };
 
-        window.closeModal = function(id) { 
-            document.getElementById(id).classList.remove('active'); 
-            if (id === 'rule-fullViewModal' && typeof _imgLazyObserver !== 'undefined' && _imgLazyObserver) {
-                _imgLazyObserver.disconnect();
-            }
+        window.closeModal = function(id) {
+            var el = document.getElementById(id);
+            if (!el) { console.warn('[utils] closeModal: 找不到弹窗 #' + id); return; }
+            el.classList.remove('active');
         };
-        window.openModal = function(id) { document.getElementById(id).classList.add('active'); };
+        window.openModal = function(id) {
+            var el = document.getElementById(id);
+            if (!el) { console.warn('[utils] openModal: 找不到弹窗 #' + id); return; }
+            el.classList.add('active');
+        };
 
         // 自定义滚动条已移除（改用原生滚动，消除手机端高频DOM计算卡顿）
         window._fvScrollbarReset = function() {}; // 空函数，保持原有调用不报错
@@ -126,6 +137,11 @@
         });
 
         function pinyinMatch(text, keyword) {
+            if (text === null || text === undefined || keyword === null || keyword === undefined) return false;
+            // 导入的 Excel/JSON 字段可能是数字等非字符串类型，这里统一归一，
+            // 否则 toLowerCase() 会在 try 之外抛错，带着整个 filter 一起崩。
+            text = String(text);
+            keyword = String(keyword);
             if (!text || !keyword) return false;
             const lowerText = text.toLowerCase();
             if (lowerText.includes(keyword.toLowerCase())) return true;
@@ -302,22 +318,34 @@
                 var baseVer = (forceVersion !== undefined) ? forceVersion : info.version;
                 var needStores = info.stores; // 声明所需的 store 名，用于缺 store 自动重建
 
+                // 缓存项用局部变量持有：onblocked / onversionchange / register / closeDB 都可能
+                // 在此期间把 _cache[name] 删掉，直接写 _cache[name].db 会抛 TypeError，
+                // 且异常发生在 IDB 回调里会导致 Promise 永不 settle（调用方永久挂起）。
+                var entry = { promise: null, db: null, version: info.version };
+                _cache[name] = entry;
+
                 // 健壮打开：探测现有版本 → open(max) → onupgradeneeded 建 store →
                 // onsuccess 校验 store 是否齐全，缺失则提升版本递归重建（防止“版本已达标但无 store”的遗留库）
                 var p = new Promise(function(resolve, reject) {
+                    // 失败统一清理缓存并 reject，避免 rejected promise 被永久复用
+                    var fail = function(err) {
+                        if (_cache[name] === entry) delete _cache[name];
+                        reject(err);
+                    };
                     var attempt = 0, MAX_ATTEMPTS = 4;
                     var openAt = function(ver) {
                         if (attempt >= MAX_ATTEMPTS) {
-                            reject(new Error('[dbManager] 无法为 ' + name + ' 确保 store 存在（已尝试 ' + attempt + ' 次）'));
+                            fail(new Error('[dbManager] 无法为 ' + name + ' 确保 store 存在（已尝试 ' + attempt + ' 次）'));
                             return;
                         }
                         attempt++;
                         var req = indexedDB.open(name, ver);
-                        req.onerror = function() { reject(req.error); };
+                        req.onerror = function() { fail(req.error); };
                         req.onblocked = function() {
-                            console.warn('[dbManager] 升级被阻塞:', name);
-                            if (_cache[name] && _cache[name].db) { try { _cache[name].db.close(); } catch(e){} }
-                            delete _cache[name];
+                            console.warn('[dbManager] 打开/升级被阻塞:', name);
+                            if (entry.db) { try { entry.db.close(); } catch(e){} }
+                            // 必须让调用方知道被阻塞，否则 Promise 永远不 settle、进度条永久卡死
+                            fail(new Error('[dbManager] 数据库 ' + name + ' 被其它标签页占用，请关闭其它页面后重试'));
                         };
                         req.onupgradeneeded = function(e) {
                             if (info.fn) { try { info.fn(e.target.result, e); } catch(upgradeErr){ console.error('[dbManager] upgrade 失败:', name, upgradeErr); } }
@@ -333,10 +361,15 @@
                                 openAt(ver + 1);
                                 return;
                             }
-                            db.onversionchange = function() { db.close(); delete _cache[name]; };
-                            db.onclose = function() { delete _cache[name]; };
-                            _cache[name].db = db;
-                            _cache[name].version = ver;
+                            db.onversionchange = function() {
+                                db.close();
+                                if (_cache[name] === entry) delete _cache[name];
+                            };
+                            db.onclose = function() {
+                                if (_cache[name] === entry) delete _cache[name];
+                            };
+                            entry.db = db;
+                            entry.version = ver;
                             resolve(db);
                         };
                     };
@@ -354,7 +387,9 @@
                     };
                 });
 
-                _cache[name] = { promise: p, db: null, version: info.version };
+                entry.promise = p;
+                // 兜底：任何未走 fail() 的异常也清掉缓存，防止失败状态被永久复用
+                p.catch(function() { if (_cache[name] === entry) delete _cache[name]; });
                 return p;
             }
 
@@ -666,17 +701,98 @@
             };
 
             // ========== 动态加载脚本（按需加载大型库）==========
-            window.loadScript = function(src) {
-                return new Promise(function(resolve, reject) {
-                    if (document.querySelector('script[src="' + src + '"]')) {
-                        return resolve();
-                    }
+            // 原实现有三个在离线/弱网下必现的缺陷：
+            //   1. onerror 后 <script> 仍留在 head，下次调用 querySelector('script[src=...]')
+            //      命中就直接 resolve —— 但库其实没加载成功，导致「一次失败，永久假成功」，
+            //      之后所有依赖该库的功能都拿不到明确报错，行为诡异。
+            //   2. 无超时：CDN 挂起（弱网/被墙）时 Promise 永不 settle，
+            //      await 处永久卡住，界面停在「正在处理…」，用户既看不到结果也取消不了。
+            //   3. 并发调用同一 src 会重复插入标签。
+            var _scriptLoaders = Object.create(null);
+            window.loadScript = function(src, opts) {
+                if (!src) return Promise.reject(new Error('loadScript: src 为空'));
+                var o = opts || {};
+                var timeout = o.timeout || 15000;
+                var existing = _scriptLoaders[src];
+                if (existing) return existing;   // 同一 src 复用（含进行中的请求）
+
+                var p = new Promise(function(resolve, reject) {
                     var script = document.createElement('script');
+                    var timer = null, settled = false;
+                    var cleanup = function(removeTag) {
+                        if (timer) { clearTimeout(timer); timer = null; }
+                        if (removeTag && script.parentNode) {
+                            try { script.parentNode.removeChild(script); } catch (e) {}
+                        }
+                        script.onload = script.onerror = null;
+                    };
+                    timer = setTimeout(function() {
+                        if (settled) return;
+                        settled = true;
+                        cleanup(true);
+                        delete _scriptLoaders[src];   // 超时允许重试
+                        reject(new Error('脚本加载超时（' + Math.round(timeout / 1000) + 's），网络可能受限：' + src));
+                    }, timeout);
                     script.src = src;
-                    script.onload = function() { resolve(); };
-                    script.onerror = function() { reject(new Error('加载失败: ' + src)); };
-                    document.head.appendChild(script);
+                    script.async = true;
+                    script.onload = function() {
+                        if (settled) return;
+                        settled = true;
+                        cleanup(false);               // 成功：保留标签
+                        resolve();
+                    };
+                    script.onerror = function() {
+                        if (settled) return;
+                        settled = true;
+                        cleanup(true);                // 失败：必须移除，否则下次调用「假成功」
+                        delete _scriptLoaders[src];   // 失败允许重试
+                        reject(new Error('脚本加载失败（当前可能处于离线状态或网络受限）：' + src));
+                    };
+                    (document.head || document.documentElement).appendChild(script);
                 });
+                _scriptLoaders[src] = p;
+                // 挂一个空 catch：调用方若未 catch，至少不会冒出 unhandledrejection 淹没控制台
+                // （p 本身仍会把 rejection 传给调用方，错误处理不受影响）
+                p.catch(function() {});
+                return p;
+            };
+
+            // 供各模块在「依赖外部 CDN 的功能」前预检，给出可理解的提示而非静默失败
+            window.isLikelyOffline = function() {
+                try { return navigator.onLine === false; } catch (e) { return false; }
+            };
+
+            /**
+             * 按需加载外部库（CDN）的统一入口。
+             *
+             * 为什么不能各模块直接 `await loadScript(url)`：
+             *   loadScript 在离线/弱网下会 reject，而多数调用点没写 try/catch ——
+             *   结果是整个 async 函数静默中断（只有 console 里一条 unhandledrejection），
+             *   界面停在「正在处理…」，用户既看不到结果也不知原因。
+             *   更糟的是：有些函数明明写了降级分支，却因为前面的 await 先抛错而永远走不到。
+             *
+             * @param {string} url     库地址
+             * @param {Object} [opts]
+             * @param {boolean} [opts.silent]  true=失败不提示（调用方自带降级/已处理）
+             * @param {string}  [opts.feature] 功能名，用于提示文案（默认从 url 推断）
+             * @returns {Promise<boolean>} 是否加载成功；永不抛异常
+             */
+            window.requireLib = async function(url, opts) {
+                var o = opts || {};
+                try {
+                    await window.loadScript(url);
+                    return true;
+                } catch (e) {
+                    if (!o.silent) {
+                        var name = o.feature || (String(url).split('/').pop() || '组件');
+                        window.showToast(
+                            '「' + name + '」需要联网加载组件，当前网络不可用或受限。' +
+                            '请联网后重试一次（成功加载后会自动缓存，之后可离线使用）', true, 8000
+                        );
+                    }
+                    console.warn('[requireLib] 加载失败:', url, e && e.message);
+                    return false;
+                }
             };
 
             // ========== 通用文件下载（移动端兼容，单点实现）==========
@@ -845,3 +961,36 @@ window.finishProgress = function(label) {
     window.showProgress(100, label || '✅ 完成');
     setTimeout(window.hideProgress, 2000);
 };
+
+// ==================== 轻量全局提示条 ====================
+// 项目原先没有统一的 toast：各模块要么 alert（阻塞主线程）、要么干脆不提示，
+// 离线场景下用户完全不知道发生了什么。这里补一个零依赖的通用实现。
+(function() {
+    var _toastHost = null, _toastTimer = null;
+    window.showToast = function(msg, isError, ms) {
+        try {
+            if (!_toastHost || !_toastHost.isConnected) {
+                _toastHost = document.getElementById('global-toast-host');
+                if (!_toastHost) {
+                    _toastHost = document.createElement('div');
+                    _toastHost.id = 'global-toast-host';
+                    _toastHost.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);' +
+                        'z-index:100002;display:flex;flex-direction:column;gap:8px;align-items:center;' +
+                        'max-width:min(92vw,460px);pointer-events:none;';
+                    (document.body || document.documentElement).appendChild(_toastHost);
+                }
+            }
+            var el = document.createElement('div');
+            el.textContent = String(msg);
+            el.style.cssText = 'pointer-events:auto;background:' + (isError ? '#b91c1c' : '#1e293b') +
+                ';color:#fff;padding:10px 16px;border-radius:10px;font-size:.86rem;line-height:1.6;' +
+                'box-shadow:0 6px 20px rgba(15,23,42,.28);white-space:pre-wrap;word-break:break-word;';
+            _toastHost.appendChild(el);
+            if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+            _toastTimer = setTimeout(function() {
+                _toastTimer = null;
+                if (_toastHost) { try { _toastHost.innerHTML = ''; } catch (e) {} }
+            }, ms || 4000);
+        } catch (e) {}
+    };
+})();

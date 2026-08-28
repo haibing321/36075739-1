@@ -38,7 +38,16 @@
                 const val = input.value.toLowerCase();
                 const filtered = phoneSuggestions.filter(s => s.toLowerCase().includes(val)).slice(0, 10);
                 if (filtered.length === 0 || val === '') { container.style.display = 'none'; return; }
-                container.innerHTML = filtered.map(s => `<div onclick="selectPhoneSuggestion('${s}')">${escapeHtml(s)}</div>`).join('');
+                // 用 DOM 节点 + textContent，而不是把站名拼进内联 onclick：
+                // 站名来自导入的 Excel/JSON，escapeHtml 的 &#039; 会在属性解析后被还原成 '，
+                // 仍能提前闭合 JS 字符串造成注入。
+                container.innerHTML = '';
+                filtered.forEach(function(s) {
+                    const item = document.createElement('div');
+                    item.textContent = s;
+                    item.addEventListener('click', function() { window.selectPhoneSuggestion(s); });
+                    container.appendChild(item);
+                });
                 container.style.display = 'block';
             }
             window.selectPhoneSuggestion = function(s) {
@@ -46,6 +55,33 @@
                 document.getElementById('phone-suggestions').style.display = 'none';
                 phoneDoSearch();
             };
+
+            // 只接受有限数字：Excel 里经纬度列可能是文本/空值，直接拼接会生成非法 JS 语法
+            function _numOrEmpty(v) {
+                const n = parseFloat(v);
+                return isFinite(n) ? String(n) : '';
+            }
+
+            // 天气按钮改用 data-* + 事件委托（详见 phoneDoSearch 中的渲染处）
+            function _bindWeatherDelegation(container) {
+                if (!container || container._weatherDelegated) return;
+                container._weatherDelegated = true;
+                container.addEventListener('click', function(e) {
+                    const btn = (e.target && e.target.closest) ? e.target.closest('.phone-weather-btn') : null;
+                    if (!btn || !window.phoneGetWeather) return;
+                    const lat = parseFloat(btn.getAttribute('data-lat'));
+                    const lon = parseFloat(btn.getAttribute('data-lon'));
+                    window.phoneGetWeather(
+                        btn.getAttribute('data-station') || '',
+                        isFinite(lat) ? lat : null,
+                        isFinite(lon) ? lon : null,
+                        btn.getAttribute('data-box') || '',
+                        btn.getAttribute('data-line') || ''
+                    );
+                });
+            }
+
+            var LIB_XLSX_PHONE = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
             window.phoneDoSearch = function() {
                 const keyword = document.getElementById('phone-searchInput').value.trim();
@@ -105,7 +141,7 @@
                                 ${item.备注 ? `<span style="color:var(--text-secondary);">备注：</span><span>${escapeHtml(item.备注)}</span>` : ''}
                                 ${(item.站名) ? `
                                 <span style="color:var(--text-secondary);">天气：</span>
-                                <span><button class="phone-weather-btn" onclick="phoneGetWeather('${escapeHtml(item.站名||'')}',${item.纬度},${item.经度},'${weatherId}','${escapeHtml(item.线名||'')}')">☀️ 查看天气</button></span>
+                                <span><button class="phone-weather-btn" data-station="${escapeHtml(item.站名||'')}" data-lat="${_numOrEmpty(item.纬度)}" data-lon="${_numOrEmpty(item.经度)}" data-box="${weatherId}" data-line="${escapeHtml(item.线名||'')}">☀️ 查看天气</button></span>
                                 ` : ''}
                             </div>
                             <div class="phone-weather-box" id="${weatherId}"></div>
@@ -113,6 +149,7 @@
                     `;
                 });
                 resultsContainer.innerHTML = html;
+                _bindWeatherDelegation(resultsContainer);
             };
 
             // 复制整条电话记录（站名/单位/线名/路电/市电/备注）
@@ -197,9 +234,10 @@
             };
 
             window.phoneHandleExcel = async function(e) {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
                 const file = e.target.files[0];
                 if (!file) return;
+                // 先取文件再加载库：失败时也能在 finally 里复位 input（见下方 catch）
+                if (!(await window.requireLib(LIB_XLSX_PHONE, { feature: 'Excel 导入' }))) { e.target.value = ''; return; }
                 try {
                     const data = await file.arrayBuffer();
                     const workbook = XLSX.read(data, { type: 'array' });
@@ -240,7 +278,11 @@
                     } else phoneData = newData;
                     saveToStorage();
                     phoneDoSearch();
-                } catch (err) { alert('导入失败: ' + err.message); }
+                } catch (err) {
+                    alert('导入失败: ' + err.message);
+                    // 必须复位 input：否则同一文件再次选中不会触发 change，用户无法重试
+                    try { e.target.value = ''; } catch (e2) {}
+                }
             };
 
             window.phoneExportJSON = function() {
@@ -251,7 +293,7 @@
                 window.finishProgress('✅ 应急电话导出成功');
             };
             window.phoneDownloadTemplate = async function() {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+                if (!(await window.requireLib(LIB_XLSX_PHONE, { feature: '模板下载' }))) return;
                 if (typeof XLSX === 'undefined') { alert('XLSX 库未加载，请检查网络连接后重试'); return; }
                 const template = [ { '序号': 1, '单位': '天水车站', '线名': '徐兰高速', '站名': '东岔站', '路电': '072631455', '市电': '09384931455', '备注': '' }, { '序号': 2, '单位': '天水车站', '线名': '徐兰高速', '站名': '天水南站', '路电': '072631456', '市电': '09384931456', '备注': '' } ];
                 const ws = XLSX.utils.json_to_sheet(template);
@@ -297,14 +339,29 @@
                 if (!geoName || geoName.length < 2) geoName = stationName;
                 function inProvince(r, list) {
                     if (r.country_code !== 'CN' && r.country !== '中国') return false;
-                    var admin = (r.admin1 || '').replace(/省|自治区|回族|维吾尔/g, '');
+                    var admin = (r.admin1 || '').replace(/省|市|自治区|回族|维吾尔|壮族|特别行政区/g, '');
                     return list.some(function(p) { return admin.indexOf(p) !== -1; });
                 }
                 function pickResult(results) {
                     if (!results || !results.length) return null;
-                    for (var i = 0; i < results.length; i++) if (inProvince(results[i], ['甘肃', '宁夏'])) return results[i];
-                    for (var j = 0; j < results.length; j++) if (inProvince(results[j], ['陕西', '四川'])) return results[j];
-                    return null;
+                    // 兰州局及周边优先，其次全国兜底：
+                    // 原来只认 甘肃/宁夏 + 陕西/四川 两级，内蒙古 / 新疆 / 青海 等站点会
+                    // 全部落空并被 return null 丢弃，永远查不到坐标。
+                    var tiers = [
+                        ['甘肃', '宁夏'],
+                        ['陕西', '四川', '青海', '内蒙古', '新疆'],
+                        ['西藏', '重庆', '贵州', '云南', '山西', '河南', '湖北']
+                    ];
+                    for (var t = 0; t < tiers.length; t++) {
+                        for (var i = 0; i < results.length; i++) {
+                            if (inProvince(results[i], tiers[t])) return results[i];
+                        }
+                    }
+                    // 省内匹配不上时，优先取中国境内第一条，而不是直接判空
+                    for (var k = 0; k < results.length; k++) {
+                        if (results[k].country_code === 'CN' || results[k].country === '中国') return results[k];
+                    }
+                    return results[0] || null;
                 }
                 async function searchOnce(q) {
                     try {
@@ -314,8 +371,9 @@
                         return pickResult(gd.results);
                     } catch (_) { return null; }
                 }
-                var chosen = await searchOnce(lineName ? lineName + ' ' + geoName : geoName);
-                if (!chosen) chosen = await searchOnce(geoName);
+                // 直接用站名查询：拼上线路名（"徐兰高速 东岔"）这种组合名在做前缀匹配的
+                // geocoding 接口上几乎必然返回空，等于每次固定白跑一个请求。
+                var chosen = await searchOnce(geoName);
                 if (chosen) return { lat: chosen.latitude, lon: chosen.longitude };
                 return null;
             };
@@ -375,17 +433,29 @@
                     const daily = w.daily;
                     const wmo = {
                         0:['☀️','晴','sunny'],1:['🌤️','少云','sunny'],2:['⛅','多云','cloudy'],3:['☁️','阴','cloudy'],
-                        45:['🌫️','雾','foggy'],51:['🌦️','毛毛雨','rainy'],61:['🌧️','小雨','rainy'],
-                        63:['🌧️','中雨','rainy'],65:['🌧️','大雨','rainy'],71:['❄️','小雪','snowy'],
-                        73:['❄️','中雪','snowy'],75:['❄️','大雪','snowy'],95:['⛈️','雷暴','stormy'],
+                        45:['🌫️','雾','foggy'],48:['🌫️','雾凇','foggy'],
+                        51:['🌦️','毛毛雨','rainy'],53:['🌦️','毛毛雨','rainy'],55:['🌦️','强毛毛雨','rainy'],
+                        56:['🌨️','冻毛毛雨','snowy'],57:['🌨️','强冻毛毛雨','snowy'],
+                        61:['🌧️','小雨','rainy'],63:['🌧️','中雨','rainy'],65:['🌧️','大雨','rainy'],
+                        66:['🌨️','冻雨','snowy'],67:['🌨️','强冻雨','snowy'],
+                        71:['❄️','小雪','snowy'],73:['❄️','中雪','snowy'],75:['❄️','大雪','snowy'],77:['❄️','米雪','snowy'],
+                        80:['🌦️','阵雨','rainy'],81:['🌧️','中阵雨','rainy'],82:['🌧️','强阵雨','rainy'],
+                        85:['🌨️','阵雪','snowy'],86:['🌨️','强阵雪','snowy'],
+                        95:['⛈️','雷暴','stormy'],96:['⛈️','雷暴伴冰雹','stormy'],99:['⛈️','强雷暴伴冰雹','stormy'],
                     };
-                    const [icon, desc] = wmo[cur.weather_code] || ['🌡️',`码${cur.weather_code}`];
+                    const [icon, desc] = wmo[cur.weather_code] || ['🌡️','未知天气'];
                     const dirs = ['北','东北','东','东南','南','西南','西','西北'];
                     const windDir = dirs[Math.round(cur.wind_direction_10m / 45) % 8];
 
                     const now = new Date();
                     const timeStr = now.toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-                    const wd = (s,i) => i===0?'今天':i===1?'明天':'周'+['日','一','二','三','四','五','六'][new Date(s).getDay()];
+                    // 'YYYY-MM-DD' 必须按本地时间解析：new Date('2026-08-28') 按 UTC 午夜解析，
+                    // 在 UTC 负偏移时区取 getDay() 会整体错一天（本文件已为此提供 getLocalDate 思路）
+                    const _localDay = (s) => {
+                        const p = String(s).split('-');
+                        return new Date(+p[0], (+p[1]) - 1, +p[2]).getDay();
+                    };
+                    const wd = (s,i) => i===0?'今天':i===1?'明天':'周'+['日','一','二','三','四','五','六'][_localDay(s)];
 
                     let forecastHtml = '';
                     for (let i = 0; i < daily.time.length; i++) {

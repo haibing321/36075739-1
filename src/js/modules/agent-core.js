@@ -42,6 +42,9 @@
     return '';
   }
 
+  // 内置车站经纬度字典的模块级缓存（字面量有 100+ 键，不必每次调用 get_weather 都重建）
+  var _staticCoordCache = null;
+
   // ========== 工具注册表（标准 OpenAI/DeepSeek tools 格式）==========
   var TOOLS = [
     {
@@ -176,14 +179,16 @@
         var stationName = args.stationName || '';
         var phoneData = window.getPhoneData ? window.getPhoneData() : [];
         var station = null;
-        for (var i = 0; i < phoneData.length; i++) {
+        // 必须排除空站名：indexOf('') 恒为 0，模型若漏传 stationName 会命中电话簿第一条，
+        // 拿一个完全不相干的车站去查天气
+        for (var i = 0; stationName && i < phoneData.length; i++) {
           if (phoneData[i].站名 === stationName || (phoneData[i].站名||'').indexOf(stationName) !== -1) {
             station = phoneData[i]; break;
           }
         }
         // 内置兰州局主要车站经纬度字典（离线/反查失败时的兜底）
         // 兰州局主要车站经纬度字典（100+站，县级精度 ≈0.01°，天气查询足够）
-        var staticCoords = {
+        if (!_staticCoordCache) _staticCoordCache = {
           // === 甘肃·兰州地区 ===
           '兰州':[36.06,103.83],'兰州西':[36.07,103.75],'兰州东':[36.05,103.88],'陈官营':[36.09,103.63],
           '西固城':[36.10,103.60],'河口南':[36.16,103.43],'坡底下':[36.12,103.53],'兰州新区':[36.52,103.64],
@@ -255,6 +260,7 @@
           '西宁北':[36.66,101.77],'陶家寨':[36.70,101.80],'柯柯':[36.98,98.28],
           '饮马峡':[37.26,95.86],'鱼卡':[38.03,95.00],'马海':[38.18,94.57]
         };
+        var staticCoords = _staticCoordCache;
         try { window.queryWeatherStations = Object.keys(staticCoords); } catch (e) {}
         if (!station) {
           // 坐标解析：先精确匹配 → 再前缀匹配（key 以输入开头）→ 再包含匹配，且包含匹配取最长 key 优先，避免子串误匹配（如"西"误命中"兰州西"）
@@ -348,8 +354,11 @@
         var matched = kw ? all.filter(function(r) {
           return ((r.站名||'') + ' ' + (r.单位||'') + ' ' + (r.线名||'') + ' ' + (r.路电||'') + ' ' + (r.市电||'')).indexOf(kw) !== -1;
         }) : all;
+        // total 必须在截断前统计：系统提示词明确告诉模型「total 是真实总数，不封顶」，
+        // 截断后再取 length 会让所有统计类回答少报（且随 limit 变化，结果不稳定）
+        var phoneTotal = matched.length;
         matched = matched.slice(0, args.limit || 10);
-        return { total: matched.length, items: matched.map(function(r) {
+        return { total: phoneTotal, items: matched.map(function(r) {
           return { 站名: r.站名 || '', 单位: r.单位 || '', 线名: r.线名 || '', 路电: r.路电 || '', 市电: r.市电 || '' };
         }) };
       }
@@ -375,8 +384,9 @@
           return ((m.title||'') + ' ' + (m.content||'')).indexOf(kw) !== -1;
         }) : all;
         if (args.type) matched = matched.filter(function(m) { return (m.type||'') === args.type; });
+        var matTotal = matched.length;   // 同上：截断前统计
         matched = matched.slice(0, args.limit || 10);
-        return { total: matched.length, items: matched.map(function(m) {
+        return { total: matTotal, items: matched.map(function(m) {
           return { id: (m.id !== undefined ? m.id : ''), 标题: m.title || '', 类型: m.type || '', 摘要: (m.content||'').slice(0, 150) };
         }) };
       }
@@ -417,8 +427,9 @@
           }
           return true;
         });
+        var diaryTotal = matched.length;  // 同上：截断前统计
         matched = matched.slice(-(args.limit || 20)).reverse();
-        return { total: matched.length, items: matched.map(function(d) {
+        return { total: diaryTotal, items: matched.map(function(d) {
           return { 日期: d.date || '', 工作: d.work || '', 问题: (d.issues || []).join(' / '), 规章依据: (d.regulations || []).join(' / ') };
         }) };
       }
@@ -440,7 +451,8 @@
       var result = await tool.handler(params || {});
       return { ok: true, tool: toolName, result: result };
     } catch(e) {
-      return { ok: false, tool: toolName, error: e.message };
+      // handler 可能抛字符串/对象，直接取 e.message 会得到 undefined，模型看不到失败原因
+      return { ok: false, tool: toolName, error: (e && e.message) ? e.message : String(e || '未知错误') };
     }
   }
 
@@ -603,6 +615,10 @@
     var planShown = false;
     var lastCallKey = '', repeatCount = 0;
 
+    // 整个循环包一层 try：中途网络抖动/401/超时时，不能把已执行的工具调用与计划说明
+    // 整轮丢弃 —— 对排查有价值，任务记录也应落盘供下次回顾。
+    var loopError = null;
+    try {
     for (var loop = 1; loop <= maxLoops; loop++) {
       var assistantMsg = await _callLLM(messages, true);
       var toolCalls = assistantMsg.tool_calls;
@@ -640,7 +656,9 @@
         var callKey = keys.join('@@');
         if (callKey === lastCallKey) {
           repeatCount++;
-          if (repeatCount >= 2) {
+          // 原为 >= 2：首次相同只自增不设 lastCallKey，实际要连续 3 次才触发，
+          // 与注释「连续两次即终止」不符，白搭一轮 API 调用与等待。
+          if (repeatCount >= 1) {
             if (window._agentEnhanceOn && window._agentEnhanceOn()) {
               // A1-P2 反思回灌：提示模型换策略，不再重复，继续循环一轮（上限保证不无限）
               var reflectMsg = '⚠️ 你正在重复调用相同工具，请停止重复，直接基于已有信息给出最终自然语言回答，或换一个不同的检索角度。';
@@ -657,11 +675,18 @@
           }
         } else { lastCallKey = callKey; repeatCount = 0; }
 
-        for (var t = 0; t < toolCalls.length; t++) {
-          var tc = toolCalls[t];
-          var args = {};
-          try { args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e) { args = {}; }
-          var execResult = await _executeTool(tc.function.name, args);
+        // 本轮工具并行执行：get_weather 等含网络请求（5s 超时），串行会把延迟叠加到一轮里。
+        // 结果仍按 toolCalls 原顺序回灌 —— API 要求 tool 消息与 tool_calls 顺序一一对应。
+        var pending = toolCalls.map(function(tc) {
+          var a = {};
+          try { a = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e) { a = {}; }
+          return _executeTool(tc.function.name, a).then(function(r) { return { tc: tc, args: a, res: r }; });
+        });
+        var toolResults = await Promise.all(pending);
+        for (var t = 0; t < toolResults.length; t++) {
+          var tc = toolResults[t].tc;
+          var args = toolResults[t].args;
+          var execResult = toolResults[t].res;
           var summary = tc.function.name + ': ' + (execResult.ok ? (execResult.result && execResult.result.total !== undefined ? '✅ 共' + execResult.result.total + '条' : '✅') : '❌ ' + (execResult.error || ''));
           taskRecord.steps.push({ tool: tc.function.name, params: args, ok: execResult.ok, summary: summary });
           // A2 透明日志：附带用途/证据，渲染层据此展示卡片
@@ -671,7 +696,8 @@
             tool: tc.function.name,
             toolMeta: { name: tc.function.name, purpose: _toolPurpose(tc.function.name), evidence: _toolEvidence(execResult) }
           });
-          messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(execResult) });
+          // 部分网关（含 DeepSeek 兼容层）要求 tool 消息带 name，缺字段会被判 400
+          messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(execResult) });
         }
       } else {
         taskRecord.finalOutput = assistantMsg.content || '';
@@ -679,8 +705,14 @@
         break;
       }
     }
+    } catch (loopErr) {
+      loopError = loopErr;
+    }
 
-    if (!taskRecord.finalOutput) {
+    if (loopError) {
+      taskRecord.finalOutput = '❌ 执行中断：' + ((loopError && loopError.message) || '未知错误');
+      renderMsgs.push({ role: 'assistant', content: taskRecord.finalOutput });
+    } else if (!taskRecord.finalOutput) {
       taskRecord.finalOutput = '任务执行步骤过多（超' + maxLoops + '轮），请简化需求后重试。提示：尝试指定具体范围，如「查兰州西站消防问题」而非「分析全部数据」。';
       renderMsgs.push({ role: 'assistant', content: taskRecord.finalOutput });
     }

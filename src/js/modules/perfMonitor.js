@@ -9,6 +9,8 @@
     // ========== 配置 ==========
     var STORAGE_KEY = 'aj_perf_data';
     var MAX_SAMPLES = 200; // 保留最近 N 条采样
+    var MAX_INP_SAMPLES = 200; // INP 交互明细保留条数（长会话下防止内存/排序成本无限增长）
+    var _inpDirty = false;
 
     // ========== 内部状态 ==========
     var _metrics = {};     // { lcp: [...], cls: [...], inp: [...], fcp: [...], ... }
@@ -41,16 +43,18 @@
         if (_metrics[name].length > MAX_SAMPLES) {
             _metrics[name] = _metrics[name].slice(-MAX_SAMPLES);
         }
+        // 必须落盘：原先只有 endTimer() 调 persist()，Web Vitals（LCP/CLS/INP/FCP）
+        // 全部只存在内存里，刷新即丢失，localStorage 里永远是上一次会话的旧数据。
+        persist();
     }
 
     /**
      * 持久化到 localStorage（节流：最多30秒一次）
+     * force=true 时立即写（页面隐藏/卸载前调用），避免最后一批采样丢失。
      */
     var _saveTimer = null;
-    function persist() {
-        if (_saveTimer) return;
-        _saveTimer = setTimeout(function() {
-            _saveTimer = null;
+    function persist(force) {
+        var doSave = function() {
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
                     metrics: _metrics,
@@ -58,6 +62,16 @@
                     lastUpdate: ts()
                 }));
             } catch(e) {}
+        };
+        if (force) {
+            if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+            doSave();
+            return;
+        }
+        if (_saveTimer) return;
+        _saveTimer = setTimeout(function() {
+            _saveTimer = null;
+            doSave();
         }, 30000);
     }
 
@@ -124,11 +138,10 @@
      */
     function observeINP() {
         if (!('PerformanceObserver' in window)) return false;
-        // INP 需要 InteractionCount API 或 EventTiming entries
-        // 检查是否支持 eventTiming
+        // INP 需要 EventTiming entries 支持，不支持的浏览器直接跳过
         try {
-            // 尝试注册，不支持的浏览器会抛错
-            PerformanceEntry.supportedEntryTypes.indexOf('eventTiming');
+            var types = (typeof PerformanceEntry !== 'undefined' && PerformanceEntry.supportedEntryTypes) || [];
+            if (types.indexOf('event') === -1) return false;
         } catch(e) {
             return false; // 不支持 INP
         }
@@ -147,14 +160,24 @@
                             processingStart: e.processingStart,
                             name: e.name
                         });
-                        // 取所有交互的 p75 作为 INP 近似值
-                        inpEntries.sort(function(a, b) { return b.duration - a.duration; });
-                        var idx = Math.max(0, Math.floor(inpEntries.length * 0.75) - 1);
-                        record('inp', inpEntries[idx].duration, {
-                            interaction: e.name,
-                            totalInteractions: inpEntries.length
-                        });
+                        // 排序在每条交互后都做一遍是 O(n² log n)：长时间会话下纯属浪费。
+                        // 改为每轮结束后统一算一次 p75。
+                        _inpDirty = true;
                     }
+                }
+                if (_inpDirty) {
+                    _inpDirty = false;
+                    // 只保留最近 MAX_INP_SAMPLES 条，避免长会话下数组与排序成本无限增长
+                    if (inpEntries.length > MAX_INP_SAMPLES) {
+                        inpEntries = inpEntries.slice(-MAX_INP_SAMPLES);
+                    }
+                    // p75：升序取第 ceil(n*0.75)-1 位（等价于「75% 的交互快于该值」）
+                    var sorted = inpEntries.slice().sort(function(a, b) { return a.duration - b.duration; });
+                    var idx = Math.max(0, Math.ceil(sorted.length * 0.75) - 1);
+                    record('inp', sorted[idx].duration, {
+                        interaction: sorted[idx].name,
+                        totalInteractions: sorted.length
+                    });
                 }
             });
             obs.observe({ type: 'event', buffered: true });
@@ -173,6 +196,9 @@
             var obs = new PerformanceObserver(function(list) {
                 var entries = list.getEntries();
                 for (var i = 0; i < entries.length; i++) {
+                    // 'paint' 类型会同时返回 first-paint 与 first-contentful-paint 两条，
+                    // 不过滤会把 FP（更早、更小）当作 FCP 记进去，指标系统性偏低
+                    if (entries[i].name !== 'first-contentful-paint') continue;
                     record('fcp', entries[i].startTime);
                 }
             });
@@ -328,9 +354,14 @@
                 if (value <= 0.25) return 'needs-improvement';
                 return 'poor';
             case 'inp':
-            case 'fcp':
                 if (value <= 200) return 'good';
                 if (value <= 500) return 'needs-improvement';
+                return 'poor';
+            case 'fcp':
+                // FCP 与 INP 量级完全不同（秒级 vs 毫秒级），原先共用 200/500 阈值
+                // 会让任何正常页面（FCP 通常 500~2000ms）都被判成 poor
+                if (value <= 1800) return 'good';
+                if (value <= 3000) return 'needs-improvement';
                 return 'poor';
             default:
                 return 'unknown';
@@ -343,6 +374,8 @@
     function clear() {
         _metrics = {};
         _timers = {};
+        _supportedVitals = [];
+        if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
         try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
     }
 
@@ -400,6 +433,14 @@
         // 元信息
         getSupportedVitals: function() { return _supportedVitals.slice(); }
     };
+
+    // 持久化有 30 秒节流，离开/隐藏页面时强制 flush，避免最后一批采样丢失
+    var _flush = function() { try { persist(true); } catch(e) {} };
+    window.addEventListener('pagehide', _flush);
+    window.addEventListener('beforeunload', _flush);
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') _flush();
+    });
 
     // 自动初始化
     if (document.readyState === 'loading') {

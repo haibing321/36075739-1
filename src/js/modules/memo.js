@@ -15,25 +15,54 @@
         try { localStorage.setItem(MEMO_KEY, JSON.stringify(memos)); } catch(e) {}
     }
 
+    // 页面内提醒条（alert 会阻塞主线程，且 PWA 在后台/锁屏时根本不会显示）
+    function _toast(text) {
+        try {
+            var box = document.createElement('div');
+            box.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100001;' +
+                'background:#b45309;color:#fff;padding:10px 16px;border-radius:8px;font-size:0.86rem;' +
+                'font-weight:600;box-shadow:0 4px 16px rgba(180,83,9,.4);max-width:90vw;white-space:pre-wrap;';
+            box.textContent = '📅 ' + text;
+            document.body.appendChild(box);
+            setTimeout(function() {
+                box.style.transition = 'opacity .5s ease';
+                box.style.opacity = '0';
+                setTimeout(function() { if (box.parentNode) box.parentNode.removeChild(box); }, 520);
+            }, 12000);
+        } catch (e) {}
+    }
+
     function sendNotification(title, body) {
-        alert('📅 备忘提醒\n\n' + title + '\n' + body);
+        var text = title + '\n' + body;
+        // 优先用系统通知（后台/锁屏也能收到），不可用时退回页面内提醒条
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try { new Notification(title, { body: body, tag: 'railway-memo' }); return; } catch (e) {}
+        }
+        _toast(text);
+    }
+
+    // 到点即触发：原实现用 |now - 提醒时间| < 30 秒 的窗口判断，
+    // 后台标签页定时器被节流（≥1 分钟）时会整段跳过窗口，提醒永久丢失。
+    function _fireDue() {
+        var now = Date.now();
+        var fired = 0;
+        memos.forEach(function(m) {
+            if (m.done) return;
+            var t = new Date(m.datetime).getTime();
+            if (!t || isNaN(t)) return;
+            if (t <= now) {
+                m.done = true;
+                fired++;
+                sendNotification('🔔 工作提醒', m.content);
+            }
+        });
+        if (fired) { saveMemos(); renderMemoList(); }
+        return fired;
     }
 
     function startMemoCheck() {
         if (memoCheckTimer) clearInterval(memoCheckTimer);
-        memoCheckTimer = setInterval(function() {
-            var now = new Date();
-            memos.forEach(function(m) {
-                if (m.done) return;
-                var t = new Date(m.datetime);
-                if (Math.abs(now - t) < 30000) {
-                    m.done = true;
-                    saveMemos();
-                    sendNotification('🔔 工作提醒', m.content);
-                    renderMemoList();
-                }
-            });
-        }, 15000);
+        memoCheckTimer = setInterval(_fireDue, 15000);
     }
 
     function escapeHtmlMemo(str) {
@@ -124,20 +153,24 @@
         }
     };
 
-    // 检查过期备忘
+    // 检查过期备忘：页面关闭期间到期的备忘（隔夜、关掉 PWA 再打开）不能静默吞掉，
+    // 必须至少补发一次提示再标记为已提醒，否则用户永远收不到通知。
     function checkOverdue() {
-        var now = new Date();
-        var hasOverdue = false;
+        var now = Date.now();
+        var missed = [];
         memos.forEach(function(m) {
-            if (!m.done && new Date(m.datetime) < now) {
-                hasOverdue = true;
-                m.done = true;
-            }
+            if (m.done) return;
+            var t = new Date(m.datetime).getTime();
+            if (!t || isNaN(t)) return;
+            if (t <= now) { m.done = true; missed.push(m.content); }
         });
-        if (hasOverdue) {
-            saveMemos();
-            renderMemoList();
-        }
+        if (missed.length === 0) return;
+        saveMemos();
+        renderMemoList();
+        sendNotification(
+            '🔔 您有 ' + missed.length + ' 条备忘已过期',
+            missed.map(function(c, i) { return (i + 1) + '. ' + c; }).join('\n')
+        );
     }
 
     // 初始化

@@ -35,6 +35,22 @@
     // ---- 触摸变量 ----
     var _tx0 = 0, _ty0 = 0, _tValid = false;
 
+    // 当前所在模块：优先取激活面板（资料中心等面板没有对应导航按钮，
+    // 只认 .nav-btn.active 会导致切进去后侧滑永久失效）
+    function _currentTab() {
+        var panel = document.querySelector('.panel.active');
+        if (panel && panel.id) {
+            var pm = panel.id.match(/^panel-(.+)$/);
+            if (pm) return pm[1];
+        }
+        var btn = document.querySelector('.nav-btn.active');
+        if (btn && btn.id) {
+            var bm = btn.id.match(/^tab-(.+)$/);
+            if (bm) return bm[1];
+        }
+        return null;
+    }
+
     // 用 capture 模式确保最先收到事件，不被子元素吞掉
     document.addEventListener('touchstart', function(e) {
         // 输入框内触摸不启动侧滑判定
@@ -44,6 +60,9 @@
         _ty0 = e.touches[0].clientY;
         _tValid = true;
     }, true);   // ← capture = true
+
+    // 手势被系统取消（来电、多任务等）时必须复位，否则下次 touchend 会误触发切换
+    document.addEventListener('touchcancel', function() { _tValid = false; }, true);
 
     document.addEventListener('touchend', function(e) {
         if (!_tValid) return;
@@ -73,12 +92,8 @@
         if (nav && nav.classList.contains('nav-open')) return;
 
         // 中间区域滑动 → 模块切换（无限循环）
-        // 当前激活 tab
-        var activeBtn = document.querySelector('.nav-btn.active');
-        if (!activeBtn) return;
-        var m = activeBtn.id.match(/^tab-(.+)$/);
-        if (!m) return;
-        var curTab = m[1];
+        var curTab = _currentTab();
+        if (!curTab) return;
         var curIdx = TAB_ORDER.indexOf(curTab);
         if (curIdx < 0) return;
 

@@ -38,49 +38,54 @@
             let _wrDB = null;
             let _wrDBOpening = null;
 
+            // 建库 schema 集中到一处并对外暴露：项目里还有两处（doubao.js 风险报告、
+            // doubao-common.js 资料选择器）会裸开同一个库且只建部分 store，
+            // 一旦它们先跑，库就停留在 v2 且缺 store，后续 open(2) 不再触发升级 → 功能整体失效。
+            window.__wrEnsureSchema = function(db) {
+                try {
+                    if (!db.objectStoreNames.contains(WR_TPL_STORE)) {
+                        var ts = db.createObjectStore(WR_TPL_STORE, { keyPath: 'id', autoIncrement: true });
+                        ts.createIndex('category', 'category', { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains(WR_RPT_STORE)) {
+                        var rs = db.createObjectStore(WR_RPT_STORE, { keyPath: 'id', autoIncrement: true });
+                        rs.createIndex('date', 'date', { unique: false });
+                        rs.createIndex('category', 'category', { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains(WR_MAT_STORE)) {
+                        var ms = db.createObjectStore(WR_MAT_STORE, { keyPath: 'id', autoIncrement: true });
+                        ms.createIndex('matType',  'matType',  { unique: false });
+                        ms.createIndex('fileName', 'fileName', { unique: false });
+                        ms.createIndex('importAt', 'importAt', { unique: false });
+                    }
+                } catch (upErr) {
+                    console.error('[writer] upgrade失败:', upErr);
+                }
+            };
+
             function wrOpenDB() {
                 // 如果正在打开中，复用同一个 Promise
                 if (_wrDBOpening) return _wrDBOpening;
 
-                _wrDBOpening = new Promise((resolve, reject) => {
-                    // 检查缓存连接是否仍然有效
-                    if (_wrDB) {
-                        try {
-                            // 快速有效性检测：数据库关闭后 objectStoreNames 不可访问
-                            void _wrDB.objectStoreNames;
-                            _wrDBOpening = null;
-                            return resolve(_wrDB);
-                        } catch(e) {
-                            console.log('[DB] 缓存连接已失效，重新打开');
-                            _wrDB = null;
-                        }
+                // 命中缓存必须在这里返回：Promise 的 executor 是同步执行的，
+                // 若把「缓存命中分支」留在 executor 内部，它会先于 `return _wrDBOpening` 执行并把
+                // _wrDBOpening 置为 null，导致第二次起 wrOpenDB() 恒返回 null，
+                // 所有 wrOpenDB().then(...) 直接同步抛 TypeError。
+                if (_wrDB) {
+                    try {
+                        // 快速有效性检测：数据库关闭后 objectStoreNames 不可访问
+                        void _wrDB.objectStoreNames;
+                        return Promise.resolve(_wrDB);
+                    } catch(e) {
+                        console.log('[DB] 缓存连接已失效，重新打开');
+                        _wrDB = null;
                     }
+                }
 
+                _wrDBOpening = new Promise((resolve, reject) => {
                     var req = indexedDB.open(WR_DB_NAME, WR_DB_VER);
-                    req.onblocked = function() {
-                        console.warn('[writer] DB升级被阻塞');
-                    };
                     req.onupgradeneeded = function(e) {
-                        var db = e.target.result;
-                        try {
-                            if (!db.objectStoreNames.contains(WR_TPL_STORE)) {
-                                var ts = db.createObjectStore(WR_TPL_STORE, { keyPath: 'id', autoIncrement: true });
-                                ts.createIndex('category', 'category', { unique: false });
-                            }
-                            if (!db.objectStoreNames.contains(WR_RPT_STORE)) {
-                                var rs = db.createObjectStore(WR_RPT_STORE, { keyPath: 'id', autoIncrement: true });
-                                rs.createIndex('date', 'date', { unique: false });
-                                rs.createIndex('category', 'category', { unique: false });
-                            }
-                            if (!db.objectStoreNames.contains(WR_MAT_STORE)) {
-                                var ms = db.createObjectStore(WR_MAT_STORE, { keyPath: 'id', autoIncrement: true });
-                                ms.createIndex('matType',  'matType',  { unique: false });
-                                ms.createIndex('fileName', 'fileName', { unique: false });
-                                ms.createIndex('importAt', 'importAt', { unique: false });
-                            }
-                        } catch(upErr) {
-                            console.error('[writer] upgrade失败:', upErr);
-                        }
+                        window.__wrEnsureSchema(e.target.result);
                     };
                     req.onsuccess = e => {
                         _wrDB = e.target.result;
@@ -124,6 +129,16 @@
                     req.onerror   = e => rej(e.target.error);
                     tx.oncomplete = () => console.log('[DB] 事务完成:', store);
                     tx.onerror    = () => rej(tx.error);
+                })));
+            }
+
+            // 按主键取单条（供「朗读/查看」等按 id 定位的场景使用，避免整表读取）
+            function wrDbGet(store, id) {
+                return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
+                    const tx = db.transaction(store, 'readonly');
+                    const req = tx.objectStore(store).get(id);
+                    req.onsuccess = e => res(e.target.result || null);
+                    req.onerror   = e => rej(e.target.error);
                 })));
             }
 
@@ -1030,11 +1045,15 @@
                         return;
                     }
                     
-                    // 按需加载解析库
-                    await Promise.all([
-                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'),
-                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js')
-                    ]);
+                    // 按需加载解析库：失败时 loadingToast 会永久残留、fileInput 也不移除，
+                    // 用户只能刷新页面。这里显式处理失败路径。
+                    if (!(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', { feature: '资料导入', silent: true })) ||
+                        !(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js', { feature: '资料导入', silent: true }))) {
+                        loadingToast.remove();
+                        fileInput.remove();
+                        window.showToast('资料导入所需的解析组件未能联网加载，请联网后重试（成功加载一次后会自动缓存）', true, 8000);
+                        return;
+                    }
                     
                     for (const file of files) {
                         console.log('[导入] 开始处理文件:', file.name, '类型:', matType);
@@ -2057,8 +2076,10 @@
                             fullText = fullText.replace(/\{\{([^}]+)\}\}/g, '（待补充：$1）');
                         }
                         // 否则：模型已直接输出完整文档（占位符已内联填充），原样保留
-                        // 重新渲染气泡：模板替换后内容已是 HTML，不能用 wrStreamFormat（会二次转义）
-                        if (streamBubbleContent) streamBubbleContent.innerHTML = fullText;
+                        // 重新渲染气泡：模板替换后内容已是 HTML，不能用 wrStreamFormat（会二次转义）。
+                        // 但 fullText 仍是模型原文（模型输入含用户上传的文件正文，存在注入面），
+                        // 直灌 innerHTML 会执行其中的 <img onerror> 等脚本 —— 必须先净化。
+                        if (streamBubbleContent) streamBubbleContent.innerHTML = wrSafeBubbleHtml(fullText);
                         const histEl = document.getElementById('wr-chat-history');
                         if (histEl) histEl.scrollTop = histEl.scrollHeight;
                     }
@@ -2157,9 +2178,18 @@
             };
 
 
-            // 语音朗读当前报告
-            window.wrSpeak = function() {
-                const text = (window._wrCurrentReportContent || '').replace(/【数据[^\]】]*】/g, '');
+            // 语音朗读：reportId 由气泡上的按钮传入。
+            // 原实现无形参、只读全局 _wrCurrentReportContent，导致连续生成多篇后
+            // 点早期气泡的「朗读」播放的是最新一篇的正文。
+            window.wrSpeak = async function(reportId) {
+                let text = window._wrCurrentReportContent || '';
+                if (reportId != null && reportId !== '' && String(reportId) !== String(window._wrCurrentReportId)) {
+                    try {
+                        const rec = await wrDbGet(WR_RPT_STORE, reportId);
+                        if (rec && rec.content) text = rec.content;
+                    } catch (e) { /* 查库失败则退回当前内容 */ }
+                }
+                text = (text || '').replace(/【数据[^\]】]*】/g, '');
                 if (!text.trim()) return;
                 try {
                     if (window.speechSynthesis) {
@@ -2373,6 +2403,10 @@
                 document.getElementById('wr-tpl-content').value = '';
                 delete document.getElementById('wr-tpl-modal')._editId;
                 document.getElementById('wr-tpl-modal').style.display = 'flex';
+                // 打开即刷新已有模板列表，否则新建表单下方永远是空的
+                if (typeof window.wrRenderTplList === 'function') {
+                    try { window.wrRenderTplList(); } catch (e) {}
+                }
                 setTimeout(() => document.getElementById('wr-tpl-name').focus(), 50);
             };
 
@@ -2414,11 +2448,22 @@
                 const item = { title, category, content, updatedAt: now };
                 if (modal._editId) {
                     item.id = modal._editId;
-                    item.createdAt = now; // 保留（如有旧值以后可恢复，此处简化）
+                    // 编辑时不要覆盖 createdAt：原实现写死 now，会把模板的创建时间
+                    // 每次编辑都刷成当前时间，列表里「约X字 / 日期」失去参考价值
+                    const _old = await wrDbGet(WR_TPL_STORE, modal._editId);
+                    item.createdAt = (_old && _old.createdAt) ? _old.createdAt : now;
                 } else {
                     item.createdAt = now;
                 }
-                await wrDbPut(WR_TPL_STORE, item);
+                // 写库失败时必须收尾：原实现未包裹 try/catch，异常会直接抛出，
+                // 导致弹窗不关、_editId 不清、_editSession 不清理 ——
+                // 用户卡在编辑弹窗，且折叠屏重建后会再次弹出同一个编辑框。
+                try {
+                    await wrDbPut(WR_TPL_STORE, item);
+                } catch (e) {
+                    alert('模板保存失败：' + ((e && e.message) || '未知错误'));
+                    return;
+                }
                 modal.style.display = 'none';
                 modal._editId = null;
                 if (window._editSession) window._editSession.clear();
@@ -2546,6 +2591,17 @@
             }
 
             // ---- 真正应用占位符替换 ----
+            // 气泡 HTML 白名单净化：可用 DOMPurify 时净化（保留标题/表格等排版），
+            // 否则退化为全转义（宁可排版变纯文本，也不能执行注入脚本）
+            function wrSafeBubbleHtml(html) {
+                var raw = String(html == null ? '' : html);
+                if (!raw) return '';
+                if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+                    try { return DOMPurify.sanitize(raw); } catch (e) {}
+                }
+                return wrEsc(raw).replace(/\n/g, '<br>');
+            }
+
             function applyTemplatePlaceholders(templateContent, mapping) {
                 if (!templateContent || !mapping) return templateContent;
                 let result = templateContent;
@@ -3244,21 +3300,30 @@
                 document.body.appendChild(inp); inp.click();
             };
 
-            /**
-             * 筛选资料类型
-             */
-            window.wrMaterialFilter = function(type) {
-                _wrMatFilter = type;
-                // 更新按钮样式（含「全模块数据」聚合入口）
+            // 分类胶囊高亮：必须同时处理 active 与 wr-mat-tab-active 两个类。
+            // 「全部」按钮在 index.html 里被硬编码了 wr-mat-tab-active 作为初始高亮，
+            // 而原实现只增删 active、从不移除 wr-mat-tab-active ——
+            // 于是「全部」永远高亮，点其它分类时会出现两个胶囊同时亮起，用户分不清当前分类。
+            function _wrSyncFilterChip(type) {
                 ['all','template','history','inspect','fault','dispatch','other','allmodule'].forEach(t => {
                     const btn = document.getElementById('wr-mat-filter-' + t);
                     if (!btn) return;
                     if (t === type) {
                         btn.classList.add('active');
+                        btn.classList.add('wr-mat-tab-active');
                     } else {
                         btn.classList.remove('active');
+                        btn.classList.remove('wr-mat-tab-active');
                     }
                 });
+            }
+
+            /**
+             * 筛选资料类型
+             */
+            window.wrMaterialFilter = function(type) {
+                _wrMatFilter = type;
+                _wrSyncFilterChip(type);
                 const histZone = document.getElementById('wr-mat-history-zone');
                 const matList  = document.getElementById('wr-mat-list');
                 const matSearch = document.getElementById('wr-mat-search');
@@ -3286,16 +3351,10 @@
 
             // 历史报告 Tab 点击：显示历史报告子区域，隐藏普通资料列表
             window.wrMatFilterHistory = function() {
-                // 高亮历史报告按钮
-                ['all','template','history','inspect','fault','dispatch','other','allmodule'].forEach(t => {
-                    const btn = document.getElementById('wr-mat-filter-' + t);
-                    if (!btn) return;
-                    if (t === 'history') {
-                        btn.classList.add('active');
-                    } else {
-                        btn.classList.remove('active');
-                    }
-                });
+                _wrSyncFilterChip('history');
+                // 必须同步筛选状态：否则 wrMaterialSearch() 在历史报告页会走进
+                // else 分支去刷新一个被隐藏的资料列表，表现为「搜索没反应」
+                _wrMatFilter = 'history';
                 const histZone = document.getElementById('wr-mat-history-zone');
                 const matList  = document.getElementById('wr-mat-list');
                 const matSearch = document.getElementById('wr-mat-search');
@@ -3639,4 +3698,4 @@ ${details || '(无)'}
         // 保留函数名以兼容所有旧调用点（导入 / 删除 / 设模版 / 改类型 / 报告增删改），避免重复渲染冲突。
         // 注：wrRenderMaterials / wrRenderHistory 的原始实现（含查看/修改/删除/设模版按钮）定义在上方，
         // 此处不再委托到多源聚合，避免覆盖导致资料中心丢失查看/修改/删除功能。
-    })();
+    })();

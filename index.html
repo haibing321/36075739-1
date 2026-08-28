@@ -1083,6 +1083,15 @@
                 <button onclick="wrCloseTemplateModal()" class="btn-close">✕</button>
             </div>
             <div style="font-size:0.8rem;color:var(--text-secondary);padding:6px 10px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">💡 自定义模板：可将历史报告文本粘贴于此，保存后在撰写报告时可选用。支持 {{占位符}} 格式。</div>
+            <!-- 已保存模板列表（原缺失此容器，导致 wrRenderTplList 在开头即 return，
+                 已保存模板既看不到也无从编辑/删除，只能不断新建） -->
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <label style="font-size:0.85rem;font-weight:600;">已保存模板</label>
+                    <span id="wr-tpl-count" style="font-size:0.75rem;color:var(--text-secondary);">共 0 个模板</span>
+                </div>
+                <div id="wr-tpl-list" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding:2px;"></div>
+            </div>
             <div style="display:flex;flex-direction:column;gap:8px;">
                 <label style="font-size:0.85rem;font-weight:600;">模板名称</label>
                 <input id="wr-tpl-name" type="text" placeholder="例如：月度安全检查报告模板" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;">
@@ -1670,6 +1679,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.40 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.40 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📴 离线健壮性专项：SW 安装时自动解析 index.html 的全部本地引用一并预缓存，杜绝新增模块/CSS 后「清单漂移、首次访问即断网」的离线空洞；补齐 iOS 启动图与 ds-deepseek/flat/dark/unify 等 CSS/JS 预缓存，并对 fuse/jszip/xlsx/mammoth/pdf/html-docx 等 CDN 大库主动预热，断网也能用。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📝 智能写作修复：集中 DB schema 建库并对外暴露，修复多模块裸开同库导致库停留在 v2、功能整体失效的竞态；修复缓存连接 Promise 返回 null 使 wrOpenDB().then 抛错的 bug；模板弹窗新增「已保存模板」列表，可查看/编辑/删除（此前只能不断新建）。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛡️ 弱网/离线稳定性：更新检查与库加载均加超时与失败清理（连 WiFi 无外网 / CDN 挂起不再永久「正在处理…」）；多模型「设为当前」标记实时刷新、填入 Key 后界面即时重绘、清除 Key 回落豆包网页版；重生成可指定某一轮；IndexedDB/通知等异常边界与告警基线全面加固。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.39 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1684,35 +1715,9 @@
                 </div>
             </div>
 
-            <!-- v3.38 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.38 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>💬 智能对话「发送」圆形按钮融入背景：默认/激活/停止三态均为透明，仅图标色区分（禁用灰 / 激活主蓝 / 停止红），不再有灰底或蓝底实心块，与整体「控件融入背景」一致。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>👤 智能对话右上角角色/模型标签透明化：原浅灰 / 深蓝 pill（通用 / deepseek-v4-flash）改为透明底、仅保留文字色，与页面底色一致。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 规章制度搜索「搜索条件」提示条暗黑化：dark 下容器浅蓝 #f0f9ff、「全部包含」白底 #fff、关键词浅蓝 #e0f2fe 均改为深底，纯 CSS 覆盖内联样式（不动 rule.js），深搜结果区无亮白块。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📴 离线优先 + 红点更新：SW 导航改为 CacheFirst，系统默认打开完全使用离线内容、不再从远程重新下载；打开时不再静默检查更新。发现新版本时「设置」tab 与「检查更新」按钮均显示红色脉冲点，点击「立即更新」应用；红点用 localStorage 持久化，离线打开仍可见，更新后自动清除。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.38 已归档（最近 2 版本为 v3.40 / v3.39） -->
 
-            <!-- v3.37 已归档（最近 2 版本为 v3.39 / v3.38） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.36 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.38 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

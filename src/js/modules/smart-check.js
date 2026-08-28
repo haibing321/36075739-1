@@ -371,6 +371,18 @@
                     .replace(/<\//g, '<\\/');
             }
 
+            // 内联 onclick 里嵌 JS 字符串字面量：必须「JS 转义 + HTML 属性转义」两步都做。
+            // 只做 HTML 转义（如 acEscHtml）时，&#039; 会在属性解析后被还原成 '，
+            // 把 JS 字符串提前闭合 → DOM XSS；只做 JS 转义时，值里的 " 会提前闭合 HTML 属性。
+            // 关键词可来自用户自定义输入或导入的词库文件，是真实可利用的注入点。
+            function acEscOnclick(s) {
+                return acEscJsStr(s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
             // 铁路安监领域违规行为关键词（用于增强关键词提取，捕捉违规描述）
             const VIOLATION_ACTION_WORDS = new Set([
                 '违规', '违章', '违反', '不符合', '未按规定', '未按', '擅自',
@@ -679,7 +691,7 @@
                             'cursor:pointer;transition:all 0.15s;user-select:none;' +
                             'background:var(--primary);color:#fff;border:2px solid var(--primary);' +
                             '" ' +
-                            'onclick="acToggleCandidateKeyword(\'' + acEscJsStr(kw) + '\')" ' +
+                            'onclick="acToggleCandidateKeyword(\'' + acEscOnclick(kw) + '\')" ' +
                             'title="点击取消选中" ' +
                             '>' + acEscHtml(kw) + ' <span style="margin-left:4px;font-size:0.75rem;">✓</span></span>';
                     } else {
@@ -690,7 +702,7 @@
                             'cursor:pointer;transition:all 0.15s;user-select:none;' +
                             'background:#f1f5f9;color:var(--text);border:2px solid #e2e8f0;' +
                             '" ' +
-                            'onclick="acToggleCandidateKeyword(\'' + acEscJsStr(kw) + '\')" ' +
+                            'onclick="acToggleCandidateKeyword(\'' + acEscOnclick(kw) + '\')" ' +
                             'title="点击选中" ' +
                             'onmouseover="if(!this.dataset.selected){this.style.background=\'#e2e8f0\';this.style.borderColor=\'var(--primary)\';}" ' +
                             'onmouseout="if(!this.dataset.selected){this.style.background=\'#f1f5f9\';this.style.borderColor=\'#e2e8f0\';}" ' +
@@ -735,7 +747,7 @@
                         'cursor:pointer;transition:all 0.15s;user-select:none;' +
                         'background:var(--primary);color:#fff;border:2px solid var(--primary);' +
                         '" ' +
-                        'onclick="acRemoveSelectedKeyword(\'' + acEscJsStr(kw) + '\')" ' +
+                        'onclick="acRemoveSelectedKeyword(\'' + acEscOnclick(kw) + '\')" ' +
                         'title="点击移除" ' +
                         'onmouseover="this.style.opacity=\'0.8\'" ' +
                         'onmouseout="this.style.opacity=\'1\'" ' +
@@ -1697,7 +1709,7 @@
                 // ── 相似度低于35，提示重新调整关键词 ──
                 if (maxSimilarity < 35) {
                     const kwsHtml = keywords.map(k =>
-                        '<span style="background:#fde68a;color:#92400e;padding:2px 8px;border-radius:10px;font-size:0.82rem;cursor:pointer;border:1px solid #f59e0b;" onclick="acToggleCandidateKeyword(\'' + acEscHtml(k) + '\')">' + acEscHtml(k) + ' ✕</span>'
+                        '<span style="background:#fde68a;color:#92400e;padding:2px 8px;border-radius:10px;font-size:0.82rem;cursor:pointer;border:1px solid #f59e0b;" onclick="acToggleCandidateKeyword(\'' + acEscOnclick(k) + '\')">' + acEscHtml(k) + ' ✕</span>'
                     ).join('');
                     container.innerHTML = '<div style="padding:16px;background:#fffbeb;border-radius:10px;border-left:4px solid #f59e0b;">'
                         + '<div style="font-weight:700;color:#b45309;font-size:0.95rem;margin-bottom:8px;">⚠️ 本地历史案例匹配相似度较低（' + maxSimilarity + '%，低于35%）</div>'

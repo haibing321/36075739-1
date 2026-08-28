@@ -478,10 +478,50 @@
                 return paragraphs.length > 0 ? paragraphs : rawParagraphs;
             }
 
+            /**
+             * 归一化文本，同时记录「归一化下标 → 原始下标」映射。
+             * normalizeText() 会把标点等非文字字符整段删除，归一化串显著短于原始串；
+             * 若在归一化串上算位置、却拿该位置去 substring 原始串，截取位置会系统性左移，
+             * 切出来的片段里根本没有关键词。保留映射即可把位置换算回原始串。
+             */
+            function normalizeTextWithMap(text) {
+                var out = '', map = [];
+                if (!text) return { text: out, map: map };
+                var src = String(text);
+                var wordRe = /[\w\u4e00-\u9fa5\u3400-\u4dbf]/;
+                var pendingSpace = -1;
+                for (var i = 0; i < src.length; i++) {
+                    var ch = src.charAt(i);
+                    if (/\s/.test(ch)) {
+                        if (pendingSpace < 0) pendingSpace = i; // 连续空白折叠为一个空格
+                        continue;
+                    }
+                    if (!wordRe.test(ch)) continue;             // 标点等非文字字符：丢弃
+                    if (pendingSpace >= 0 && out.length > 0) {
+                        out += ' ';
+                        map.push(pendingSpace);
+                    }
+                    pendingSpace = -1;
+                    out += ch.toLowerCase();
+                    map.push(i);
+                }
+                // 与 normalizeText() 的 trim 对齐
+                while (out.length && out.charAt(out.length - 1) === ' ') { out = out.slice(0, -1); map.pop(); }
+                while (out.length && out.charAt(0) === ' ') { out = out.slice(1); map.shift(); }
+                return { text: out, map: map };
+            }
+
             function splitLongParagraphWithAllKeywords(paragraph, keywords, matchMode = 'and', maxLen = 380) {
-                // 使用规范化后的文本进行匹配
-                const normalizedPara = normalizeText(paragraph).toLowerCase();
-                const normalizedKws = keywords.map(kw => normalizeText(kw).toLowerCase());
+                // 使用规范化后的文本进行匹配（并保留下标映射，便于换算回原始文本）
+                const normPara = normalizeTextWithMap(paragraph);
+                const normalizedPara = normPara.text;
+                const normMap = normPara.map;
+                // 关键词必须用同一套归一化规则，否则两边 token 对不上。
+                // 必须过滤空串：indexOf('', n) 在 n 超过长度时仍返回 length（永不返回 -1），
+                // 任意一个空关键词都会让下面的 while 变成死循环，直接卡死搜索。
+                const normalizedKws = keywords
+                    .map(kw => normalizeTextWithMap(kw).text)
+                    .filter(t => t.length > 0);
                 
                 // 定义所有标点符号（用于边界扩展）
                 const punctuations = ['\u3002', '\uff01', '\uff1f', '.', '!', '?', '\uff0c', ',', '\uff1b', ';', '\u3001', '\uff1a', ':', '\uff08', '(', '\uff09', ')', '\u201c', '\u201d', '\u2018', '\u2019', '"', "'", '\u300a', '\u300b', '\u3008', '\u3009', '[', ']', '\u3010', '\u3011'];
@@ -551,11 +591,23 @@
                 const limitedWindows = mergedWindows.slice(0, 3);
                 
                 // 处理每个窗口，扩展到标点符号边界
+                // 归一化下标 → 原始下标（end 为开区间，取最后一个字符的下标再 +1）
+                const toOrigStart = function(nStart) {
+                    return normMap[nStart] !== undefined ? normMap[nStart] : 0;
+                };
+                const toOrigEnd = function(nEnd) {
+                    var lastIdx = normMap[nEnd - 1];
+                    return lastIdx !== undefined ? lastIdx + 1 : paragraph.length;
+                };
+
                 const fragments = [];
                 limitedWindows.forEach((window, idx) => {
+                    // 换算回原始文本下标后再做标点边界扩展与截取
+                    const origStart = toOrigStart(window.start);
+                    const origEnd = toOrigEnd(window.end);
                     // 向前扩展到标点符号后
-                    let snippetStart = window.start;
-                    const beforeText = paragraph.substring(0, window.start);
+                    let snippetStart = origStart;
+                    const beforeText = paragraph.substring(0, origStart);
                     let lastPuncPos = -1;
                     for (const punc of punctuations) {
                         const pos = beforeText.lastIndexOf(punc);
@@ -566,15 +618,15 @@
                     }
                     
                     // 向后扩展到标点符号前
-                    let snippetEnd = window.end;
-                    const afterText = paragraph.substring(window.end);
+                    let snippetEnd = origEnd;
+                    const afterText = paragraph.substring(origEnd);
                     let nextPuncPos = Infinity;
                     for (const punc of punctuations) {
                         const pos = afterText.indexOf(punc);
                         if (pos >= 0 && pos < nextPuncPos) nextPuncPos = pos;
                     }
                     if (nextPuncPos !== Infinity) {
-                        snippetEnd = window.end + nextPuncPos;
+                        snippetEnd = origEnd + nextPuncPos;
                     }
                     
                     // 截取片段
@@ -854,12 +906,25 @@
                 closeModal('rule-importModal');
                 await processFiles(window.pendingImportFiles, trade);
             }
+            var LIB_MAMMOTH = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js';
+            var LIB_PDFJS   = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
+            var LIB_XLSX    = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+            var LIB_JSZIP   = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+
             async function processFiles(files, trade) {
-                await Promise.all([
-                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js'),
-                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js'),
-                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js')
+                // 三个库分别加载、互不影响：原来用 Promise.all 包裸 loadScript，
+                // 任一失败（离线时几乎必然）就整体 reject，导致「只导入 docx
+                // 却因 pdf.js 拉不下来而整批失败」，且界面停在导入中无任何提示。
+                // 改为记录可用性，具体文件缺哪个库由下面的 try/catch 单独跳过。
+                var libs = await Promise.all([
+                    window.requireLib(LIB_MAMMOTH, { silent: true }),
+                    window.requireLib(LIB_PDFJS, { silent: true }),
+                    window.requireLib(LIB_XLSX, { silent: true })
                 ]);
+                var missingLibs = [];
+                if (!libs[0]) missingLibs.push('Word(.docx)');
+                if (!libs[1]) missingLibs.push('PDF(.pdf)');
+                if (!libs[2]) missingLibs.push('Excel(.xlsx)');
                 isProcessing = true;
                 const btn = document.getElementById('rule-importBtn');
                 let successCount = 0, skipCount = 0;
@@ -933,7 +998,10 @@
                             
                             const result = await mammoth.convertToHtml({ arrayBuffer }, options);
                             contentHtml = cleanHtml(result.value);
-                            const plainText = stripHtml(contentHtml);  // 保留换行的纯文本
+                            // 注意：此处必须用外层已声明的 plainText，不能再写 const，
+                            // 否则块级作用域遮蔽会导致下面 content 取到外层空串（换行全丢，
+                            // smartSplitParagraphs 按 \n 分段失效，整篇规章退化成一整段）
+                            plainText = stripHtml(contentHtml);  // 保留换行的纯文本
                             searchText = normalizeSearchText(plainText);  // 无换行，用于分数计算
                         } else if (ext === 'json') {
                             const textContent = await file.text();
@@ -967,7 +1035,9 @@
                         
                         if (!searchText.trim() && !contentHtml.trim()) { skipCount++; continue; }
                         const title = file.name.replace(/\.[^/.]+$/, '');
-                        const dupIdx = rules.findIndex(r => r.title.toLowerCase().trim() === title.toLowerCase().trim());
+                        // 去重必须带上专业：同名文件导入到不同专业时属于两条不同规章，
+                        // 只按 title 判定会把第二次导入覆盖掉第一次（与 DOCX / JSON 分支不一致）
+                        const dupIdx = rules.findIndex(r => r.title.toLowerCase().trim() === title.toLowerCase().trim() && r.trade === trade);
                         const ruleData = { 
                             trade, 
                             title, 
@@ -983,10 +1053,16 @@
                 await saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderResults();
                 if (btn) btn.innerHTML = '📥 导入';
                 isProcessing = false;
-                alert('导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个');
+                var libTip = missingLibs.length
+                    ? '\n\n以下类型的解析组件未能联网加载，相关文件已跳过：' + missingLibs.join('、') +
+                      '\n（联网成功加载一次后会自动缓存，之后可离线使用）'
+                    : '';
+                alert('导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个' + libTip);
             }
             window.doExport = async function(format) {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                // 用 requireLib：直接 await loadScript 会在离线时抛错，
+                // 使下面 1054 行写好的「自动降级为 JSON 导出」兜底永远走不到
+                await window.requireLib(LIB_JSZIP, { feature: 'ZIP 导出', silent: true });
                 const selectedTrade = document.getElementById('rule-exportTrade')?.value;
                 let exportRules = rules;
                 if (selectedTrade && selectedTrade !== '') exportRules = rules.filter(r => r.trade === selectedTrade);
@@ -1021,7 +1097,7 @@
 
             // 根据选择导出ZIP（支持按专业筛选）
             window.exportToZipWithSelection = async function(selectedTrade, exportRules) {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                if (!(await window.requireLib(LIB_JSZIP, { feature: 'ZIP 导出' }))) return;
                 if (exportRules.length === 0) { alert('暂无规章可导出'); return; }
                 if (typeof JSZip === 'undefined') { alert('JSZip 库未加载，请检查网络连接'); return; }
                 
@@ -1438,7 +1514,10 @@
                             try {
                                 const snippetHtml = generateRuleSnippet(rule, keywords, ruleIdx, matchMode);
                                 if (snippetHtml) {
-                                    const matchCount = (snippetHtml.match(/<p>/g) || []).length;
+                                    // 统计「命中段落」而不是裸 <p>：只有短段落分支输出裸 <p>，
+                                    // 长/中等段落输出的是 <p class="rule-match-para" ...>，
+                                    // 用 /<p>/g 统计会让绝大多数规章恒为 0 段，连带排序次级键失效。
+                                    const matchCount = (snippetHtml.match(/class="rule-match-para"/g) || []).length;
                                     // 计算匹配分数（AND模式下按命中关键词数量排序）
                                     const matchScore = calculateMatchScore(rule, keywords, matchMode);
                                     results.push({ rule, snippetHtml, matchCount, matchScore });

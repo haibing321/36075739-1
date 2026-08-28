@@ -921,6 +921,14 @@
                 var f = document.getElementById('ds-provider-edit');
                 if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
             }
+            // 模型配置发生变化后，重新判定「豆包网页版 / 本地智能模块」该显示哪一个。
+            // 原实现只在页面初始化时判定一次，导致首次填入 API Key 点「保存模型」后
+            // 界面仍停在豆包网页版 iframe、智能对话仍是隐藏的，看起来「什么都没发生」，
+            // 必须手动刷新页面才生效。
+            function _syncModeAfterProviderChange() {
+                try { if (typeof toggleDoubaoMode === 'function') toggleDoubaoMode(); } catch (e) {}
+            }
+
             function dsSaveProviderFromForm() {
                 var f = document.getElementById('ds-provider-edit');
                 var name = document.getElementById('ds-pe-name').value.trim();
@@ -946,11 +954,21 @@
                 try { if (typeof window.dsSyncWebSearchBtn === 'function') window.dsSyncWebSearchBtn(); } catch (e) {}
                 if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
                 renderModelManager();
+                _syncModeAfterProviderChange();
             }
-            function dsSetActiveProvider(id) { setActiveProvider(id); }
+            // 原实现只调 setActiveProvider，而后者不会重绘模型管理列表，
+            // 表现为点「设为当前」后该条目的「●当前」标记与「设为当前」按钮纹丝不动，
+            // 用户以为没点上而反复点击。
+            function dsSetActiveProvider(id) {
+                setActiveProvider(id);
+                if (typeof renderModelManager === 'function') renderModelManager();
+                _syncModeAfterProviderChange();
+            }
             function dsDeleteProvider(id) {
                 if (!confirm('确定删除该模型配置？')) return;
                 deleteProvider(id);
+                if (typeof renderModelManager === 'function') renderModelManager();
+                _syncModeAfterProviderChange();
             }
 
             function showApiConfigModal() {
@@ -959,9 +977,14 @@
             }
 
             // API 地址变更时自动建议模型名称
+            // 注：旧版单输入框 #modal-apiurl / #modal-model 已随「多模型管理」改版从 HTML 中移除，
+            // 函数目前无调用点，仅通过 window.dsAutoDetectModel 对外保留兼容。
+            // 必须做空值保护，否则任何调用都会直接抛 TypeError。
             function _autoDetectModel() {
-                var url = document.getElementById('modal-apiurl').value;
+                var urlEl = document.getElementById('modal-apiurl');
                 var modelInput = document.getElementById('modal-model');
+                if (!urlEl || !modelInput) return;
+                var url = (urlEl.value || '').trim();
                 // 只有用户清空了或还是默认值时才自动填写
                 if (modelInput.value && modelInput.value !== DS_DEFAULT_MODEL && modelInput.value !== 'glm-4' && modelInput.value !== 'qwen-turbo' && modelInput.value !== 'gpt-3.5-turbo') return;
                 var models = {
@@ -990,6 +1013,8 @@
                 var ap = getActiveProvider();
                 if (ap) { ap.apiKey = ''; addOrUpdateProvider(ap); }
                 updateApiStatusBadge();
+                // 清除 Key 后必须回落到豆包网页版，否则本地模块还开着但已无法调用
+                _syncModeAfterProviderChange();
                 alert('已清除当前模型的 API Key');
             }
 
@@ -1859,7 +1884,9 @@
                             setTimeout(function(){
                                 var lastBubble2 = chatBox2.querySelector('.ds-bubble-assistant:last-of-type');
                                 if (lastBubble2 && !lastBubble2.querySelector('.feedback-good') && typeof window._addFeedbackButtons === 'function') {
-                                    window._addFeedbackButtons(lastBubble2, lastBubble2.innerText);
+                                    var _li = parseInt(lastBubble2.getAttribute('data-ds-idx'), 10);
+                                    window._addFeedbackButtons(lastBubble2, lastBubble2.innerText,
+                                        isNaN(_li) ? (dsHistory.length - 1) : _li);
                                 }
                             }, 50);
                         }
@@ -1895,11 +1922,34 @@
             window.sendToDeepSeek = window._dsRunStream;
 
             // 重新生成：移除末尾助手消息，复用最后一条用户问题重发
-            window.dsRegenerate = function() {
+            // msgIdx = 被点击的那条 assistant 在 dsHistory 中的下标（由反馈按钮传入）。
+            // 原实现不接收下标，永远重生成「最后一轮」——多轮对话中点第 1 轮的「重生成」，
+            // 实际重新生成的是最后一轮，前面的气泡纹丝不动，与按钮 title「重新生成本条回复」不符。
+            window.dsRegenerate = function(msgIdx) {
                 if (dsStreaming) return;
                 if (!dsHistory.length) return;
-                while (dsHistory.length && dsHistory[dsHistory.length - 1].role === 'assistant') {
-                    dsHistory.pop();
+
+                var target = -1;
+                if (typeof msgIdx === 'number' && msgIdx >= 0 && msgIdx < dsHistory.length &&
+                    dsHistory[msgIdx].role === 'assistant') {
+                    target = msgIdx;
+                }
+                if (target < 0) {
+                    // 未传下标或下标已失效（历史被改动过）→ 退回「重生成最后一轮」
+                    while (dsHistory.length && dsHistory[dsHistory.length - 1].role === 'assistant') {
+                        dsHistory.pop();
+                    }
+                } else {
+                    // 重生成中间某条 = 丢弃该条及其后的全部对话。
+                    // 这会连带删掉用户后续的提问，必须显式确认，避免误触丢内容。
+                    var dropCount = dsHistory.length - target;
+                    if (dropCount > 1) {
+                        if (!confirm('重新生成该条回复会同时移除其后的 ' + (dropCount - 1) + ' 条对话，确定继续？')) return;
+                    }
+                    dsHistory.length = target;   // 截断到目标 assistant 之前
+                    while (dsHistory.length && dsHistory[dsHistory.length - 1].role === 'assistant') {
+                        dsHistory.pop();
+                    }
                 }
                 const lastUser = dsHistory[dsHistory.length - 1];
                 if (!lastUser || lastUser.role !== 'user') return;
@@ -1960,7 +2010,7 @@
                         if (bubble.querySelector('.ds-typing')) return; // 跳过"思考中"占位气泡
                         var _idx = parseInt(bubble.getAttribute('data-ds-idx'), 10);
                         var _content = (dsHistory[_idx] && dsHistory[_idx].content) ? dsHistory[_idx].content : bubble.innerText;
-                        window._addFeedbackButtons(bubble, _content);
+                        window._addFeedbackButtons(bubble, _content, _idx);
                     });
                 }
                 dsScrollBottom();
@@ -2749,11 +2799,14 @@
           };
           var dbReq = indexedDB.open('railway_writer_db', 2);
           await new Promise(function(resolve, reject) {
+            // 必须建全三个 store：只建 writing_reports 会把库固定在 v2 且缺 writing_materials /
+            // writing_templates，之后 wrOpenDB() 再 open(2) 不再触发升级，资料库与模板功能整体失效。
             dbReq.onupgradeneeded = function(e) {
+              if (typeof window.__wrEnsureSchema === 'function') { window.__wrEnsureSchema(e.target.result); return; }
               var db = e.target.result;
-              if (!db.objectStoreNames.contains('writing_reports')) {
-                db.createObjectStore('writing_reports', { keyPath: 'id', autoIncrement: true });
-              }
+              ['writing_templates','writing_reports','writing_materials'].forEach(function(name){
+                if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
+              });
             };
             dbReq.onsuccess = function() {
               var db = dbReq.result;
@@ -3241,7 +3294,8 @@
       window.dsSendMsg._roleInjectionEnabled = true;
 
       // ---------- 10. 反馈收集 ----------
-      function addFeedbackButtons(messageDiv, assistantContent) {
+      // msgIdx: 该气泡在 dsHistory 中的下标，用于「重生成」定位到具体这一轮
+      function addFeedbackButtons(messageDiv, assistantContent, msgIdx) {
         var fbDiv = document.createElement('div');
         fbDiv.className = 'ds-feedback-bar';
         fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px; flex-wrap:wrap;';
@@ -3284,6 +3338,9 @@
         };
         fbDiv.querySelector('.feedback-good').onclick = function(){ saveFeedback('good', assistantContent); };
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };
+        // 用绑定而非内联 onclick，才能把本轮下标传进去
+        var regenBtn = fbDiv.querySelector('.feedback-regen');
+        if (regenBtn) regenBtn.onclick = function(){ window.dsRegenerate(msgIdx); };
       }
       window._addFeedbackButtons = addFeedbackButtons;
 

@@ -135,6 +135,16 @@
             var db = await new Promise(function(res, rej) {
                 var r = indexedDB.open('railway_writer_db', 2);
                 r.onerror = function(){ rej(r.error); };
+                r.onblocked = function(){ console.warn('[material] 数据库被阻塞'); };
+                // 必须建全三个 store：此处若先于智能写作模块执行，库会被固定在 v2 且只含部分 store，
+                // 之后 wrOpenDB() 再 open(2) 不会再触发升级，资料库/历史报告永久报错。
+                r.onupgradeneeded = function(e){
+                    if (typeof window.__wrEnsureSchema === 'function') { window.__wrEnsureSchema(e.target.result); return; }
+                    var d = e.target.result;
+                    ['writing_templates','writing_reports','writing_materials'].forEach(function(name){
+                        if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
+                    });
+                };
                 r.onsuccess = function(){ res(r.result); };
             });
             var materials = await new Promise(function(res) {
@@ -174,6 +184,11 @@
         dsRenderMaterialList(filtered);
     };
 
+    function dsMaterialEsc(s) {
+        if (typeof window.escapeHtml === 'function') return window.escapeHtml(s);
+        return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
     function dsRenderMaterialList(items) {
         var list = document.getElementById('ds-material-list');
         if (!items.length) {
@@ -184,11 +199,12 @@
         var html = '';
         items.slice(0, 50).forEach(function(m, i) {
             var typeLabel = typeMap[m.type] || '📎 资料';
-            var title = (m.title || '无标题').slice(0, 60);
+            // 资料正文来自用户导入的 txt/docx/xlsx/pdf，标题也可能来自文件名，必须转义
+            var title = dsMaterialEsc((m.title || '无标题').slice(0, 60));
             html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:var(--card-bg);border-radius:8px;cursor:pointer;border:1px solid var(--border);" onmouseover="this.style.background=\'var(--primary-light)\'" onmouseout="this.style.background=\'var(--card-bg)\'">'
                 + '<input type="checkbox" value="'+i+'" class="ds-mat-cb" style="margin-top:2px;flex-shrink:0;">'
                 + '<div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:500;">'+typeLabel+' ' + (title||'无标题') + '</div>'
-                + '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + ((m.content||'').slice(0,80)) + '</div></div>'
+                + '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsMaterialEsc((m.content||'').slice(0,80)) + '</div></div>'
                 + '</label>';
         });
         list.innerHTML = html;

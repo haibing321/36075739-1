@@ -168,15 +168,21 @@
                 var noToast = opts && opts.noToast;
                 const date = document.getElementById('diary-date').value;
                 const work = document.getElementById('diary-work').value.trim();
-                if (!date) { alert('请选择日期'); return; }
-                if (!work && collectIssues().filter(i => i).length === 0) { alert('请输入工作内容或问题'); return; }
+                // 自动保存（noToast）时内容为空只代表「还没写完」，必须静默跳过：
+                // 否则用户清空正文的瞬间会弹出阻塞式 alert，且每 2 秒重复一次。
+                if (!date) { if (noToast) return; alert('请选择日期'); return; }
+                if (!work && collectIssues().filter(i => i).length === 0) {
+                    if (noToast) return;
+                    alert('请输入工作内容或问题'); return;
+                }
                 const { issues, regulations } = collectIssuesAndRegulations();
 
                 // 保存媒体文件到 IndexedDB（新文件存入，旧文件复用 ID）
                 const mediaIds = [];
                 if (_mediaFiles && _mediaFiles.length > 0) {
                     for (let i = 0; i < _mediaFiles.length; i++) {
-                        if (_existingMediaIds[i] !== undefined) {
+                        const isExisting = _existingMediaIds[i] !== undefined && _existingMediaIds[i] !== null;
+                        if (isExisting) {
                             // 已有媒体，复用旧 ID
                             mediaIds.push(_existingMediaIds[i]);
                         } else {
@@ -186,6 +192,11 @@
                             if (id !== null) mediaIds.push(id);
                         }
                     }
+                    // 关键：保存后要用结果回写「已存在 ID」表。
+                    // 不回写的话，刚存进去的新文件在下一次自动保存（防抖 2 秒）时
+                    // 依然被当作新文件再次入库 —— 用户边打字边产生成百上千份重复副本，
+                    // 旧记录变成孤儿数据，IndexedDB 体积暴涨。
+                    _existingMediaIds = mediaIds.slice();
                 }
 
                 // 检查日期是否已有记录
@@ -1202,7 +1213,9 @@
                         window.finishProgress('✅ 工作日志导出成功' + (attCount > 0 ? '（含 ' + attCount + ' 天考勤）' : ''));
                         return;
                     }
-                    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                    // 用 requireLib：直接 await loadScript 会在离线时抛错，
+                    // 使下面「降级导出纯文本 JSON」这条退路永远走不到
+                    await window.requireLib(LIB_JSZIP_DIARY, { feature: 'ZIP 导出', silent: true });
                     if (typeof JSZip === 'undefined') {
                         // 降级：纯 JSON（不含媒体）
                         _downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
@@ -1260,10 +1273,12 @@
                 reader.readAsText(file);
             }
 
+            var LIB_JSZIP_DIARY = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+
             // 从 ZIP 导入（含媒体重建 ID 映射）
             async function importDiaryFromZip(file) {
                 try {
-                    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                    if (!(await window.requireLib(LIB_JSZIP_DIARY, { feature: 'ZIP 导入' }))) { window.hideProgress(); return; }
                     if (typeof JSZip === 'undefined') { window.hideProgress(); alert('JSZip 库未加载，无法导入 ZIP，请联网后重试'); return; }
                     const zip = await JSZip.loadAsync(file);
                     if (!zip.file('diary.json')) { window.hideProgress(); alert('ZIP 文件缺少 diary.json'); return; }

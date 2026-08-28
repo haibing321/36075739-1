@@ -53,6 +53,66 @@
         });
     }
 
+    // 通用「保留原 id」写入：部分 store 的 keyPath 是 'id' 且【没有】autoIncrement
+    // （RailwayRuleDB.rule_images、AgentTaskDB.agent_tasks 都是这种），
+    // 而 writeIndexedDB 会先剥掉 id 再用 add() 写入 —— 对这类表必然抛 DataError。
+    // 这里保留原 id 并用 put 覆盖写，确保恢复后引用关系（规章正文里的图片 id）不断裂。
+    function writeKeyedStore(dbName, dbVersion, storeName, data, createIndexes) {
+        return new Promise(function(resolve, reject) {
+            var done = function(db) {
+                try {
+                    var tx = db.transaction(storeName, 'readwrite');
+                    var store = tx.objectStore(storeName);
+                    store.clear();
+                    for (var i = 0; i < data.length; i++) {
+                        var it = data[i];
+                        if (!it || it.id === undefined || it.id === null) continue;
+                        store.put(it);
+                    }
+                    tx.oncomplete = function() { try { db.close(); } catch (e) {} resolve(); };
+                    tx.onerror = function() { try { db.close(); } catch (e) {} reject(tx.error); };
+                    tx.onabort = function() { try { db.close(); } catch (e) {} reject(tx.error || new Error('事务被中断')); };
+                } catch (err) { try { db.close(); } catch (e) {} reject(err); }
+            };
+            // 先探测现有版本，避免因写死版本号导致 VersionError
+            var probe = indexedDB.open(dbName);
+            var openAt = function(ver) {
+                var req = indexedDB.open(dbName, ver);
+                req.onupgradeneeded = function(e) {
+                    var db2 = e.target.result;
+                    if (!db2.objectStoreNames.contains(storeName)) {
+                        var s = db2.createObjectStore(storeName, { keyPath: 'id' });
+                        if (typeof createIndexes === 'function') { try { createIndexes(s); } catch (e) {} }
+                    }
+                };
+                req.onerror = function() { reject(req.error); };
+                req.onsuccess = function() {
+                    var db = req.result;
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.close();
+                        if (ver >= probeVer + 1) { reject(new Error('无法创建 store: ' + storeName)); return; }
+                        openAt(probeVer + 1);
+                        return;
+                    }
+                    done(db);
+                };
+            };
+            var probeVer = dbVersion || 1;
+            probe.onsuccess = function() {
+                probeVer = probe.result.version || probeVer;
+                try { probe.result.close(); } catch (e) {}
+                openAt(Math.max(dbVersion || 1, probeVer));
+            };
+            probe.onerror = function() { openAt(dbVersion || 1); };
+        });
+    }
+
+    function writeAgentTasks(data) {
+        return writeKeyedStore('AgentTaskDB', 1, 'agent_tasks', data, function(store) {
+            store.createIndex('timestamp', 'timestamp', { unique: false });
+        });
+    }
+
     function writeIndexedDB(dbName, storeName, version, data, clearFirst) {
         if (clearFirst === undefined) clearFirst = true;
         return new Promise(function(resolve, reject) {
@@ -84,16 +144,30 @@
                         rawReq.onsuccess = function() {
                             var existingVer = rawReq.result.version;
                             rawReq.result.close();
-                            var targetVer = Math.max(fallbackVer, existingVer + 1);
-                            var req = indexedDB.open(dbName, targetVer);
-                            req.onupgradeneeded = function(e) {
-                                var db2 = e.target.result;
-                                if (!db2.objectStoreNames.contains(storeName)) {
-                                    db2.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
-                                }
+                            // 先按「现有版本」打开（不无谓升版）：无谓 +1 会永久抬高库版本，
+                            // 导致其它模块里写死 open(db, 旧版本) 的代码直接抛 VersionError。
+                            // 只有打开后仍缺 store 时，才提升到 existingVer + 1 重建一次。
+                            var openAndEnsure = function(ver) {
+                                var req = indexedDB.open(dbName, ver);
+                                req.onupgradeneeded = function(e) {
+                                    var db2 = e.target.result;
+                                    if (!db2.objectStoreNames.contains(storeName)) {
+                                        db2.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                                    }
+                                };
+                                req.onsuccess = function() {
+                                    var db = req.result;
+                                    if (!db.objectStoreNames.contains(storeName)) {
+                                        db.close();
+                                        if (ver > existingVer) { rej(new Error('无法创建 store: ' + storeName)); return; }
+                                        openAndEnsure(existingVer + 1);
+                                        return;
+                                    }
+                                    res(db);
+                                };
+                                req.onerror = function() { rej(req.error); };
                             };
-                            req.onsuccess = function() { res(req.result); };
-                            req.onerror = function() { rej(req.error); };
+                            openAndEnsure(Math.max(fallbackVer, existingVer));
                         };
                         rawReq.onerror = function() {
                             // 无法探测 → 用原版本直接开（可能会失败）
@@ -288,9 +362,13 @@
         var backup = { version: 3, exportDate: new Date().toISOString(), modules: {} };
         var errors = [];
         try {
-            try { backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 2); } catch(e) { errors.push('检查信息: '+e.message); backup.modules.issues = []; }
+            // 读取失败时【不要】写入空数组：恢复端以「模块存在」为清空依据，
+            // 一次读取异常就会产出「空备份」，用户恢复后真实数据被清空。
+            try { backup.modules.issues = await readIndexedDB('RailwayIssueDB_v2', 'issues', 2); } catch(e) { errors.push('检查信息: '+e.message); }
             window.showProgress(15, '正在收集规章制度…');
-            try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); backup.modules.rules = []; }
+            try { backup.modules.rules = await readIndexedDB('RailwayRuleDB', 'ruleCollection', 3); } catch(e) { errors.push('规章制度: '+e.message); }
+            window.showProgress(18, '正在收集规章图片…');
+            try { backup.modules.ruleImages = await readIndexedDB('RailwayRuleDB', 'rule_images', 3); } catch(e) { errors.push('规章图片: '+e.message); }
             window.showProgress(25, '正在收集工作日志…');
             backup.modules.diary = getLocal('railway_work_diary_v2', []);
             window.showProgress(27, '正在收集考勤记录…');
@@ -300,9 +378,26 @@
             window.showProgress(35, '正在收集检查手册…');
             backup.modules.handbook = getLocal('handbook_fourlevel_v1', []);
             window.showProgress(40, '正在收集写作资料…');
-            try { backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2); } catch(e) { errors.push('写作资料: '+e.message); backup.modules.writingMaterials = []; }
+            try { backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2); } catch(e) { errors.push('写作资料: '+e.message); }
             window.showProgress(45, '正在收集历史报告…');
-            try { backup.modules.writingReports = await readIndexedDB('railway_writer_db', 'writing_reports', 2); } catch(e) { errors.push('写作报告: '+e.message); backup.modules.writingReports = []; }
+            try { backup.modules.writingReports = await readIndexedDB('railway_writer_db', 'writing_reports', 2); } catch(e) { errors.push('写作报告: '+e.message); }
+            window.showProgress(48, '正在收集写作模板与智能体记忆…');
+            try { backup.modules.writingTemplates = await readIndexedDB('railway_writer_db', 'writing_templates', 2); } catch(e) { errors.push('写作模板: '+e.message); }
+            // 先向 dbManager 登记 schema 再读取：AgentTaskDB 平时由 agent-memory 模块自己建表，
+            // 若备份先跑，dbManager 会以 v1 建出一个【空库】，之后 agent-memory 再 open(v1)
+            // 不会触发升级，agent_tasks 永远建不出来，智能体记忆彻底失效。
+            try {
+                if (window.dbManager && typeof window.dbManager.register === 'function' && !window._agentTaskDBRegistered) {
+                    window.dbManager.register('AgentTaskDB', 1, function(db) {
+                        if (!db.objectStoreNames.contains('agent_tasks')) {
+                            var s = db.createObjectStore('agent_tasks', { keyPath: 'id' });
+                            s.createIndex('timestamp', 'timestamp', { unique: false });
+                        }
+                    });
+                    window._agentTaskDBRegistered = true;
+                }
+            } catch (e) {}
+            try { backup.modules.agentTasks = await readIndexedDB('AgentTaskDB', 'agent_tasks', 1); } catch(e) { errors.push('智能体记忆: '+e.message); }
             window.showProgress(50, '正在收集对话记录…');
             backup.modules.dsConversations = getLocal('ds_conversations_v1', []);
             backup.modules.dsChatHistory = getLocal('ds_chat_history_v1', []);
@@ -318,7 +413,8 @@
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
             window.showProgress(60, '正在收集多媒体文件…');
-            backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1);
+            // 与其它模块一致：读取失败只记录错误，不让整次备份直接失败
+            try { backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1); } catch(e) { errors.push('多媒体: '+e.message); }
             // 将 diaryMedia 中的 blob (ArrayBuffer) 异步转为 base64，避免手机端主线程卡死
             var mediaFileCount = 0, mediaTotalBytes = 0;
             if (backup.modules.diaryMedia && backup.modules.diaryMedia.length > 0) {
@@ -361,7 +457,9 @@
 
             // 桌面端 或 移动端支持系统分享 → 优先 ZIP 打包 + 分享/下载
             if (!isMobile || shareSupported) {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+                // 用 requireLib：直接 await loadScript 会在离线时抛错，
+                // 使下面「HTML 单文件兜底」这条退路永远走不到（备份功能整体失效）
+                await window.requireLib(LIB_JSZIP_BK, { feature: 'ZIP 备份', silent: true });
                 if (typeof JSZip !== 'undefined') {
                     window.showProgress(75, '正在压缩打包…');
                     var zip = new JSZip();
@@ -462,6 +560,8 @@
         return parts.join('\n');
     }
 
+    var LIB_JSZIP_BK = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+
     // ---- 全局导入进度条（使用全局 showProgress） ----
     function _showRestoreProgress(show) { if (!show) window.hideProgress(); }
     function _setRestoreProgress(pct, status) { window.showProgress(pct, status); }
@@ -469,9 +569,11 @@
     window.oneClickRestore = function() {
         // 先用同步手势打开文件选择器（避免 await 丢失用户手势）
         triggerFileInput('.zip', async function(e) {
-            await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
-            if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
             var file = e.target.files[0]; if (!file) return;
+            // 原实现先 await loadScript 再取 file：离线时异常直接外泄（此处无 try 包裹），
+            // 恢复流程静默中断、进度条不收起，用户以为文件没选上
+            if (!(await window.requireLib(LIB_JSZIP_BK, { feature: 'ZIP 恢复' }))) return;
+            if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
             try {
                 _setRestoreProgress(5, '正在解析备份文件…');
                 var zip = await JSZip.loadAsync(file);
@@ -498,12 +600,15 @@
                 _showRestoreProgress(true);
                 _setRestoreProgress(10, '正在恢复检查信息…');
                 var bm = backup.modules;
+                // 以「备份里是否包含该模块」为准（Array.isArray 而非 .length）：
+                // 备份时读取失败的模块不会产生键，恢复时必须跳过，不能反手把现有数据清掉；
+                // 而真实为空的备份（用户确实没有数据）应当如实清库，两者必须区分开。
                 _setRestoreProgress(15, '正在恢复检查信息…');
-                if (bm.issues && Array.isArray(bm.issues) && bm.issues.length) {
+                if (Array.isArray(bm.issues)) {
                     await writeIndexedDB('RailwayIssueDB_v2', 'issues', 2, bm.issues);
                     console.log('已恢复 ' + bm.issues.length + ' 条检查信息');
                 } else {
-                    console.warn('备份中无检查信息数据');
+                    console.warn('备份中无检查信息数据，已跳过（保留现有数据）');
                 }
                 _setRestoreProgress(25, '正在恢复规章制度…');
                 if (bm.rules && Array.isArray(bm.rules) && bm.rules.length) {
@@ -577,13 +682,35 @@
                 if (bm.handbook && Array.isArray(bm.handbook) && bm.handbook.length) {
                     localStorage.setItem('handbook_fourlevel_v1', JSON.stringify(bm.handbook));
                 }
+                _setRestoreProgress(18, '正在恢复规章图片…');
+                if (Array.isArray(bm.ruleImages)) {
+                    try {
+                        await writeKeyedStore('RailwayRuleDB', 3, 'rule_images', bm.ruleImages);
+                        console.log('已恢复 ' + bm.ruleImages.length + ' 条规章图片');
+                    } catch (e) {
+                        console.warn('[backup] 规章图片恢复失败（不影响其它数据）:', e.message);
+                    }
+                }
                 _setRestoreProgress(55, '正在恢复写作资料库…');
-                if (bm.writingMaterials && Array.isArray(bm.writingMaterials) && bm.writingMaterials.length) {
+                if (Array.isArray(bm.writingMaterials)) {
                     await writeIndexedDB('railway_writer_db', 'writing_materials', 2, bm.writingMaterials);
                 }
+                _setRestoreProgress(58, '正在恢复写作模板…');
+                if (Array.isArray(bm.writingTemplates)) {
+                    await writeIndexedDB('railway_writer_db', 'writing_templates', 2, bm.writingTemplates);
+                }
                 _setRestoreProgress(60, '正在恢复历史报告…');
-                if (bm.writingReports && Array.isArray(bm.writingReports) && bm.writingReports.length) {
+                if (Array.isArray(bm.writingReports)) {
                     await writeIndexedDB('railway_writer_db', 'writing_reports', 2, bm.writingReports);
+                }
+                _setRestoreProgress(63, '正在恢复智能体记忆…');
+                if (Array.isArray(bm.agentTasks)) {
+                    try {
+                        await writeAgentTasks(bm.agentTasks);
+                        console.log('已恢复 ' + bm.agentTasks.length + ' 条智能体任务记录');
+                    } catch (e) {
+                        console.warn('[backup] 智能体任务恢复失败（不影响其它数据）:', e.message);
+                    }
                 }
                 _setRestoreProgress(65, '正在恢复对话记录…');
                 if (bm.dsConversations) localStorage.setItem('ds_conversations_v1', JSON.stringify(bm.dsConversations));
@@ -610,7 +737,7 @@
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
                 _setRestoreProgress(75, '正在还原多媒体文件…');
-                if (bm.diaryMedia) {
+                if (Array.isArray(bm.diaryMedia)) {
                     for (var i = 0; i < bm.diaryMedia.length; i++) {
                         var rec = bm.diaryMedia[i];
                         if (rec.blobBase64) {

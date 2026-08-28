@@ -96,25 +96,45 @@
     /**
      * 新增日志条目（内存 + 持久化）
      */
+    var _pushing = false;   // 重入保护：记录过程中再抛错会递归触发 window error
     function pushEntry(entry) {
-        _logs.push(entry);
+        if (_pushing) return;
+        _pushing = true;
+        try {
+            _logs.push(entry);
 
-        // 限制内存中数量
-        if (_logs.length > MAX_LOGS * 2) {
-            _logs = _logs.slice(-MAX_LOGS);
+            // 限制内存中数量
+            if (_logs.length > MAX_LOGS * 2) {
+                _logs = _logs.slice(-MAX_LOGS);
+            }
+
+            persist();
+
+            // 通知订阅者
+            notifyListeners(entry);
+        } catch (e) {
+            // 记录逻辑自身出错绝不能再抛，否则会再次进入 window.onerror 形成死循环
+        } finally {
+            _pushing = false;
         }
-
-        // 异步持久化（不阻塞主线程）
-        persist();
-
-        // 通知订阅者
-        notifyListeners(entry);
     }
 
     /**
      * 持久化到 localStorage
+     * 高频抛错时（如渲染循环内报错）每条都做一次全量 JSON 序列化会反向加剧卡顿，
+     * 这里做 30 秒节流；离开页面前再强制落盘一次。
      */
-    function persist() {
+    var _persistTimer = null;
+    function persist(force) {
+        if (!force) {
+            if (_persistTimer) return;
+            _persistTimer = setTimeout(function() {
+                _persistTimer = null;
+                persist(true);
+            }, 30000);
+            return;
+        }
+        if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
         try {
             var toSave = _logs.slice(-MAX_LOGS);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
@@ -156,11 +176,17 @@
      * 捕获 JS 运行时错误 + 资源加载失败
      */
     function onJsError(msg, source, lineNo, colNo, error, target) {
+        // 只有「真实的资源元素」才算资源加载失败。
+        // 运行时 JS 错误的 error 事件是在 window 上派发的，在 window 的 capture 监听里
+        // e.target === window（truthy）。若直接 `if (target)`，所有 JS 异常都会被误判成
+        // CDN 资源错误，message / 行号 / 堆栈全部丢弃 —— js_error 类型事实上永远产生不了。
+        var resTarget = (target && target !== window && target !== document && target.tagName) ? target : null;
+
         // 资源加载失败的通用事件（脚本/CSS/图片等）
-        if (target || (lineNo === 0 && colNo === 0 && !error &&
+        if (resTarget || (lineNo === 0 && colNo === 0 && !error &&
             msg && (msg.indexOf('Script error') === 0 || msg === ''))) {
-            if (target) {
-                onCdnError(target);
+            if (resTarget) {
+                onCdnError(resTarget);
             } else if (source) {
                 // 跨域脚本无 detail，构造一个虚拟 target
                 onCdnError({ src: source, tagName: 'SCRIPT' });
@@ -435,6 +461,14 @@
         window.addEventListener('unhandledrejection', function(e) {
             onUnhandledRejection(e);
             // 不 preventDefault
+        });
+
+        // 持久化做了 30 秒节流，离开/隐藏页面时强制落盘，避免最近的错误丢失
+        var flush = function() { try { persist(true); } catch(e) {} };
+        window.addEventListener('pagehide', flush);
+        window.addEventListener('beforeunload', flush);
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') flush();
         });
 
         console.log('[ErrorMonitor] 全局错误监控已启动');

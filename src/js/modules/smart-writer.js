@@ -2887,7 +2887,7 @@
                 const suppList = [];
                 mats.forEach(m => suppList.push({ kind: 'mat', id: m.id, title: (m.title || m.fileName || '资料'), label: (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它', content: m.content || '' }));
                 otherReports.forEach(rp => suppList.push({ kind: 'report', id: rp.id, title: (rp.title || '未命名报告'), label: '历史报告', content: rp.content || '' }));
-                let matHtml = '<div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:#f8fafc;">';
+                let matHtml = '<div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg);">';
                 if (!suppList.length) {
                     matHtml += '<div style="padding:10px;text-align:center;color:var(--text-secondary);font-size:0.82rem;">暂无可用资料或其它报告（可在「资料中心」导入）</div>';
                 } else {
@@ -2897,7 +2897,7 @@
                         matHtml += '<div style="font-size:0.76rem;font-weight:600;color:var(--primary);margin:4px 0 2px;">' + wrEsc(t) + '</div>';
                         matGroups[t].forEach(idx => {
                             const s = suppList[idx];
-                            matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:0.82rem;">'
+                            matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);cursor:pointer;font-size:0.82rem;">'
                                 + '<input type="checkbox" class="wr-modify-hist-mat" value="' + idx + '" style="cursor:pointer;">'
                                 + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(s.title) + '</span></label>';
                         });
@@ -2907,7 +2907,7 @@
                         matHtml += '<div style="font-size:0.76rem;font-weight:600;color:var(--primary);margin:6px 0 2px;">📄 历史报告（勾选后从中抽取相关内容补充）</div>';
                         reportIdxs.forEach(idx => {
                             const s = suppList[idx];
-                            matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:0.82rem;">'
+                            matHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);cursor:pointer;font-size:0.82rem;">'
                                 + '<input type="checkbox" class="wr-modify-hist-mat" value="' + idx + '" style="cursor:pointer;">'
                                 + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(s.title) + '</span></label>';
                         });
@@ -2918,10 +2918,10 @@
                 const modal = document.createElement('div');
                 modal.id = 'wr-modify-history-modal';
                 modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10100;display:flex;align-items:center;justify-content:center;';
-                modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">'
+                modal.innerHTML = '<div style="background:var(--card-bg);border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">'
                     + '<div style="display:flex;align-items:center;justify-content:space-between;">'
                     + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✏️ 修改报告：' + wrEsc((r.title||'未命名报告').slice(0,20)) + '</span>'
-                    + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>'
+                    + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);">✕</button>'
                     + '</div>'
                     + '<div style="font-size:0.8rem;color:var(--text-secondary);">请输入修改要求，AI 将基于原报告进行调整。</div>'
                     + '<textarea id="wr-modify-instruction" placeholder="例如：增加安全检查项点、补充数据分析段落、调整报告结构..." style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;resize:vertical;font-family:inherit;"></textarea>'
@@ -2929,7 +2929,7 @@
                     + matHtml
                     + '<div style="display:flex;gap:10px;margin-top:4px;">'
                     + '<button id="wr-modify-confirm-btn" style="flex:1;padding:10px;background:var(--ds-blue);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 开始修改</button>'
-                    + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.9rem;cursor:pointer;">取消</button>'
+                    + '<button onclick="document.getElementById(\'wr-modify-history-modal\').remove()" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font-size:0.9rem;cursor:pointer;">取消</button>'
                     + '</div></div>';
                 document.body.appendChild(modal);
                 document.getElementById('wr-modify-confirm-btn').onclick = async function() {

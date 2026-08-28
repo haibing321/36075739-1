@@ -92,20 +92,35 @@
         if (nav && nav.classList.contains('nav-open')) return;
 
         // 中间区域滑动 → 模块切换（无限循环）
+        // 注意：侧滑顺序不包含「资料中心」(material)，左右滑屏不出现资料中心；
+        // 资料中心仅能通过底部导航/菜单进入，避免滑动经过一个「无主 Tab」造成跳变。
+        var SWIPE_ORDER = (typeof TAB_ORDER !== 'undefined' ? TAB_ORDER : [])
+            .filter(function(t) { return t !== 'material'; });
         var curTab = _currentTab();
         if (!curTab) return;
-        var curIdx = TAB_ORDER.indexOf(curTab);
-        if (curIdx < 0) return;
+        var curIdx = SWIPE_ORDER.indexOf(curTab);
+        if (curIdx < 0) {
+            // 当前在资料中心（经导航进入）时，以其在完整顺序中最接近的侧滑邻模块为基准，
+            // 让左右滑仍能退出资料中心，而不是卡住。
+            var fullIdx = (typeof TAB_ORDER !== 'undefined') ? TAB_ORDER.indexOf(curTab) : -1;
+            if (fullIdx < 0) return;
+            var before = -1, after = -1;
+            for (var k = fullIdx - 1; k >= 0; k--) { var bi = SWIPE_ORDER.indexOf(TAB_ORDER[k]); if (bi >= 0) { before = bi; break; } }
+            for (var j = fullIdx + 1; j < TAB_ORDER.length; j++) { var ai = SWIPE_ORDER.indexOf(TAB_ORDER[j]); if (ai >= 0) { after = ai; break; } }
+            if (before >= 0) curIdx = before;
+            else if (after >= 0) curIdx = after;
+            else return;
+        }
 
         // dx<0 左滑→下一模块；dx>0 右滑→上一模块（循环切换）
         var nextIdx = dx < 0 ? curIdx + 1 : curIdx - 1;
-        if (nextIdx < 0) nextIdx = TAB_ORDER.length - 1;
-        if (nextIdx >= TAB_ORDER.length) nextIdx = 0;
+        if (nextIdx < 0) nextIdx = SWIPE_ORDER.length - 1;
+        if (nextIdx >= SWIPE_ORDER.length) nextIdx = 0;
 
         // 切换模块时隐藏退出提示条
         if (window._hideExitBar) window._hideExitBar();
 
-        switchTab(TAB_ORDER[nextIdx], true);
+        switchTab(SWIPE_ORDER[nextIdx], true);
     }, true);   // ← capture = true
 
 })();

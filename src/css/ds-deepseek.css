@@ -12,7 +12,42 @@
 }
 .ds-chat-header-left { display: flex; align-items: center; gap: 2px; }
 .ds-svg-ico { display: inline-flex; align-items: center; justify-content: center; }
-.ds-icon-btn.on { background: #dbeafe; color: #4d6bfe; }
+
+/* ---------- 图标按钮统一 ----------
+   项目里存在两套同用途的图标按钮：.ds-icon-btn（对话顶栏）与 .ds-ico-btn（输入区）。
+   两者尺寸相同但形状不同（一个方、一个圆），且 hover 态配色也不一致，
+   在智能助手同一屏内并排出现时非常明显。
+   这里统一为同一套视觉：34×34 圆形 + 一致的 hover / 激活态。
+   两个类名都保留，避免改动大量 HTML 与 JS 引用。 */
+.ds-icon-btn,
+.ds-ico-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px; height: 34px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+    color: var(--text-secondary, #7a869a);
+    transition: background 0.15s, color 0.15s;
+}
+.ds-icon-btn:hover,
+.ds-ico-btn:hover { background: var(--ds-gray-100, #eef1f6); color: var(--primary, #4d6bfe); }
+.ds-icon-btn:active,
+.ds-ico-btn:active { transform: scale(0.94); }
+/* 激活/开启态（侧栏开关 .on、联网搜索 .ds-ws-on）：淡主色底 + 主色图标 */
+.ds-icon-btn.on,
+.ds-ico-btn.on,
+.ds-ico-btn.ds-ws-on {
+    background: var(--ds-blue-soft, #e8ecfd);
+    color: var(--primary, #4d6bfe);
+}
+.ds-icon-btn.on:hover,
+.ds-ico-btn.on:hover,
+.ds-ico-btn.ds-ws-on:hover { background: var(--ds-blue-border, #dde3fc); color: var(--primary, #4d6bfe); }
 
 /* —— 空对话欢迎页（DeepSeek 极简空态）—— */
 .ds-welcome {
@@ -232,26 +267,8 @@
 }
 .ds-chip-select:focus { outline: none; }
 .ds-chip-select option { color: #1e293b; font-size: 0.9rem; }
-/* 关联数据按钮（独立圆形图标） */
-.ds-ico-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px; height: 34px;
-    border: none;
-    background: transparent;
-    color: #7a869a;
-    border-radius: 50%;
-    cursor: pointer;
-    flex-shrink: 0;
-    padding: 0;
-    transition: background 0.15s, color 0.15s;
-}
-.ds-ico-btn:hover { background: #eef1f6; color: #4d6bfe; }
-.ds-ico-btn:active { transform: scale(0.94); }
-/* 联网搜索开启态：淡主色底 + 主色图标（纯色，无渐变） */
-.ds-ico-btn.ds-ws-on { background: #e8ecfd; color: #4d6bfe; }
-.ds-ico-btn.ds-ws-on:hover { background: #dde3fc; color: #4d6bfe; }
+/* 关联数据按钮（独立圆形图标）——视觉已与 .ds-icon-btn 统一，见文件上方「图标按钮统一」段。
+   此处保留类名仅为兼容既有 HTML/JS 引用，不再重复定义样式。 */
 /* 说明菜单 */
 .ds-ws-menu { min-width: 248px; }
 .ds-ws-menu-head { padding: 4px 11px 9px; border-bottom: 1px solid #eef2f7; margin-bottom: 6px; }

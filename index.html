@@ -6,6 +6,8 @@
     <title>安监智能辅助系统</title>
     <meta name="theme-color" content="#1a365d">
     <meta name="mobile-web-app-capable" content="yes">
+    <!-- 旧版 iOS Safari 只识别 apple- 前缀，两者并存确保添加到主屏幕后进入全屏而非浏览器外壳 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
     <meta name="description" content="铁路安全检查智能辅助系统 — 问题库、规章、日志、通讯录、手册、AI助手六合一工具">
@@ -92,6 +94,17 @@
            全面屏 iPhone 底部 Home 指示条 / 顶部状态栏会侵入 fixed 元素，
            统一用这两个变量，避免导航、弹窗、退出提示被遮挡。 */
         :root {
+            /* 三段式兜底：先给 0，再用 iOS 11.0~11.1 的 constant()，最后是标准 env()。
+               不支持 env() 的旧浏览器会认为整条声明无效并回落到上一行的 0，
+               否则 padding 会整体失效、底部按钮被 Home 指示条遮住。 */
+            --sat: 0px;
+            --sab: 0px;
+            --sal: 0px;
+            --sar: 0px;
+            --sat: constant(safe-area-inset-top, 0px);
+            --sab: constant(safe-area-inset-bottom, 0px);
+            --sal: constant(safe-area-inset-left, 0px);
+            --sar: constant(safe-area-inset-right, 0px);
             --sat: env(safe-area-inset-top, 0px);
             --sab: env(safe-area-inset-bottom, 0px);
             --sal: env(safe-area-inset-left, 0px);
@@ -1408,6 +1421,47 @@
 
 
     <!--
+      语法基线自检（必须排在所有业务脚本之前）
+      本系统使用 ES2020 的「可选链」语法。在低于 Chrome 80 / iOS Safari 13.4 /
+      Android WebView 80 的设备上，后续脚本会在【解析阶段】整体失败，表现为白屏或
+      功能大面积缺失，控制台只有一行难以理解的 SyntaxError，用户无从判断原因。
+      这里在最早期探测，不支持时给出可读提示。
+      实现要点：待探测的语法写在字符串里交给 new Function —— 字符串在运行时才被解析，
+      因此本段自身不含 ES2020 语法，在旧浏览器上也能正常执行并完成探测。
+    -->
+    <script>
+    (function () {
+        var ok = false;
+        try {
+            /* 字符串中的 ?. 会被 new Function 在运行时解析；不支持时抛 SyntaxError */
+            var probe = new Function("var o = null; return o?.x;");
+            probe();
+            var probe2 = new Function("var o = { a: { b: 1 } }; return o?.a?.b;");
+            probe2();
+            ok = true;
+        } catch (e) {
+            ok = false;
+        }
+        if (ok) return;
+        try {
+            var st = document.createElement("style");
+            st.textContent = "html,body{margin:0;height:100%;background:#0f172a;color:#e2e8f0;font-family:-apple-system,\"PingFang SC\",\"Microsoft YaHei\",sans-serif;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;}.bx{max-width:430px;line-height:1.9;}.bx h1{font-size:1.15rem;margin:0 0 14px;color:#fbbf24;font-weight:700;}.bx p{margin:0 0 10px;color:#cbd5e1;font-size:.9rem;}.bx .dim{color:#94a3b8;font-size:.82rem;margin-top:16px;}";
+            (document.head || document.documentElement).appendChild(st);
+            var box = document.createElement("div");
+            box.className = "bx";
+            box.innerHTML = "<h1>浏览器版本过低</h1>" +
+                "<p>本系统使用了较新的 JavaScript 语法，当前浏览器无法解析。</p>" +
+                "<p>请使用 <b>Chrome / Edge 80 及以上</b>，<br>或 <b>iOS Safari 13.4 及以上</b> 打开。</p>" +
+                "<p class=\"dim\">现场专用设备请联系管理员升级系统 WebView 组件。</p>";
+            if (document.body) document.body.appendChild(box);
+            else document.addEventListener("DOMContentLoaded", function () {
+                try { document.body.appendChild(box); } catch (e2) {}
+            });
+        } catch (e) {}
+    })();
+    </script>
+
+    <!--
       性能优化: 将重型库延迟到使用时动态加载（via loadScript）
       首屏只需加载 ~50KB 的核心 JS，无需等待 ~2MB 的大型库
       保留 DOMPurify 确保安全防护随时可用
@@ -1679,6 +1733,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.41 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.41 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🌙 暗黑语义色补全：dark 模式补齐信息/成功/危险/警告/靛蓝等语义色块（提示条、标签、按钮边框），深色调一致不再有浅色块；深色头部主色改用更亮变体，对比度达标。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎨 UI 一致性：小按钮（.btn-small/.btn-tiny/.btn-data-sm）圆角与内边距统一；「×」文本关闭钮（.btn-close/.modal-close）形状、悬停态拉齐；deepseek 图标按钮 hover/active/开启态统一样式。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📱 iOS 兼容：补 `-webkit-backdrop-filter` 前缀（毛玻璃遮罩不再静默失效）；safe-area-inset 三段式兜底（constant()→env()）；新增 `apple-mobile-web-app-capable`；旧浏览器打开时显示「浏览器版本过低」可读提示而非白屏。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.40 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1701,23 +1777,9 @@
                 </div>
             </div>
 
-            <!-- v3.39 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.39 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📝 全模块界面文字说明优化：资料中心、智能对规、智能写作、API 配置、关于系统等说明性文字统一精简，去除冗余表述、更直观体现模块功能（如「注册目的」→「配置用途」、「如何配置（方法）」→「配置步骤」、资料类型说明压缩为短列表）。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.39 已归档（最近 2 版本为 v3.41 / v3.40） -->
 
-            <!-- v3.38 已归档（最近 2 版本为 v3.40 / v3.39） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.38 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.39 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

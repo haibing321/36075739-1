@@ -54,6 +54,9 @@
     color: var(--text);
     border-bottom-color: var(--border);
 }
+/* 标题用主色 #4d6bfe，在深色头部上对比度不足；暗色下改用更亮的主色变体 */
+[data-theme="dark"] .card-title,
+[data-theme="dark"] .modal-title { color: #8fa4ff !important; }
 [data-theme="dark"] .card-body { background: var(--card-bg); color: var(--text); }
 [data-theme="dark"] .stat-card { background: var(--card-bg); border-color: var(--border); }
 [data-theme="dark"] .diary-card { background: var(--card-bg) !important; border-color: var(--border); }
@@ -322,4 +325,94 @@
     background: #1e293b !important;
     color: var(--text) !important;
     border-color: var(--border) !important;
+}
+
+/* ---------- 12. 语义色块补全 ----------
+   项目大量使用「浅色底 + 深色字」的语义徽章/提示条（如 blue-100 底 + blue-700 字）。
+   前面的兜底规则只覆盖了部分色值，剩下的在深色界面上会变成一块突兀的亮补丁，
+   与已暗化的同类徽章（.confidence-badge / .vd-badge 等）风格也不一致。
+   这里按色系统一给出「深底 + 亮字」版本。 */
+
+/* 蓝 / 信息：#dbeafe #e6f7ff #f0f7ff #bae6fd（#bae6fd 多用作边框） */
+[data-theme="dark"] [style*="#dbeafe"],
+[data-theme="dark"] [style*="#e6f7ff"],
+[data-theme="dark"] [style*="#f0f7ff"] {
+    background: #1e3a5f !important;
+    color: #93c5fd !important;
+    border-color: #334155 !important;
+}
+[data-theme="dark"] [style*="#bae6fd"] { border-color: #334155 !important; }
+
+/* 绿 / 成功：#dcfce7 #e8f5e9 */
+[data-theme="dark"] [style*="#dcfce7"],
+[data-theme="dark"] [style*="#e8f5e9"] {
+    background: #14352a !important;
+    color: #6ee7b7 !important;
+    border-color: #166534 !important;
+}
+
+/* 红 / 危险：#fee2e2 #fef2f2 #fff1f2 #fecaca（#fecaca 多用作边框） */
+[data-theme="dark"] [style*="#fee2e2"],
+[data-theme="dark"] [style*="#fef2f2"],
+[data-theme="dark"] [style*="#fff1f2"] {
+    background: #3a1a1a !important;
+    color: #fca5a5 !important;
+    border-color: #991b1b !important;
+}
+[data-theme="dark"] [style*="#fecaca"] { border-color: #991b1b !important; }
+
+/* 琥珀 / 警告：#fde68a（多用作边框）#fff3cd */
+[data-theme="dark"] [style*="#fff3cd"] {
+    background: #3a2a0a !important;
+    color: #fbbf24 !important;
+    border-color: #92400e !important;
+}
+[data-theme="dark"] [style*="#fde68a"] {
+    background: #3a2a0a !important;
+    color: #fbbf24 !important;
+    border-color: #92400e !important;
+}
+
+/* 靛蓝 / 紫：#eef2ff #e0e7ff #ede9fe #f5f3ff */
+[data-theme="dark"] [style*="#eef2ff"],
+[data-theme="dark"] [style*="#e0e7ff"],
+[data-theme="dark"] [style*="#ede9fe"],
+[data-theme="dark"] [style*="#f5f3ff"] {
+    background: #2a2a4a !important;
+    color: #c7d2fe !important;
+    border-color: #3f3f66 !important;
+}
+
+/* ---------- 13. 数据管理区小按钮（btn-data-*）暗色 ----------
+   这三个类在浅色下是「浅色底 + 深色字 + 同色系边框」，
+   原先只用 filter: brightness(0.92) 压暗，在深底上反而更脏且对比度不足。 */
+[data-theme="dark"] .btn-data-blue {
+    background: #1e3a5f !important;
+    border-color: #334155 !important;
+    color: #93c5fd !important;
+}
+[data-theme="dark"] .btn-data-green {
+    background: #14352a !important;
+    border-color: #166534 !important;
+    color: #6ee7b7 !important;
+}
+[data-theme="dark"] .btn-data-red {
+    background: #3a1a1a !important;
+    border-color: #991b1b !important;
+    color: #fca5a5 !important;
+}
+[data-theme="dark"] .btn-data-blue:hover,
+[data-theme="dark"] .btn-data-green:hover,
+[data-theme="dark"] .btn-data-red:hover { filter: brightness(1.25); }
+
+/* ---------- 14. 图标按钮（.ds-icon-btn / .ds-ico-btn 已统一）暗色 ---------- */
+[data-theme="dark"] .ds-icon-btn,
+[data-theme="dark"] .ds-ico-btn { color: var(--text-secondary) !important; }
+[data-theme="dark"] .ds-icon-btn:hover,
+[data-theme="dark"] .ds-ico-btn:hover { background: #2a3548 !important; }
+[data-theme="dark"] .ds-icon-btn.on,
+[data-theme="dark"] .ds-ico-btn.on,
+[data-theme="dark"] .ds-ico-btn.ds-ws-on {
+    background: #1e3a5f !important;
+    color: #93c5fd !important;
 }

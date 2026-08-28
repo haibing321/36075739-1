@@ -16,6 +16,7 @@
     background: #dbe3ee;
     box-shadow: 0 1px 5px rgba(15, 23, 42, 0.10);
     border-bottom: 1px solid #c7d0de;
+    -webkit-backdrop-filter: none;
     backdrop-filter: none;
 }
 .logo-text { color: var(--text); }
@@ -100,8 +101,13 @@
 }
 .btn-primary-sm:hover { background: var(--ds-blue-dark); transform: none; box-shadow: none; }
 
-.btn-small { border-radius: var(--ds-radius); }
-.btn-tiny { border-radius: 8px; }
+/* 小尺寸按钮圆角统一：原先 .btn-small/.btn-primary-sm 用 --ds-radius(10px)，
+   而 .btn-data-sm 仍是 8px，同一排按钮圆角不一致。 */
+.btn-small,
+.btn-tiny,
+.btn-data-sm { border-radius: var(--ds-radius); }
+/* 小尺寸按钮内边距统一（原先彼此 padding 差异明显） */
+.btn-data-sm { padding: 6px 12px; font-size: 0.78rem; }
 
 /* ---------- 2.x 内联彩色按钮统一（JS 动态生成；个别高饱和色与整体不协调，统一为主色/柔和色） ---------- */
 button[style*="background:#3b82f6"],
@@ -201,19 +207,53 @@ button[style*="background: #10b981"] { background: var(--primary) !important; bo
 }
 .btn-copy:hover { background: var(--ds-blue); color: #fff; border-color: var(--ds-blue); }
 
-.btn-close { color: var(--ds-gray-500); }
-.btn-close:hover { background: var(--ds-gray-100); color: var(--ds-gray-700); }
+/* 「×」文本关闭钮统一：.btn-close 与 .modal-close 形状/内边距/悬停态拉齐 */
+.btn-close,
+.modal-close {
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    font-size: 1.2rem;
+    line-height: 1;
+    border-radius: var(--ds-radius);
+    color: var(--ds-gray-500);
+    cursor: pointer;
+    transition: background .2s, color .2s;
+}
+.btn-close:hover,
+.modal-close:hover { background: var(--ds-gray-100); color: var(--ds-gray-700); }
 
 /* ---------- 5. 表单控件（输入框 / 下拉 / 文本域 / 搜索） ---------- */
+/* 补充：--ds-* 灰阶在暗色主题下未重新声明，直接用它们在暗色模式会出现
+   「深底 + 深边框」导致输入框看不见。这里给出暗色覆盖，让表单控件随主题平滑切换，
+   而不必依赖 dark.css 的全局 !important 兜底。 */
+:root[data-theme="dark"] {
+    --ds-gray-50: #0f172a;
+    --ds-gray-100: #1e293b;
+    --ds-gray-200: #334155;
+    --ds-gray-300: #475569;
+    --ds-gray-500: #94a3b8;
+    --ds-gray-600: #cbd5e1;
+    --ds-gray-700: #e2e8f0;
+    --ds-blue-soft: #1e3a5f;
+    --ds-blue-border: #3f5be0;
+}
+
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 select,
 textarea {
     border: 1px solid var(--ds-gray-200);
     border-radius: var(--ds-radius);
-    background: #fff;
+    /* 用变量而非硬编码 #fff：暗色主题下自动跟随，无需 !important 覆盖 */
+    background: var(--card-bg);
     color: var(--text);
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    font-family: inherit;
     transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"])::placeholder,
+textarea::placeholder { color: var(--ds-gray-500); }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
 select:focus,
 textarea:focus {
@@ -222,13 +262,13 @@ textarea:focus {
     outline: none;
 }
 .search-box {
-    background: var(--ds-gray-100);
+    background: var(--ds-gray-50);
     border: 1px solid var(--ds-gray-200);
     border-radius: var(--ds-radius);
 }
 .search-box:focus-within {
     border-color: var(--ds-blue);
-    background: #fff;
+    background: var(--card-bg);
     box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.12);
 }
 
@@ -245,13 +285,21 @@ textarea:focus {
     border-color: var(--ds-gray-200);
 }
 .card-header {
-    background: #f8fafd;
+    background: var(--ds-gray-50);
     border-bottom: 1px solid var(--ds-gray-200);
     border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0;
     color: var(--text);
 }
-.card-title { color: var(--text); }
-.card-body { background: #f8fafd; }
+/* 标题统一规范：卡片标题与弹窗标题同字号(1.1rem)、同字重(600)、同主色。
+   原先 .modal-title 未设 color（继承正文色），与 .card-title 的主色不一致。 */
+.card-title,
+.modal-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--primary);
+}
+.modal-title { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; word-break: break-all; }
+.card-body { background: var(--card-bg); }
 
 /* ---------- 7. 弹窗 ---------- */
 .modal-content {

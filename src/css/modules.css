@@ -4,12 +4,15 @@
 /* ========== 工作日志专用 ========== */
 /* 备忘弹窗 */
 .memo-modal-content { max-width: 480px; }
-.modal-close {
+/* 「×」文本关闭钮：与 .btn-close 统一（两者长期并存于不同弹窗，视觉必须一致） */
+.modal-close,
+.modal-close:not(.btn-close) {
     background: none; border: none; font-size: 1.2rem;
     cursor: pointer; color: var(--text-secondary); padding: 4px 8px;
-    border-radius: 6px; transition: background .2s;
+    border-radius: var(--radius-sm); transition: background .2s, color .2s;
+    line-height: 1;
 }
-.modal-close:hover { background: #f1f5f9; }
+.modal-close:hover { background: var(--ds-gray-100, #f1f5f9); color: var(--text); }
 .memo-item {
     display: flex; align-items: flex-start; gap: 10px;
     padding: 12px; border: 1px solid var(--border);

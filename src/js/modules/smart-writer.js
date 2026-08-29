@@ -2800,7 +2800,7 @@
                             </div>
                             <div style="font-size:0.78rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc((r.content||'').replace(/\n/g,' ').slice(0,80))}…</div>
                         </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                        <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;flex-basis:100%;flex-shrink:0;margin-top:4px;">
                             <button onclick="wrViewReport(${JSON.stringify(r.id)})" class="wr-mat-btn wr-mat-btn-view">查看</button>
                             <button onclick="wrModifyHistoryReport(${JSON.stringify(r.id)})" class="wr-mat-btn wr-mat-btn-template">✏️ 修改</button>
                             <button onclick="wrDeleteReport(${JSON.stringify(r.id)})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
@@ -3425,7 +3425,7 @@
                             </div>
                             <div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${wrEsc(preview)}…</div>
                         </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                        <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;flex-basis:100%;flex-shrink:0;margin-top:4px;">
                             <button onclick="wrViewMaterial(${JSON.stringify(m.id)})" class="wr-mat-btn wr-mat-btn-view">查看</button>
                             ${!isTemplate ? `<button onclick="wrSetAsTemplate(${JSON.stringify(m.id)})" class="wr-mat-btn wr-mat-btn-template" title="设为写作模版">⭐ 设模版</button>` : '<button disabled class="wr-mat-btn" style="background:#f1f5f9;color:#94a3b8;cursor:not-allowed;border:1px solid #e2e8f0;">✓ 已是模版</button>'}
                             <select onchange="wrChangeMaterialType(${JSON.stringify(m.id)},this.value)" class="wr-mat-select" title="修改类型">

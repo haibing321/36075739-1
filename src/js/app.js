@@ -817,7 +817,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.44'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.45'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -883,6 +883,20 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
     }
+    // 自动检查更新：系统以离线数据完全打开后 30s，再连接远程测试有无新版本；
+    // 仅在线时执行（离线时页面照常使用本地缓存，不打扰、不阻塞）。发现更新在页面顶部弹提示条。
+    // 内置 1 小时节流（silentCheckUpdate）：避免频繁请求版本服务器。
+    if (navigator.onLine !== false) {
+        setTimeout(function() {
+            if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') {
+                silentCheckUpdate();
+            }
+        }, 30000);
+    }
+    // 网络恢复后立即补一次检查：此前离线打开则不会弹出更新提示
+    window.addEventListener('online', function() {
+        try { if (typeof silentCheckUpdate === 'function') silentCheckUpdate(); } catch (e) {}
+    });
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）
@@ -907,6 +921,59 @@ async function silentCheckUpdate() {
     await performUpdateCheck(UPDATE_CHECK_URL, false);
     localStorage.setItem('_last_version_check', Date.now());
 }
+
+// 页面顶部更新提示条：发现新版本时弹出小窗，点击即应用更新（离线优先策略下，
+// 新 SW 已由 triggerApplyUpdate 预拉取进入 waiting，点击触发 SKIP_WAITING + 刷新）。
+function showUpdateBanner(remoteVersion) {
+    if (!remoteVersion) return;
+    var existing = document.getElementById('_update_banner');
+    if (existing) {
+        var txt = existing.querySelector('[data-ver]');
+        if (txt) txt.textContent = '🆕 发现新版本 ' + remoteVersion + '，点击立即更新';
+        return;
+    }
+    var bar = document.createElement('div');
+    bar.id = '_update_banner';
+    bar.innerHTML =
+        '<span data-ver style="flex:1;text-align:left;line-height:1.3;">🆕 发现新版本 ' + remoteVersion + '，点击立即更新</span>' +
+        '<button data-close style="background:none;border:none;color:rgba(255,255,255,0.75);' +
+        'font-size:1.1rem;cursor:pointer;margin-left:8px;padding:0 4px;line-height:1;">✕</button>';
+    Object.assign(bar.style, {
+        position: 'fixed',
+        top: '56px', left: '0', right: '0',
+        background: 'linear-gradient(90deg,#2563eb,#1d4ed8)',
+        color: '#fff',
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '10px 16px', zIndex: '12000',
+        fontSize: '0.88rem', fontWeight: '600',
+        boxShadow: '0 6px 18px rgba(37,99,235,0.35)',
+        cursor: 'pointer',
+        transform: 'translateY(-120%)', transition: 'transform .3s ease'
+    });
+    bar.onclick = function() {
+        if (window.applyPendingUpdate) window.applyPendingUpdate();
+    };
+    bar.querySelector('[data-close]').addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideUpdateBanner();
+    });
+    document.body.appendChild(bar);
+    requestAnimationFrame(function() { bar.style.transform = 'translateY(0)'; });
+    // 12s 后自动收起（设置面板「立即更新」按钮与红点仍保留入口），不强制打断用户
+    setTimeout(function() {
+        if (document.getElementById('_update_banner') === bar) hideUpdateBanner(true);
+    }, 12000);
+}
+
+function hideUpdateBanner(skipAnimate) {
+    var bar = document.getElementById('_update_banner');
+    if (!bar) return;
+    if (skipAnimate) { bar.remove(); return; }
+    bar.style.transform = 'translateY(-120%)';
+    setTimeout(function() { if (bar.parentNode) bar.parentNode.removeChild(bar); }, 320);
+}
+window.showUpdateBanner = showUpdateBanner;
+window.hideUpdateBanner = hideUpdateBanner;
 
 // 核心检测函数
 async function performUpdateCheck(url, showStatus) {
@@ -963,6 +1030,8 @@ async function performUpdateCheck(url, showStatus) {
             }
             // 自动预备 SW 更新（离线优先策略下，更新仅在此触发）
             if (window.triggerApplyUpdate) window.triggerApplyUpdate();
+            // 页面顶部弹出更新提示条（手动/静默检查均生效），点击即应用
+            if (window.showUpdateBanner) window.showUpdateBanner(remoteVersion);
         } else {
             document.getElementById('tab-settings')?.classList.remove('has-update-badge');
             document.getElementById('check-update-btn')?.classList.remove('has-update-badge');

@@ -463,6 +463,241 @@ textarea:focus {
 }
 
 /* ============================================================
+   全模块按钮 → DeepSeek 网页版「透明暗黑」风格（统一 ghost，覆盖语义色）
+   策略：默认（浅色）主题下，所有业务按钮一律「透明底 + 暗灰描边 + 暗灰字」，
+   hover 略加深；激活/选中态保留 DeepSeek 蓝调高亮。覆盖 components.css /
+   modules.css / ds-deepseek.css 中的实底/渐变/语义色按钮。源文件零改动。
+   仅作用于默认主题（非 flat-mode），不影响 flat.css 的 html.flat-mode 作用域。
+   ============================================================ */
+.btn-primary,
+.btn-success,
+.btn-warning,
+.btn-danger,
+.btn-info,
+.btn-secondary,
+.btn-outline,
+.btn-primary-sm,
+.btn-chip,
+.btn-data-blue,
+.btn-data-green,
+.btn-data-red,
+.btn-data-sm,
+.btn-copy,
+.btn-remove,
+.btn-add,
+.btn-close,
+.modal-close,
+#btn-multimedia-toggle,
+.att-btn,
+.att-nature-btn,
+.att-sub-btn,
+.btn-add-issue,
+.btn-remove-issue,
+.phone-weather-btn,
+.btn-call,
+.hb-view-toggle button,
+.wr-back-btn,
+.wr-mat-btn,
+.wr-mat-select,
+.wr-mat-btn-view,
+.wr-mat-btn-template,
+.wr-mat-btn-delete,
+.catalog-actions .btn,
+.phone-search-bar .btn,
+.fv-hl-nav button,
+.ds-ds-btn--confirm,
+.ds-ds-btn--cancel,
+.ds-newchat-btn,
+#diary-btn-group .btn-secondary,
+#diary-btn-group .btn-info,
+.diary-view-header .btn-secondary {
+    background: rgba(100,116,139,0.12) !important;
+    border: 1px solid rgba(100,116,139,0.30) !important;
+    color: #475569 !important;
+    box-shadow: none !important;
+}
+.btn-primary:hover,
+.btn-success:hover,
+.btn-warning:hover,
+.btn-danger:hover,
+.btn-info:hover,
+.btn-secondary:hover,
+.btn-outline:hover,
+.btn-primary-sm:hover,
+.btn-chip:hover,
+.btn-data-blue:hover,
+.btn-data-green:hover,
+.btn-data-red:hover,
+.btn-data-sm:hover,
+.btn-copy:hover,
+.btn-remove:hover,
+.btn-add:hover,
+.btn-close:hover,
+.modal-close:hover,
+#btn-multimedia-toggle:hover,
+.att-btn:hover,
+.att-nature-btn:hover,
+.att-sub-btn:hover,
+.btn-add-issue:hover,
+.btn-remove-issue:hover,
+.phone-weather-btn:hover,
+.btn-call:hover,
+.hb-view-toggle button:hover,
+.wr-back-btn:hover,
+.wr-mat-btn:hover,
+.wr-mat-select:hover,
+.wr-mat-btn-view:hover,
+.wr-mat-btn-template:hover,
+.wr-mat-btn-delete:hover,
+.catalog-actions .btn:hover,
+.phone-search-bar .btn:hover,
+.fv-hl-nav button:hover,
+.ds-ds-btn--confirm:hover,
+.ds-ds-btn--cancel:hover,
+.ds-newchat-btn:hover,
+#diary-btn-group .btn-secondary:hover,
+#diary-btn-group .btn-info:hover,
+.diary-view-header .btn-secondary:hover {
+    background: rgba(100,116,139,0.22) !important;
+    border-color: rgba(100,116,139,0.45) !important;
+    color: #1e293b !important;
+}
+/* 激活 / 选中态：保留 DeepSeek 蓝调高亮（与 .btn-chip.active / .att-*-active 一致） */
+.btn-chip.active,
+.btn-chip.wr-mat-tab-active,
+.att-nature-btn.att-active,
+.att-sub-btn.att-active {
+    background: var(--ds-blue-soft) !important;
+    border-color: var(--ds-blue-border) !important;
+    color: var(--ds-blue) !important;
+}
+.btn-chip.active:hover,
+.btn-chip.wr-mat-tab-active:hover,
+.att-nature-btn.att-active:hover,
+.att-sub-btn.att-active:hover {
+    background: var(--ds-blue-soft) !important;
+    border-color: var(--ds-blue-border) !important;
+    color: var(--ds-blue) !important;
+}
+
+/* ===== 高优先级浅色覆盖：html:not([data-theme="dark"]) 前缀把优先级提到 0,2,1，
+   压过 unify.css 上方对 .btn-primary/.btn-secondary/.btn-info 等的锁定规则；
+   并补 .btn-stats / .issue-dim-btn / #ds-agent-stop / 智能体「历史」按钮，覆盖内联样式 ===== */
+html:not([data-theme="dark"]) .btn-primary,
+html:not([data-theme="dark"]) .btn-success,
+html:not([data-theme="dark"]) .btn-warning,
+html:not([data-theme="dark"]) .btn-danger,
+html:not([data-theme="dark"]) .btn-info,
+html:not([data-theme="dark"]) .btn-secondary,
+html:not([data-theme="dark"]) .btn-outline,
+html:not([data-theme="dark"]) .btn-primary-sm,
+html:not([data-theme="dark"]) .btn-chip,
+html:not([data-theme="dark"]) .btn-data-blue,
+html:not([data-theme="dark"]) .btn-data-green,
+html:not([data-theme="dark"]) .btn-data-red,
+html:not([data-theme="dark"]) .btn-data-sm,
+html:not([data-theme="dark"]) .btn-copy,
+html:not([data-theme="dark"]) .btn-remove,
+html:not([data-theme="dark"]) .btn-add,
+html:not([data-theme="dark"]) .btn-close,
+html:not([data-theme="dark"]) .modal-close,
+html:not([data-theme="dark"]) #btn-multimedia-toggle,
+html:not([data-theme="dark"]) .att-btn,
+html:not([data-theme="dark"]) .att-nature-btn,
+html:not([data-theme="dark"]) .att-sub-btn,
+html:not([data-theme="dark"]) .btn-add-issue,
+html:not([data-theme="dark"]) .btn-remove-issue,
+html:not([data-theme="dark"]) .phone-weather-btn,
+html:not([data-theme="dark"]) .btn-call,
+html:not([data-theme="dark"]) .hb-view-toggle button,
+html:not([data-theme="dark"]) .wr-back-btn,
+html:not([data-theme="dark"]) .wr-mat-btn,
+html:not([data-theme="dark"]) .wr-mat-select,
+html:not([data-theme="dark"]) .wr-mat-btn-view,
+html:not([data-theme="dark"]) .wr-mat-btn-template,
+html:not([data-theme="dark"]) .wr-mat-btn-delete,
+html:not([data-theme="dark"]) .catalog-actions .btn,
+html:not([data-theme="dark"]) .phone-search-bar .btn,
+html:not([data-theme="dark"]) .fv-hl-nav button,
+html:not([data-theme="dark"]) .ds-ds-btn--confirm,
+html:not([data-theme="dark"]) .ds-ds-btn--cancel,
+html:not([data-theme="dark"]) .ds-newchat-btn,
+html:not([data-theme="dark"]) #diary-btn-group .btn-secondary,
+html:not([data-theme="dark"]) #diary-btn-group .btn-info,
+html:not([data-theme="dark"]) .diary-view-header .btn-secondary,
+html:not([data-theme="dark"]) .btn-stats,
+html:not([data-theme="dark"]) .issue-dim-btn,
+html:not([data-theme="dark"]) #ds-agent-stop,
+html:not([data-theme="dark"]) button[onclick*="dsAgentShowHistory"] {
+    background: rgba(100,116,139,0.12) !important;
+    border: 1px solid rgba(100,116,139,0.30) !important;
+    color: #475569 !important;
+    box-shadow: none !important;
+}
+html:not([data-theme="dark"]) .btn-primary:hover,
+html:not([data-theme="dark"]) .btn-success:hover,
+html:not([data-theme="dark"]) .btn-warning:hover,
+html:not([data-theme="dark"]) .btn-danger:hover,
+html:not([data-theme="dark"]) .btn-info:hover,
+html:not([data-theme="dark"]) .btn-secondary:hover,
+html:not([data-theme="dark"]) .btn-outline:hover,
+html:not([data-theme="dark"]) .btn-primary-sm:hover,
+html:not([data-theme="dark"]) .btn-chip:hover,
+html:not([data-theme="dark"]) .btn-data-blue:hover,
+html:not([data-theme="dark"]) .btn-data-green:hover,
+html:not([data-theme="dark"]) .btn-data-red:hover,
+html:not([data-theme="dark"]) .btn-data-sm:hover,
+html:not([data-theme="dark"]) .btn-copy:hover,
+html:not([data-theme="dark"]) .btn-remove:hover,
+html:not([data-theme="dark"]) .btn-add:hover,
+html:not([data-theme="dark"]) .btn-close:hover,
+html:not([data-theme="dark"]) .modal-close:hover,
+html:not([data-theme="dark"]) #btn-multimedia-toggle:hover,
+html:not([data-theme="dark"]) .att-btn:hover,
+html:not([data-theme="dark"]) .att-nature-btn:hover,
+html:not([data-theme="dark"]) .att-sub-btn:hover,
+html:not([data-theme="dark"]) .btn-add-issue:hover,
+html:not([data-theme="dark"]) .btn-remove-issue:hover,
+html:not([data-theme="dark"]) .phone-weather-btn:hover,
+html:not([data-theme="dark"]) .btn-call:hover,
+html:not([data-theme="dark"]) .hb-view-toggle button:hover,
+html:not([data-theme="dark"]) .wr-back-btn:hover,
+html:not([data-theme="dark"]) .wr-mat-btn:hover,
+html:not([data-theme="dark"]) .wr-mat-select:hover,
+html:not([data-theme="dark"]) .wr-mat-btn-view:hover,
+html:not([data-theme="dark"]) .wr-mat-btn-template:hover,
+html:not([data-theme="dark"]) .wr-mat-btn-delete:hover,
+html:not([data-theme="dark"]) .catalog-actions .btn:hover,
+html:not([data-theme="dark"]) .phone-search-bar .btn:hover,
+html:not([data-theme="dark"]) .fv-hl-nav button:hover,
+html:not([data-theme="dark"]) .ds-ds-btn--confirm:hover,
+html:not([data-theme="dark"]) .ds-ds-btn--cancel:hover,
+html:not([data-theme="dark"]) .ds-newchat-btn:hover,
+html:not([data-theme="dark"]) #diary-btn-group .btn-secondary:hover,
+html:not([data-theme="dark"]) #diary-btn-group .btn-info:hover,
+html:not([data-theme="dark"]) .diary-view-header .btn-secondary:hover,
+html:not([data-theme="dark"]) .btn-stats:hover,
+html:not([data-theme="dark"]) .issue-dim-btn:hover,
+html:not([data-theme="dark"]) #ds-agent-stop:hover,
+html:not([data-theme="dark"]) button[onclick*="dsAgentShowHistory"]:hover {
+    background: rgba(100,116,139,0.22) !important;
+    border-color: rgba(100,116,139,0.45) !important;
+    color: #1e293b !important;
+}
+html:not([data-theme="dark"]) .btn-chip.active,
+html:not([data-theme="dark"]) .btn-chip.wr-mat-tab-active,
+html:not([data-theme="dark"]) .att-nature-btn.att-active,
+html:not([data-theme="dark"]) .att-sub-btn.att-active,
+html:not([data-theme="dark"]) .btn-chip.active:hover,
+html:not([data-theme="dark"]) .btn-chip.wr-mat-tab-active:hover,
+html:not([data-theme="dark"]) .att-nature-btn.att-active:hover,
+html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
+    background: var(--ds-blue-soft) !important;
+    border-color: var(--ds-blue-border) !important;
+    color: var(--ds-blue) !important;
+}
+
+/* ============================================================
    暗黑模式覆盖（与智能对话暗黑风格一致）
    ============================================================ */
 [data-theme="dark"] .header { background: #0f172a; border-bottom-color: #1e293b; }
@@ -792,6 +1027,33 @@ textarea:focus {
     border-color: #2a4a7a !important;
 }
 
+/* 次级/操作按钮灰透明 · 暗黑（deepseek 风，覆盖语义色） */
+[data-theme="dark"] .wr-mat-btn,
+[data-theme="dark"] .wr-mat-select,
+[data-theme="dark"] .catalog-actions .btn,
+[data-theme="dark"] .phone-search-bar .btn,
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .btn-small.btn-info,
+[data-theme="dark"] .btn-small.btn-success,
+[data-theme="dark"] .btn-small.btn-danger,
+[data-theme="dark"] .btn-small.btn-warning {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+    color: #cbd5e1 !important;
+}
+[data-theme="dark"] .wr-mat-btn:hover,
+[data-theme="dark"] .wr-mat-select:hover,
+[data-theme="dark"] .catalog-actions .btn:hover,
+[data-theme="dark"] .phone-search-bar .btn:hover,
+[data-theme="dark"] .btn-secondary:hover,
+[data-theme="dark"] .btn-small.btn-info:hover,
+[data-theme="dark"] .btn-small.btn-success:hover,
+[data-theme="dark"] .btn-small.btn-danger:hover,
+[data-theme="dark"] .btn-small.btn-warning:hover {
+    background: rgba(255,255,255,0.14) !important;
+    color: #e2e8f0 !important;
+}
+
 /* ============ 智能写作动态弹窗暗黑适配（手选模板/修改报告/报告查看等） ============ */
 [data-theme="dark"] .wr-step-modal > div,
 [data-theme="dark"] #wr-modify-modal > div,
@@ -966,4 +1228,236 @@ textarea:focus {
 [data-theme="dark"] #autoCheck-results *[style*="color: #15803d"],
 [data-theme="dark"] #autoCheck-results *[style*="color: rgb(21, 128, 61)"],
 [data-theme="dark"] #autoCheck-results *[style*="color: rgb(21,128,61)"] { color: #cbd5e1 !important; }
+
+/* ============================================================
+   全模块按钮 → DeepSeek 网页版「透明暗黑」风格 · 暗黑主题覆盖
+   紧接上方浅色段：确保 [data-theme="dark"] 时所有业务按钮也统一为
+   「透明底 + 浅白描边 + 浅灰字」的 ghost，覆盖 dark.css / 上文暗黑段中
+   对 .btn-primary/.btn-info 等锁定的实底蓝与语义色。激活/选中态保留蓝调高亮。
+   ============================================================ */
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .btn-success,
+[data-theme="dark"] .btn-warning,
+[data-theme="dark"] .btn-danger,
+[data-theme="dark"] .btn-info,
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .btn-outline,
+[data-theme="dark"] .btn-primary-sm,
+[data-theme="dark"] .btn-chip,
+[data-theme="dark"] .btn-data-blue,
+[data-theme="dark"] .btn-data-green,
+[data-theme="dark"] .btn-data-red,
+[data-theme="dark"] .btn-data-sm,
+[data-theme="dark"] .btn-copy,
+[data-theme="dark"] .btn-remove,
+[data-theme="dark"] .btn-add,
+[data-theme="dark"] .btn-close,
+[data-theme="dark"] .modal-close,
+[data-theme="dark"] #btn-multimedia-toggle,
+[data-theme="dark"] .att-btn,
+[data-theme="dark"] .att-nature-btn,
+[data-theme="dark"] .att-sub-btn,
+[data-theme="dark"] .btn-add-issue,
+[data-theme="dark"] .btn-remove-issue,
+[data-theme="dark"] .phone-weather-btn,
+[data-theme="dark"] .btn-call,
+[data-theme="dark"] .hb-view-toggle button,
+[data-theme="dark"] .wr-back-btn,
+[data-theme="dark"] .wr-mat-btn,
+[data-theme="dark"] .wr-mat-select,
+[data-theme="dark"] .wr-mat-btn-view,
+[data-theme="dark"] .wr-mat-btn-template,
+[data-theme="dark"] .wr-mat-btn-delete,
+[data-theme="dark"] .catalog-actions .btn,
+[data-theme="dark"] .phone-search-bar .btn,
+[data-theme="dark"] .fv-hl-nav button,
+[data-theme="dark"] .ds-ds-btn--confirm,
+[data-theme="dark"] .ds-ds-btn--cancel,
+[data-theme="dark"] .ds-newchat-btn,
+[data-theme="dark"] #diary-btn-group .btn-secondary,
+[data-theme="dark"] #diary-btn-group .btn-info,
+[data-theme="dark"] .diary-view-header .btn-secondary {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+    color: #cbd5e1 !important;
+    box-shadow: none !important;
+}
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-success:hover,
+[data-theme="dark"] .btn-warning:hover,
+[data-theme="dark"] .btn-danger:hover,
+[data-theme="dark"] .btn-info:hover,
+[data-theme="dark"] .btn-secondary:hover,
+[data-theme="dark"] .btn-outline:hover,
+[data-theme="dark"] .btn-primary-sm:hover,
+[data-theme="dark"] .btn-chip:hover,
+[data-theme="dark"] .btn-data-blue:hover,
+[data-theme="dark"] .btn-data-green:hover,
+[data-theme="dark"] .btn-data-red:hover,
+[data-theme="dark"] .btn-data-sm:hover,
+[data-theme="dark"] .btn-copy:hover,
+[data-theme="dark"] .btn-remove:hover,
+[data-theme="dark"] .btn-add:hover,
+[data-theme="dark"] .btn-close:hover,
+[data-theme="dark"] .modal-close:hover,
+[data-theme="dark"] #btn-multimedia-toggle:hover,
+[data-theme="dark"] .att-btn:hover,
+[data-theme="dark"] .att-nature-btn:hover,
+[data-theme="dark"] .att-sub-btn:hover,
+[data-theme="dark"] .btn-add-issue:hover,
+[data-theme="dark"] .btn-remove-issue:hover,
+[data-theme="dark"] .phone-weather-btn:hover,
+[data-theme="dark"] .btn-call:hover,
+[data-theme="dark"] .hb-view-toggle button:hover,
+[data-theme="dark"] .wr-back-btn:hover,
+[data-theme="dark"] .wr-mat-btn:hover,
+[data-theme="dark"] .wr-mat-select:hover,
+[data-theme="dark"] .wr-mat-btn-view:hover,
+[data-theme="dark"] .wr-mat-btn-template:hover,
+[data-theme="dark"] .wr-mat-btn-delete:hover,
+[data-theme="dark"] .catalog-actions .btn:hover,
+[data-theme="dark"] .phone-search-bar .btn:hover,
+[data-theme="dark"] .fv-hl-nav button:hover,
+[data-theme="dark"] .ds-ds-btn--confirm:hover,
+[data-theme="dark"] .ds-ds-btn--cancel:hover,
+[data-theme="dark"] .ds-newchat-btn:hover,
+[data-theme="dark"] #diary-btn-group .btn-secondary:hover,
+[data-theme="dark"] #diary-btn-group .btn-info:hover,
+[data-theme="dark"] .diary-view-header .btn-secondary:hover {
+    background: rgba(255,255,255,0.14) !important;
+    color: #e2e8f0 !important;
+}
+/* 激活 / 选中态：暗黑下保留 DeepSeek 蓝调高亮 */
+[data-theme="dark"] .btn-chip.active,
+[data-theme="dark"] .btn-chip.wr-mat-tab-active,
+[data-theme="dark"] .att-nature-btn.att-active,
+[data-theme="dark"] .att-sub-btn.att-active {
+    background: #1e3354 !important;
+    border-color: #2a4a6e !important;
+    color: #93c5fd !important;
+}
+[data-theme="dark"] .btn-chip.active:hover,
+[data-theme="dark"] .btn-chip.wr-mat-tab-active:hover,
+[data-theme="dark"] .att-nature-btn.att-active:hover,
+[data-theme="dark"] .att-sub-btn.att-active:hover {
+    background: #1e3354 !important;
+    border-color: #2a4a6e !important;
+    color: #93c5fd !important;
+}
+
+/* ===== 高优先级暗黑覆盖：html[data-theme="dark"] 前缀把优先级提到 0,2,1，
+   压过 unify.css 上方暗黑段对 .btn-primary/.btn-info 等的实底蓝锁定；
+   并补 .btn-stats / .issue-dim-btn / #ds-agent-stop / 智能体「历史」按钮 ===== */
+html[data-theme="dark"] .btn-primary,
+html[data-theme="dark"] .btn-success,
+html[data-theme="dark"] .btn-warning,
+html[data-theme="dark"] .btn-danger,
+html[data-theme="dark"] .btn-info,
+html[data-theme="dark"] .btn-secondary,
+html[data-theme="dark"] .btn-outline,
+html[data-theme="dark"] .btn-primary-sm,
+html[data-theme="dark"] .btn-chip,
+html[data-theme="dark"] .btn-data-blue,
+html[data-theme="dark"] .btn-data-green,
+html[data-theme="dark"] .btn-data-red,
+html[data-theme="dark"] .btn-data-sm,
+html[data-theme="dark"] .btn-copy,
+html[data-theme="dark"] .btn-remove,
+html[data-theme="dark"] .btn-add,
+html[data-theme="dark"] .btn-close,
+html[data-theme="dark"] .modal-close,
+html[data-theme="dark"] #btn-multimedia-toggle,
+html[data-theme="dark"] .att-btn,
+html[data-theme="dark"] .att-nature-btn,
+html[data-theme="dark"] .att-sub-btn,
+html[data-theme="dark"] .btn-add-issue,
+html[data-theme="dark"] .btn-remove-issue,
+html[data-theme="dark"] .phone-weather-btn,
+html[data-theme="dark"] .btn-call,
+html[data-theme="dark"] .hb-view-toggle button,
+html[data-theme="dark"] .wr-back-btn,
+html[data-theme="dark"] .wr-mat-btn,
+html[data-theme="dark"] .wr-mat-select,
+html[data-theme="dark"] .wr-mat-btn-view,
+html[data-theme="dark"] .wr-mat-btn-template,
+html[data-theme="dark"] .wr-mat-btn-delete,
+html[data-theme="dark"] .catalog-actions .btn,
+html[data-theme="dark"] .phone-search-bar .btn,
+html[data-theme="dark"] .fv-hl-nav button,
+html[data-theme="dark"] .ds-ds-btn--confirm,
+html[data-theme="dark"] .ds-ds-btn--cancel,
+html[data-theme="dark"] .ds-newchat-btn,
+html[data-theme="dark"] #diary-btn-group .btn-secondary,
+html[data-theme="dark"] #diary-btn-group .btn-info,
+html[data-theme="dark"] .diary-view-header .btn-secondary,
+html[data-theme="dark"] .btn-stats,
+html[data-theme="dark"] .issue-dim-btn,
+html[data-theme="dark"] #ds-agent-stop,
+html[data-theme="dark"] button[onclick*="dsAgentShowHistory"] {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+    color: #cbd5e1 !important;
+    box-shadow: none !important;
+}
+html[data-theme="dark"] .btn-primary:hover,
+html[data-theme="dark"] .btn-success:hover,
+html[data-theme="dark"] .btn-warning:hover,
+html[data-theme="dark"] .btn-danger:hover,
+html[data-theme="dark"] .btn-info:hover,
+html[data-theme="dark"] .btn-secondary:hover,
+html[data-theme="dark"] .btn-outline:hover,
+html[data-theme="dark"] .btn-primary-sm:hover,
+html[data-theme="dark"] .btn-chip:hover,
+html[data-theme="dark"] .btn-data-blue:hover,
+html[data-theme="dark"] .btn-data-green:hover,
+html[data-theme="dark"] .btn-data-red:hover,
+html[data-theme="dark"] .btn-data-sm:hover,
+html[data-theme="dark"] .btn-copy:hover,
+html[data-theme="dark"] .btn-remove:hover,
+html[data-theme="dark"] .btn-add:hover,
+html[data-theme="dark"] .btn-close:hover,
+html[data-theme="dark"] .modal-close:hover,
+html[data-theme="dark"] #btn-multimedia-toggle:hover,
+html[data-theme="dark"] .att-btn:hover,
+html[data-theme="dark"] .att-nature-btn:hover,
+html[data-theme="dark"] .att-sub-btn:hover,
+html[data-theme="dark"] .btn-add-issue:hover,
+html[data-theme="dark"] .btn-remove-issue:hover,
+html[data-theme="dark"] .phone-weather-btn:hover,
+html[data-theme="dark"] .btn-call:hover,
+html[data-theme="dark"] .hb-view-toggle button:hover,
+html[data-theme="dark"] .wr-back-btn:hover,
+html[data-theme="dark"] .wr-mat-btn:hover,
+html[data-theme="dark"] .wr-mat-select:hover,
+html[data-theme="dark"] .wr-mat-btn-view:hover,
+html[data-theme="dark"] .wr-mat-btn-template:hover,
+html[data-theme="dark"] .wr-mat-btn-delete:hover,
+html[data-theme="dark"] .catalog-actions .btn:hover,
+html[data-theme="dark"] .phone-search-bar .btn:hover,
+html[data-theme="dark"] .fv-hl-nav button:hover,
+html[data-theme="dark"] .ds-ds-btn--confirm:hover,
+html[data-theme="dark"] .ds-ds-btn--cancel:hover,
+html[data-theme="dark"] .ds-newchat-btn:hover,
+html[data-theme="dark"] #diary-btn-group .btn-secondary:hover,
+html[data-theme="dark"] #diary-btn-group .btn-info:hover,
+html[data-theme="dark"] .diary-view-header .btn-secondary:hover,
+html[data-theme="dark"] .btn-stats:hover,
+html[data-theme="dark"] .issue-dim-btn:hover,
+html[data-theme="dark"] #ds-agent-stop:hover,
+html[data-theme="dark"] button[onclick*="dsAgentShowHistory"]:hover {
+    background: rgba(255,255,255,0.14) !important;
+    color: #e2e8f0 !important;
+}
+html[data-theme="dark"] .btn-chip.active,
+html[data-theme="dark"] .btn-chip.wr-mat-tab-active,
+html[data-theme="dark"] .att-nature-btn.att-active,
+html[data-theme="dark"] .att-sub-btn.att-active,
+html[data-theme="dark"] .btn-chip.active:hover,
+html[data-theme="dark"] .btn-chip.wr-mat-tab-active:hover,
+html[data-theme="dark"] .att-nature-btn.att-active:hover,
+html[data-theme="dark"] .att-sub-btn.att-active:hover {
+    background: #1e3354 !important;
+    border-color: #2a4a6e !important;
+    color: #93c5fd !important;
+}
 

@@ -118,13 +118,13 @@
 }
 /* 输入视图内按钮 */
 .diary-view-header .btn-secondary {
-    background: linear-gradient(135deg, #64748b, #475569);
+    background: linear-gradient(135deg, #6b6b6b, #4a4a4a);
     color: white;
     border: none;
     font-weight: 500;
 }
 .diary-view-header .btn-secondary:hover {
-    background: linear-gradient(135deg, #475569, #334155);
+    background: linear-gradient(135deg, #3a3a3a, #262626);
 }
 .diary-records-list {
     display: flex;
@@ -698,7 +698,7 @@
 }
 .ds-code-dl:hover { background: #2563eb; }
 .ds-code {
-  background: #1e293b; color: #e2e8f0; padding: 32px 12px 12px;
+  background: #1d1d1d; color: #e2e8f0; padding: 32px 12px 12px;
   border-radius: 6px; overflow-x: auto; font-size: 0.85em; margin: 0;
   white-space: pre-wrap; line-height: 1.5;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

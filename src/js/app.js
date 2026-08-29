@@ -555,7 +555,7 @@ window.onclick = function(e) {
             '<span style="font-size:1.2rem;">📲</span>',
             '<span style="flex:1;text-align:left;">安装「安监助手」到桌面</span>',
             '<button id="_pwa_install_btn" style="',
-            '  background:#fff;color:#1a365d;border:none;border-radius:20px;',
+            '  background:var(--card-bg);color:var(--text);border:none;border-radius:20px;',
             '  padding:6px 18px;font-size:0.85rem;font-weight:700;cursor:pointer;',
             '  white-space:nowrap;',
             '">安装</button>',
@@ -719,7 +719,7 @@ function applyTheme() {
     if (dark) document.documentElement.setAttribute('data-theme', 'dark');
     else document.documentElement.removeAttribute('data-theme');
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', dark ? '#0f172a' : '#1a365d');
+    if (meta) meta.setAttribute('content', dark ? '#1e1e1e' : '#ffffff');
     syncThemeModeUI();
     return mode;
 }
@@ -817,7 +817,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.46'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.47'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

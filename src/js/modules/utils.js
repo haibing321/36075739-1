@@ -982,7 +982,7 @@ window.finishProgress = function(label) {
             }
             var el = document.createElement('div');
             el.textContent = String(msg);
-            el.style.cssText = 'pointer-events:auto;background:' + (isError ? '#b91c1c' : '#1e293b') +
+            el.style.cssText = 'pointer-events:auto;background:' + (isError ? '#b91c1c' : '#1d1d1d') +
                 ';color:#fff;padding:10px 16px;border-radius:10px;font-size:.86rem;line-height:1.6;' +
                 'box-shadow:0 6px 20px rgba(15,23,42,.28);white-space:pre-wrap;word-break:break-word;';
             _toastHost.appendChild(el);

@@ -209,9 +209,9 @@
     animation: pulse-dot 1.5s ease-in-out infinite;
 }
 @media (prefers-color-scheme: dark) {
-    #check-update-btn.has-update-badge::after { border-color: #0f172a; }
+    #check-update-btn.has-update-badge::after { border-color: #1e1e1e; }
 }
-[data-theme="dark"] #check-update-btn.has-update-badge::after { border-color: #0f172a; }
+[data-theme="dark"] #check-update-btn.has-update-badge::after { border-color: #1e1e1e; }
 
 /* ---- 资料管理卡片按钮 ---- */
 .wr-mat-card {
@@ -958,18 +958,18 @@
 
 /* 规章制度全文表格：暗黑模式适配（覆盖导入文件自带的行内白底/隔行白底） */
 [data-theme="dark"] #rule-fullContentBody table {
-    background: #1c2534;
+    background: #1c1c1c;
     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 [data-theme="dark"] #rule-fullContentBody tbody tr,
 [data-theme="dark"] #rule-fullContentBody tbody td,
 [data-theme="dark"] #rule-fullContentBody tbody th {
-    background: #1c2534 !important;   /* !important 覆盖导入文件自带的内联白底 */
+    background: #1c1c1c !important;   /* !important 覆盖导入文件自带的内联白底 */
     color: #e2e8f0 !important;          /* !important 覆盖内联深色字 */
-    border-bottom-color: #2a3444;
+    border-bottom-color: #2a2a2a;
 }
 [data-theme="dark"] #rule-fullContentBody tbody tr:hover td {
-    background: #263243 !important;
+    background: #262626 !important;
 }
 
 /* 图片样式 - 限制最大宽度为60%，点击可放大 */

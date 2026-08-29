@@ -146,7 +146,7 @@
       }
       var el = document.createElement('div');
       el.textContent = message;
-      el.style.cssText = 'background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.25);border:1px solid #334155;pointer-events:auto;';
+      el.style.cssText = 'background:#1d1d1d;color:#e2e8f0;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.25);border:1px solid #333333;pointer-events:auto;';
       host.appendChild(el);
       setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 8000);
     } catch (e) {}

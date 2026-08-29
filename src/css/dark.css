@@ -28,17 +28,17 @@
     --success: #6ee7b7;
     --warning: #fbbf24;
     --info: #93c5fd;
-    --bg: #0f172a;
-    --card-bg: #1e293b;
+    --bg: #1e1e1e;        /* DeepSeek 网页版暗色主背景：中性近黑（原 #1e1e1e 偏冷蓝） */
+    --card-bg: #1d1d1d;   /* DeepSeek 网页版暗色输入框/卡片底（原 #1d1d1d 偏冷蓝） */
     --text: #e2e8f0;
     --text-secondary: #94a3b8;
-    --border: #334155;
+    --border: #333333;    /* 中性深灰描边（原 #333333 偏冷蓝） */
     --shadow: 0 2px 4px rgba(0,0,0,0.45);
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
     --shadow-md: 0 4px 6px rgba(0,0,0,0.5);
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.55);
     --gradient-primary: linear-gradient(135deg, #1e3a5f 0%, #4d6bfe 100%);
-    --gradient-card: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    --gradient-card: linear-gradient(180deg, #1d1d1d 0%, #181818 100%);
 }
 
 /* ---------- 2. 基础画布 ---------- */
@@ -50,7 +50,7 @@
 /* ---------- 3. 卡片 / 容器 ---------- */
 [data-theme="dark"] .card { background: var(--card-bg); border-color: var(--border); }
 [data-theme="dark"] .card-header {
-    background: linear-gradient(to right, #243044, var(--card-bg));
+    background: linear-gradient(to right, #262626, var(--card-bg));
     color: var(--text);
     border-bottom-color: var(--border);
 }
@@ -72,7 +72,7 @@
 [data-theme="dark"] .modal,
 [data-theme="dark"] .modal-content { background: var(--card-bg) !important; color: var(--text) !important; }
 [data-theme="dark"] .modal-header {
-    background: linear-gradient(to right, #243044, var(--card-bg)) !important;
+    background: linear-gradient(to right, #262626, var(--card-bg)) !important;
     color: var(--text) !important;
     border-bottom-color: var(--border) !important;
 }
@@ -89,7 +89,7 @@
 [data-theme="dark"] #settings-panel .btn-close,
 [data-theme="dark"] #about-panel .btn-close { color: #cbd5e1; }
 [data-theme="dark"] #settings-panel .btn-close:hover,
-[data-theme="dark"] #about-panel .btn-close:hover { background: #2a3a52; color: #fff; }
+[data-theme="dark"] #about-panel .btn-close:hover { background: #2a2a2a; color: #fff; }
 
 /* ---------- 5. 按钮 ---------- */
 [data-theme="dark"] .btn-outline {
@@ -97,9 +97,9 @@
     color: var(--text) !important;
     border-color: var(--border) !important;
 }
-[data-theme="dark"] .btn-outline:hover { background: #2a3a52 !important; border-color: #475569 !important; }
-[data-theme="dark"] .btn-secondary { background: #2a3a52 !important; color: var(--text) !important; border-color: var(--border) !important; }
-[data-theme="dark"] .btn-secondary:hover { background: #334155 !important; }
+[data-theme="dark"] .btn-outline:hover { background: #2a2a2a !important; border-color: #444444 !important; }
+[data-theme="dark"] .btn-secondary { background: #2a2a2a !important; color: var(--text) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .btn-secondary:hover { background: #333333 !important; }
 [data-theme="dark"] .btn-close { color: #cbd5e1; }
 
 /* 数据管理区小按钮（导入/导出/清空）在暗色下保持可辨识 */
@@ -111,7 +111,7 @@
 [data-theme="dark"] input,
 [data-theme="dark"] textarea,
 [data-theme="dark"] select {
-    background: #0f172a !important;
+    background: #1e1e1e !important;
     color: var(--text) !important;
     border-color: var(--border) !important;
 }
@@ -119,30 +119,30 @@
 [data-theme="dark"] textarea::placeholder { color: #64748b !important; }
 [data-theme="dark"] input[type="checkbox"],
 [data-theme="dark"] input[type="radio"] {
-    background: #1e293b !important;
+    background: #1d1d1d !important;
     accent-color: var(--primary);
 }
 
 /* ---------- 7. 表格 ---------- */
 [data-theme="dark"] table { color: var(--text); }
-[data-theme="dark"] th { background: #243044 !important; color: var(--text) !important; border-color: var(--border) !important; }
+[data-theme="dark"] th { background: #262626 !important; color: var(--text) !important; border-color: var(--border) !important; }
 [data-theme="dark"] td { border-color: var(--border) !important; }
-[data-theme="dark"] tr:nth-child(even) td { background: #182338 !important; }
+[data-theme="dark"] tr:nth-child(even) td { background: #1a1a1a !important; }
 
 /* 智能助手 Markdown 表格 */
-[data-theme="dark"] .ds-md-table th { background: #243044 !important; }
-[data-theme="dark"] .ds-md-table tr:nth-child(even) td { background: #182338 !important; }
+[data-theme="dark"] .ds-md-table th { background: #262626 !important; }
+[data-theme="dark"] .ds-md-table tr:nth-child(even) td { background: #1a1a1a !important; }
 [data-theme="dark"] .ds-md-table { border-color: var(--border) !important; }
-[data-theme="dark"] .ds-md-quote { background: #182338 !important; }
+[data-theme="dark"] .ds-md-quote { background: #1a1a1a !important; }
 /* DeepSeek 风格：助手气泡去卡片底、侧栏与欢迎页由 ds-deepseek.css 统一控制 */
 [data-theme="dark"] .ds-bubble-assistant { background: transparent !important; color: var(--text) !important; }
-[data-theme="dark"] .ds-sidebar { background: #131a26 !important; }
+[data-theme="dark"] .ds-sidebar { background: #0e0e0e !important; }
 [data-theme="dark"] .ds-welcome { background: transparent !important; }
 
 /* ---------- 8. 列表 / 项 ---------- */
 [data-theme="dark"] .memo-item,
 [data-theme="dark"] .catalog-item { background: var(--card-bg); border-color: var(--border); }
-[data-theme="dark"] .catalog-item:hover { background: #2a3a52 !important; }
+[data-theme="dark"] .catalog-item:hover { background: #2a2a2a !important; }
 
 /* ---------- 9. 批量兜底：内联浅色背景（catch 多数模块内卡片） ---------- */
 [data-theme="dark"] [style*="background:#f8fafc"],
@@ -196,30 +196,30 @@
 [data-theme="dark"] .toast,
 [data-theme="dark"] .form-select { background-image: none !important; }
 
-[data-theme="dark"] .catalog-item:hover { background: #2a3a52 !important; }
+[data-theme="dark"] .catalog-item:hover { background: #2a2a2a !important; }
 [data-theme="dark"] .btn-remove { background: #4a1a1a !important; color: #fca5a5 !important; }
-[data-theme="dark"] .btn-add { background: #243044 !important; color: var(--info) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .btn-add { background: #262626 !important; color: var(--info) !important; border-color: var(--border) !important; }
 [data-theme="dark"] .btn-add:hover { background: var(--card-bg) !important; }
-[data-theme="dark"] .btn-add:disabled { background: #1a2740 !important; color: #64748b !important; }
+[data-theme="dark"] .btn-add:disabled { background: #1a1a1a !important; color: #64748b !important; }
 
 [data-theme="dark"] .result-card {
     background: var(--card-bg) !important;
     border-left-color: var(--border) !important;
 }
-[data-theme="dark"] .result-content { background: #182338 !important; }
+[data-theme="dark"] .result-content { background: #1a1a1a !important; }
 [data-theme="dark"] .rule-card-item:hover { border-color: var(--info) !important; }
-[data-theme="dark"] .rule-trade { background: #243044 !important; color: var(--info) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .rule-trade { background: #262626 !important; color: var(--info) !important; border-color: var(--border) !important; }
 [data-theme="dark"] .highlight,
 [data-theme="dark"] .rule-highlight { background: #4a3a1a !important; color: #fbbf24 !important; }
-[data-theme="dark"] .tag-category { background: #2a3a52 !important; color: var(--text) !important; border-color: var(--border) !important; }
-[data-theme="dark"] .tag-time { background: #243044 !important; color: var(--text-secondary) !important; border-color: var(--border) !important; }
-[data-theme="dark"] .tag-unit { background: #1e3a5f !important; color: #93c5fd !important; border-color: #334155 !important; }
+[data-theme="dark"] .tag-category { background: #2a2a2a !important; color: var(--text) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .tag-time { background: #262626 !important; color: var(--text-secondary) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .tag-unit { background: #1e3a5f !important; color: #93c5fd !important; border-color: #333333 !important; }
 
 [data-theme="dark"] .confidence-badge.high { background: #15321f !important; color: #6ee7b7 !important; border-color: #166534 !important; }
 [data-theme="dark"] .confidence-badge.medium { background: #3a2a0a !important; color: #fbbf24 !important; border-color: #92400e !important; }
 [data-theme="dark"] .confidence-badge.low { background: #3a1a1a !important; color: #fca5a5 !important; border-color: #991b1b !important; }
-[data-theme="dark"] .bm25-candidate-tag { background: #1e3a5f !important; color: #93c5fd !important; border-color: #334155 !important; }
-[data-theme="dark"] .fv-kw-tag { background: #243044 !important; color: var(--text) !important; }
+[data-theme="dark"] .bm25-candidate-tag { background: #1e3a5f !important; color: #93c5fd !important; border-color: #333333 !important; }
+[data-theme="dark"] .fv-kw-tag { background: #262626 !important; color: var(--text) !important; }
 [data-theme="dark"] .vd-badge.ok { background: #15321f !important; color: #6ee7b7 !important; }
 [data-theme="dark"] .vd-badge.warn { background: #3a2a0a !important; color: #fbbf24 !important; }
 [data-theme="dark"] .vd-badge.fail { background: #3a1a1a !important; color: #fca5a5 !important; }
@@ -231,8 +231,8 @@
 [data-theme="dark"] .path-section { background: #134e4a !important; color: #6ee7b7 !important; }
 [data-theme="dark"] .path-item { background: #3a2a0a !important; color: #fbbf24 !important; }
 [data-theme="dark"] .path-subitem { background: #4a1a3a !important; color: #f9a8d4 !important; }
-[data-theme="dark"] .hb-tree-count { background: #2a3a52 !important; color: var(--text-secondary) !important; }
-[data-theme="dark"] .hb-tree-header:hover { background: #243044 !important; }
+[data-theme="dark"] .hb-tree-count { background: #2a2a2a !important; color: var(--text-secondary) !important; }
+[data-theme="dark"] .hb-tree-header:hover { background: #262626 !important; }
 [data-theme="dark"] .hb-tree-header.selected { background: #1e3a5f !important; }
 [data-theme="dark"] .hb-content-placeholder { color: var(--text-secondary) !important; }
 [data-theme="dark"] .empty-state { color: var(--text-secondary) !important; }
@@ -284,17 +284,17 @@
 
 /* 代码块暗化 */
 [data-theme="dark"] .ds-code, [data-theme="dark"] pre, [data-theme="dark"] code {
-    background: #0b1220 !important; color: #cbd5e1 !important;
+    background: #0e0e0e !important; color: #cbd5e1 !important;
 }
 [data-theme="dark"] .ds-code-dl { background: #2563eb !important; }
 
 /* 考勤选择弹窗暗化（结构已复用系统 .modal，此处仅保留按钮/角标覆盖） */
 [data-theme="dark"] .att-modal-current { color: var(--text-secondary) !important; }
-[data-theme="dark"] .att-nature-btn { background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important; }
-[data-theme="dark"] .att-nature-btn:hover { background: #475569 !important; }
+[data-theme="dark"] .att-nature-btn { background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important; }
+[data-theme="dark"] .att-nature-btn:hover { background: #444444 !important; }
 [data-theme="dark"] .att-nature-btn.att-active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
-[data-theme="dark"] .att-sub-btn { background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important; }
-[data-theme="dark"] .att-sub-btn:hover { background: #475569 !important; }
+[data-theme="dark"] .att-sub-btn { background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important; }
+[data-theme="dark"] .att-sub-btn:hover { background: #444444 !important; }
 [data-theme="dark"] .att-sub-btn.att-active { background: var(--info) !important; color: #fff !important; border-color: var(--info) !important; }
 [data-theme="dark"] .att-cat-日 { background: #3b82f6 !important; }
 [data-theme="dark"] .att-cat-差 { background: #f59e0b !important; }
@@ -308,21 +308,21 @@
 [data-theme="dark"] #ds-provider-edit { background: var(--card-bg) !important; border-color: var(--border) !important; }
 /* 视觉模型快捷按钮（内联浅蓝底/紫字）：暗黑下改为深底浅字蓝边 */
 [data-theme="dark"] .ds-vision-btn {
-    background: #2a3a52 !important;
+    background: #2a2a2a !important;
     color: #c7d2fe !important;
-    border-color: #3f4d6b !important;
+    border-color: #3a3a3a !important;
 }
-[data-theme="dark"] .ds-vision-btn:hover { background: #334155 !important; }
+[data-theme="dark"] .ds-vision-btn:hover { background: #333333 !important; }
 /* 取消按钮（内联白底/灰字）：暗黑下改为深底浅字 */
 [data-theme="dark"] .ds-cancel-btn {
-    background: #1e293b !important;
+    background: #1d1d1d !important;
     color: var(--text) !important;
     border-color: var(--border) !important;
 }
-[data-theme="dark"] .ds-cancel-btn:hover { background: #2a3a52 !important; }
+[data-theme="dark"] .ds-cancel-btn:hover { background: #2a2a2a !important; }
 /* 模型列表里每个模型的「编辑」小按钮（内联 #f8fafc 浅灰底/灰字）：暗黑下深底浅字 */
 [data-theme="dark"] .ds-edit-mini-btn {
-    background: #1e293b !important;
+    background: #1d1d1d !important;
     color: var(--text) !important;
     border-color: var(--border) !important;
 }
@@ -339,9 +339,9 @@
 [data-theme="dark"] [style*="#f0f7ff"] {
     background: #1e3a5f !important;
     color: #93c5fd !important;
-    border-color: #334155 !important;
+    border-color: #333333 !important;
 }
-[data-theme="dark"] [style*="#bae6fd"] { border-color: #334155 !important; }
+[data-theme="dark"] [style*="#bae6fd"] { border-color: #333333 !important; }
 
 /* 绿 / 成功：#dcfce7 #e8f5e9 */
 [data-theme="dark"] [style*="#dcfce7"],
@@ -378,9 +378,9 @@
 [data-theme="dark"] [style*="#e0e7ff"],
 [data-theme="dark"] [style*="#ede9fe"],
 [data-theme="dark"] [style*="#f5f3ff"] {
-    background: #2a2a4a !important;
+    background: #1d1d1d !important;
     color: #c7d2fe !important;
-    border-color: #3f3f66 !important;
+    border-color: #333333 !important;
 }
 
 /* ---------- 13. 数据管理区小按钮（btn-data-*）暗色 ----------
@@ -388,7 +388,7 @@
    原先只用 filter: brightness(0.92) 压暗，在深底上反而更脏且对比度不足。 */
 [data-theme="dark"] .btn-data-blue {
     background: #1e3a5f !important;
-    border-color: #334155 !important;
+    border-color: #333333 !important;
     color: #93c5fd !important;
 }
 [data-theme="dark"] .btn-data-green {
@@ -409,7 +409,7 @@
 [data-theme="dark"] .ds-icon-btn,
 [data-theme="dark"] .ds-ico-btn { color: var(--text-secondary) !important; }
 [data-theme="dark"] .ds-icon-btn:hover,
-[data-theme="dark"] .ds-ico-btn:hover { background: #2a3548 !important; }
+[data-theme="dark"] .ds-ico-btn:hover { background: #2a2a2a !important; }
 [data-theme="dark"] .ds-icon-btn.on,
 [data-theme="dark"] .ds-ico-btn.on,
 [data-theme="dark"] .ds-ico-btn.ds-ws-on {

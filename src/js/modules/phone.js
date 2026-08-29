@@ -469,7 +469,7 @@
                     }
 
                     box.innerHTML = `
-                        <div style="background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:10px;padding:14px;margin:-2px;">
+                        <div style="background:linear-gradient(135deg,#262626,#1d1d1d);border-radius:10px;padding:14px;margin:-2px;">
                             <div style="display:flex;align-items:center;gap:16px;">
                                 <div style="font-size:4rem;line-height:1;animation:weatherFloat 3s ease-in-out infinite;">${icon}</div>
                                 <div style="flex:1">

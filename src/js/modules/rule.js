@@ -221,10 +221,10 @@
                 btn.style.cssText = [
                     'display:block;position:fixed;bottom:80px;left:50%;',
                     'transform:translateX(-50%);',
-                    'background:linear-gradient(135deg,#1a365d,#2c5282);',
+                    'background:linear-gradient(135deg,#4d6bfe,#3f5be0);',
                     'color:#fff;padding:14px 28px;border-radius:25px;',
                     'text-decoration:none;font-size:0.95rem;font-weight:600;',
-                    'z-index:99999;box-shadow:0 4px 20px rgba(26,54,93,0.4);',
+                    'z-index:99999;box-shadow:0 4px 20px rgba(77,107,254,0.4);',
                     'white-space:nowrap;animation:_mbdlFadeIn .3s ease;'
                 ].join('');
                 

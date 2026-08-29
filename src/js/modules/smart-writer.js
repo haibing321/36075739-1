@@ -367,7 +367,7 @@
                         '<button onclick="(window.dsDownloadCode||function(b){var p=b.parentElement.querySelector(\'pre\');if(!p)return;window.downloadBlob(new Blob([p.textContent],{type:\'text/plain;charset=utf-8\'}),\'code.' + fileExt + '\')})(this)" data-ext="' + fileExt + '" ' +
                         'style="position:absolute;top:6px;right:6px;background:var(--primary);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:2;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);" ' +
                         'onmouseover="this.style.background=\'var(--primary-dark)\'" onmouseout="this.style.background=\'var(--primary)\'" title="下载代码文件">📥 下载 ' + ext.toUpperCase() + '</button>' +
-                        '<pre style="background:#1e293b;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';
+                        '<pre style="background:#1d1d1d;color:#e2e8f0;padding:32px 10px 10px 10px;border-radius:6px;overflow-x:auto;font-size:0.85em;margin:0;white-space:pre-wrap;">' + code + '</pre></div>';
                 });
                 // 粗体
                 s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');

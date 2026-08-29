@@ -462,21 +462,22 @@ html.flat-mode[data-theme="dark"] .ds-newchat-btn {
   background: var(--ds-blue) !important;
   color: #fff !important;
 }
-/* 19d. 发送：与背景一致（透明，仅图标色区分）—— 默认禁用灰 / 激活主蓝 / 停止红，无实心色块 */
+/* 19d. 发送：带颜色实心（空输入浅灰 / 有内容主蓝 / 生成中红），白色图标——保证体量，不再显得比其他按钮小 */
 html.flat-mode .ds-send-circle {
-  background: transparent !important;
-  color: #94a3b8 !important;
+  background: #cbd5e1 !important;
+  color: #fff !important;
   border: none !important;
   border-radius: 50% !important;
 }
 html.flat-mode[data-theme="dark"] .ds-send-circle {
-  background: transparent !important;
-  color: #64748b !important;
+  background: #475569 !important;
+  color: #f1f5f9 !important;
 }
-html.flat-mode .ds-send-circle.on { background: transparent !important; color: var(--ds-blue) !important; }
-html.flat-mode[data-theme="dark"] .ds-send-circle.on { background: transparent !important; color: #6b8cff !important; }
+html.flat-mode .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
+html.flat-mode .ds-send-circle.on:hover { background: var(--ds-blue-dark) !important; }
+html.flat-mode[data-theme="dark"] .ds-send-circle.on { background: #4d6bfe !important; color: #fff !important; }
 html.flat-mode .ds-send-circle.stopping,
-html.flat-mode[data-theme="dark"] .ds-send-circle.stopping { background: transparent !important; color: #ef4444 !important; }
+html.flat-mode[data-theme="dark"] .ds-send-circle.stopping { background: #ef4444 !important; color: #fff !important; }
 
 /* ---------- 20. 规章制度「目录 / 查看全文 / 编辑」弹窗改为底部下扩展 sheet ----------
    原 rule-catalogModal 等是居中 modal（max-width 500px），手机端内容被压窄、header 蓝渐变 + 白底包裹未扁平化。

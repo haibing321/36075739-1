@@ -629,8 +629,8 @@ html:not([data-theme="dark"]) .btn-stats,
 html:not([data-theme="dark"]) .issue-dim-btn,
 html:not([data-theme="dark"]) #ds-agent-stop,
 html:not([data-theme="dark"]) button[onclick*="dsAgentShowHistory"] {
-    background: rgba(100,116,139,0.12) !important;
-    border: 1px solid rgba(100,116,139,0.30) !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
     color: #475569 !important;
     box-shadow: none !important;
 }
@@ -680,8 +680,8 @@ html:not([data-theme="dark"]) .btn-stats:hover,
 html:not([data-theme="dark"]) .issue-dim-btn:hover,
 html:not([data-theme="dark"]) #ds-agent-stop:hover,
 html:not([data-theme="dark"]) button[onclick*="dsAgentShowHistory"]:hover {
-    background: rgba(100,116,139,0.22) !important;
-    border-color: rgba(100,116,139,0.45) !important;
+    background: rgba(100,116,139,0.10) !important;
+    border-color: rgba(100,116,139,0.25) !important;
     color: #1e293b !important;
 }
 html:not([data-theme="dark"]) .btn-chip.active,
@@ -740,6 +740,109 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
 [data-theme="dark"] .btn-copy:hover { background: var(--ds-blue) !important; color: #fff !important; border-color: var(--ds-blue) !important; }
 [data-theme="dark"] .btn-close { color: #cbd5e1 !important; }
 [data-theme="dark"] .btn-close:hover { background: #2a3a52 !important; color: #fff !important; }
+
+/* 暗黑模式：所有按钮与背景一致（完全透明，仅文字/悬停浅底区分），与智能对话暗黑风格统一 */
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .btn-success,
+[data-theme="dark"] .btn-warning,
+[data-theme="dark"] .btn-danger,
+[data-theme="dark"] .btn-info,
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .btn-outline,
+[data-theme="dark"] .btn-primary-sm,
+[data-theme="dark"] .btn-chip,
+[data-theme="dark"] .btn-data-blue,
+[data-theme="dark"] .btn-data-green,
+[data-theme="dark"] .btn-data-red,
+[data-theme="dark"] .btn-data-sm,
+[data-theme="dark"] .btn-copy,
+[data-theme="dark"] .btn-remove,
+[data-theme="dark"] .btn-add,
+[data-theme="dark"] .btn-close,
+[data-theme="dark"] .modal-close,
+[data-theme="dark"] #btn-multimedia-toggle,
+[data-theme="dark"] .att-btn,
+[data-theme="dark"] .att-nature-btn,
+[data-theme="dark"] .att-sub-btn,
+[data-theme="dark"] .btn-add-issue,
+[data-theme="dark"] .btn-remove-issue,
+[data-theme="dark"] .phone-weather-btn,
+[data-theme="dark"] .btn-call,
+[data-theme="dark"] .hb-view-toggle button,
+[data-theme="dark"] .wr-back-btn,
+[data-theme="dark"] .wr-mat-btn,
+[data-theme="dark"] .wr-mat-select,
+[data-theme="dark"] .wr-mat-btn-view,
+[data-theme="dark"] .wr-mat-btn-template,
+[data-theme="dark"] .wr-mat-btn-delete,
+[data-theme="dark"] .catalog-actions .btn,
+[data-theme="dark"] .phone-search-bar .btn,
+[data-theme="dark"] .fv-hl-nav button,
+[data-theme="dark"] .ds-ds-btn--confirm,
+[data-theme="dark"] .ds-ds-btn--cancel,
+[data-theme="dark"] .ds-newchat-btn,
+[data-theme="dark"] #diary-btn-group .btn-secondary,
+[data-theme="dark"] #diary-btn-group .btn-info,
+[data-theme="dark"] .diary-view-header .btn-secondary,
+[data-theme="dark"] .btn-stats,
+[data-theme="dark"] .issue-dim-btn,
+[data-theme="dark"] #ds-agent-stop,
+[data-theme="dark"] button[onclick*="dsAgentShowHistory"] {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-success:hover,
+[data-theme="dark"] .btn-warning:hover,
+[data-theme="dark"] .btn-danger:hover,
+[data-theme="dark"] .btn-info:hover,
+[data-theme="dark"] .btn-secondary:hover,
+[data-theme="dark"] .btn-outline:hover,
+[data-theme="dark"] .btn-primary-sm:hover,
+[data-theme="dark"] .btn-chip:hover,
+[data-theme="dark"] .btn-data-blue:hover,
+[data-theme="dark"] .btn-data-green:hover,
+[data-theme="dark"] .btn-data-red:hover,
+[data-theme="dark"] .btn-data-sm:hover,
+[data-theme="dark"] .btn-copy:hover,
+[data-theme="dark"] .btn-remove:hover,
+[data-theme="dark"] .btn-add:hover,
+[data-theme="dark"] .btn-close:hover,
+[data-theme="dark"] .modal-close:hover,
+[data-theme="dark"] #btn-multimedia-toggle:hover,
+[data-theme="dark"] .att-btn:hover,
+[data-theme="dark"] .att-nature-btn:hover,
+[data-theme="dark"] .att-sub-btn:hover,
+[data-theme="dark"] .btn-add-issue:hover,
+[data-theme="dark"] .btn-remove-issue:hover,
+[data-theme="dark"] .phone-weather-btn:hover,
+[data-theme="dark"] .btn-call:hover,
+[data-theme="dark"] .hb-view-toggle button:hover,
+[data-theme="dark"] .wr-back-btn:hover,
+[data-theme="dark"] .wr-mat-btn:hover,
+[data-theme="dark"] .wr-mat-select:hover,
+[data-theme="dark"] .wr-mat-btn-view:hover,
+[data-theme="dark"] .wr-mat-btn-template:hover,
+[data-theme="dark"] .wr-mat-btn-delete:hover,
+[data-theme="dark"] .catalog-actions .btn:hover,
+[data-theme="dark"] .phone-search-bar .btn:hover,
+[data-theme="dark"] .fv-hl-nav button:hover,
+[data-theme="dark"] .ds-ds-btn--confirm:hover,
+[data-theme="dark"] .ds-ds-btn--cancel:hover,
+[data-theme="dark"] .ds-newchat-btn:hover,
+[data-theme="dark"] #diary-btn-group .btn-secondary:hover,
+[data-theme="dark"] #diary-btn-group .btn-info:hover,
+[data-theme="dark"] .diary-view-header .btn-secondary:hover,
+[data-theme="dark"] .btn-stats:hover,
+[data-theme="dark"] .issue-dim-btn:hover,
+[data-theme="dark"] #ds-agent-stop:hover,
+[data-theme="dark"] button[onclick*="dsAgentShowHistory"]:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  color: #fff !important;
+}
 /* 设置面板：index.html 用内联白底+灰字，暗黑下需 !important 覆盖，否则白底灰字且覆盖主题 */
 [data-theme="dark"] #settings-panel { background: #1c2534 !important; border-color: #2a3444 !important; box-shadow: 0 10px 30px rgba(0,0,0,.5) !important; }
 [data-theme="dark"] #settings-panel [style*="background:#f8fafc"] { background: #222c3c !important; }

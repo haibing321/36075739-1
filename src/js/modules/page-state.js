@@ -120,32 +120,43 @@
     return drafts;
   }
 
-  // ===== 整页 DOM 快照（v3.13）：序列化 panel 已渲染的 innerHTML（含数据）=====
-  // v3.31：按用户诉求「折叠/刷新只保留当前页面及数据，其它历史浏览界面不再保留」，
-  //   只序列化「当前激活面板」——快照体积从「全部 7 个 panel」降为「1 个」，
-  //   彻底规避 sessionStorage 配额超限导致的整页降级（此前用户数据大时 panelHTML 超限
-  //   整体放弃，表现为「数据还在但界面跳回智能对话」）。
-  //   其它面板切换时走 onShow_/初始渲染重新加载，输入类草稿由 DRAFT_INPUT_IDS/
-  //   DRAFT_KEYWORD_BOXES 独立快照兜底，不依赖 panelHTML。
-  var _MAX_PANEL_HTML_BYTES = 4.2 * 1024 * 1024; // 单个 panel 上限（实际远达不到）
+  // ===== 动态内容区快照 =====
+  //
+  // 【重要变更】原先这里保存的是「当前激活 panel 的整个 innerHTML」，恢复时再整块写回。
+  // 这是「资料中心刷新后打不开」的直接原因：
+  //   1. 资料中心的按钮（导入资料 / 模板设置 / 8 个分类 Tab / 关闭 / 返回）全部是
+  //      写在 index.html 里的【内联 onclick】，属于静态结构；
+  //   2. 恢复时用 panel.innerHTML = 快照 会整体替换面板子树，静态按钮被快照版本覆盖；
+  //   3. 为防 XSS 又统一剥掉了快照里的 on* 属性，于是这些按钮的 onclick 全部丢失；
+  //   4. 而模块的 onShow_ 钩子只重新渲染【列表内容】，不会给静态按钮重绑事件 ——
+  //      结果就是：面板能显示，但所有按钮点了都没反应。
+  //
+  // 正确做法是：只快照「由 JS 动态渲染的内容区」，绝不触碰静态结构。
+  // 这些容器里的内容都是模块自己生成的，随后 onShow_ 会用最新数据重新渲染一遍，
+  // 交互自然恢复；而静态按钮的 onclick 从头到尾没被动过。
+  var DYNAMIC_SNAPSHOT_IDS = [
+    'rule-resultsList',   // 规章制度 · 搜索结果
+    'issue-results',      // 检查信息 · 搜索结果
+    'phone-results',      // 应急电话 · 查询结果
+    'wr-mat-list',        // 资料中心 · 资料列表
+    'wr-history-list',    // 资料中心 · 历史报告列表
+    'memo-list',          // 备忘提醒 · 列表
+    'hb-content-text',    // 检查手册 · 正文
+    'diary-history-view', // 工作日志 · 历史视图
+    'ds-chat-box'         // 智能助手 · 对话区
+  ];
+  var _MAX_SNAPSHOT_BYTES = 1.5 * 1024 * 1024; // 单个容器上限
   function _collectPanelHTML() {
     var map = {};
-    var total = 0;
-    var activePanel = document.querySelector('.panel.active');
-    var ids = [];
-    if (activePanel && activePanel.id && activePanel.id.indexOf('panel-') === 0) {
-      ids.push(activePanel.id.replace('panel-', ''));
-    }
-    for (var i = 0; i < ids.length; i++) {
-      var p = document.getElementById('panel-' + ids[i]);
-      if (!p) continue;
+    for (var i = 0; i < DYNAMIC_SNAPSHOT_IDS.length; i++) {
+      var id = DYNAMIC_SNAPSHOT_IDS[i];
+      var el = document.getElementById(id);
+      if (!el) continue;
       var html = '';
-      try { html = p.innerHTML; } catch (e) { continue; }
-      // 粗略字节估算（UTF-16 → 按 2 字节计，留余量）
-      var approx = html.length * 2;
-      if (approx > _MAX_PANEL_HTML_BYTES) continue; // 单面板超限跳过（几乎不可能）
-      total += approx;
-      map[ids[i]] = html;
+      try { html = el.innerHTML; } catch (e) { continue; }
+      if (!html || !html.trim()) continue;                 // 空的没必要存
+      if (html.length * 2 > _MAX_SNAPSHOT_BYTES) continue; // 超限时交由模块重新渲染
+      map[id] = html;
     }
     return map;
   }
@@ -190,21 +201,27 @@
     } catch (e) { /* sessionStorage 不可用（隐私模式/配额）时静默跳过 */ }
   }
 
-  // 直接还原整页 DOM（不触发 onShow_ 重拉，避免重建后空白）
+  // 还原「动态内容区」+ 激活目标模块
+  // 注意：只写回 DYNAMIC_SNAPSHOT_IDS 里的容器，绝不覆盖 panel 整体 ——
+  // 覆盖整体会毁掉静态按钮的内联 onclick（详见上方 DYNAMIC_SNAPSHOT_IDS 的说明）。
   function _restorePanelDOM(snap) {
-    if (!snap.panelHTML) return false; // 无快照：降级
+    if (!snap || !snap.panelHTML) return false; // 无快照：降级
     var ok = false;
-    Object.keys(snap.panelHTML).forEach(function (mod) {
-      var p = document.getElementById('panel-' + mod);
-      if (!p) return;
+    Object.keys(snap.panelHTML).forEach(function (id) {
+      // 只接受白名单内的 id：旧版本快照里存的是模块名（如 "material"），
+      // 那些必须忽略，否则会退回「整块替换 panel」的老行为。
+      if (DYNAMIC_SNAPSHOT_IDS.indexOf(id) === -1) return;
+      var el = document.getElementById(id);
+      if (!el) return;
       try {
-        // 快照来自「上次渲染结果」，其中混有规章名、检查信息字段等用户输入。
-        // 任一渲染路径存在转义遗漏时，内联 onclick（如 copy('...')）就会被原样还原 → DOM XSS。
-        // 这里统一剥掉所有 on* 内联事件（业务交互全部走委托监听，不依赖内联事件）。
-        var cleaned = String(snap.panelHTML[mod])
+        // 快照内容混有规章名、检查信息字段等用户输入。任一渲染路径存在转义遗漏时，
+        // 内联 onclick（如 copy('...')）就会被原样还原 → DOM XSS。
+        // 这些容器里的内容随后会由模块的 onShow_ 用最新数据重新渲染，
+        // 因此这里先剥掉 on* 是安全的：交互会由重新渲染补回来。
+        var cleaned = String(snap.panelHTML[id])
           .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, ' ')
           .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, ' ');
-        p.innerHTML = cleaned;
+        el.innerHTML = cleaned;
         ok = true;
       } catch (e) {}
     });
@@ -239,20 +256,22 @@
     // 不回填的话 _getEditSession() 在还原后仍返回 null，模块拿不到「我正在编辑哪条」。
     try { if (snap.editSession && snap.editSession.module) _editSession = snap.editSession; } catch (e) {}
 
-    // 1) 先还原整页 DOM（含数据），确保「数据和界面都保持」，不触发重拉
+    // 1) 先用快照回填「动态内容区」（快速显示上次内容，避免闪烁）
     var domRestored = false;
     try { domRestored = _restorePanelDOM(snap); } catch (e) { domRestored = false; }
 
-    // 2) 降级分支：若整页快照不可用，退回到 v3.12 的 switchTab 行为
-    if (!domRestored) {
-      try {
-        if (typeof window.switchTab === 'function') window.switchTab(snap.module);
-        else {
-          var btn = document.getElementById('tab-' + snap.module);
-          if (btn) btn.click();
-        }
-      } catch (e) {}
-    }
+    // 2) 无论快照是否生效，都再触发一次模块的 onShow_ 钩子：
+    //    - 快照不可用时：这是原本的降级路径（switchTab 完整渲染）；
+    //    - 快照生效时：必须用最新数据重新渲染一遍。因为快照内容为了防 XSS
+    //      已剥掉 on* 内联事件，列表项上的按钮（查看/删除/复制等）此时是死的，
+    //      只有模块重新渲染才能把交互补回来 —— 资料中心刷新后按钮点不动就是缺了这一步。
+    try {
+      if (typeof window.switchTab === 'function') window.switchTab(snap.module);
+      else {
+        var btn = document.getElementById('tab-' + snap.module);
+        if (btn) btn.click();
+      }
+    } catch (e) {}
 
     // 3) 下一帧还原滚动/草稿/弹窗/编辑态（v3.28 优化：由 rAF×2 提前为 rAF×1，
     //    整页 innerHTML 替换在 DOMContentLoaded 同步完成，单帧后 DOM 已稳定可写，
@@ -304,6 +323,9 @@
         });
       }
       // 弹窗内容回填（v3.29：查看全文等独立 modal 的内容，还原后不为空壳）
+      // 注：这里【不】剥离 on* 内联事件 —— 弹窗（如规章全文）里有复制/关闭等按钮，
+      // 剥掉会让它们失效（与资料中心那次是同一类问题）。
+      // 弹窗内容是本应用自己渲染的，且刷新后用户可关闭重开，权衡后保留交互。
       if (snap.modalHTML) {
         Object.keys(snap.modalHTML).forEach(function (mid) {
           var m = document.getElementById(mid);
@@ -322,6 +344,19 @@
       // 通知各模块按还原后的 DOM 重新同步内部状态
       //    （如规章制度/检查信息的关键词计数器，init 时容器为空已加 1 行，此处按还原后的 N 行纠正，避免多一个框）
       try { window.dispatchEvent(new Event('pageSnapshotRestored')); } catch (e) {}
+
+      // 再补一次模块渲染：
+      // 步骤 2 里的 switchTab 发生在 DOMContentLoaded 早期，此时模块数据
+      // （大多来自 IndexedDB，异步加载）往往还没就绪，onShow 会渲染失败或渲染出空列表；
+      // 而快照内容为了防 XSS 已剥掉 on*，列表项上的按钮是死的。
+      // 这里稍等片刻再触发一次，让模块用真实数据重新渲染，把交互补回来。
+      // 延迟不宜太长，否则用户会看到明显的「旧内容 → 新内容」跳变。
+      setTimeout(function () {
+        try {
+          var hook = window['onShow_' + snap.module];
+          if (typeof hook === 'function') hook();
+        } catch (e) {}
+      }, 300);
     });
 
     // 4) 编辑态恢复（多帧，避免被后续渲染覆盖）

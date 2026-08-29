@@ -2170,7 +2170,11 @@
                     var _raw = sessionStorage.getItem('page_state_snapshot_v1');
                     if (_raw) {
                         var _snap = JSON.parse(_raw);
-                        _snapRestored = !!( _snap && _snap.panelHTML && _snap.panelHTML.rule);
+                        // 注意 key 的变化：page-state 的 panelHTML 现在按「动态内容容器 id」
+                        // 存储（见 DYNAMIC_SNAPSHOT_IDS），不再是模块名。
+                        // 沿用旧的 .rule 会恒为 false，导致每次刷新都把搜索结果区藏掉。
+                        _snapRestored = !!( _snap && _snap.panelHTML &&
+                            (_snap.panelHTML['rule-resultsList'] || _snap.panelHTML.rule));
                     }
                 } catch (e) {}
                 if (!_snapRestored) {

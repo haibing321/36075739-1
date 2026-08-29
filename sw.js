@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260829075323';
+var CACHE_VERSION = '20260829134501';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -85,11 +85,17 @@ var WARM_CDN_URLS = [
   'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js'
 ];
 
-// 本地 CSS/JS 模块（构建时需更新，此处用通配匹配）
+// 本地 CSS/JS：请求拦截时判定为「本地资源 → CacheFirst」的路径规则。
+//
+// 【重要修复】原先这里列的是 modules/ 与 vendor/ 两个子目录，
+// 位于 /src/js/ 根目录的 app.js（应用入口）落不到任何规则上，
+// 于是它的 fetch 会掉进最后「其他请求：默认走网络」分支 ——
+// 结果是每次打开/刷新 app.js 都从远程拉取，网络不好时既慢又可能加载不全，
+// 正是「刷新时感觉从远程加载」的直接原因。
+// 改为覆盖整个 /src/js/（含 app.js、modules/、vendor/）。
 var LOCAL_PATTERNS = [
   /\/src\/css\//,
-  /\/src\/js\/modules\//,
-  /\/src\/js\/vendor\//
+  /\/src\/js\//
 ];
 
 // CDN 域名
@@ -138,48 +144,104 @@ function buildPrecacheUrls() {
     .catch(function() { return PRECACHE_URLS.slice(); });
 }
 
+// ========== 首屏关键资源（install 阶段立即缓存）==========
+// 为什么分级：SW 的 install 是在页面加载过程中触发的，若此时一次性发起 40+ 个
+// 预缓存请求，会与页面自身的 defer 脚本/CSS 争抢带宽 —— 网络不好时表现为
+// 「打开/刷新很慢、内容加载不全、部分功能不可用」。
+// 因此 install 只缓存极少量「没有它页面就起不来」的资源，让 SW 尽快激活接管；
+// 其余在 activate 后延迟补齐（见 precacheRest）。
+var CORE_PRECACHE = [
+  './',
+  './index.html',
+  './manifest.json',
+  './src/css/variables.css',   // CSS 变量：缺了整个主题体系失效
+  './src/css/layout.css',
+  './src/css/components.css',
+  './src/js/modules/utils.js', // loadScript/requireLib/showToast 等基础能力
+  './src/js/app.js',           // 应用入口：SW 注册、主题、设置面板、启动收尾
+  './src/js/vendor/purify.min.js' // XSS 防护依赖，缺失会导致净化全面降级
+];
+
 /**
- * 预缓存 App Shell 核心资源
- * 逐条 add（而非 cache.addAll）—— 单条 404 不会导致整批失败，
- * 避免「index.html 里有一个暂时取不到的资源」就让整个 App Shell 缓存落空。
+ * 预缓存首屏关键资源（install 阶段，数量刻意保持很少）
+ * 逐条 add（而非 cache.addAll）—— 单条 404 不会导致整批失败。
  */
 function precache(event) {
   event.waitUntil(
-    buildPrecacheUrls().then(function(urls) {
-      return caches.open(CACHE_NAME).then(function(cache) {
-        return Promise.all(urls.map(function(u) {
-          // 不指定 cache:'reload'：这些资源刚被页面加载过，浏览器 HTTP 缓存里就是新鲜的。
-          // 用 reload 会强制绕过 HTTP 缓存重新下载一遍 —— 首次访问等于双倍流量、双倍耗时。
-          // 版本化缓存名（CACHE_VERSION）已经保证了发版时整体重建，不需要靠 reload 取新。
-          return cache.add(u).catch(function(err) {
-            console.warn('[SW] 预缓存失败(已跳过):', u, err && err.message);
-          });
-        }));
-      });
+    caches.open(CACHE_NAME).then(function(cache) {
+      return Promise.all(CORE_PRECACHE.map(function(u) {
+        return cache.add(u).catch(function(err) {
+          console.warn('[SW] 核心预缓存失败(已跳过):', u, err && err.message);
+        });
+      }));
     })
   );
 }
 
 /**
+ * 补齐其余 App Shell 资源（activate 阶段调用，已避开首屏加载高峰）
+ * 同样逐条 add，且分小批并发，避免瞬间打出几十个请求。
+ */
+function precacheRest() {
+  return buildPrecacheUrls().then(function(urls) {
+    return caches.open(CACHE_NAME).then(function(cache) {
+      return cache.keys().then(function(keys) {
+        var have = {};
+        keys.forEach(function(r) { have[r.url] = true; });
+        var todo = urls.filter(function(u) {
+          if (u.replace(/^\.\//, '').indexOf('http') === 0) return false;
+          var abs = new URL(u, self.location.href).href;
+          return !have[abs];
+        });
+        // 每批 6 个，逐批推进：弱网下不会一次性打满连接池
+        var i = 0;
+        function nextBatch() {
+          if (i >= todo.length) return Promise.resolve();
+          var batch = todo.slice(i, i + 6);
+          i += 6;
+          return Promise.all(batch.map(function(u) {
+            // 不指定 cache:'reload'：这些资源刚被页面加载过，HTTP 缓存里就是新鲜的。
+            // 用 reload 会强制绕过 HTTP 缓存重新下载一遍 —— 等于双倍流量、双倍耗时。
+            // 版本化缓存名已保证发版时整体重建，不需要靠 reload 取新。
+            return cache.add(u).catch(function(err) {
+              console.warn('[SW] 预缓存失败(已跳过):', u, err && err.message);
+            });
+          })).then(nextBatch);
+        }
+        return nextBatch();
+      });
+    });
+  });
+}
+
+/**
  * 预热 CDN 大型库：仅在缓存中没有时才联网拉取，失败静默忽略。
- * 目的是「用户联网打开过一次 → 之后这些功能可离线使用」，
- * 不抢占 App Shell 的关键带宽，故延迟执行。
+ * 目的是「用户联网打开过一次 → 之后这些功能可离线使用」。
+ *
+ * 为什么是「延迟 + 串行」：这些库加起来约 2MB。原先在 activate 后 3s 就并发拉取，
+ * 弱网下会明显抢走带宽，加重「打开慢、内容加载不全」的观感。
+ * 现在推迟到 App Shell 补齐之后，再等 8s，且逐个串行下载（一次只占一个连接），
+ * 把对首屏和补缓存的影响降到最低。
  */
 function warmCdnLibs() {
   setTimeout(function() {
     caches.open(CACHE_NAME).then(function(cache) {
-      WARM_CDN_URLS.forEach(function(u) {
-        cache.match(u).then(function(hit) {
+      var i = 0;
+      function nextOne() {
+        if (i >= WARM_CDN_URLS.length) return Promise.resolve();
+        var u = WARM_CDN_URLS[i++];
+        return cache.match(u).then(function(hit) {
           if (hit) return;                       // 已缓存，无需联网
           return fetchWithTimeout(new Request(u, { mode: 'cors' }), 15000)
             .then(function(resp) {
               if (resp && resp.ok) return cache.put(u, resp.clone());
             })
             .catch(function() { /* 离线/受限时静默跳过，不影响其它功能 */ });
-        }).catch(function() {});
-      });
+        }).catch(function() {}).then(nextOne);
+      }
+      return nextOne();
     }).catch(function() {});
-  }, 3000);
+  }, 8000);
 }
 
 /**
@@ -299,28 +361,20 @@ self.addEventListener('install', function(event) {
 // 激活：清理旧缓存 + 立即接管页面
 self.addEventListener('activate', function(event) {
   console.log('[SW] 已激活', CACHE_VERSION);
+  // 先做完「清理旧缓存 + 立即接管」，这两步必须快 ——
+  // 接管越早，后续请求越早走缓存而不是走网络（这是「打开/刷新感觉慢」的关键）。
+  // 补齐剩余 App Shell 与 CDN 预热都放到后台慢慢做，不占用首屏带宽。
   event.waitUntil(
-    cleanupOldCaches()
-      .then(function() { return self.clients.claim(); })
-      .then(function() {
-        // 补齐 App Shell：SW 首次安装时页面已加载完毕，那些请求没被 SW 拦截过，
-        // 光靠 install 阶段的预缓存可能仍不完整。激活后网络通常还可用，再补一次。
-        return buildPrecacheUrls().then(function(urls) {
-          return caches.open(CACHE_NAME).then(function(cache) {
-            return cache.keys().then(function(keys) {
-              var have = {};
-              keys.forEach(function(r) { have[r.url] = true; });
-              return Promise.all(urls.map(function(u) {
-                var abs = new URL(u, self.location.href).href;
-                if (have[abs]) return Promise.resolve();
-                return cache.add(u).catch(function() {});
-              }));
-            });
-          });
-        });
-      })
-      .then(function() { warmCdnLibs(); })
+    cleanupOldCaches().then(function() { return self.clients.claim(); })
   );
+
+  // 延迟 2.5s 再补齐：避开首屏资源加载高峰，避免与页面自己的请求抢带宽。
+  // 兜底：即使此处失败也不影响 SW 已接管的事实（缺的资源会在实际请求时按需缓存）。
+  setTimeout(function() {
+    precacheRest()
+      .catch(function(e) { console.warn('[SW] 补齐 App Shell 失败:', e && e.message); })
+      .then(function() { warmCdnLibs(); });
+  }, 2500);
 });
 
 // 拦截请求

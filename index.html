@@ -243,8 +243,20 @@
     <!-- 启动遮罩：首屏立即显示，避免 Edge 等浏览器在脚本加载延迟时长时间停在 LOGO/启动界面。
          由下方看门狗与 initPage 启动完成后隐藏；4s 兜底强制显示面板，保证永不超过度卡死。 -->
     <style id="boot-overlay-style">
+      /* 纯 CSS 兜底（关键）：
+         遮罩的隐藏原先完全依赖 JS —— initPage 走 DOMContentLoaded（defer 脚本挂起时会一直不触发），
+         加上一个 9s 的 setTimeout 兜底。但移动端 Edge/Chrome 对后台标签页有 timer 节流
+         （intensive throttling：后台超过 5 分钟的页面，timer 最快 60s 才执行一次），
+         于是从后台恢复或冷启动时，遮罩可能长时间不消失 —— 表现就是「卡死在 LOGO」。
+         CSS 动画由合成器驱动，既不受主线程阻塞影响，也不受 timer 节流影响，8s 后必定淡出。
+         visibility:hidden 确保淡出后不再拦截点击。 */
+      @keyframes bootAutoHide {
+        0%, 78% { opacity: 1; visibility: visible; }
+        100%    { opacity: 0; visibility: hidden; }
+      }
       #app-boot-overlay { position:fixed; inset:0; z-index:2147483647; display:flex; flex-direction:column;
-        align-items:center; justify-content:center; gap:16px; background:#0f172a; }
+        align-items:center; justify-content:center; gap:16px; background:#0f172a;
+        animation: bootAutoHide 8s ease-in forwards; }
       #app-boot-overlay .boot-logo { width:72px; height:72px; opacity:.95; }
       #app-boot-overlay .boot-spin { width:36px; height:36px; border:3px solid rgba(255,255,255,.25);
         border-top-color:#ffd700; border-radius:50%; animation:bootspin .8s linear infinite; }
@@ -290,14 +302,12 @@
             }
         }
 
-        // 渐进式 splash 看门狗（v3.17 升级）：
+        // 渐进式 splash 看门狗：
         //   2s → 提示「正在同步本地数据」；
         //   5s → 提示「网络较慢」；
-        //   9s → 再做一次 panel 显示尝试；仍不显示则 9s 强制清掉遮罩。
-        // 之所以分阶段：原 4s 单一 timer 在首次冷启动 + 模块 cache miss 时太短，
-        // 出现过 splash 清除后下方主面板仍未渲染（看起来「依然停在启动页」），
-        // 关闭重开后因为缓存命中一切正常。本次给出更宽裕的总时长，并渐进给
-        // 用户文字反馈，避免「页面没反应」的假死感。
+        //   7s → 再做一次 panel 显示尝试并清掉遮罩。
+        // 注：7s 这个 timer 只是「加速通道」，真正保证不卡死的是上面 CSS 的
+        // bootAutoHide 8s 动画 —— 它由合成器驱动，不受主线程阻塞与后台 timer 节流影响。
         window.__bootTimer = setTimeout(function () {
             setBootText('正在同步本地数据…');
         }, 2000);
@@ -305,7 +315,50 @@
         var _bT3 = setTimeout(function () {
             _forceShowPanel();
             clearBoot();
-        }, 9000);
+        }, 7000);
+        // 从 bfcache（前进/后退缓存）恢复时不会触发 DOMContentLoaded，
+        // 需额外监听 pageshow，否则从后台切回会停在 LOGO 上。
+        window.addEventListener('pageshow', function (ev) {
+            if (ev.persisted) { _forceShowPanel(); clearBoot(); }
+        });
+        // 兜底中的兜底：load 事件（所有资源加载完毕，无论成功失败）必定触发
+        window.addEventListener('load', function () {
+            _forceShowPanel();
+            clearBoot();
+            reportFailedResources();
+        });
+
+        // ---- 资源加载失败检测 ----
+        // 弱网/离线时部分 <script>/<link> 可能加载失败，页面能起来但对应模块没有定义，
+        // 表现为「某个按钮点了没反应」，而控制台只有一行 net::ERR，用户无从判断。
+        // 资源加载错误不冒泡，但可以在捕获阶段被 window 捕获（这是标准做法）。
+        var _failedRes = [];
+        window.addEventListener('error', function (e) {
+            var t = e.target;
+            if (!t || !t.tagName) return;
+            var tag = t.tagName.toUpperCase();
+            if (tag === 'SCRIPT' || tag === 'LINK') {
+                _failedRes.push(t.src || t.href || tag);
+            }
+        }, true);
+
+        function reportFailedResources() {
+            if (!_failedRes.length) return;
+            console.warn('[启动] 以下资源加载失败，相关功能可能不可用：', _failedRes);
+            try {
+                var tip = document.createElement('div');
+                tip.style.cssText = 'position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));' +
+                    'transform:translateX(-50%);z-index:100001;max-width:92vw;background:#7c2d12;color:#fff;' +
+                    'padding:10px 14px;border-radius:10px;font-size:.82rem;line-height:1.6;' +
+                    'box-shadow:0 6px 20px rgba(0,0,0,.3);cursor:pointer;text-align:center;';
+                tip.textContent = '⚠️ 有 ' + _failedRes.length + ' 个组件未加载成功，部分功能可能不可用。点击重试';
+                tip.onclick = function () { location.reload(); };
+                (document.body || document.documentElement).appendChild(tip);
+                setTimeout(function () { if (tip.parentNode) tip.parentNode.removeChild(tip); }, 15000);
+            } catch (e) {}
+        }
+        window.__reportFailedResources = reportFailedResources;
+
         // 暴露给 initPage 用于一次性清除全部 timer（兼容旧 clearTimeout(__bootTimer) 调用）
         window.__bootTimers = [_bT2, _bT3];
     })();
@@ -1733,6 +1786,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.43 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.43 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🚀 启动卡死根治：启动遮罩改为纯 CSS 8s 动画自动淡出（合成器驱动，不受后台标签页 timer 节流影响），新增 pageshow/load 事件兜底与「组件未加载成功」提示，从后台恢复或冷启动不再卡在 LOGO。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔄 资料中心刷新后按钮点不动修复：页面快照改为只保存 JS 动态渲染的内容区（不再整块替换 panel），刷新后触发模块用最新数据重渲染并补回列表交互，静态内联按钮不再被快照覆盖而失效。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📴 离线优先加固：SW 预缓存分级（install 仅核心资源、activate 后分批补齐），app.js 纳入 CacheFirst（此前每次刷新都走网络），CDN 预热延后并串行；SW 注册加 try/catch 与空实现兜底，弱环境不再让「检查更新」等按钮失效。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.42 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1751,53 +1826,9 @@
                 </div>
             </div>
 
-            <!-- v3.41 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.41 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 暗黑语义色补全：dark 模式补齐信息/成功/危险/警告/靛蓝等语义色块（提示条、标签、按钮边框），深色调一致不再有浅色块；深色头部主色改用更亮变体，对比度达标。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎨 UI 一致性：小按钮（.btn-small/.btn-tiny/.btn-data-sm）圆角与内边距统一；「×」文本关闭钮（.btn-close/.modal-close）形状、悬停态拉齐；deepseek 图标按钮 hover/active/开启态统一样式。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📱 iOS 兼容：补 `-webkit-backdrop-filter` 前缀（毛玻璃遮罩不再静默失效）；safe-area-inset 三段式兜底（constant()→env()）；新增 `apple-mobile-web-app-capable`；旧浏览器打开时显示「浏览器版本过低」可读提示而非白屏。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.41 及以下已归档（最近 2 版本为 v3.43 / v3.42） -->
 
-            <!-- v3.40 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.40 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📴 离线健壮性专项：SW 安装时自动解析 index.html 的全部本地引用一并预缓存，杜绝新增模块/CSS 后「清单漂移、首次访问即断网」的离线空洞；补齐 iOS 启动图与 ds-deepseek/flat/dark/unify 等 CSS/JS 预缓存，并对 fuse/jszip/xlsx/mammoth/pdf/html-docx 等 CDN 大库主动预热，断网也能用。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📝 智能写作修复：集中 DB schema 建库并对外暴露，修复多模块裸开同库导致库停留在 v2、功能整体失效的竞态；修复缓存连接 Promise 返回 null 使 wrOpenDB().then 抛错的 bug；模板弹窗新增「已保存模板」列表，可查看/编辑/删除（此前只能不断新建）。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🛡️ 弱网/离线稳定性：更新检查与库加载均加超时与失败清理（连 WiFi 无外网 / CDN 挂起不再永久「正在处理…」）；多模型「设为当前」标记实时刷新、填入 Key 后界面即时重绘、清除 Key 回落豆包网页版；重生成可指定某一轮；IndexedDB/通知等异常边界与告警基线全面加固。</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v3.40 已归档（最近 2 版本为 v3.42 / v3.41） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.39 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.41 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

@@ -358,6 +358,14 @@ window.onclick = function(e) {
 // PWA 安装提示
 // ============================================================
 (function() {
+    // 无论当前环境是否支持 Service Worker，都先给这几个对外接口一个安全的空实现。
+    // 不支持 SW 时下面的 return 会让整个 IIFE 提前结束，若不在此处兜底，
+    // window.switchUpdateBtn 等会一直是 undefined —— 调用方虽然大多有判空，
+    // 但新增调用点很容易漏掉，属于隐患。有空实现则调用方永远拿到函数。
+    window.switchUpdateBtn = window.switchUpdateBtn || function() {};
+    window.triggerApplyUpdate = window.triggerApplyUpdate || function() {};
+    window.applyPendingUpdate = window.applyPendingUpdate || function() {};
+
     if (!('serviceWorker' in navigator)) return;
     var _deferredPrompt = null;
     var _installBtn = null;
@@ -371,7 +379,31 @@ window.onclick = function(e) {
     // 也不在打开时自动检查更新。新版本仅由用户点击「设置→检查更新」触发下载。
     console.log('[PWA] SW 注册中(离线优先)...');
 
-    navigator.serviceWorker.register('sw.js').then(function(reg) {
+    // 必须给 register 兜底：非 HTTPS 站点、隐私模式、被裁剪的 WebView 都可能让
+    // register 直接抛错或 reject。原实现既无 try/catch 也无 .catch()，一旦失败
+    // 整个 IIFE 就中断了 —— 后面的 triggerApplyUpdate / switchUpdateBtn /
+    // applyPendingUpdate 全部不会挂到 window 上，设置面板的「检查更新」直接失效，
+    // 表现就是「部分功能点不了」。
+    var _regPromise = null;
+    try {
+        _regPromise = navigator.serviceWorker && navigator.serviceWorker.register
+            ? navigator.serviceWorker.register('sw.js')
+            : null;
+    } catch (swErr) {
+        console.warn('[PWA] SW 注册异常，降级为无离线模式:', swErr && swErr.message);
+        _regPromise = null;
+    }
+    if (!_regPromise || typeof _regPromise.then !== 'function') {
+        console.warn('[PWA] 当前环境不支持 Service Worker，离线能力不可用');
+        _regPromise = null;
+    } else {
+        _regPromise.catch(function (swErr) {
+            console.warn('[PWA] SW 注册失败，降级为无离线模式:', swErr && swErr.message);
+        });
+    }
+
+    (_regPromise || Promise.resolve(null)).then(function(reg) {
+        if (!reg) return;                       // SW 不可用：保持已有 UI，不做注册后逻辑
         console.log('[PWA] SW 注册成功');
 
         // 【v3.38】离线优先：打开时【不】调用 reg.update()，避免在后台静默从远程重新下载新 SW/资源。
@@ -411,6 +443,12 @@ window.onclick = function(e) {
     // 暴露给「检查更新」按钮：拉取并预备最新版本（离线优先下更新唯一入口）
     function triggerApplyUpdate() {
         _manualUpdateCheck = true;
+        // SW 不可用时（非 HTTPS / 隐私模式 / 注册失败）直接退出，
+        // 否则后面 getRegistration() 会抛错，点「检查更新」等于点了没反应。
+        if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistration) {
+            _manualUpdateCheck = false;
+            return;
+        }
         navigator.serviceWorker.getRegistration().then(function(reg) {
             if (!reg) { _manualUpdateCheck = false; return; }
             // 浏览器已自动检测到等待中的新 SW：直接提示应用
@@ -779,7 +817,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.42'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.43'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

@@ -752,8 +752,8 @@
                     <!-- API 配置模态框 -->
 
                     <!-- 豆包网页版嵌入（API未配置时显示） -->
-                    <div id="doubao-webview" style="display:none;flex-direction:column;min-height:500px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
-                        <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:70vh;border:none;" title="豆包网页版" allow="compute-pressure"></iframe>
+                    <div id="doubao-webview" style="display:none;flex-direction:column;min-height:600px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
+                        <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:82vh;border:none;" title="豆包网页版" allow="compute-pressure"></iframe>
                         <div style="text-align:center;padding:8px;font-size:0.75rem;color:var(--text-secondary);background:#f8fafc;">
                             ⚠️ 豆包网页版为第三方服务。如需使用本地智能助手，请<button id="quick-config-btn" style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:2px 10px;margin:0 4px;cursor:pointer;font-size:0.75rem;">点击配置 API Key</button>。
                         </div>
@@ -1110,7 +1110,7 @@
                     </div>
 
                     <!-- === 豆包网页版子模块 === -->
-                    <div id="ds-sub-doubao" style="display:none;flex-direction:column;min-height:500px;border-radius:12px;overflow:hidden;border:1px solid var(--border);flex:1;">
+                    <div id="ds-sub-doubao" style="display:none;flex-direction:column;min-height:600px;border-radius:12px;overflow:hidden;border:1px solid var(--border);flex:1;">
                         <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:100%;border:none;flex:1;" title="豆包网页版" allow="compute-pressure"></iframe>
                         <div style="text-align:center;padding:6px;font-size:0.72rem;color:var(--text-secondary);background:#f8fafc;">
                             ⚠️ 豆包网页版为第三方服务
@@ -1786,6 +1786,24 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.44 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.44 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📱 手机端响应式优化：规章制度「全文查看」弹窗加宽至 100vw、正文区高度提升至 82vh、两侧内边距收窄（12px 8px）增大正文可用宽度，长规章在手机上阅读更舒适；豆包网页版嵌入高度提升（iframe 82vh、手机端 88vh），对话区不再被压缩。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛡️ 纯样式/尺寸调整，未触碰检查信息(issue.js)与规章制度(rule.js)核心逻辑；离线优先策略不变，版本号单一来源已同步 APP_VERSION 与 version.json。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.43 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1808,27 +1826,9 @@
                 </div>
             </div>
 
-            <!-- v3.42 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.42 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📱 左右滑屏不再出现资料中心：侧滑模块轮播顺序排除「资料中心」(material)，资料中心仅经底部导航/菜单进入；在资料中心内左右滑会自动以最近的侧滑邻模块为基准退出，不会卡死。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 历史报告「修改」弹窗暗黑覆盖：补充资料容器、勾选项标签、卡片、取消钮、关闭钮的内联浅色（#fff/#f8fafc/#888）改为主题变量（--card-bg/--bg/--text-secondary），暗黑模式下不再有亮白块，与整页深色风格一致。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.42 及以下已归档（最近 2 版本为 v3.44 / v3.43） -->
 
-            <!-- v3.41 及以下已归档（最近 2 版本为 v3.43 / v3.42） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.41 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.42 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

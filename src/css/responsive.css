@@ -277,16 +277,21 @@
 @media (max-width: 600px) {
     #rule-fullViewModal .modal-content {
         max-width: 100vw;
+        width: 100vw;
         border-radius: 16px 16px 0 0;
         margin: auto 0 0 0;
-        max-height: 96vh;
+        max-height: 98vh;
     }
     #rule-fullViewModal.active {
         align-items: flex-end;
     }
+    /* 收窄两侧边界，提升手机端正文可用宽度（覆盖 index.html 内联 padding:20px 与通用样式） */
+    #rule-fullViewModal .modal-body {
+        padding: 12px 8px !important;
+    }
     #rule-fullContentBody {
-        max-height: 65vh !important;
-        padding: 12px !important;
+        max-height: 82vh !important;
+        padding: 12px 8px !important;
     }
     /* 手机端表格更紧凑 */
     #rule-fullContentBody table {
@@ -314,6 +319,16 @@
     #rule-fullContentBody img.rule-lazy-img {
         opacity: 0.6;
         transition: opacity 0.3s ease;
+    }
+}
+
+/* 豆包网页版嵌入 - 手机端 (max-width: 600px)：提高显示高度 */
+@media (max-width: 600px) {
+    #doubao-webview, #ds-sub-doubao {
+        min-height: 88vh !important;
+    }
+    #doubao-webview iframe {
+        height: 88vh !important;
     }
 }
 

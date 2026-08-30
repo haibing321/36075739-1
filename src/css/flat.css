@@ -300,7 +300,7 @@ html.flat-mode[data-theme="dark"] .form-select,
 html.flat-mode[data-theme="dark"] .search-box input,
 html.flat-mode[data-theme="dark"] .phone-search-bar input,
 html.flat-mode[data-theme="dark"] .hb-search-box input {
-  background: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important;
+  background: #1e1e1e !important; color: #e2e8f0 !important; border-color: #333333 !important;
 }
 html.flat-mode[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
 html.flat-mode[data-theme="dark"] select:focus,
@@ -326,14 +326,14 @@ html.flat-mode .btn-tiny { border-radius: var(--ds-radius) !important; }
 
 /* 16b. dark 下非语义 .btn 系列深底浅字（消除浅灰/黄浅块） */
 html.flat-mode[data-theme="dark"] .btn:not(.btn-primary):not(.btn-success):not(.btn-warning):not(.btn-danger):not(.btn-info):not(.btn-primary-sm):not(.btn-data-sm):not(.btn-data-blue):not(.btn-data-green):not(.btn-data-red):not(.btn-stats) {
-  background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
+  background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important;
 }
 html.flat-mode[data-theme="dark"] .btn:hover:not(.btn-primary):not(.btn-success):not(.btn-warning):not(.btn-danger):not(.btn-info):not(.btn-primary-sm):not(.btn-stats) {
   background: #3d4d63 !important;
 }
 /* 胶囊标签 dark 深底 */
 html.flat-mode[data-theme="dark"] .btn-chip {
-  background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
+  background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important;
 }
 /* 警告按钮 dark 下转深橙（dark.css 的 --warning 仍是浅黄，需纠正） */
 html.flat-mode[data-theme="dark"] .btn-warning {
@@ -355,7 +355,7 @@ html.flat-mode button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-li
 /* 裸 button（设置面板/API配置模态/搜索导航/弹窗）dark 下浅色块统一深底；
    保留内联主蓝的语义按钮（导出/下载/保存等）。!important 压内联 style。 */
 html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-ico-btn):not(.ds-attach-btn):not(.ds-icon-btn):not(.ds-sidebar-foot-btn):not(.ds-switch-material):not(.ds-send-circle):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
-  background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important;
+  background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important;
   border-radius: var(--ds-radius) !important;
 }
 
@@ -447,7 +447,7 @@ html.flat-mode .ds-icon-btn.on {
 }
 html.flat-mode[data-theme="dark"] .ds-ico-btn.ds-ws-on,
 html.flat-mode[data-theme="dark"] .ds-icon-btn.on {
-  background: #1e3354 !important;
+  background: #262626 !important;
   color: #93c5fd !important;
   border-color: #2a4a6e !important;
 }
@@ -470,7 +470,7 @@ html.flat-mode .ds-send-circle {
   border-radius: 50% !important;
 }
 html.flat-mode[data-theme="dark"] .ds-send-circle {
-  background: #475569 !important;
+  background: #444444 !important;
   color: #f1f5f9 !important;
 }
 html.flat-mode .ds-send-circle.on { background: var(--ds-blue) !important; color: #fff !important; }
@@ -563,14 +563,14 @@ html.flat-mode .sheet-close {
 }
 html.flat-mode .sheet-close:hover { background: var(--ds-gray-200); }
 html.flat-mode[data-theme="dark"] .sheet-close {
-  background: #2a3548 !important;
+  background: #2a2a2a !important;
   color: #e2e8f0 !important;
   border-color: #3a475d !important;
 }
 html.flat-mode[data-theme="dark"] .sheet-close:hover { background: #34425a !important; }
 /* 全文查看：暗黑模式下正文区与高亮栏改为深底，消除亮白块 */
 html.flat-mode[data-theme="dark"] #rule-fullContentBody {
-  background: #0f172a !important;
+  background: #1e1e1e !important;
   border-left-color: var(--info) !important;
 }
 html.flat-mode[data-theme="dark"] #rule-fullViewHlBar {
@@ -587,7 +587,7 @@ html.flat-mode[data-theme="dark"] #rule-fullViewHlBar {
 }
 /* dark 模式 sheet 背景与手柄色 */
 html.flat-mode[data-theme="dark"] .sheet-modal .modal-content { background: var(--card-bg) !important; }
-html.flat-mode[data-theme="dark"] .sheet-modal .modal-content::before { background: #334155; }
+html.flat-mode[data-theme="dark"] .sheet-modal .modal-content::before { background: #333333; }
 
 /* ---------- 21. 退出提示条「再次滑入退出」：改为与背景一致的深色，消除 dark 下亮蓝块 ----------
    该条由 index.html 内联注入 background:rgba(26,54,93,.96)（深蓝亮块），dark 下偏亮（用户反馈"白色为黑"）。
@@ -612,13 +612,13 @@ html.flat-mode[data-theme="dark"] .result-list div[style*="background:#f0f9ff"] 
   color: #7dd3fc !important;
 }
 html.flat-mode[data-theme="dark"] .result-list div[style*="background:#f0f9ff"] span[style*="background:#fff"] {
-  background: #1e293b !important;
-  border-color: #334155 !important;
+  background: #1d1d1d !important;
+  border-color: #333333 !important;
   color: #93c5fd !important;
 }
 html.flat-mode[data-theme="dark"] .result-list div[style*="background:#f0f9ff"] span[style*="background:#e0f2fe"] {
-  background: #1e293b !important;
-  border-color: #334155 !important;
+  background: #1d1d1d !important;
+  border-color: #333333 !important;
   color: #93c5fd !important;
 }
 
@@ -676,7 +676,7 @@ html.flat-mode:not([data-theme="dark"]) #ds-agent-stop,
 html.flat-mode:not([data-theme="dark"]) button[onclick*="dsAgentShowHistory"] {
     background: rgba(100,116,139,0.12) !important;
     border: 1px solid rgba(100,116,139,0.30) !important;
-    color: #475569 !important;
+    color: #444444 !important;
     box-shadow: none !important;
 }
 html.flat-mode:not([data-theme="dark"]) .btn-primary:hover,
@@ -727,7 +727,7 @@ html.flat-mode:not([data-theme="dark"]) #ds-agent-stop:hover,
 html.flat-mode:not([data-theme="dark"]) button[onclick*="dsAgentShowHistory"]:hover {
     background: rgba(100,116,139,0.22) !important;
     border-color: rgba(100,116,139,0.45) !important;
-    color: #1e293b !important;
+    color: #1d1d1d !important;
 }
 html.flat-mode:not([data-theme="dark"]) .btn-chip.active,
 html.flat-mode:not([data-theme="dark"]) .btn-chip.wr-mat-tab-active,
@@ -850,7 +850,7 @@ html.flat-mode[data-theme="dark"] .btn-chip.active:hover,
 html.flat-mode[data-theme="dark"] .btn-chip.wr-mat-tab-active:hover,
 html.flat-mode[data-theme="dark"] .att-nature-btn.att-active:hover,
 html.flat-mode[data-theme="dark"] .att-sub-btn.att-active:hover {
-    background: #1e3354 !important;
+    background: #262626 !important;
     border-color: #2a4a6e !important;
     color: #93c5fd !important;
 }

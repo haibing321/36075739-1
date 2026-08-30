@@ -22,6 +22,12 @@ try {
   // 避免同一分钟内重复 push 时版本号不变化导致 SW 不重新安装
   const nw = now > cur ? now : cur + 1;
   fs.writeFileSync(p, s.replace(/var CACHE_VERSION = '\d+';/, "var CACHE_VERSION = '" + nw + "';"));
+  // 同步 version.json.sw，避免「检查更新」因两者不一致而误判 SW 未变化
+  try {
+    const vp = 'version.json';
+    const v = fs.readFileSync(vp, 'utf8');
+    fs.writeFileSync(vp, v.replace(/"sw":\s*"\d+"/, '"sw": "' + nw + '"'));
+  } catch (e) { /* version.json 缺失时忽略 */ }
   console.log(String(nw));
 } catch (e) {
   console.log('0');

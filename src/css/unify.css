@@ -985,7 +985,7 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
 [data-theme="dark"] #wr-tpl-modal > div { background: #1d1d1d !important; border-color: #333333 !important; }
 [data-theme="dark"] #wr-tpl-modal input,
 [data-theme="dark"] #wr-tpl-modal select,
-[data-theme="dark"] #wr-tpl-modal textarea { background: #1e1e1e !important; border-color: #333333 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] #wr-tpl-modal textarea { background: #1e293b !important; border-color: #334155 !important; color: #e2e8f0 !important; }
 [data-theme="dark"] #wr-tpl-modal input::placeholder,
 [data-theme="dark"] #wr-tpl-modal textarea::placeholder { color: #64748b !important; }
 [data-theme="dark"] #wr-tpl-modal > div > div:nth-child(2) { background: #1a1a1a !important; border-color: #3a3a3a !important; color: #93c5fd !important; }
@@ -1562,5 +1562,131 @@ html[data-theme="dark"] .att-sub-btn.att-active:hover {
     background: #262626 !important;
     border-color: #2a4a6e !important;
     color: #93c5fd !important;
+}
+
+/* ============================================================
+   暗黑模式统一兜底：输入框 / 按钮 / 弹窗容器 全模块拉齐
+   —— 历史问题：暗黑色值散乱，同类元素出现 #1e293b / #1d1d1d / #1e1e1e /
+      #1c1c1c / #222222 / #0e0e0e / #262626 / #222c3c 等多种底色，各模块观感不一。
+   统一为 slate 深色体系：
+       输入·卡片底 #1e293b ｜ 边框 #334155 ｜ 正文 #e2e8f0 ｜ 次要字 #94a3b8
+       悬停·抬升 #2a3a52 ｜ 聚焦主蓝 + rgba(77,107,254,.25) 光晕
+       选中·激活 #1e3354 / 边 #2a4a6e / 字 #93c5fd
+       按钮：与背景同色（透明），仅文字与悬停浅底区分（与智能对话一致）
+   【特异性】[data-theme="dark"][data-theme] 双属性（b=2）压过模块里 (0,2,0)
+   的类选择器规则；更高特异性者（#id、三类名 .active、flat-mode）不受影响。
+   ============================================================ */
+
+/* 1) 输入类：全模块统一底色 / 边框 / 文字 / 聚焦 */
+[data-theme="dark"][data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="dark"][data-theme] textarea,
+[data-theme="dark"][data-theme] select {
+  background: #1e293b !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+[data-theme="dark"][data-theme] textarea:focus,
+[data-theme="dark"][data-theme] select:focus {
+  border-color: var(--ds-blue) !important;
+  box-shadow: 0 0 0 3px rgba(77,107,254,0.25) !important;
+}
+[data-theme="dark"][data-theme] input::placeholder,
+[data-theme="dark"][data-theme] textarea::placeholder { color: #64748b !important; }
+
+/* 2) 按钮：全模块与背景同色（透明），仅文字 / 悬停浅底区分
+      【例外处理】按钮底色若由 JS 内联样式动态切换（如 #check-update-btn 发现更新
+      时置 var(--primary) 蓝底白字），!important 会压掉内联样式，故下方用 id 级
+      规则显式还原，保证状态提示不丢失。 */
+[data-theme="dark"][data-theme] button,
+[data-theme="dark"][data-theme] .btn {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] button:hover,
+[data-theme="dark"][data-theme] .btn:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  color: #fff !important;
+}
+/* 发送按钮例外：保留实心色，避免显得比其他按钮小（flat-mode 下由 flat.css 接管） */
+[data-theme="dark"][data-theme] .ds-send-circle { background: #475569 !important; color: #f1f5f9 !important; border-color: transparent !important; }
+[data-theme="dark"][data-theme] .ds-send-circle.on { background: #4d6bfe !important; color: #fff !important; }
+[data-theme="dark"][data-theme] .ds-send-circle.stopping { background: #ef4444 !important; color: #fff !important; }
+/* 由 JS 内联样式驱动状态的按钮：!important 会压掉内联样式，故用 id 级规则显式还原。
+   #check-update-btn 有 .has-update-badge 时即「发现新版本」态（switchUpdateBtn 添加该 class）。 */
+[data-theme="dark"][data-theme] #check-update-btn {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"][data-theme] #check-update-btn:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  color: #fff !important;
+}
+[data-theme="dark"][data-theme] #check-update-btn.has-update-badge {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+}
+/* PWA 安装条：深色底上的白底按钮需保留，否则变成透明看不清 */
+[data-theme="dark"][data-theme] #_pwa_install_btn {
+  background: #fff !important;
+  color: #1a365d !important;
+  border-color: transparent !important;
+}
+[data-theme="dark"][data-theme] #_pwa_install_close {
+  background: transparent !important;
+  color: rgba(255,255,255,0.6) !important;
+  border-color: transparent !important;
+}
+
+/* 3) 选中 / 激活态：原散落 #262626 与 #1e3354 两种，统一为 deepseek 蓝调 */
+html[data-theme="dark"][data-theme] .btn-chip.active,
+html[data-theme="dark"][data-theme] .btn-chip.wr-mat-tab-active,
+html[data-theme="dark"][data-theme] .att-nature-btn.att-active,
+html[data-theme="dark"][data-theme] .att-sub-btn.att-active,
+html[data-theme="dark"][data-theme] .btn-chip.active:hover,
+html[data-theme="dark"][data-theme] .btn-chip.wr-mat-tab-active:hover,
+html[data-theme="dark"][data-theme] .att-nature-btn.att-active:hover,
+html[data-theme="dark"][data-theme] .att-sub-btn.att-active:hover {
+  background: #1e3354 !important;
+  border-color: #2a4a6e !important;
+  color: #93c5fd !important;
+}
+
+/* 4) 弹窗 / 面板容器：散落的近黑底与白底统一为 slate 卡片色 */
+[data-theme="dark"][data-theme] #ds-fim-modal > div,
+[data-theme="dark"][data-theme] #wr-tpl-modal > div,
+[data-theme="dark"][data-theme] .ds-fim-pre,
+[data-theme="dark"][data-theme] .diary-calendar,
+[data-theme="dark"][data-theme] .diary-today-section {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+/* 设置面板内层卡片（内联 #f8fafc / #f1f5f9）：容器 slate、按钮透明 */
+html[data-theme="dark"][data-theme] #settings-panel div[style*="background:#f8fafc"],
+html[data-theme="dark"][data-theme] #settings-panel div[style*="background:#f1f5f9"] {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+}
+html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#f8fafc"],
+html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#f1f5f9"],
+html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#fff"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #cbd5e1 !important;
+}
+html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#f8fafc"]:hover,
+html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#f1f5f9"]:hover,
+html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#fff"]:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  color: #fff !important;
 }
 

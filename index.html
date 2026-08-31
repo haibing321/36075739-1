@@ -463,11 +463,6 @@
                     <div class="card-subtitle">六维检索 · 性质/时间/类别/描述/依据/单位</div>
                 </div>
                 <div class="card-body">
-                    <div class="stats-bar">
-                        <div class="btn-group">
-                            <button class="btn btn-stats" onclick="issueShowStats()" style="background:#8b5cf6;color:#fff;border:none;">📊 统计</button>
-                        </div>
-                    </div>
                     <input type="file" id="issue-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
                     
                     <div class="form-group" style="margin-top:12px;">
@@ -482,6 +477,7 @@
                         <button class="btn-add" id="issue-btnAdd" onclick="issueAddKeyword()">+ 添加关键词 (最多4个)</button>
                         <div class="search-actions">
                             <button class="btn btn-primary btn-lg" onclick="issueDoSearch()">🔍 智能搜索</button>
+                            <button class="btn btn-secondary btn-lg" onclick="issueShowStats()">📊 统计</button>
                             <button class="btn btn-secondary btn-lg" onclick="issueClearSearch()">重置</button>
                         </div>
                     </div>
@@ -519,12 +515,6 @@
                     <div class="card-subtitle">专业筛选 · 全文检索 · 比对高亮</div>
                 </div>
                 <div class="card-body">
-                    <div class="control-bar stats-bar">
-                        <div class="control-btns btn-group">
-                            <button class="btn btn-catalog btn-info" id="rule-catalogBtn">🗂️ 目录</button>
-                        </div>
-                    </div>
-
                     <div class="form-group" style="margin-top:16px;">
                         <label class="form-label">选择专业</label>
                         <select id="rule-tradeSelect" class="form-select">
@@ -540,6 +530,7 @@
                         
                         <div class="search-actions">
                             <button class="btn btn-primary btn-lg" id="rule-searchBtn">🔍 智能搜索</button>
+                            <button class="btn btn-secondary btn-lg" id="rule-catalogBtn">🗂️ 目录</button>
                             <button class="btn btn-secondary btn-lg" id="rule-clearSearchBtn">重置</button>
                         </div>
                     </div>

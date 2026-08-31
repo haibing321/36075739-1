@@ -385,6 +385,45 @@
                 return '空白';
             }
 
+            // 判断某条记录是否"字面包含"关键词（精确匹配，非模糊）。
+            // 用于「精确优先 + 模糊兜底」排序与"模糊匹配"角标：搜"微机联锁"时，
+            // 字面含"微机联锁"的为精确命中，仅含"计算机联锁"的为模糊命中。
+            function issueItemContainsKeyword(item, kw) {
+                if (!kw) return false;
+                var kwl = String(kw).toLowerCase();
+                var parts = [];
+                if (searchFields.indexOf('性质') !== -1) parts.push(getXingzhi(item));
+                if (searchFields.indexOf('category') !== -1) parts.push(item.category || '');
+                if (searchFields.indexOf('content') !== -1) parts.push(item.content || '');
+                if (searchFields.indexOf('regulation') !== -1) parts.push(item.regulation || '');
+                if (searchFields.indexOf('unit') !== -1) parts.push(item.unit || '');
+                return parts.join(' ').toLowerCase().indexOf(kwl) !== -1;
+            }
+
+            // 按 Fuse 返回的匹配区间（indices 基于原始字符串）高亮"实际命中片段"；
+            // 未命中片段仍做 HTML 转义，避免 XSS 且索引不错位。合并重叠/相邻区间。
+            function issueHighlightByIndices(rawText, indices) {
+                if (!rawText) return '';
+                if (!indices || !indices.length) return escapeHtml(rawText);
+                var sorted = indices.slice().sort(function(a, b) { return a[0] - b[0]; });
+                var merged = [];
+                sorted.forEach(function(iv) {
+                    if (merged.length && iv[0] <= merged[merged.length - 1][1] + 1) {
+                        merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], iv[1]);
+                    } else {
+                        merged.push([iv[0], iv[1]]);
+                    }
+                });
+                var html = '', last = 0;
+                merged.forEach(function(iv) {
+                    html += escapeHtml(rawText.slice(last, iv[0]));
+                    html += '<span class="highlight">' + escapeHtml(rawText.slice(iv[0], iv[1] + 1)) + '</span>';
+                    last = iv[1] + 1;
+                });
+                html += escapeHtml(rawText.slice(last));
+                return html;
+            }
+
             // ========== Fuse.js 模糊搜索引擎 ==========
             // 替代原来的 O(n) 线性 includes() 扫描
             // 支持模糊匹配、加权评分、容错输入
@@ -438,7 +477,7 @@
                 var fuse = getFuseInstance(data);
                 if (!fuse) return null; // 信号给调用方使用 fallback
 
-                var resultMap = {};  // { itemIndex: { item, scores: [], maxScore: number } }
+                var resultMap = {};  // { itemIndex: { item, scores: [], maxScore, matchIndices: {字段: [[s,e],...]} } }
 
                 keywords.forEach(function(kw) {
                     if (!kw || kw.trim().length === 0) return;
@@ -448,13 +487,24 @@
                             var idx = data.indexOf(hit.item);
                             if (idx === -1) return;
                             if (!resultMap[idx]) {
-                                resultMap[idx] = { item: hit.item, scores: [], maxScore: 0 };
+                                resultMap[idx] = { item: hit.item, scores: [], maxScore: 0, matchIndices: {} };
                             }
                             // Fuse score: 0=完美匹配, 1=不匹配 → 转换为正分
                             var scorePercent = Math.round((1 - (hit.score || 0)) * 100);
                             resultMap[idx].scores.push(scorePercent);
                             if (scorePercent > resultMap[idx].maxScore) {
                                 resultMap[idx].maxScore = scorePercent;
+                            }
+                            // 收集 Fuse 真实命中区间（按字段聚合，用于高亮"实际匹配到的片段"而非仅字面关键词）
+                            if (hit.matches && hit.matches.length) {
+                                hit.matches.forEach(function(m) {
+                                    if (!m || !m.indices || !m.indices.length) return;
+                                    var mk = m.key || '';
+                                    if (!resultMap[idx].matchIndices[mk]) resultMap[idx].matchIndices[mk] = [];
+                                    m.indices.forEach(function(iv) {
+                                        resultMap[idx].matchIndices[mk].push([iv[0], iv[1]]);
+                                    });
+                                });
                             }
                         });
                     } catch(e) {
@@ -469,6 +519,12 @@
                     var matchedCount = entry.scores.length;
                     var avgScore = entry.scores.reduce(function(a, b) { return a + b; }, 0) / matchedCount;
                     var matchRate = Math.round((matchedCount / keywords.length) * 100);
+                    // 精确命中数：字面包含关键词的个数（用于精确优先排序与"模糊匹配"角标）
+                    var exactCount = 0;
+                    keywords.forEach(function(kw) {
+                        if (kw && kw.trim().length && issueItemContainsKeyword(entry.item, kw)) exactCount++;
+                    });
+                    if (exactCount > matchedCount) exactCount = matchedCount;
 
                     results.push({
                         ...entry.item,
@@ -476,16 +532,19 @@
                         totalKw: keywords.length,
                         matchRate: matchRate,
                         fuseScore: Math.round(avgScore),
-                        xingzhi: getXingzhi(entry.item)
+                        xingzhi: getXingzhi(entry.item),
+                        exactCount: exactCount,
+                        matchIndices: entry.matchIndices || {}
                     });
                 });
 
-                // 排序：按时间倒序（最近在前），时间相同时再按匹配率、Fuse 评分
+                // 排序：精确命中（字面包含）优先 → 匹配率高在前 → 时间倒序（最近在前）→ Fuse 评分
                 results.sort(function(a, b) {
+                    if (b.exactCount !== a.exactCount) return b.exactCount - a.exactCount;
+                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
                     var ta = new Date(a.datetime || 0).getTime();
                     var tb = new Date(b.datetime || 0).getTime();
                     if (tb !== ta) return tb - ta;
-                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
                     return (b.fuseScore || 0) - (a.fuseScore || 0);
                 });
 
@@ -554,15 +613,18 @@
                             let matched = (searchMode === 'AND') ? (match === keywords.length) : (match > 0);
                             if (matched) {
                                 const matchRate = Math.round((match / keywords.length) * 100);
-                                results.push({ ...item, matchCount: match, totalKw: keywords.length, matchRate: matchRate, xingzhi: xingzhi });
+                                // fallback 仅做字面 includes 扫描，全部为精确命中
+                                results.push({ ...item, matchCount: match, totalKw: keywords.length, matchRate: matchRate, xingzhi: xingzhi, exactCount: match, matchIndices: {} });
                             }
                         });
 
                         results.sort((a, b) => {
+                            // 完全命中优先，其次匹配率；同匹配率内按时间倒序（最近在前）
+                            if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
                             var ta = new Date(a.datetime || 0).getTime();
                             var tb = new Date(b.datetime || 0).getTime();
                             if (tb !== ta) return tb - ta;
-                            return b.matchRate - a.matchRate;
+                            return 0;
                         });
                     }
 
@@ -629,26 +691,44 @@
                 else if (xz === '红线' || xz.includes('红线')) { levelClass = 'level-hongxian'; xingzhiClass = 'tag-xz-hongxian'; }
                 else if (xz === '空白' || xz === '' || xz.includes('空白')) { levelClass = 'level-kongbai'; xingzhiClass = 'tag-xz-kongbai'; xingzhi = '空白'; }
                 else { levelClass = 'level-kongbai'; xingzhiClass = 'tag-xz-kongbai'; }
-                // 统一先 HTML 转义，再做关键词高亮（与规章依据一致，避免描述中含 < > & 时 XSS / 显示错乱）
-                let content = escapeHtml(item.content || '');
-                keywords.forEach(k => {
-                    const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-                    content = content.replace(reg, '<span class="highlight">$1</span>');
-                });
-                // 规章依据单独展示
+                // 高亮策略：有 Fuse 真实命中区间时按区间高亮（模糊命中的"计算机联锁"也能标出实际匹配片段）；
+                // 否则（fallback / 精确包含）回退到字面关键词正则高亮。均先做 HTML 转义。
+                var _ci = (item.matchIndices && item.matchIndices.content && item.matchIndices.content.length) ? item.matchIndices.content : null;
+                let content = _ci
+                    ? issueHighlightByIndices(item.content || '', _ci)
+                    : (function() {
+                        let t = escapeHtml(item.content || '');
+                        keywords.forEach(k => {
+                            const reg = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                            t = t.replace(reg, '<span class="highlight">$1</span>');
+                        });
+                        return t;
+                    })();
+                // 规章依据单独展示（同样优先用真实命中区间高亮，回退到字面关键词）
                 var regulationHtml = '';
                 if (item.regulation) {
-                    var regText = item.regulation.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                    keywords.forEach(function(k){
-                        var re = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-                        regText = regText.replace(re, '<span class="highlight">$1</span>');
-                    });
+                    var _ri = (item.matchIndices && item.matchIndices.regulation && item.matchIndices.regulation.length) ? item.matchIndices.regulation : null;
+                    var regText = _ri
+                        ? issueHighlightByIndices(item.regulation, _ri)
+                        : (function() {
+                            let t = item.regulation.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                            keywords.forEach(function(k){
+                                var re = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                                t = t.replace(re, '<span class="highlight">$1</span>');
+                            });
+                            return t;
+                        })();
                     regulationHtml = '<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #3b82f6;font-size:0.85rem;border-radius:0 4px 4px 0;"><strong>📜 规章依据：</strong>' + regText + '</div>';
                 }
                 // 长文本折叠 + 相关性反馈（👍/👎）
                 const isLong = content.length > 120;
                 const fb = issueGetFeedback(item);
-                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + escapeHtml(xingzhi) + '</span><span class="tag tag-category">' + escapeHtml(item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + escapeHtml(item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button><span style="margin-left:auto;display:flex;gap:4px;"><button class="btn-copy ' + (fb === 'good' ? 'fb-good' : '') + '" title="相关/准确" onclick="issueMarkRelevance(this,\'good\')">👍</button><button class="btn-copy ' + (fb === 'bad' ? 'fb-bad' : '') + '" title="不相关/不准" onclick="issueMarkRelevance(this,\'bad\')">👎</button></span></div><div class="result-text" ' + (isLong ? 'style="max-height:4.8em;overflow:hidden;"' : '') + ' data-content="' + encodeURIComponent(content) + '">' + content + '</div>' + (isLong ? '<button class="btn-link" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;padding:4px 0;" onclick="issueToggleExpand(this)">展开全文 ▼</button>' : '') + regulationHtml + '</div></div>';
+                // 模糊匹配角标：存在非字面精确命中的关键词时提示（如搜"微机联锁"模糊命中"计算机联锁"）
+                const _exactN = (item.exactCount !== undefined) ? item.exactCount : (item.matchCount || 0);
+                const fuzzyBadge = (_exactN < (item.matchCount || 0))
+                    ? ' <span style="background:#f59e0b;color:#fff;border-radius:6px;padding:1px 6px;font-size:0.7rem;font-weight:600;margin-left:4px;" title="部分关键词为模糊匹配（近义/近似字符），非字面精确命中">模糊匹配</span>'
+                    : '';
+                return '<div class="result-card ' + levelClass + '" data-raw-content="' + encodeURIComponent(item.content||'') + '" data-raw-regulation="' + encodeURIComponent(item.regulation||'') + '"><div class="match-badge">' + item.matchCount + '/' + item.totalKw + ' 匹配 ' + item.matchRate + '%' + fuzzyBadge + '</div><div class="result-header"><span class="tag tag-xingzhi ' + xingzhiClass + '">' + escapeHtml(xingzhi) + '</span><span class="tag tag-category">' + escapeHtml(item.category || '待分类') + '</span><span class="tag tag-time">📅 ' + escapeHtml(item.datetime || '无日期') + '</span>' + (item.unit ? '<span class="tag tag-unit">🏢 ' + escapeHtml(String(item.unit)) + '</span>' : '') + '</div><div class="result-content"><div class="result-content-header"><button class="btn-copy" onclick="issueCopyContent(this)">📋 复制</button><button class="btn-copy" onclick="addIssueToDiaryFromCard(this)" style="background:#3b82f6;margin-left:6px;">📝 记入日志</button><span style="margin-left:auto;display:flex;gap:4px;"><button class="btn-copy ' + (fb === 'good' ? 'fb-good' : '') + '" title="相关/准确" onclick="issueMarkRelevance(this,\'good\')">👍</button><button class="btn-copy ' + (fb === 'bad' ? 'fb-bad' : '') + '" title="不相关/不准" onclick="issueMarkRelevance(this,\'bad\')">👎</button></span></div><div class="result-text" ' + (isLong ? 'style="max-height:4.8em;overflow:hidden;"' : '') + ' data-content="' + encodeURIComponent(content) + '">' + content + '</div>' + (isLong ? '<button class="btn-link" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;padding:4px 0;" onclick="issueToggleExpand(this)">展开全文 ▼</button>' : '') + regulationHtml + '</div></div>';
             }
 
             window.issueCopyContent = function(btn) {
@@ -864,13 +944,17 @@
             }
             // 按时间倒序为主（最近在前），时间相同时再按反馈/匹配率/模糊分
             function issueApplyFeedbackSort(results) {
+                // 排序策略：精确命中优先 → 匹配率高 → 时间倒序（最近在前）→ 👍置顶/👎沉底 → Fuse 评分
                 results.sort(function(a, b) {
+                    var ea = (a.exactCount !== undefined) ? a.exactCount : (a.matchCount || 0);
+                    var eb = (b.exactCount !== undefined) ? b.exactCount : (b.matchCount || 0);
+                    if (eb !== ea) return eb - ea;
+                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
                     var ta = new Date(a.datetime || 0).getTime();
                     var tb = new Date(b.datetime || 0).getTime();
                     if (tb !== ta) return tb - ta;
                     const fa = issueFeedbackScore(a), fb = issueFeedbackScore(b);
                     if (fa !== fb) return fb - fa;
-                    if (b.matchRate !== a.matchRate) return b.matchRate - a.matchRate;
                     return (b.fuseScore || 0) - (a.fuseScore || 0);
                 });
             }

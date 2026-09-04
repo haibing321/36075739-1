@@ -834,10 +834,9 @@
                     }
                 }
                 // 按钮状态
-                document.getElementById('diary-input-btn').classList.add('btn-info');
-                document.getElementById('diary-input-btn').classList.remove('btn-secondary');
-                document.getElementById('diary-history-btn').classList.add('btn-secondary');
-                document.getElementById('diary-history-btn').classList.remove('btn-info');
+                // 视图切换激活态：分段控件 .active（替代原先 btn-info / btn-secondary 互换）
+                document.getElementById('diary-input-btn').classList.add('active');
+                document.getElementById('diary-history-btn').classList.remove('active');
             }
 
             function showQuery() {
@@ -845,10 +844,8 @@
                 document.getElementById('diary-input-view').style.display = 'none';
                 document.getElementById('diary-history-view').style.display = 'block';
                 // 按钮状态
-                document.getElementById('diary-input-btn').classList.add('btn-secondary');
-                document.getElementById('diary-input-btn').classList.remove('btn-info');
-                document.getElementById('diary-history-btn').classList.add('btn-info');
-                document.getElementById('diary-history-btn').classList.remove('btn-secondary');
+                document.getElementById('diary-input-btn').classList.remove('active');
+                document.getElementById('diary-history-btn').classList.add('active');
                 // 渲染今日记录与日历
                 _selectedDate = null;
                 // 查询视图只显示日历：当日写实改由点击日期后在日历下方展示，避免上下重复

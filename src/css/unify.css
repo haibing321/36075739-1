@@ -1690,3 +1690,202 @@ html[data-theme="dark"][data-theme] #settings-panel button[style*="background:#f
   color: #fff !important;
 }
 
+/* ============================================================
+   导航栏 · 亮色模式庄严配色（藏青 + 金）
+   —— 亮色模式下导航栏原为纯白底，缺少厚重感。改为藏青渐变底 +
+      金色点缀（呼应盾牌 logo 的金边与"铁"字），白色导航文字保证
+      对比度，营造庄重、权威的观感。
+   仅亮色生效（html:not([data-theme="dark"])），暗色模式不受影响。
+   ============================================================ */
+html:not([data-theme="dark"]) .header {
+    background: linear-gradient(180deg, #0d2244 0%, #14315f 55%, #1a3f78 100%) !important;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.45) !important;
+    box-shadow: 0 2px 14px rgba(9, 24, 54, 0.28) !important;
+}
+/* 盾牌容器：半透明白底让金色徽标更突出 */
+html:not([data-theme="dark"]) .logo-icon {
+    background: rgba(255, 255, 255, 0.10) !important;
+}
+html:not([data-theme="dark"]) .logo-title {
+    color: #f7e7b4 !important;
+    letter-spacing: 0.5px;
+}
+html:not([data-theme="dark"]) .logo-subtitle {
+    color: rgba(255, 255, 255, 0.62) !important;
+}
+/* 导航按钮：白字 + 半透明白底，激活态加金色指示条 */
+html:not([data-theme="dark"]) .nav-btn {
+    color: rgba(255, 255, 255, 0.82) !important;
+}
+html:not([data-theme="dark"]) .nav-btn:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.14) !important;
+}
+html:not([data-theme="dark"]) .nav-btn.active {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.18) !important;
+}
+html:not([data-theme="dark"]) .nav-btn.active::after {
+    background: #e8c766 !important;
+}
+/* 移动端：当前标签名与汉堡按钮 */
+html:not([data-theme="dark"]) .nav-current-label {
+    color: #ffffff !important;
+}
+html:not([data-theme="dark"]) .nav-toggle {
+    background: rgba(255, 255, 255, 0.14) !important;
+}
+html:not([data-theme="dark"]) .nav-toggle:hover {
+    background: rgba(255, 255, 255, 0.26) !important;
+}
+html:not([data-theme="dark"]) .nav-toggle span {
+    background: #ffffff !important;
+}
+/* 移动端折叠下拉菜单：延续藏青底色，与头部融为一体 */
+@media (max-width: 768px) {
+    html:not([data-theme="dark"]) .nav {
+        background: linear-gradient(180deg, #1a3f78 0%, #14315f 100%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        box-shadow: 0 12px 28px rgba(9, 24, 54, 0.38) !important;
+    }
+    html:not([data-theme="dark"]) .nav-btn {
+        color: rgba(255, 255, 255, 0.85) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+    }
+    html:not([data-theme="dark"]) .nav-btn:last-child {
+        border-bottom: none !important;
+    }
+    html:not([data-theme="dark"]) .nav-btn:hover,
+    html:not([data-theme="dark"]) .nav-btn.active {
+        background: rgba(255, 255, 255, 0.16) !important;
+        color: #ffffff !important;
+    }
+}
+
+/* ============================================================
+   模块头部去重：导航栏已高亮显示当前模块名，卡片顶部不再重复标题，
+   仅保留一行"功能导语"（左侧主色竖线标识），让内容区更突出。
+   注：「资料中心」不在导航栏内、且头部带 ✕ 关闭按钮，故保留其标题。
+   ============================================================ */
+.card-header-lead { padding: 12px 20px !important; }
+.card-subtitle.card-lead {
+    margin-left: 0 !important;              /* 去掉为对齐标题图标预留的 46px 缩进 */
+    padding-left: 10px;
+    border-left: 3px solid var(--ds-blue);  /* 左侧主色竖线，作为模块导语标识 */
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* ============================================================
+   工作日志 · 布局整理
+   原问题：
+   ① 顶部借用 .stats-bar 灰底栏放按钮，按钮右对齐、左侧大片空白；
+   ② 输入/查询靠 btn-info ↔ btn-secondary 互换表示激活，观感杂乱；
+   ③ #diary-records-list 只有 id 无同名 class，导致 .diary-records-list
+      的间距与 350px 限高滚动从未生效 —— 记录全部堆叠、页面被撑长；
+   ④ 日期行与操作按钮分两层堆叠，纵向空间浪费；
+   ⑤ 搜索栏 / 多媒体面板大量内联样式（含硬编码 #f8fafc，深色模式发白）。
+   ============================================================ */
+/* 顶部工具栏：左视图切换 + 右动作，去掉灰底空栏 */
+.diary-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.diary-toolbar > .btn { margin-left: auto; }
+/* 视图切换：分段控件，激活态主蓝实底，未激活透明 */
+.diary-seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    background: rgba(100, 116, 139, 0.10);
+    border: 1px solid rgba(100, 116, 139, 0.18);
+    border-radius: 10px;
+}
+.diary-seg-btn {
+    padding: 6px 16px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--ds-gray-700);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+.diary-seg-btn:hover { color: var(--ds-blue); }
+.diary-seg-btn.active {
+    background: var(--ds-blue) !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+/* 深色：用 id 级特异性压过全模块 button 透明化兜底，保证激活态可见 */
+html[data-theme="dark"] #diary-input-btn.active,
+html[data-theme="dark"] #diary-history-btn.active {
+    background: var(--ds-blue) !important;
+    color: #fff !important;
+}
+/* 搜索栏 */
+.diary-search-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 12px;
+}
+.diary-search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--ds-radius);
+    font-size: 0.9rem;
+    background: var(--card-bg, #fff);
+    color: var(--text);
+}
+/* 输入视图：日期与操作按钮同一行 */
+.diary-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.diary-date-label {
+    font-weight: 600;
+    color: var(--primary);
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+.diary-date-input {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--ds-radius);
+    font-size: 0.92rem;
+    background: var(--card-bg, #fff);
+    color: var(--text);
+}
+.diary-input-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+/* 多媒体面板：半透明浅底（深浅色自适应），替代硬编码 #f8fafc */
+.diary-media-panel {
+    padding: 12px;
+    background: rgba(100, 116, 139, 0.08);
+    border: 1px solid rgba(100, 116, 139, 0.18);
+    border-radius: var(--ds-radius);
+    margin-bottom: 12px;
+}
+.diary-media-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.diary-media-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.diary-media-tip { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; }
+.diary-media-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+/* 记录列表：补上同名 class 后，modules.css 的间距与 350px 限高滚动才生效 */
+.diary-records-list { margin-bottom: 12px; }
+/* 「+ 添加问题」：原 border-radius:50% 配 width:100% 会被拉成怪异扁椭圆 */
+.btn-add-issue { border-radius: var(--ds-radius) !important; }
+

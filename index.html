@@ -416,12 +416,8 @@
         <!-- 检查手册模块 (移最前，使用标准卡片样式) -->
         <div id="panel-handbook" class="panel active">
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">📖</div>
-                        安全检查手册
-                    </div>
-                    <div class="card-subtitle">四层级目录 · 多专业检查项点定位</div>
+                <div class="card-header card-header-lead">
+                    <div class="card-subtitle card-lead">章·节·条·款四级目录 · 大纲浏览 · 全文检索 · 规章速查</div>
                 </div>
                 <div class="card-body">
 
@@ -455,12 +451,8 @@
         <!-- 检查信息模块 (原第一，现第二) -->
         <div id="panel-issue" class="panel">
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">📊</div>
-                        检查信息查询
-                    </div>
-                    <div class="card-subtitle">六维检索 · 性质/时间/类别/描述/依据/单位</div>
+                <div class="card-header card-header-lead">
+                    <div class="card-subtitle card-lead">性质/时间/类别/描述/依据/单位 六维检索 · 多关键词匹配 · 统计分析</div>
                 </div>
                 <div class="card-body">
                     <input type="file" id="issue-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
@@ -507,12 +499,8 @@
         <!-- 规章制度模块 (不变) -->
         <div id="panel-rule" class="panel">
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">📋</div>
-                        规章制度查询
-                    </div>
-                    <div class="card-subtitle">专业筛选 · 全文检索 · 比对高亮</div>
+                <div class="card-header card-header-lead">
+                    <div class="card-subtitle card-lead">分专业建库 · 目录浏览 · 全文检索 · 比对高亮 · 导入导出</div>
                 </div>
                 <div class="card-body">
                     <div class="form-group" style="margin-top:16px;">
@@ -550,74 +538,61 @@
         <!-- 工作日志模块 -->
         <div id="panel-diary" class="panel">
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">📝</div>
-                        工作日志
-                    </div>
-                    <div class="card-subtitle">图文日志 · 多媒体附件 · 待办提醒</div>
+                <div class="card-header card-header-lead">
+                    <div class="card-subtitle card-lead">工作写实 · 检查问题记录 · 拍照录像 · 备忘提醒 · 日历查询</div>
                 </div>
                 <div class="card-body">
-                    <!-- 统计栏+按钮组（重新布局） -->
-                    <div class="stats-bar">
-                        <div class="btn-group" id="diary-btn-group">
-                            <button class="btn btn-secondary" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
-                            <button class="btn btn-success" onclick="openMemoModal()">🔔 备忘</button>
-                            <button class="btn btn-info" id="diary-history-btn" onclick="showQuery()">🔍 查询</button>
+                    <!-- 顶部工具栏：左侧视图切换（分段控件）+ 右侧动作 -->
+                    <div class="diary-toolbar">
+                        <div class="diary-seg" role="group" aria-label="视图切换">
+                            <button type="button" class="diary-seg-btn active" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
+                            <button type="button" class="diary-seg-btn" id="diary-history-btn" onclick="showQuery()">🔍 查询</button>
                         </div>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="openMemoModal()">🔔 备忘</button>
                     </div>
 
-                    <!-- 查询视图：搜索 + 今日记录 + 日历 + 日期详情 -->
+                    <!-- 查询视图：搜索 + 记录列表 + 日历 + 日期详情 -->
                     <div id="diary-history-view" class="diary-view-panel" style="display:none;">
-                        <div class="diary-view-header">
-                            <span class="diary-view-title">📅 历史查询</span>
-                        </div>
                         <!-- 关键词搜索 -->
-                        <div class="diary-search-bar" style="display:flex;gap:8px;margin:10px 0;align-items:center;">
-                            <input type="text" id="diary-search-input" placeholder="🔍 搜索工作内容 / 问题描述…" oninput="diarySearch(this.value)" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;">
+                        <div class="diary-search-bar">
+                            <input type="text" id="diary-search-input" class="diary-search-input" placeholder="🔍 搜索工作内容 / 问题描述…" oninput="diarySearch(this.value)">
                             <button class="btn btn-secondary btn-small" onclick="document.getElementById('diary-search-input').value='';diarySearch('')">清空</button>
                         </div>
-                        <!-- 今日记录 / 搜索结果 -->
-                        <div id="diary-records-list"></div>
+                        <!-- 搜索结果 / 记录列表 -->
+                        <div id="diary-records-list" class="diary-records-list"></div>
                         <div id="diary-calendar" class="diary-calendar"></div>
                         <div id="diary-date-detail" class="diary-date-detail" style="display:none;"></div>
                     </div>
 
-                    <!-- 输入视图：日期 + 工作内容 + 问题输入（默认显示） -->
+                    <!-- 输入视图：日期 + 操作 + 工作内容 + 问题输入（默认显示） -->
                     <div id="diary-input-view" class="diary-view-panel">
-                        <div class="diary-view-header">
-                            <span class="diary-view-title">✏️ 输入内容</span>
-                            <div style="display:flex;gap:6px;align-items:center;">
-                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)" style="padding:6px 14px;border-radius:8px;font-size:0.85rem;">📄 全部复制</button>
-                                <button class="btn btn-small" onclick="toggleMultimediaPanel()" id="btn-multimedia-toggle" style="padding:6px 14px;border-radius:8px;font-size:0.85rem;background:#d97706;color:white;">📸 多媒体</button>
+                        <!-- 日期与操作按钮同一行，减少纵向堆叠 -->
+                        <div class="diary-input-bar">
+                            <label class="diary-date-label" for="diary-date">📅 日期</label>
+                            <input type="date" id="diary-date" class="diary-date-input">
+                            <div class="diary-input-actions">
+                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)">📄 全部复制</button>
+                                <button class="btn btn-small" id="btn-multimedia-toggle" onclick="toggleMultimediaPanel()">📸 多媒体</button>
                             </div>
                         </div>
-                        <!-- 日期选择（仅输入视图显示） -->
-                        <div class="diary-date-row">
-                            <label>📅 日期:</label>
-                            <input type="date" id="diary-date">
-                        </div>
                         <!-- 多媒体录入面板 -->
-                        <div id="multimedia-panel" style="display:none; padding:10px; background:#f8fafc; border-radius:8px; margin-bottom:10px;">
-                            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                        <div id="multimedia-panel" class="diary-media-panel" style="display:none;">
+                            <div class="diary-media-actions">
                                 <!-- 拍照 -->
-                                <label class="btn btn-info" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                <label class="btn btn-secondary btn-small diary-media-btn">
                                     📷 拍照
                                     <input type="file" accept="image/*" capture="environment" id="camera-input" onchange="handleMediaCapture(this, 'photo')" hidden>
                                 </label>
                                 <!-- 录像 -->
-                                <label class="btn btn-info" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                <label class="btn btn-secondary btn-small diary-media-btn">
                                     🎥 录像
                                     <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                                 </label>
                             </div>
-                            <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px;">💡 内容插入到光标处（可用输入法语音 🎤）</div>
+                            <div class="diary-media-tip">💡 内容插入到光标处（可用输入法语音 🎤）</div>
                             <!-- 多媒体预览区 -->
-                            <div id="media-preview" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                            <!-- 关闭按钮 -->
-                            <div style="display:flex; gap:8px;">
-                                <button class="btn btn-secondary" onclick="closeMultimediaPanel()">❌ 关闭</button>
-                            </div>
+                            <div id="media-preview" class="diary-media-preview"></div>
+                            <button class="btn btn-secondary btn-small" onclick="closeMultimediaPanel()">❌ 关闭</button>
                         </div>
                         <div class="diary-section">
                             <div class="diary-section-title">📋 工作内容</div>
@@ -636,12 +611,8 @@
         <!-- 应急电话模块 (不变) -->
         <div id="panel-phone" class="panel">
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">📞</div>
-                        应急电话
-                    </div>
-                    <div class="card-subtitle">多单位通讯录 · 搜索一键拨号</div>
+                <div class="card-header card-header-lead">
+                    <div class="card-subtitle card-lead">站段通讯录 · 站名/单位/线名搜索 · 一键拨号</div>
                 </div>
                     <div class="card-body">
                         <input type="file" id="phone-fileInput" accept=".xlsx,.xls,.json" style="display:none;">
@@ -672,7 +643,7 @@
                         <div class="card-title-icon">📚</div>
                         资料中心
                     </div>
-                    <div class="card-subtitle">写作资料 / 检查信息 / 规章 / 日志 / 报告，统一查阅</div>
+                    <div class="card-subtitle">写作资料 · 检查信息 · 规章 · 日志 · 报告，一处聚合查阅</div>
                     <button onclick="switchTab('doubao')" class="btn-close" title="关闭资料中心" style="position:absolute;top:14px;right:14px;font-size:1.3rem;line-height:1;">✕</button>
                 </div>
                 <div class="card-body">
@@ -731,12 +702,8 @@
         <!-- 智能查询模块 -->
         <div id="panel-doubao" class="panel">
             <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <div class="card-title-icon">🤖</div>
-                         智能助手
-                    </div>
-                    <div class="card-subtitle">智能对话 · 智能对规 · 智能写作 · 智能体 · 风险研判</div>
+                <div class="card-header card-header-lead">
+                    <div class="card-subtitle card-lead">智能对话 · 智能对规 · 智能写作 · 智能体 · 风险研判 · 资料中心</div>
                 </div>
                 <div class="card-body" style="display:flex;flex-direction:column;gap:0;position:relative;min-height:0;">
 

@@ -426,10 +426,12 @@ window.onclick = function(e) {
     // 新 SW 接管页面后，若本次为手动更新则刷新以应用新版本
     navigator.serviceWorker.addEventListener('controllerchange', function() {
         _fetchSwVersion(); // 刷新离线获取的 12 位版本号
-        // 修复：_pendingReload 仅在有效期内（10s）生效，过期作废。
+        // 修复：_pendingReload 仅在有效期内（60s）生效，过期作废。
         // 避免折叠屏文档重建偶然触发历史残留 reload（用户曾点过「立即更新」但未真正生效），
         // 导致「明明没更新却重启」的误重载。
-        if (_pendingReloadAt && (Date.now() - _pendingReloadAt) > 10000) {
+        // 【v3.51】放宽到 60s：applyPendingUpdate 可能要轮询等待新 SW 进入 waiting
+        // （最多约 8s），原 10s 窗口过窄，会把正常等待中的更新判为过期而不刷新。
+        if (_pendingReloadAt && (Date.now() - _pendingReloadAt) > 60000) {
             _pendingReload = false;
             _pendingReloadAt = 0;
         }
@@ -473,24 +475,85 @@ window.onclick = function(e) {
     // 也不要在此同步 reload()——否则新 SW 尚未激活、页面仍在旧 SW 控制下刷新，
     // 会导致「检测到新版本→点更新→仍是旧版→再次检测」死循环。
     // 真正刷新交由 controllerchange 事件（新 SW 确实接管后才触发）。
+    // controllerchange 迟迟不来时的刷新兜底（此时新 SW 已激活，刷新即可拿到新版本）
+    function _armReloadFallback(delay) {
+        setTimeout(function() {
+            if (_pendingReload) {
+                _pendingReload = false;
+                _applyingUpdate = false;
+                window.location.reload();
+            }
+        }, delay);
+    }
+
+    // 强制硬更新：清空 SW 缓存 + 注销 SW 后刷新。
+    // 仅在「始终等不到 waiting 状态的新 SW」时启用——说明常规更新链路走不通，
+    // 若不处理就表现为「点立即更新没反应 / 刷新后仍是旧版」。
+    function forceHardReload(reg) {
+        var cleanup = Promise.resolve();
+        if (window.caches && caches.keys) {
+            cleanup = caches.keys().then(function(keys) {
+                return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+            }).catch(function() {});
+        }
+        cleanup.then(function() {
+            if (reg && reg.unregister) return reg.unregister().catch(function() {});
+        }).then(function() { window.location.reload(); },
+                function() { window.location.reload(); });
+    }
+    window.forceHardReload = forceHardReload;
+
+    var _applyingUpdate = false;   // 防重入：等待新 SW 期间禁止重复点击
+
     function applyPendingUpdate() {
+        if (_applyingUpdate) return;
+        _applyingUpdate = true;
         _pendingReload = true;
         _pendingReloadAt = Date.now();
         // 应用更新：清除红点标记（刷新后由新版本接管，_has_update 不再成立）
         try { localStorage.removeItem('_has_update'); } catch (e) {}
         document.getElementById('tab-settings')?.classList.remove('has-update-badge');
         document.getElementById('check-update-btn')?.classList.remove('has-update-badge');
+        // 立即给出反馈，避免用户以为点了没反应
+        var _updTitle = document.getElementById('check-update-title');
+        var _updArrow = document.getElementById('check-update-arrow');
+        if (_updTitle) _updTitle.textContent = '⏳ 正在更新…';
+        if (_updArrow) _updArrow.textContent = '请勿关闭';
+
+        if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistration) {
+            forceHardReload(null); return;
+        }
         navigator.serviceWorker.getRegistration().then(function(reg) {
-            var target = (reg && reg.waiting) ? reg.waiting : navigator.serviceWorker.controller;
-            if (target) target.postMessage({ type: 'SKIP_WAITING' });
-        }).catch(function() {});
-        // 兜底：若 1.5s 内 controllerchange 未触发（极端情况），强制刷新一次确保生效
-        setTimeout(function() {
-            if (_pendingReload) {
-                _pendingReload = false;
-                window.location.reload();
+            if (!reg) { forceHardReload(null); return; }
+            // 快速路径：新 SW 已在 waiting，直接令其接管
+            if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                _armReloadFallback(3000);
+                return;
             }
-        }, 1500);
+            // 关键修复：waiting 尚未就绪时（triggerApplyUpdate 的 reg.update() 仍在进行），
+            // 原实现会把 SKIP_WAITING 发给 navigator.serviceWorker.controller（已激活的旧 SW），
+            // 而 skipWaiting() 对已激活的 SW 无效 → 不触发 controllerchange → 1.5s 后强制刷新
+            // 仍被旧 SW 的 CacheFirst 拦下返回旧页面，表现为「点更新没反应 / 还是旧版」。
+            // 改为主动再拉一次更新，并轮询等待新 SW 进入 waiting（最多约 8s）。
+            try { reg.update().catch(function() {}); } catch (e) {}
+            var _tries = 0, MAX_TRIES = 20; // 20 × 400ms ≈ 8s
+            var _timer = setInterval(function() {
+                navigator.serviceWorker.getRegistration().then(function(r2) {
+                    if (r2 && r2.waiting) {
+                        clearInterval(_timer);
+                        r2.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        _armReloadFallback(3000);
+                    } else if (++_tries >= MAX_TRIES) {
+                        clearInterval(_timer);
+                        forceHardReload(r2 || reg); // 常规链路走不通 → 清缓存注销后硬刷新
+                    }
+                }).catch(function() {
+                    clearInterval(_timer);
+                    forceHardReload(reg);
+                });
+            }, 400);
+        }).catch(function() { forceHardReload(null); });
     }
     window.applyPendingUpdate = applyPendingUpdate;
 
@@ -817,7 +880,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.50'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.51'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

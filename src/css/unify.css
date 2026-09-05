@@ -1795,36 +1795,26 @@ html:not([data-theme="dark"]) .nav-toggle span {
     margin-bottom: 14px;
 }
 .diary-toolbar > .btn { margin-left: auto; }
-/* 视图切换：分段控件，激活态主蓝实底，未激活透明 */
-.diary-seg {
-    display: inline-flex;
-    gap: 2px;
-    padding: 3px;
-    background: rgba(100, 116, 139, 0.10);
-    border: 1px solid rgba(100, 116, 139, 0.18);
-    border-radius: 10px;
-}
-.diary-seg-btn {
-    padding: 6px 16px;
-    font-size: 0.88rem;
-    font-weight: 500;
-    color: var(--ds-gray-700);
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.18s ease, color 0.18s ease;
-}
-.diary-seg-btn:hover { color: var(--ds-blue); }
-.diary-seg-btn.active {
-    background: var(--ds-blue) !important;
-    color: #fff !important;
-    font-weight: 600;
-}
-/* 深色：用 id 级特异性压过全模块 button 透明化兜底，保证激活态可见 */
+/* 视图切换：输入/查询复用全站标准按钮（btn btn-secondary btn-small，与「备忘」一致），
+   仅保留激活态主蓝实底指示当前视图；需压过 flat.css 的 html.flat-mode .btn-secondary !important 规则 */
+.diary-seg { display: inline-flex; gap: 6px; }
+.diary-seg-btn.active,
+html.flat-mode .diary-seg-btn.active,
+html.flat-mode:not([data-theme="dark"]) .diary-seg-btn.active,
+html[data-theme="dark"] .diary-seg-btn.active,
 html[data-theme="dark"] #diary-input-btn.active,
 html[data-theme="dark"] #diary-history-btn.active {
     background: var(--ds-blue) !important;
+    border-color: var(--ds-blue) !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+.diary-seg-btn.active:hover,
+html.flat-mode .diary-seg-btn.active:hover,
+html.flat-mode:not([data-theme="dark"]) .diary-seg-btn.active:hover,
+html[data-theme="dark"] .diary-seg-btn.active:hover {
+    background: var(--ds-blue-dark) !important;
+    border-color: var(--ds-blue-dark) !important;
     color: #fff !important;
 }
 /* 搜索栏 */

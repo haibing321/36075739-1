@@ -545,8 +545,8 @@
                     <!-- 顶部工具栏：左侧视图切换（分段控件）+ 右侧动作 -->
                     <div class="diary-toolbar">
                         <div class="diary-seg" role="group" aria-label="视图切换">
-                            <button type="button" class="diary-seg-btn active" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
-                            <button type="button" class="diary-seg-btn" id="diary-history-btn" onclick="showQuery()">🔍 查询</button>
+                            <button type="button" class="btn btn-secondary btn-small diary-seg-btn active" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
+                            <button type="button" class="btn btn-secondary btn-small diary-seg-btn" id="diary-history-btn" onclick="showQuery()">🔍 查询</button>
                         </div>
                         <button type="button" class="btn btn-secondary btn-small" onclick="openMemoModal()">🔔 备忘</button>
                     </div>
@@ -1744,47 +1744,43 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v3.48 近期更新 -->
+            <!-- v3.51 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.48 近期更新</span>
+                    <span>v3.51 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎨 暗黑模式统一兜底：新增全模块输入框/按钮/弹窗容器配色兜底规则（unify.css 高特异性段），补齐智能对话模块此前遗漏的暗黑覆盖（气泡/侧栏/输入框/关联数据弹窗等），各模块暗黑观感进一步拉齐。</span>
+                        <span>🔘 工作日志「输入 / 查询」按钮与其它模块按钮风格统一：复用全站标准按钮样式（与「备忘」一致），激活态以主蓝实底指示当前视图，亮色 / 暗黑 / 极简（flat）三种模式均已适配，不再出现分段控件样式不一致的问题。</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔧 修复 version.json.sw 与 sw.js CACHE_VERSION 同步（bump-sw.js 双写 version.json.sw + pre-commit 钩子随提交落库），根治「检查更新」因两者不一致误判 SW 未变化。</span>
+                        <span>🔧 修复「检查更新—立即更新」存在的不生效问题：点击后等待新版本 Service Worker 就绪再切换（期间显示进度反馈、防重复点击），超时自动硬更新（清空缓存并注销 SW 后刷新），不再出现点了没反应、刷新后仍是旧版的情况。</span>
                     </div>
                 </div>
             </div>
 
-            <!-- v3.47 近期更新 -->
+            <!-- v3.50 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.47 近期更新</span>
+                    <span>v3.50 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎨 暗黑模式背景统一为 DeepSeek 网页版中性黑：主背景 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#1e1e1e</code>、卡片/输入框 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#1d1d1d</code>、最深 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#0e0e0e</code>；原先偏冷的蓝黑（#0f172a/#1e293b/#334155 等）全部换为中性灰，各模块面板/卡片/弹层/toast/代码块/天气卡背景不再发蓝。</span>
+                        <span>📓 工作日志模块界面调整：顶部工具栏改为「输入 / 查询」视图切换 + 右侧动作按钮布局，精简操作按钮内联样式，列表与操作按钮间距、圆角统一。</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>☀️ 亮色模式同步对齐 DeepSeek 网页版：主背景 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#ffffff</code>、区块底 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#f7f8fa</code>、主文字 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#1a1a1a</code>、次文字 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#5a5a5a</code>、边框 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#e5e7eb</code>；原先冷灰蓝（#eef2f7/#f8fafd 等）改为中性白灰。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📱 移动端浏览器主题色（theme-color）随主题切换：暗色 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#1e1e1e</code>、亮色 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">#ffffff</code>；PWA 安装提示按钮、全局 toast、智能对话代码块等内联深色面一并中性化。</span>
+                        <span>🎨 主题样式调整：新增全模块样式覆盖规则（unify.css），各模块观感进一步拉齐。</span>
                     </div>
                 </div>
             </div>
 
-            <!-- v3.46 及以下已归档（最近 2 版本为 v3.48 / v3.47） -->
+            <!-- v3.49 及以下已归档（最近 2 版本为 v3.51 / v3.50） -->
 
             <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.44 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 

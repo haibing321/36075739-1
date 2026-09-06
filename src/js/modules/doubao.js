@@ -2252,8 +2252,8 @@
                 if (yt && /youtube\.com|youtu\.be/i.test(s)) {
                     return { name: 'YouTube', src: 'https://www.youtube-nocookie.com/embed/' + yt[1] };
                 }
-                var qq = s.match(/v\.qq\.com\/[^?#]*?\/([a-zA-Z0-9]{11,})\.html/);
-                if (qq) return { name: '腾讯视频', src: 'https://v.qq.com/txp/iframe/player.html?vid=' + qq[1] };
+                var qq = s.match(/v\.qq\.com\/x\/(?:cover|page)\/([^/]+)\/([a-zA-Z0-9]{10,})\.html/);
+                if (qq) return { name: '腾讯视频', src: 'https://v.qq.com/txp/iframe/player.html?vid=' + qq[2] };
                 return null;
             }
             function dsLinkCard(u, kind) {
@@ -2297,9 +2297,13 @@
                 }
                 var site = dsSiteEmbed(u);
                 if (site) {
+                    // 直接内嵌播放器（loading=lazy，滚动到才加载，避免一次拉起多个播放器）
                     return '<div class="ds-media ds-media-site" data-ds-embed="' + dsEsc(site.src) + '" data-ds-page="' + a + '">' +
-                        '<button type="button" class="ds-media-play">▶ 内嵌播放（' + dsEsc(site.name) + '）</button>' +
-                        '<a class="ds-media-open" href="' + a + '" target="_blank" rel="noopener">新窗口打开 ↗</a></div>';
+                        '<iframe class="ds-media-iframe" src="' + dsEsc(site.src) + '" loading="lazy" frameborder="0" scrolling="no" ' +
+                        'allowfullscreen="true" referrerpolicy="no-referrer" title="' + dsEsc(site.name) + '"></iframe>' +
+                        '<div class="ds-media-cap">' + dsEsc(site.name) + ' 内嵌播放 · ' +
+                        '<a href="' + a + '" target="_blank" rel="noopener">新窗口打开 ↗</a> · ' +
+                        '<button type="button" class="ds-media-reload">🔄 重新加载</button></div></div>';
                 }
                 return dsLinkCard(u, '');
             }
@@ -2384,7 +2388,7 @@
                     if (!t || !t.closest) return;
                     var img = t.closest('img.ds-media-img');
                     if (img && img.getAttribute('src')) { e.preventDefault(); dsShowImageViewer(img.getAttribute('src')); return; }
-                    var play = t.closest('.ds-media-play');
+                    var play = t.closest('.ds-media-play, .ds-media-reload');
                     if (play) {
                         e.preventDefault();
                         var host = play.closest('.ds-media-site');
@@ -2435,6 +2439,11 @@
 
                 // 2. 行级内联转换（先转义再替换）
                 function inline(str) {
+                    // 整段就是一个链接（常见于表格单元格、列表项）→ 直接渲染媒体/内嵌播放卡片
+                    var solo = String(str == null ? '' : str).trim();
+                    if (solo && DS_LINE_URL_RE.test(solo) && !/^!\[/.test(solo)) {
+                        return dsMediaBlock(solo, '');
+                    }
                     let s = dsEsc(str);
                     // 1) markdown 图片/链接先占位，避免后续裸 URL 正则污染已生成的 href
                     const links = [];

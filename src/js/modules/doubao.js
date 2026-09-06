@@ -2457,7 +2457,9 @@
                     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
                     // 2) 裸 URL 自动变成可点击链接（新标签打开）
                     s = dsAutoLink(s);
-                    // 3) 还原 markdown 图片/链接
+                    // 3) 还原 markdown 图片/链接 —— 复用块级媒体渲染：
+                    //    视频站点(B站/YouTube/腾讯) → 内嵌播放器；图片/音视频直链 → 内嵌播放器；普通网页 → 外链卡片
+                    //    覆盖表格/列表/段落里的链接（之前只对"独立成行"生效，导致表格单元格内链接仍是普通 <a>）
                     s = s.replace(/@@DSLINK@@(\d+)@@/g, function (m, i) {
                         const l = links[+i];
                         if (!l) return '';
@@ -2467,7 +2469,10 @@
                         if (l.img && kind === 'image') {
                             return '<img class="ds-media-img ds-media-img-inline" src="' + safe + '" alt="' + l.txt + '" loading="lazy" referrerpolicy="no-referrer">';
                         }
-                        return '<a href="' + safe + '" target="_blank" rel="noopener">' + (l.txt || safe) + '</a>';
+                        // 非 ![](md 图片) 语法的行内/表格链接 → 全部走块级媒体渲染：
+                        //   视频站点 → 内嵌 iframe；视频/音频直链 → 内嵌播放器；图片直链 → 内嵌图片；
+                        //   普通网页 → 外链卡片。覆盖表格/列表/段落里的链接。
+                        return dsMediaBlock(safe, l.txt || '');
                     });
                     return s;
                 }

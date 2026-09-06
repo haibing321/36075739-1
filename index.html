@@ -29,11 +29,12 @@
                    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdnstatic.tencentcs.com 'unsafe-inline' 'unsafe-eval';
                    style-src 'self' 'unsafe-inline';
                    connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com https://api.github.com;
-                   img-src 'self' blob: data:;
-                   frame-src https://www.doubao.com;
+                   img-src 'self' blob: data: https:;
+                   media-src 'self' blob: data: https:;
+                   frame-src https://www.doubao.com https://player.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://v.qq.com https://open.iqiyi.com https://player.youku.com;
                    font-src 'self';
                    worker-src 'self';
-                   child-src https://www.doubao.com;">
+                   child-src https://www.doubao.com https://player.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://v.qq.com https://open.iqiyi.com https://player.youku.com;">
 
     <!-- 离线兜底：设置面板开关不依赖任何外部 JS 文件。
          即使 app.js 因离线未成功加载（SW 预缓存缺失/旧缓存被清），
@@ -1744,6 +1745,24 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.52 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.52 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🖼️ 智能对话支持图片 / 视频 / 音乐直接显示与播放：回复中的图片链接自动显示为图片（点击可全屏放大），mp4 / webm / mov 等视频自动内嵌播放器，mp3 / m4a / wav / flac 等音频以音乐卡片形式在线播放；B 站 / YouTube / 腾讯视频链接提供「内嵌播放」按钮，点击即可在对话内播放。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔗 网址自动识别为可点击链接：AI 回复与自己所发消息中的 http(s) 网址都会自动变链接，点击即在浏览器新标签打开；资源加载失败自动降级为「在新窗口打开」提示。已同步放宽 CSP（img / media / frame）并校验链接协议白名单，确保安全。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.51 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1762,27 +1781,9 @@
                 </div>
             </div>
 
-            <!-- v3.50 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.50 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📓 工作日志模块界面调整：顶部工具栏改为「输入 / 查询」视图切换 + 右侧动作按钮布局，精简操作按钮内联样式，列表与操作按钮间距、圆角统一。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎨 主题样式调整：新增全模块样式覆盖规则（unify.css），各模块观感进一步拉齐。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.50 及以下已归档（最近 2 版本为 v3.52 / v3.51） -->
 
-            <!-- v3.49 及以下已归档（最近 2 版本为 v3.51 / v3.50） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.44 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.50 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

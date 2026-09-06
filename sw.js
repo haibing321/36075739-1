@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260905084038';
+var CACHE_VERSION = '20260906221453';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -472,8 +472,10 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // 4. 图标/字体等静态资源：CacheFirst
-  if (url.match(/\.(png|jpg|svg|ico|woff|woff2|ttf|eot)(\?.*)?$/i)) {
+  // 4. 图标/字体等静态资源：CacheFirst（仅同源；外站图片/媒体不进缓存，避免污染缓存配额）
+  var _sameOrigin = false;
+  try { _sameOrigin = (new URL(url).origin === self.location.origin); } catch (e) { _sameOrigin = false; }
+  if (_sameOrigin && url.match(/\.(png|jpg|jpeg|svg|ico|woff|woff2|ttf|eot)(\?.*)?$/i)) {
     event.respondWith(
       caches.match(req).then(function(cached) {
         return cached || fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {

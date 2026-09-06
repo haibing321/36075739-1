@@ -1750,6 +1750,7 @@
                         var _renderTick = 0;
                         var _wsText = '';
                         var _wsSearching = false;
+                        _dsStreaming = true;
                         while (true) {
                             var resp2 = await reader.read();
                             if (resp2.done) break;
@@ -1767,7 +1768,7 @@
                                 var _t = _j.type;
                                 if (_t === 'response.output_text.delta') { _wsText += (_j.delta || ''); }
                                 else if (_t === 'response.web_search_call.in_progress' || _t === 'response.web_search_call.searching') { _wsSearching = true; }
-                                else if (_t === 'response.failed') { var _em = (_j.error && (_j.error.message || _j.error.code)) || '联网搜索失败'; dsHistory[assistantIdx].content = '❌ ' + _em; dsRenderAll(); return; }
+                                else if (_t === 'response.failed') { var _em = (_j.error && (_j.error.message || _j.error.code)) || '联网搜索失败'; _dsStreaming = false; dsHistory[assistantIdx].content = '❌ ' + _em; dsRenderAll(); return; }
                             }
                             _renderTick++;
                             if (_renderTick % 3 === 0) {
@@ -1780,6 +1781,7 @@
                             }
                         }
                         dsHistory[assistantIdx].content = _wsText;
+                        _dsStreaming = false;
                     } else {
                         // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
@@ -1825,12 +1827,13 @@
                             if (thinkingOn) { _bodyN.thinking = { type: 'enabled' }; _bodyN.reasoning_effort = 'high'; } else { _bodyN.thinking = { type: 'disabled' }; }
                             if (_useTools) { _bodyN.tools = _toolsParamArr; }
                             var _respN = await fetch(dsApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify(_bodyN), signal: window._dsAbortController.signal });
-                            if (!_respN.ok) { var _et = await _respN.text(); dsHistory[assistantIdx].content = '❌ 工具结果回灌后请求失败（HTTP ' + _respN.status + '）：' + _et.slice(0, 200); dsRenderAll(); return; }
+                            if (!_respN.ok) { _dsStreaming = false; var _et = await _respN.text(); dsHistory[assistantIdx].content = '❌ 工具结果回灌后请求失败（HTTP ' + _respN.status + '）：' + _et.slice(0, 200); dsRenderAll(); return; }
                             _pendingToolCalls = [];
                             await _dsStreamChat(_respN, assistantIdx, _pendingToolCalls);
                         }
                     }
 
+                    _dsStreaming = false; // 收尾：确保最终渲染出真实播放器
                     var _finalChatBox = document.getElementById('ds-chat-box');
                     var _finalBubbles = _finalChatBox.querySelectorAll('.ds-bubble-assistant');
                     var _finalBubble = _finalBubbles[_finalBubbles.length - 1];
@@ -1991,7 +1994,7 @@
                 dsHistory.forEach((msg, i) => {
                     if (msg.role === 'user') {
                         const showText = msg.displayText || msg.content;
-                        html += '<div class="ds-row-user"><div class="ds-bubble-user">' + dsEsc(showText) + '</div></div>';
+                        html += '<div class="ds-row-user"><div class="ds-bubble-user">' + dsAutoLink(dsEsc(showText)) + '</div></div>';
                     } else if (msg.role === 'assistant') {
                         if (!msg.content) {
                             html += '<div class="ds-row-assistant"><div class="ds-bubble-assistant"><span class="ds-typing">思考中<span class="ds-dot">.</span><span class="ds-dot">.</span><span class="ds-dot">.</span></span></div></div>';
@@ -2048,6 +2051,7 @@
             // ---- P1 Tool Calls：通用 chat/completions 流式解析 ----
             // 将 resp 流式写入 dsHistory[idx]，并把增量 tool_calls 累积进 toolCallsOut（按 index 存放，调用方需 filter(Boolean)）
             async function _dsStreamChat(resp, idx, toolCallsOut) {
+                _dsStreaming = true; // 流式期间媒体降级为占位卡片，避免逐帧重建反复加载
                 var reader = resp.body.getReader();
                 var decoder = new TextDecoder();
                 var buffer = '';
@@ -2100,6 +2104,7 @@
                         }
                     }
                 }
+                _dsStreaming = false;
             }
 
             // ---- P2 FIM 中间补全（Beta，独立入口，仅非思考） ----
@@ -2167,6 +2172,209 @@
                 return reasoningHtml + dsMarkdown(m.content || '');
             }
 
+            // ============ 媒体/链接渲染（图片 · 视频 · 音频 · 外链） ============
+            // AI 回复中的 URL：图片/音视频直链自动渲染为可查看/可播放卡片；
+            // 视频站点（B站/YouTube/腾讯）给内嵌播放按钮；其余渲染为可点击外链卡片。
+            // 安全：所有 URL 经 dsSafeUrl 白名单校验（仅 http/https/blob/data:媒体），属性再经 dsEsc。
+            var _dsStreaming = false; // 流式输出中→媒体降级为占位卡片，避免逐帧重建反复加载
+
+            var DS_MEDIA_KIND = {};
+            (function () {
+                var map = {
+                    image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'jfif', 'heic', 'heif'],
+                    video: ['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv', 'm4p'],
+                    audio: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'oga', 'opus', 'weba', 'aiff', 'aif', 'amr', 'mpga']
+                };
+                Object.keys(map).forEach(function (k) {
+                    map[k].forEach(function (e) { DS_MEDIA_KIND[e] = k; });
+                });
+            })();
+
+            // 仅放行安全协议，杜绝 javascript: / vbscript: 等伪协议注入
+            function dsSafeUrl(u) {
+                var s = String(u == null ? '' : u).trim();
+                if (!s) return '';
+                if (/^https?:\/\//i.test(s)) return s;
+                if (/^blob:/i.test(s)) return s;
+                if (/^data:(?:image|audio|video)\//i.test(s)) return s;
+                return '';
+            }
+            function dsUrlExt(u) {
+                var m = String(u || '').toLowerCase().split(/[?#]/)[0].match(/\.([a-z0-9]{2,5})$/);
+                return m ? m[1] : '';
+            }
+            function dsMediaKindOf(u) { return DS_MEDIA_KIND[dsUrlExt(u)] || ''; }
+            function dsUrlName(u) {
+                try {
+                    var s = decodeURIComponent(String(u).split(/[?#]/)[0]);
+                    var seg = s.split('/').pop();
+                    return seg && seg.indexOf('.') > 0 ? seg : '';
+                } catch (e) { return ''; }
+            }
+            function dsUrlHost(u) {
+                var m = String(u || '').match(/^https?:\/\/([^/?#]+)/i);
+                return m ? m[1] : String(u || '');
+            }
+            // 视频站点 → 可内嵌 iframe（null 表示不支持内嵌，降级为外链卡片）
+            function dsSiteEmbed(u) {
+                var s = String(u || '');
+                var bv = s.match(/\/(BV[0-9A-Za-z]{10})/) || s.match(/(BV[0-9A-Za-z]{10})/);
+                if (bv && /bilibili\.com|b23\.tv/i.test(s)) {
+                    return { name: '哔哩哔哩', src: 'https://player.bilibili.com/player.html?bvid=' + bv[1] + '&autoplay=0&high_quality=1' };
+                }
+                var yt = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{6,})/);
+                if (yt && /youtube\.com|youtu\.be/i.test(s)) {
+                    return { name: 'YouTube', src: 'https://www.youtube-nocookie.com/embed/' + yt[1] };
+                }
+                var qq = s.match(/v\.qq\.com\/[^?#]*?\/([a-zA-Z0-9]{11,})\.html/);
+                if (qq) return { name: '腾讯视频', src: 'https://v.qq.com/txp/iframe/player.html?vid=' + qq[1] };
+                return null;
+            }
+            function dsLinkCard(u, kind) {
+                var icon = kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : kind === 'audio' ? '🎵' : '🔗';
+                return '<div class="ds-media ds-media-link-box"><span class="ds-media-icon">' + icon + '</span>' +
+                    '<a href="' + dsEsc(u) + '" target="_blank" rel="noopener">' + dsEsc(dsUrlHost(u)) + '</a>' +
+                    '<span class="ds-media-url">' + dsEsc(u) + '</span></div>';
+            }
+            // url 为【未转义】原始 URL
+            function dsMediaBlock(url, alt) {
+                var u = dsSafeUrl(url);
+                if (!u) return '';
+                var a = dsEsc(u);
+                var kind = dsMediaKindOf(u);
+                if (_dsStreaming) return dsLinkCard(u, kind); // 流式期间只出占位，结束后再换成播放器
+                if (kind === 'image') {
+                    return '<figure class="ds-media ds-media-img-box">' +
+                        '<img class="ds-media-img" src="' + a + '" alt="' + dsEsc(alt || dsUrlName(u) || '图片') + '" loading="lazy" referrerpolicy="no-referrer">' +
+                        '<figcaption class="ds-media-cap">🖼️ <a href="' + a + '" target="_blank" rel="noopener">查看原图</a></figcaption></figure>';
+                }
+                if (kind === 'video') {
+                    return '<div class="ds-media ds-media-video-box" data-ds-src="' + a + '">' +
+                        '<video class="ds-media-video" src="' + a + '" controls preload="metadata" playsinline></video>' +
+                        '<div class="ds-media-cap">🎬 <a href="' + a + '" target="_blank" rel="noopener">新窗口打开</a></div></div>';
+                }
+                if (kind === 'audio') {
+                    return '<div class="ds-media ds-media-audio-box" data-ds-src="' + a + '">' +
+                        '<span class="ds-media-icon">🎵</span>' +
+                        '<div class="ds-media-audio-main">' +
+                        '<div class="ds-media-audio-name">' + dsEsc(dsUrlName(u) || '音频') + '</div>' +
+                        '<audio class="ds-media-audio" src="' + a + '" controls preload="metadata"></audio>' +
+                        '</div><a class="ds-media-open" href="' + a + '" target="_blank" rel="noopener" title="新窗口打开">↗</a></div>';
+                }
+                var site = dsSiteEmbed(u);
+                if (site) {
+                    return '<div class="ds-media ds-media-site" data-ds-embed="' + dsEsc(site.src) + '" data-ds-page="' + a + '">' +
+                        '<button type="button" class="ds-media-play">▶ 内嵌播放（' + dsEsc(site.name) + '）</button>' +
+                        '<a class="ds-media-open" href="' + a + '" target="_blank" rel="noopener">新窗口打开 ↗</a></div>';
+                }
+                return dsLinkCard(u, '');
+            }
+            // 在【已转义】文本上把裸 URL 变成可点击链接（点击即在浏览器新标签打开）
+            // 注意：中文/全角字符不参与 URL（中文正文常紧跟 URL 且无空格），末尾标点不吞入链接
+            var DS_URL_RE = /https?:\/\/[^\s<>"'\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+            function dsAutoLink(escaped) {
+                return String(escaped).replace(DS_URL_RE, function (m) {
+                    var url = m.replace(/[),.;:!?'"\]）】》]+$/, '');
+                    var tail = m.slice(url.length);
+                    return '<a href="' + url + '" target="_blank" rel="noopener" class="ds-md-link">' + url + '</a>' + tail;
+                });
+            }
+            // 图片全屏预览
+            function dsShowImageViewer(src) {
+                var safe = dsSafeUrl(src);
+                if (!safe) return;
+                var old = document.getElementById('ds-image-viewer');
+                if (old && old.remove) old.remove();
+                var wrap = document.createElement('div');
+                wrap.id = 'ds-image-viewer';
+                wrap.className = 'ds-image-viewer';
+                var close = function () { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
+                var onKey = function (ev) { if (ev.key === 'Escape' || ev.key === 'Esc') close(); };
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'ds-image-viewer-close';
+                btn.textContent = '✕';
+                btn.onclick = close;
+                var img = document.createElement('img');
+                img.className = 'ds-image-viewer-img';
+                img.src = safe;
+                img.alt = '图片预览';
+                wrap.appendChild(btn);
+                wrap.appendChild(img);
+                wrap.addEventListener('click', function (ev) { if (ev.target === wrap) close(); });
+                document.addEventListener('keydown', onKey);
+                document.body.appendChild(wrap);
+            }
+            window.dsShowImageViewer = dsShowImageViewer;
+            // 站点内嵌播放：点击后才创建 iframe，避免一次加载多个播放器
+            function dsMountEmbed(host) {
+                var src = dsSafeUrl(host.getAttribute('data-ds-embed'));
+                var page = dsSafeUrl(host.getAttribute('data-ds-page'));
+                if (!src) return;
+                host.innerHTML = '';
+                var f = document.createElement('iframe');
+                f.className = 'ds-media-iframe';
+                f.src = src;
+                f.setAttribute('frameborder', '0');
+                f.setAttribute('allowfullscreen', 'true');
+                f.setAttribute('scrolling', 'no');
+                f.setAttribute('referrerpolicy', 'no-referrer');
+                host.appendChild(f);
+                if (page) {
+                    var a = document.createElement('a');
+                    a.className = 'ds-media-open';
+                    a.href = page; a.target = '_blank'; a.rel = 'noopener';
+                    a.textContent = '新窗口打开 ↗';
+                    host.appendChild(a);
+                }
+            }
+            // 全局事件委托：图片放大 / 内嵌播放 / 资源加载失败降级（DOMPurify 会剥掉内联 onerror，故用委托）
+            function dsInitMediaDelegates() {
+                if (window.__dsMediaDelegates) return;
+                window.__dsMediaDelegates = true;
+                document.addEventListener('click', function (e) {
+                    var t = e.target;
+                    if (!t || !t.closest) return;
+                    var img = t.closest('img.ds-media-img');
+                    if (img && img.getAttribute('src')) { e.preventDefault(); dsShowImageViewer(img.getAttribute('src')); return; }
+                    var play = t.closest('.ds-media-play');
+                    if (play) {
+                        e.preventDefault();
+                        var host = play.closest('.ds-media-site');
+                        if (host) dsMountEmbed(host);
+                    }
+                });
+                // error 不冒泡，用捕获阶段
+                document.addEventListener('error', function (e) {
+                    var t = e.target;
+                    if (!t || !t.classList) return;
+                    if (!(t.classList.contains('ds-media-img') || t.classList.contains('ds-media-video') || t.classList.contains('ds-media-audio'))) return;
+                    var src = t.getAttribute('src') || '';
+                    var host = t.closest ? t.closest('.ds-media') : null;
+                    if (!host) { // 行内图片：降级为文本链接
+                        var p = t.parentNode;
+                        if (!p) return;
+                        var lnk = document.createElement('a');
+                        lnk.href = dsSafeUrl(src) || '#'; lnk.target = '_blank'; lnk.rel = 'noopener';
+                        lnk.textContent = dsUrlName(src) || src;
+                        p.replaceChild(lnk, t);
+                        return;
+                    }
+                    if (host.getAttribute('data-ds-failed')) return;
+                    host.setAttribute('data-ds-failed', '1');
+                    host.innerHTML = '';
+                    var tip = document.createElement('div');
+                    tip.className = 'ds-media-fail';
+                    tip.textContent = '⚠️ 资源加载失败（跨域限制或链接已失效）';
+                    var a2 = document.createElement('a');
+                    a2.href = dsSafeUrl(src) || '#'; a2.target = '_blank'; a2.rel = 'noopener';
+                    a2.textContent = '在新窗口打开 ↗';
+                    host.appendChild(tip);
+                    host.appendChild(a2);
+                }, true);
+            }
+            dsInitMediaDelegates();
+
             // ---- 增强 Markdown 渲染 ----
             function dsMarkdown(text) {
                 if (!text) return '';
@@ -2181,11 +2389,30 @@
                 // 2. 行级内联转换（先转义再替换）
                 function inline(str) {
                     let s = dsEsc(str);
+                    // 1) markdown 图片/链接先占位，避免后续裸 URL 正则污染已生成的 href
+                    const links = [];
+                    s = s.replace(/!?\[([^\]]*)\]\((https?:\/\/[^\s)]+|data:(?:image|audio|video)\/[^\s)]+)\)/g, function (m, txt, url) {
+                        links.push({ img: m.charAt(0) === '!', txt: txt, url: url });
+                        return '@@DSLINK@@' + (links.length - 1) + '@@';
+                    });
                     s = s.replace(/`([^`]+)`/g, '<code class="ds-md-code">$1</code>');
                     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
                     s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
                     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
-                    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+                    // 2) 裸 URL 自动变成可点击链接（新标签打开）
+                    s = dsAutoLink(s);
+                    // 3) 还原 markdown 图片/链接
+                    s = s.replace(/@@DSLINK@@(\d+)@@/g, function (m, i) {
+                        const l = links[+i];
+                        if (!l) return '';
+                        const safe = dsSafeUrl(l.url);
+                        if (!safe) return m;
+                        const kind = dsMediaKindOf(safe);
+                        if (l.img && kind === 'image') {
+                            return '<img class="ds-media-img ds-media-img-inline" src="' + safe + '" alt="' + l.txt + '" loading="lazy" referrerpolicy="no-referrer">';
+                        }
+                        return '<a href="' + safe + '" target="_blank" rel="noopener">' + (l.txt || safe) + '</a>';
+                    });
                     return s;
                 }
 
@@ -2253,6 +2480,27 @@
                     if (/^(\s*[-*_]){3,}\s*$/.test(line)) {
                         closeList();
                         out.push('<hr class="ds-md-hr">');
+                        i++; continue;
+                    }
+                    // 独立成行的链接：图片/音视频直链内嵌播放，站点链接给内嵌播放卡片，其余给外链卡片
+                    var onlyLine = line.trim();
+                    if (/^https?:\/\/[^\s<>"']+$/.test(onlyLine)) {
+                        closeList();
+                        out.push(dsMediaBlock(onlyLine, ''));
+                        i++; continue;
+                    }
+                    var imgMd = onlyLine.match(/^!\[([^\]]*)\]\((https?:\/\/[^\s)]+|data:image\/[^\s)]+)\)$/);
+                    if (imgMd) {
+                        closeList();
+                        out.push(dsMediaBlock(imgMd[2], imgMd[1]));
+                        i++; continue;
+                    }
+                    // 形如「图片：https://…」「音频: https://…」的短前缀行同样识别为媒体行
+                    var tailUrl = onlyLine.match(/(https?:\/\/[^\s<>"'\u4e00-\u9fa5]+)$/);
+                    if (tailUrl && onlyLine.length - tailUrl[1].length <= 6 &&
+                        !/^[-*]\s/.test(onlyLine) && !/^\d+\./.test(onlyLine)) {
+                        closeList();
+                        out.push(dsMediaBlock(tailUrl[1], ''));
                         i++; continue;
                     }
                     // 无序列表

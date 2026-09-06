@@ -167,6 +167,12 @@
   function renderCard(html) {
     if (!window.ENABLE_UNIFIED) return html;
     if (!html) return html;
+    // 0) 先保护媒体/链接 URL：URL 中可能含 11 位连续数字，会被下方"电话自动拨号"规则误伤
+    var _urls = [];
+    html = html.replace(/(https?:\/\/[^\s"'`<]+)/g, function (u) {
+      _urls.push(u);
+      return '@@DSURL@@' + (_urls.length - 1) + '@@';
+    });
     // 1) 规章引用《xxx》转为可点击卡片
     // 注意顺序：净化必须放在【所有字符串拼接之后】。data-rule / data-phone 的值直接来自
     // 正则捕获组（未转义），若先净化再拼接，值里的引号会提前闭合属性，
@@ -183,9 +189,19 @@
     // 4) 电话号码自动加拨号按钮（不使用内联 onclick，改用事件委托）
     html = html.replace(/(\d{3,4}-\d{7,8}|\d{11})/g,
       '<span class="phone-number" data-phone="$1">$1 <button type="button" class="btn-call" data-phone="$1">📞 拨号</button></span>');
+    // 6) 还原被保护的 URL
+    html = html.replace(/@@DSURL@@(\d+)@@/g, function (m, i) { return (_urls[+i] != null) ? _urls[+i] : ''; });
     // 5) 最后统一净化 AI 产出（原本 dsMarkdown 不净化，这里补一层安全防护）
     if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-      try { html = DOMPurify.sanitize(html, { ADD_ATTR: ['target'] }); } catch (e) {}
+      // 放行媒体元素：图片/音视频播放器/视频站内嵌 iframe（URL 已在 dsMarkdown 内做过协议白名单校验）
+      try {
+        html = DOMPurify.sanitize(html, {
+          ADD_TAGS: ['figure', 'figcaption', 'video', 'audio', 'source', 'iframe'],
+          ADD_ATTR: ['target', 'controls', 'preload', 'playsinline', 'poster', 'loop', 'muted',
+                     'autoplay', 'width', 'height', 'loading', 'referrerpolicy',
+                     'allowfullscreen', 'frameborder', 'scrolling']
+        });
+      } catch (e) {}
     }
     return html;
   }

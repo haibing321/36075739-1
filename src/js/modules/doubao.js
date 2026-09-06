@@ -1549,6 +1549,17 @@
                   '2. 准确性：区分【已确认·基于本地数据】【推断】【待核实】；引用规章须注明名称与条款出处，禁止编造编号、数据或案例。\n' +
                   '3. 专业性：使用铁路行业规范术语；多专业问题从“人、机、环、管”与风险分级（高/中/低）视角结构化作答。';
                 systemPrompt += proRoleGuidelines;
+                // 媒体输出规范：用户问图片/视频/音乐时，引导模型给出可内嵌显示的直链（而非仅给网页地址）
+                try {
+                    if (/图片|照片|配图|插图|图库|海报|视频|MV|音乐|歌曲|音频|听歌|铃声|封面|素材/i.test(finalText)) {
+                        systemPrompt += '\n\n【图片/音视频输出规范】\n' +
+                            '当用户要图片、视频或音乐时，除给出页面地址外，还必须给出可直接显示/播放的媒体直链：\n' +
+                            '· 图片直链：以 .jpg/.jpeg/.png/.webp/.gif 结尾（如 https://images.unsplash.com/photo-xxx?w=800），单独占一行；\n' +
+                            '· 视频直链：以 .mp4/.webm/.mov 结尾，单独占一行；音频直链：以 .mp3/.m4a/.wav/.flac 结尾，单独占一行。\n' +
+                            '· 直链必须写完整（带 https:// 前缀）且真实可用；不确定时不要编造，如实说明「该站点不提供直链，已给出页面链接，点击可在浏览器打开」。\n' +
+                            '· 只有直链才能在对话里自动渲染成图片或播放器；仅给网页链接时前端只能显示可点击的链接卡片。';
+                    }
+                } catch (e) {}
                 // 注入当前日期：避免模型把「今天/本月/8月12日」当成年份不明而拒答
                 try {
                     var _nowD = new Date();
@@ -2199,11 +2210,26 @@
                 if (/^data:(?:image|audio|video)\//i.test(s)) return s;
                 return '';
             }
+            // 补全协议：模型常输出裸域名（pixabay.com/…、bilibili.com/video/BV…）
+            function dsNormalizeUrl(u) {
+                var s = String(u == null ? '' : u).trim();
+                if (!s) return '';
+                if (!/^[a-z][a-z0-9+.\-]*:/i.test(s)) s = 'https://' + s.replace(/^\/+/, '');
+                return dsSafeUrl(s);
+            }
             function dsUrlExt(u) {
                 var m = String(u || '').toLowerCase().split(/[?#]/)[0].match(/\.([a-z0-9]{2,5})$/);
                 return m ? m[1] : '';
             }
-            function dsMediaKindOf(u) { return DS_MEDIA_KIND[dsUrlExt(u)] || ''; }
+            function dsMediaKindOf(u) {
+                var e = dsUrlExt(u);
+                if (DS_MEDIA_KIND[e]) return DS_MEDIA_KIND[e];
+                // 无扩展名但明显是图片直链的情况（Unsplash / Pixabay CDN 等常无后缀）
+                var s = String(u || '');
+                if (/(^|\.)(images\.unsplash\.com|cdn\.pixabay\.com|images\.pexels\.com|picsum\.photos|live\.staticflickr\.com)$/i.test(dsUrlHost(s))) return 'image';
+                if (/\/(?:photo|image|img|picture)[-_]/i.test(s.split(/[?#]/)[0])) return 'image';
+                return '';
+            }
             function dsUrlName(u) {
                 try {
                     var s = decodeURIComponent(String(u).split(/[?#]/)[0]);
@@ -2232,13 +2258,21 @@
             }
             function dsLinkCard(u, kind) {
                 var icon = kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : kind === 'audio' ? '🎵' : '🔗';
+                var tip = '';
+                if (!kind && /pixabay|unsplash|pexels|500px|flickr|stock\./i.test(u)) {
+                    icon = '🖼️';
+                    tip = '<span class="ds-media-tip">图库页面，点开查看图片</span>';
+                } else if (!kind) {
+                    tip = '<span class="ds-media-tip">网页链接，点击打开</span>';
+                }
                 return '<div class="ds-media ds-media-link-box"><span class="ds-media-icon">' + icon + '</span>' +
                     '<a href="' + dsEsc(u) + '" target="_blank" rel="noopener">' + dsEsc(dsUrlHost(u)) + '</a>' +
+                    tip +
                     '<span class="ds-media-url">' + dsEsc(u) + '</span></div>';
             }
-            // url 为【未转义】原始 URL
+            // url 为【未转义】原始 URL（允许无协议，内部自动补 https）
             function dsMediaBlock(url, alt) {
-                var u = dsSafeUrl(url);
+                var u = dsNormalizeUrl(url);
                 if (!u) return '';
                 var a = dsEsc(u);
                 var kind = dsMediaKindOf(u);
@@ -2269,14 +2303,27 @@
                 }
                 return dsLinkCard(u, '');
             }
-            // 在【已转义】文本上把裸 URL 变成可点击链接（点击即在浏览器新标签打开）
-            // 注意：中文/全角字符不参与 URL（中文正文常紧跟 URL 且无空格），末尾标点不吞入链接
-            var DS_URL_RE = /https?:\/\/[^\s<>"'\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+            // 链接识别：① 带协议 URL；② 裸域名（模型常输出 pixabay.com/xxx、bilibili.com/video/BV…）
+            // 中文/全角字符不参与链接，避免把紧跟 URL 的中文正文吞进链接
+            var DS_TLD_STR = 'com|cn|net|org|io|co|tv|me|cc|info|biz|xyz|top|site|online|shop|gov|edu|jp|uk|de|ru|kr|hk|tw|sg|au|ca|us';
+            var DS_LINK_CHUNK = '(?:https?:\\/\\/[^\\s<>"\'\\u4e00-\\u9fa5\\u3000-\\u303f\\uff00-\\uffef]+' +
+                '|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:' + DS_TLD_STR + ')(?:\\/[^\\s<>"\'\\u4e00-\\u9fa5]*)?)';
+            var DS_URL_RE = new RegExp(DS_LINK_CHUNK, 'gi');
+            var DS_LINE_URL_RE = new RegExp('^' + DS_LINK_CHUNK + '$', 'i');
+            var DS_TAIL_URL_RE = new RegExp(DS_LINK_CHUNK + '$', 'i');
+            // 在【已转义】文本上把 URL / 裸域名变成可点击链接（点击即在浏览器新标签打开）
             function dsAutoLink(escaped) {
                 return String(escaped).replace(DS_URL_RE, function (m) {
                     var url = m.replace(/[),.;:!?'"\]）】》]+$/, '');
                     var tail = m.slice(url.length);
-                    return '<a href="' + url + '" target="_blank" rel="noopener" class="ds-md-link">' + url + '</a>' + tail;
+                    var label = m.slice(0, m.length - tail.length);
+                    if (!/^https?:/i.test(url)) {
+                        // 裸域名：无路径且非 www 开头时视为普通文本，避免误伤
+                        if (url.indexOf('/') === -1 && !/^www\./i.test(url)) return m;
+                        url = 'https://' + url;
+                    }
+                    if (!dsSafeUrl(url)) return m;
+                    return '<a href="' + url + '" target="_blank" rel="noopener" class="ds-md-link">' + label + '</a>' + tail;
                 });
             }
             // 图片全屏预览
@@ -2482,9 +2529,9 @@
                         out.push('<hr class="ds-md-hr">');
                         i++; continue;
                     }
-                    // 独立成行的链接：图片/音视频直链内嵌播放，站点链接给内嵌播放卡片，其余给外链卡片
+                    // 独立成行的链接（含裸域名）：图片/音视频直链内嵌播放，站点链接给内嵌播放卡片，其余给外链卡片
                     var onlyLine = line.trim();
-                    if (/^https?:\/\/[^\s<>"']+$/.test(onlyLine)) {
+                    if (DS_LINE_URL_RE.test(onlyLine)) {
                         closeList();
                         out.push(dsMediaBlock(onlyLine, ''));
                         i++; continue;
@@ -2495,12 +2542,12 @@
                         out.push(dsMediaBlock(imgMd[2], imgMd[1]));
                         i++; continue;
                     }
-                    // 形如「图片：https://…」「音频: https://…」的短前缀行同样识别为媒体行
-                    var tailUrl = onlyLine.match(/(https?:\/\/[^\s<>"'\u4e00-\u9fa5]+)$/);
-                    if (tailUrl && onlyLine.length - tailUrl[1].length <= 6 &&
+                    // 形如「图片：https://…」「音频: pixabay.com/…」的短前缀行同样识别为媒体行
+                    var tailUrl = onlyLine.match(DS_TAIL_URL_RE);
+                    if (tailUrl && tailUrl[0] && onlyLine.length - tailUrl[0].length <= 6 &&
                         !/^[-*]\s/.test(onlyLine) && !/^\d+\./.test(onlyLine)) {
                         closeList();
-                        out.push(dsMediaBlock(tailUrl[1], ''));
+                        out.push(dsMediaBlock(tailUrl[0], ''));
                         i++; continue;
                     }
                     // 无序列表

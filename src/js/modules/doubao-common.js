@@ -492,18 +492,25 @@
         return false;                                        // 其他供应商保守关闭
     };
 
-    // 当前模型是否支持图像理解（多模态）。视觉模型（含 vision/exp 标识）支持；DeepSeek 文本模型不支持；其他保守关闭。
     // 当前模型是否具备图像理解（视觉）能力。
     // 1) 模型名含明确视觉/多模态标识 → 支持看图
     // 2) 主流已知视觉模型（Gemini / Claude / 4o / 4v / vl / vision 等）→ 支持看图
-    // 3) DeepSeek 纯文本系列（chat / reasoner / v4-flash 等）→ 明确不支持，避免送 image_url 被 400
+    // 3) DeepSeek：自 V4.1 Flash 起原生支持多模态，故 flash 系支持看图；
+    //    deepseek-chat / deepseek-reasoner 等纯文本模型仍不支持（送 image_url 会被 400 拒绝）
     // 4) 其他未知模型 → 乐观按支持处理：发现图片后自动以多模态送审
     //    （若接口不支持会返回明确错误，而非静默丢图——解决「有时不识别图片」）
     window.dsModelSupportsVision = function(modelName) {
         var m = String(modelName || '').toLowerCase();
+        if (!m) return false;
         if (/vision|visual|multimodal|vlm|\bvl\b|omni|4o|4v|gpt-4v|qwen-vl|internvl|glm-4v|minicpm|llava|step-1v|yi-vl|kimi.*vision/i.test(m)) return true;
         if (/gemini|claude/i.test(m)) return true;           // Gemini / Claude 全系支持看图
-        if (/deepseek/i.test(m)) return false;               // DeepSeek 纯文本模型明确不支持
+        if (/deepseek/i.test(m)) {
+            // V4.1 Flash（规范名 deepseek-flash）原生多模态，可直接看图；
+            // 旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 已被官方路由到 V4.1 Flash，同样具备视觉能力，
+            // 这里一并放行，避免老配置（未迁移）用户的图片被静默降级为纯文本。
+            // deepseek-chat / deepseek-reasoner / deepseek-v4-pro 等纯文本模型仍不支持。
+            return /flash/i.test(m);
+        }
         return true;                                         // 其他供应商：自动识别图片（乐观）
     };
 

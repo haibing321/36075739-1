@@ -1745,20 +1745,24 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v3.54 近期更新 -->
+            <!-- v3.56 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v3.54 近期更新</span>
+                    <span>v3.56 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎬 智能对话内嵌播放器增强：B 站 / YouTube / 腾讯视频链接直接渲染内嵌播放器（iframe `loading=lazy` 滚动到才加载，避免一次拉起多个），比例统一 16:9、最小高度 180px；新增「🔄 重新加载」按钮，加载异常可一键重试。</span>
+                        <span>🧠 适配 DeepSeek V4.1 Flash（原生多模态）：模型名统一为 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">deepseek-flash</code>，修复此前因能力判定错误导致上传图片不被识别的问题——现在图片会正确送入模型分析（智能对话、智能体、智能对规、智能写作四处同步生效）。</span>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:6px;">
                         <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔧 腾讯视频链接解析修正（适配 `v.qq.com/x/cover/...` / `v.qq.com/x/page/...` 路径格式）；整段即为一个链接（常见于表格单元格、列表项）时直接渲染为媒体 / 内嵌播放卡片，不再只显示一行网址。</span>
+                        <span>🔄 旧模型名自动迁移：已配置 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">deepseek-v4-flash</code> / <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">deepseek-v4-flash-vision-exp</code> 的配置会在启动时自动改写为新模型名，无需手动重配（旧名仅为临时路由，避免日后失效）。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🖼️ 看图能力增强：启用图像理解时补充识别规范（不臆测图中不存在细节、画面模糊或遮挡时明确指出需补拍位置），并更新模型配置候选列表与引导文案，删除已下线的视觉实验模型入口。</span>
                     </div>
                 </div>
             </div>
@@ -1781,9 +1785,9 @@
                 </div>
             </div>
 
-            <!-- v3.53 及以下已归档（最近 2 版本为 v3.55 / v3.54） -->
+            <!-- v3.54 及以下已归档（最近 2 版本为 v3.56 / v3.55） -->
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.51 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.52 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->
@@ -1894,12 +1898,13 @@
                     4. 需要实时联网检索时，可在编辑表单中勾选「🌐 联网搜索」。</div>
                 </div>
                 <div id="ds-model-manager"></div>
-                <!-- 模型名称补全列表（含视觉多模态实验模型） -->
+                <!-- 模型名称补全列表（V4.1 Flash 为当前主力：原生多模态，图文同一模型） -->
                 <datalist id="api-model-list">
-                    <option value="deepseek-v4-flash">DeepSeek V4 Flash（文本，默认）</option>
-                    <option value="deepseek-v4-flash-vision-exp">DeepSeek V4 Flash Vision（视觉多模态·实验）</option>
-                    <option value="deepseek-chat">DeepSeek Chat</option>
-                    <option value="deepseek-reasoner">DeepSeek Reasoner（深度思考）</option>
+                    <option value="deepseek-flash">DeepSeek V4.1 Flash（原生多模态，推荐）</option>
+                    <option value="deepseek-chat">DeepSeek Chat（纯文本）</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner（纯文本·深度思考）</option>
+                    <option value="deepseek-v4-flash">deepseek-v4-flash（旧名·已路由至 V4.1 Flash）</option>
+                    <option value="deepseek-v4-flash-vision-exp">deepseek-v4-flash-vision-exp（旧名·已路由至 V4.1 Flash）</option>
                 </datalist>
             </div>
             <div class="modal-footer" style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">
@@ -1942,7 +1947,8 @@
             <div style="display:flex;gap:10px;align-items:center;margin:12px 0;">
                 <span style="font-size:.8rem;color:#475569;">模型</span>
                 <select id="ds-fim-model" style="font-size:.8rem;padding:5px 8px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;">
-                    <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+                    <option value="deepseek-flash">deepseek-flash（V4.1 Flash）</option>
+                    <option value="deepseek-v4-flash">deepseek-v4-flash（旧名）</option>
                     <option value="deepseek-v4-pro">deepseek-v4-pro</option>
                 </select>
                 <span style="font-size:.8rem;color:#475569;">max_tokens</span>

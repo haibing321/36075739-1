@@ -120,6 +120,18 @@
                 'deepseek-v4-flash-vision': 'deepseek-flash',
                 'deepseek-v4-vision': 'deepseek-flash'
             };
+            // 已**彻底退役、不再路由到任何模型**的名字（2026-07-24 15:59 UTC 起）：deepseek-chat / deepseek-reasoner。
+            // 它们不像 v4-flash 那样还有官方兼容路由，留着就是必报错（官方错误码里模型名错误以 400 返回）。
+            // ⚠️ 但只在 DeepSeek 官方端点上改写：第三方网关/代理可能自定义了同名模型，无脑改反而会改坏。
+            var DS_RETIRED_MODEL_MAP = {
+                'deepseek-chat': 'deepseek-flash',
+                'deepseek-reasoner': 'deepseek-flash'
+            };
+            function _isDsEndpoint(url) {
+                var u = String(url || '').trim();
+                if (!u) return true;                                   // 未配置 URL → 默认按官方端点处理
+                try { return /(^|\.)deepseek\.com$/i.test(new URL(u).host); } catch (e) { return false; }
+            }
             function migrateLegacyModelNames() {
                 var changed = false;
                 // 1) 多 Provider 配置（模型管理列表）：model 字段与显示名一并改写
@@ -127,12 +139,14 @@
                     var arr = getProviders();
                     var hit = false;
                     arr.forEach(function(p) {
+                        var _map = Object.assign({}, DS_LEGACY_MODEL_MAP);
+                        if (_isDsEndpoint(p.apiUrl)) Object.assign(_map, DS_RETIRED_MODEL_MAP);
                         var cur = String(p.model || '').toLowerCase();
-                        if (DS_LEGACY_MODEL_MAP[cur]) { p.model = DS_LEGACY_MODEL_MAP[cur]; hit = true; }
+                        if (_map[cur]) { p.model = _map[cur]; hit = true; }
                         if (p.name) {
-                            Object.keys(DS_LEGACY_MODEL_MAP).forEach(function(k) {
+                            Object.keys(_map).forEach(function(k) {
                                 if (p.name.toLowerCase().indexOf(k) !== -1) {
-                                    p.name = p.name.replace(new RegExp(k, 'gi'), DS_LEGACY_MODEL_MAP[k]);
+                                    p.name = p.name.replace(new RegExp(k, 'gi'), _map[k]);
                                     hit = true;
                                 }
                             });
@@ -143,7 +157,9 @@
                 // 2) 兼容键 ds_model_v1：智能对规 / 智能写作(WR_MODEL_K) / 智能体均读此键
                 try {
                     var lm = localStorage.getItem(DS_MODEL_STORAGE) || '';
-                    var mapped = DS_LEGACY_MODEL_MAP[lm.toLowerCase()];
+                    var _map2 = Object.assign({}, DS_LEGACY_MODEL_MAP);
+                    if (_isDsEndpoint(localStorage.getItem('ds_api_url_v1'))) Object.assign(_map2, DS_RETIRED_MODEL_MAP);
+                    var mapped = _map2[lm.toLowerCase()];
                     if (mapped) { localStorage.setItem(DS_MODEL_STORAGE, mapped); changed = true; }
                 } catch (e) {}
                 if (changed) {
@@ -921,8 +937,8 @@
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API 地址</label><input id="ds-pe-url" list="api-url-list" onchange="if(window.dsAutoDetectModel)dsAutoDetectModel()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="https://api.deepseek.com/chat/completions"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-flash"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
-                // 联网搜索（Web Search）开关：经 DeepSeek Responses API 的 web_search 工具（跟随当前模型）
-                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 调用 DeepSeek 联网搜索（经 Responses API，跟随当前模型）</label>';
+                // 联网搜索（Web Search）开关：经 DeepSeek Anthropic 兼容层的服务端检索（web_search_20250305）
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 经 Anthropic 联网通道（deepseek-flash 服务端检索）</label>';
                 // 【多模态模型快捷预设】一键填好名称/URL/模型名，免手敲
                 // V4.1 Flash 已原生支持多模态（图文通用），不再需要单独的「视觉模型」配置
                 html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" class="ds-vision-btn" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 一键填入 DeepSeek V4.1 Flash</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">deepseek-flash · 原生多模态，看图/识别照片与文字对话同一模型</span></div>';
@@ -1688,27 +1704,54 @@
                         return realtime.test(q);
                     })(finalText);
                     var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs || autoWs;
-                    // 告知模型自身联网状态：联网时禁止自称"无法联网"；未联网时引导用户开启，而不是空口拒答
+                    // ── 联网通道说明（2026-09 官方文档 + 实测）──────────────────────────────
+                    // ① Anthropic 兼容层 POST /anthropic/v1/messages —— DeepSeek 唯一真正执行「服务端联网检索」的通道。
+                    //    声明 tools:[{type:'web_search_20250305', name:'web_search'}]，检索在服务端完成，
+                    //    响应流回吐 server_tool_use / web_search_tool_result 内容块（官方兼容表均标为「支持」）。
+                    //    注意：工具类型必须写 web_search_20250305，写 server_tool 会被 400 拒绝。
+                    // ② Responses API POST /responses —— 官方《Responses API 兼容性明细》的 Tools 表把
+                    //    web_search / file_search / code_interpreter / computer_use / mcp 一律列为「忽略」，
+                    //    即请求返回 200 但服务端根本不执行检索（create-response 页仍宣称支持，属遗留文案）。
+                    //    这正是此前「联网开着却零检索」的根因，故它只作非 DeepSeek 供应商的备选通道。
+                    // 两条通道均支持图片（Anthropic 走 image 内容块、Responses 走 input_image），故不再因图片放弃联网。
+                    // 联网证据（检索次数 / 检索词 / 实际通道）——无检索时前端明确告警，杜绝「假成功」
+                    dsHistory[assistantIdx].web = null;
+                    // 告知模型自身联网状态：联网时提示其优先检索；未联网时引导用户开启，而不是空口拒答
                     if (useWebSearch) {
-                        systemPrompt += '\n\n【联网搜索已启用】你本次具备实时联网检索能力，可获取最新的新闻、行情、天气等外部信息。'
-                            + '请直接基于检索到的最新事实作答，并标注信息对应的日期；严禁声称"我没有实时联网能力""无法获取当日新闻"。';
+                        // 关键纪律：联网能力「已开启」不等于「已检索到」。若把两者混为一谈，模型会把内部旧知识
+                        // 包装成「今日热点」（曾出现把一个月前的日期当作今天的事故）。故此处按「有无真实检索结果」分档约束。
+                        systemPrompt += '\n\n【联网搜索已启用】本次请求已开启服务端联网检索（web_search 工具），请先检索再作答。\n'
+                            + '严格的时效纪律（必须逐条遵守）：\n'
+                            + '1) 涉及新闻、时事、天气、价格、政策最新动态等实时信息，必须调用 web_search 检索后再回答；\n'
+                            + '2) 只有当你在本次上下文中确实看到了检索结果时，才可以标注「据联网检索」并给出真实来源；\n'
+                            + '3) 若确实没有看到任何检索结果，禁止使用「今日/今天/刚刚/最新/近期」等时效词去描述你的内部知识；\n'
+                            + '4) 若没有检索结果，必须明确说明「本次未取得实时检索结果」，并把内容标注为「模型内部知识（可能已过时）」；\n'
+                            + '5) 严禁把内部知识或旧信息包装成「今日热点 / 最新消息」——这是最严重的错误，会导致用户误判；\n'
+                            + '6) 严禁声称「我没有实时联网能力」：本系统已为你开启检索，请先尝试检索；检索为空时按第 4 条如实说明。';
                     } else {
                         try {
                             if (messages[0] && messages[0].role === 'system') {
-                                messages[0].content += '\n\n【提示】本次未启用联网搜索。若用户询问需要实时联网才能回答的信息，请简要说明并告知：点击输入框左下方的 🌐 地球按钮即可开启联网搜索，然后重新提问。';
+                                var _noWebTip = '\n\n【提示】本次未启用联网搜索。若用户询问需要实时联网才能回答的信息，请简要说明并告知：点击输入框左下方的 🌐 地球按钮即可开启联网搜索，然后重新提问。';
+                                messages[0].content += _noWebTip;
+                                systemPrompt += _noWebTip;
                             }
                         } catch (e) {}
                     }
                     // 告知模型自身视觉能力状态：避免模型在被问「能否识别图片」时凭通用认知谎称不能
+                    // 注意：messages[0].content 只走 chat/completions；联网分支发的是 instructions(systemPrompt)，
+                    // 故两处都要写，否则联网时模型看不到这段能力声明。
                     try {
-                        if (messages[0] && messages[0].role === 'system') {
-                            if (window.dsModelSupportsVision && window.dsModelSupportsVision(dsModel)) {
-                                messages[0].content += '\n\n【图像理解已启用】你当前使用的模型（DeepSeek V4.1 Flash 系）原生支持多模态，用户通过「上传附件」传入的图片你可以直接查看、识别并分析。'
-                                    + '当用户上传图片（如现场设备照片、仪表读数、隐患照片、图纸等）并提问时，请基于图片内容作答，做到有据可依、不臆测图中不存在的细节；'
-                                    + '严禁声称"我无法识别图像""看不了图片"。若图片本身模糊、遮挡或信息不足，请明确指出哪一处看不清，并说明需要补拍什么。';
-                            } else {
-                                messages[0].content += '\n\n【图像理解未启用】你当前使用的模型为纯文本模型，不具备图像识别能力。若用户上传图片或询问能否识别图片，请如实说明当前模型无法看图，并引导：在「设置 → API 配置 → ＋新增模型」中把模型切换为 deepseek-flash（DeepSeek V4.1 Flash，原生支持图像识别）后即可看图。';
-                            }
+                        var _visionNote = '';
+                        if (window.dsModelSupportsVision && window.dsModelSupportsVision(dsModel)) {
+                            _visionNote = '\n\n【图像理解已启用】你当前使用的模型（DeepSeek V4.1 Flash 系）原生支持多模态，用户通过「上传附件」传入的图片你可以直接查看、识别并分析。'
+                                + '当用户上传图片（如现场设备照片、仪表读数、隐患照片、图纸等）并提问时，请基于图片内容作答，做到有据可依、不臆测图中不存在的细节；'
+                                + '严禁声称"我无法识别图像""看不了图片"。若图片本身模糊、遮挡或信息不足，请明确指出哪一处看不清，并说明需要补拍什么。';
+                        } else {
+                            _visionNote = '\n\n【图像理解未启用】你当前使用的模型为纯文本模型，不具备图像识别能力。若用户上传图片或询问能否识别图片，请如实说明当前模型无法看图，并引导：在「设置 → API 配置 → ＋新增模型」中把模型切换为 deepseek-flash（DeepSeek V4.1 Flash，原生支持图像识别）后即可看图。';
+                        }
+                        if (_visionNote) {
+                            systemPrompt += _visionNote;
+                            if (messages[0] && messages[0].role === 'system') messages[0].content += _visionNote;
                         }
                     } catch (e) {}
                     // DeepSeek V4 能力开关：思考模式 / JSON 输出（仅对 DeepSeek V4 模型生效，其余供应商忽略以免报错）
@@ -1728,10 +1771,16 @@
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
                     if (thinkingOn) maxTokens = (isFrontendRole || isCodeRequest) ? 24576 : 16384;
 
-                    var responsesUrl = (dsApiUrl || '').replace(/\/chat\/completions\/?$/i, '/responses') || 'https://api.deepseek.com/responses';
+                    var _respEndpoints = dsResponsesUrlCandidates(dsApiUrl);
+                    var responsesUrl = _respEndpoints[0];
                     var inputItems = dsHistory.slice(-10)
                         .map(function(m) { return { role: m.role, content: (m.content || '') }; })
-                        .filter(function(m) { return !!m.content || m.role === 'system'; });
+                        .filter(function(m) { return !!m.content; });
+                    // 联网分支：系统提示词已通过 instructions 传入（服务端会插入为首条 system 消息），
+                    // 此处剔除重复的 system 条目，避免同一份长提示词发送两遍（省 token，也避免指令互相干扰）。
+                    if (useWebSearch) {
+                        inputItems = inputItems.filter(function(m) { return m.role !== 'system'; });
+                    }
                     // 联网搜索同样支持多模态：最后一条 user 若有图片块则替换为 image_url 数组
                     if (visionUserContent && inputItems.length) {
                         for (var _ii = inputItems.length - 1; _ii >= 0; _ii--) {
@@ -1741,12 +1790,46 @@
                             }
                         }
                     }
-                    var resp;
-                    if (useWebSearch) {
-                        resp = await fetch(responsesUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-                            body: JSON.stringify({
+                    // ── 通道候选编排 ──
+                    // DeepSeek 官方：Anthropic 兼容层才是真正执行服务端联网检索的通道（Responses 忽略 web_search），
+                    // 故官方域名下 Anthropic 优先、Responses 仅作兜底；其他供应商（OpenAI 等）则相反。
+                    var _anthEndpoints = dsAnthropicUrlCandidates(dsApiUrl);
+                    var _dsHost = '';
+                    try { _dsHost = new URL(dsApiUrl).host.toLowerCase(); } catch (e) { _dsHost = 'api.deepseek.com'; }
+                    var _isDeepSeekApi = /(^|\.)deepseek\.com$/.test(_dsHost);
+                    var _wsChannels = [];
+                    var _pushCh = function(kind, url) {
+                        for (var _qi = 0; _qi < _wsChannels.length; _qi++) {
+                            if (_wsChannels[_qi].kind === kind && _wsChannels[_qi].url === url) return;
+                        }
+                        _wsChannels.push({ kind: kind, url: url });
+                    };
+                    if (_isDeepSeekApi) {
+                        _anthEndpoints.forEach(function(u) { _pushCh('anthropic', u); });
+                        _respEndpoints.forEach(function(u) { _pushCh('responses', u); });
+                    } else {
+                        _respEndpoints.forEach(function(u) { _pushCh('responses', u); });
+                        _anthEndpoints.forEach(function(u) { _pushCh('anthropic', u); });
+                    }
+                    // 按通道生成请求体（缓存，强制重试时复用同一份）
+                    var _wsBodyCache = {};
+                    var _wsBodyFor = function(kind) {
+                        if (_wsBodyCache[kind]) return _wsBodyCache[kind];
+                        var b;
+                        if (kind === 'anthropic') {
+                            // Anthropic Messages 格式：system 独立传参；messages 需 user/assistant 交替；
+                            // 联网搜索用 server tool web_search_20250305（服务端执行，结果不落库、不暴露明文链接）。
+                            b = {
+                                model: dsModel,
+                                max_tokens: maxTokens,
+                                system: systemPrompt,
+                                messages: dsBuildAnthropicMessages(dsHistory.slice(-10), visionUserContent),
+                                tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+                                stream: true,
+                                temperature: 0.7
+                            };
+                        } else {
+                            b = {
                                 model: dsModel,
                                 instructions: systemPrompt,
                                 input: inputItems,
@@ -1755,9 +1838,60 @@
                                 stream: true,
                                 temperature: 0.7,
                                 max_output_tokens: maxTokens
-                            }),
-                            signal: window._dsAbortController.signal
-                        });
+                            };
+                        }
+                        _wsBodyCache[kind] = b;
+                        return b;
+                    };
+                    var resp;
+                    var _respEndpointUsed = '';
+                    var _wsKindUsed = '';
+                    if (useWebSearch) {
+                        // 依次尝试候选通道：仅当「端点/请求不被接受」（400/404/405）才换下一个；
+                        // 鉴权失败(401)、余额(402)、限流(429)、5xx 换通道无意义，直接如实报错。
+                        var _wsFail = null;
+                        for (var _ei = 0; _ei < _wsChannels.length; _ei++) {
+                            var _chTry = _wsChannels[_ei];
+                            var _ep = _chTry.url;
+                            var _hdrs = { 'Content-Type': 'application/json' };
+                            if (_chTry.kind === 'anthropic') {
+                                _hdrs['x-api-key'] = key;
+                                _hdrs['anthropic-version'] = '2023-06-01';
+                            } else {
+                                _hdrs['Authorization'] = 'Bearer ' + key;
+                            }
+                            var _rTry = null;
+                            try {
+                                _rTry = await fetch(_ep, {
+                                    method: 'POST',
+                                    headers: _hdrs,
+                                    body: JSON.stringify(_wsBodyFor(_chTry.kind)),
+                                    signal: window._dsAbortController.signal
+                                });
+                            } catch (_fe) {
+                                _wsFail = { status: 0, url: _ep, msg: (_fe && _fe.message) || String(_fe) };
+                                continue;
+                            }
+                            if (_rTry.ok) { resp = _rTry; _respEndpointUsed = _ep; _wsKindUsed = _chTry.kind; _wsFail = null; break; }
+                            var _btxt = '';
+                            try { _btxt = await _rTry.text(); } catch (_be) {}
+                            var _bmsg = '';
+                            try { _bmsg = ((JSON.parse(_btxt) || {}).error || {}).message || ''; } catch (_pe) { _bmsg = String(_btxt).slice(0, 200); }
+                            _wsFail = { status: _rTry.status, url: _ep, msg: _bmsg };
+                            if (_rTry.status !== 404 && _rTry.status !== 405 && _rTry.status !== 400) break;
+                        }
+                        if (!resp) {
+                            // 联网请求失败必须「响亮地失败」：绝不静默降级为普通对话，否则模型会把旧知识包装成今日热点
+                            _dsStreaming = false;
+                            var _failHint = (_wsFail && _wsFail.status === 404)
+                                ? '（联网检索通道不被接受，已尝试：' + _wsChannels.map(function(c) { return c.url; }).join(' / ') + '）'
+                                : '';
+                            dsHistory[assistantIdx].content = '❌ 联网检索请求失败：HTTP ' + ((_wsFail && _wsFail.status) || '—')
+                                + ' ' + ((_wsFail && _wsFail.msg) || '') + ' ' + _failHint;
+                            dsHistory[assistantIdx].web = { failed: true, searches: 0, queries: [], endpoint: (_wsFail && _wsFail.url) || '', channel: '' };
+                            dsRenderAll();
+                            return;
+                        }
                     } else {
                     // JSON 输出模式：在系统提示后追加「必须输出合法 JSON」约束（仅未启用工具调用时，避免与 tools 冲突）
                     if (jsonOn && !_useTools && messages[0] && messages[0].role === 'system') {
@@ -1806,45 +1940,73 @@
                     }
 
                     if (useWebSearch) {
-                        // ── Responses API 语义化 SSE 流式（web_search 黑盒注入，客户端拿不到完整 URL 列表）──
-                        var reader = resp.body.getReader();
-                        var decoder = new TextDecoder();
-                        var buffer = '';
-                        var _renderTick = 0;
-                        var _wsText = '';
-                        var _wsSearching = false;
-                        _dsStreaming = true;
-                        while (true) {
-                            var resp2 = await reader.read();
-                            if (resp2.done) break;
-                            buffer += decoder.decode(resp2.value, { stream: true });
-                            var segs = buffer.split('\n\n');
-                            buffer = segs.pop() || '';
-                            for (var _si = 0; _si < segs.length; _si++) {
-                                var _segLines = segs[_si].split('\n');
-                                var _dataLine = null;
-                                for (var _li = 0; _li < _segLines.length; _li++) { if (_segLines[_li].indexOf('data:') === 0) { _dataLine = _segLines[_li]; break; } }
-                                if (!_dataLine) continue;
-                                var _payload = _dataLine.slice(5).trim();
-                                if (!_payload) continue;
-                                var _j; try { _j = JSON.parse(_payload); } catch(e) { continue; }
-                                var _t = _j.type;
-                                if (_t === 'response.output_text.delta') { _wsText += (_j.delta || ''); }
-                                else if (_t === 'response.web_search_call.in_progress' || _t === 'response.web_search_call.searching') { _wsSearching = true; }
-                                else if (_t === 'response.failed') { var _em = (_j.error && (_j.error.message || _j.error.code)) || '联网搜索失败'; _dsStreaming = false; dsHistory[assistantIdx].content = '❌ ' + _em; dsRenderAll(); return; }
-                            }
-                            _renderTick++;
-                            if (_renderTick % 3 === 0) {
-                                var _chatBox = document.getElementById('ds-chat-box');
-                                var _bubbles = _chatBox.querySelectorAll('.ds-bubble-assistant');
-                                var _lastBubble = _bubbles[_bubbles.length - 1];
-                                var _shown = (_wsSearching && !_wsText) ? '🌐 正在联网搜索…' : (_wsText ? dsMarkdown(_wsText) : '');
-                                if (_lastBubble) _lastBubble.innerHTML = _shown + '<span class="ds-cursor">▌</span>';
-                                dsScrollBottom();
+                        // ── 流式读取：按实际生效的通道选择解析器 ──
+                        // Anthropic 通道：server_tool_use / web_search_tool_result 内容块；
+                        // Responses 通道：web_search_call item（DeepSeek 会忽略该工具，故一般恒为 0 次检索）。
+                        var _acWS = window._dsAbortController;
+                        var _wsRes = (_wsKindUsed === 'anthropic')
+                            ? await _dsReadAnthropicStream(resp, assistantIdx)
+                            : await _dsReadResponsesStream(resp, assistantIdx);
+                        var _wsRetryFail = '';
+                        // 首轮正文与思考过程留底：强制重试会先清空气泡，若重试失败必须回填，避免出现「空气泡 + 告警条」
+                        var _wsTextBackup = _wsRes.text || '';
+                        var _wsReasonBackup = dsHistory[assistantIdx].reasoning || '';
+                        // 关键兜底：联网开关开着，但整轮未发生任何实际检索时，强制再检索一次。
+                        // 仍失败则前端明确告警，绝不允许把内部旧知识包装成「今日热点」。
+                        if (!_wsRes.searches && !_wsRes.failed && !(_acWS && _acWS.signal.aborted)) {
+                            dsHistory[assistantIdx].content = '';
+                            dsHistory[assistantIdx].reasoning = '';
+                            _dsPaintBubble(assistantIdx, '🌐 未检测到实际检索，正在强制联网检索…');
+                            try {
+                                var _forceBody = JSON.parse(JSON.stringify(_wsBodyFor(_wsKindUsed)));
+                                var _forceHdr = { 'Content-Type': 'application/json' };
+                                if (_wsKindUsed === 'anthropic') {
+                                    _forceHdr['x-api-key'] = key;
+                                    _forceHdr['anthropic-version'] = '2023-06-01';
+                                    _forceBody.system = systemPrompt + '\n\n【本轮强制要求】回答前必须先调用 web_search 工具执行至少一次联网检索，'
+                                        + '并基于检索结果作答；严禁在未检索的情况下用内部知识冒充实时信息。';
+                                    _forceBody.tool_choice = { type: 'tool', name: 'web_search' };
+                                } else {
+                                    _forceHdr['Authorization'] = 'Bearer ' + key;
+                                    _forceBody.tool_choice = { type: 'web_search' };
+                                }
+                                var _rF = await fetch(_respEndpointUsed, {
+                                    method: 'POST',
+                                    headers: _forceHdr,
+                                    body: JSON.stringify(_forceBody),
+                                    signal: _acWS.signal
+                                });
+                                if (_rF.ok) {
+                                    var _wsRes2 = (_wsKindUsed === 'anthropic')
+                                        ? await _dsReadAnthropicStream(_rF, assistantIdx, true)
+                                        : await _dsReadResponsesStream(_rF, assistantIdx, true);
+                                    if (_wsRes2.searches || _wsRes2.text) _wsRes = _wsRes2;
+                                } else {
+                                    var _ftxt = '';
+                                    try { _ftxt = await _rF.text(); } catch (_e3) {}
+                                    var _fmsg = '';
+                                    try { _fmsg = ((JSON.parse(_ftxt) || {}).error || {}).message || ''; } catch (_e4) { _fmsg = String(_ftxt).slice(0, 120); }
+                                    _wsRetryFail = 'HTTP ' + _rF.status + ' ' + _fmsg;
+                                }
+                            } catch (_fe2) {
+                                _wsRetryFail = (_fe2 && _fe2.message) || '请求异常';
                             }
                         }
-                        dsHistory[assistantIdx].content = _wsText;
+                        // 重试失败或返回空正文时，回填首轮内容（告警条会同时说明检索未发生）
+                        if (!dsHistory[assistantIdx].content) {
+                            dsHistory[assistantIdx].content = _wsTextBackup;
+                            if (!dsHistory[assistantIdx].reasoning) dsHistory[assistantIdx].reasoning = _wsReasonBackup;
+                        }
+                        dsHistory[assistantIdx].web = {
+                            searches: _wsRes.searches,
+                            queries: _wsRes.queries || [],
+                            endpoint: _respEndpointUsed,
+                            channel: _wsKindUsed,
+                            failed: !!_wsRes.failed,
+                            retryFailed: _wsRetryFail || ''
+                        };
                         _dsStreaming = false;
+                        dsRenderAll();
                     } else {
                         // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
@@ -1855,12 +2017,20 @@
                         while (_useTools && _toolExec && _pendingToolCalls.length && _tcRound < _maxTcRounds) {
                             _tcRound++;
                             _pendingToolCalls = _pendingToolCalls.filter(Boolean);
+                            // 官方硬性要求：携带 tools 的请求，后续轮次必须**完整回传 reasoning_content**，
+                            // 即使该轮未真正产生工具调用；缺失会被 API 判 400。
+                            // 本轮思维链已由 _dsStreamChat 累积进 dsHistory[assistantIdx].reasoning，先取出再回传。
+                            var _tcReasoning = dsHistory[assistantIdx].reasoning || '';
                             // D2：回灌前规范化 arguments——模型未生成参数时为空串，必须补为 '{}' 合法 JSON，否则 API 报 400
                             _pendingToolCalls.forEach(function(_c) {
                                 if (!_c.function) _c.function = { name: '', arguments: '{}' };
                                 if (typeof _c.function.arguments !== 'string' || _c.function.arguments.trim() === '') _c.function.arguments = '{}';
                             });
-                            messages.push({ role: 'assistant', content: null, tool_calls: _pendingToolCalls });
+                            var _tcAssistant = { role: 'assistant', content: null, tool_calls: _pendingToolCalls };
+                            // 思考模式下必须把本轮 reasoning_content 一并回传，否则下一轮请求 400。
+                            // 非思考模式（thinking disabled）不会产出该字段，此处自然为空、不影响请求。
+                            if (_tcReasoning) _tcAssistant.reasoning_content = _tcReasoning;
+                            messages.push(_tcAssistant);
                             for (var _k = 0; _k < _pendingToolCalls.length; _k++) {
                                 var _call = _pendingToolCalls[_k];
                                 var _args = {};
@@ -2200,6 +2370,12 @@
                 var _max = parseInt((_mt ? _mt.value : '1024') || '1024', 10); if (!( _max > 0)) _max = 1024; if (_max > 4096) _max = 4096;
                 var _fimUrl = (function() { try { var _u = new URL(dsApiUrl); return _u.origin + '/beta/completions'; } catch (e) { return 'https://api.deepseek.com/beta/completions'; } })();
                 var _body = { model: _model, prompt: _prompt, max_tokens: _max, temperature: 0.7 };
+                // ⚠️ 官方明确：FIM 补全（Beta）**仅非思考模式支持**，而 DeepSeek V4 起思考模式默认开启。
+                // 不显式关闭的话，该请求会因「思考模式 + FIM」组合被拒（或返回空补全）。
+                // 这里强制 mode:'off'，不受设置页开关影响；非 DeepSeek 端点下该函数返回 {}，无需额外判断。
+                if (typeof window.dsThinkingParam === 'function') {
+                    Object.assign(_body, window.dsThinkingParam({ mode: 'off', apiUrl: _fimUrl, model: _model }));
+                }
                 if (_suffix.trim()) _body.suffix = _suffix;
                 _r.innerHTML = '⏳ 补全中…';
                 var _ac = new AbortController();
@@ -2225,6 +2401,311 @@
                 }
             };
 
+            // ============ 联网检索（Anthropic 主通道 / Responses 备选）辅助 ============
+            // Responses API 端点推导：官方端点为 POST https://api.deepseek.com/responses（根路径、不带 /v1）。
+            // 旧实现用正则把 /chat/completions 硬换成 /responses：当用户填的是带 /v1 的地址时会打到 /v1/responses，
+            // 只填域名时会直接打到根路径，二者都可能 404。这里统一归一化，并给出备用端点（部分代理/网关带 /v1）。
+            function dsResponsesUrlCandidates(apiUrl) {
+                var origin = 'https://api.deepseek.com';
+                var path = '/responses';
+                var s = String(apiUrl || '').trim();
+                try {
+                    if (s) {
+                        var u = new URL(s);
+                        origin = u.origin;
+                        path = (u.pathname || '/').replace(/\/+$/, '');
+                        // 必须先精确匹配 /chat/completions：若先命中 /completions，会把 /chat/completions 切成 /chat/responses
+                        if (/\/chat\/completions$/i.test(path)) path = path.replace(/\/chat\/completions$/i, '/responses');
+                        else if (/\/completions$/i.test(path)) path = path.replace(/\/completions$/i, '/responses');
+                        else if (!/\/responses$/i.test(path)) path = path + '/responses';
+                    }
+                } catch (e) { origin = 'https://api.deepseek.com'; path = '/responses'; }
+                var host = origin.replace(/^https?:\/\//i, '').replace(/:\d+$/, '').toLowerCase();
+                var isDeepSeek = /(^|\.)deepseek\.com$/.test(host);
+                if (isDeepSeek) path = path.replace(/^\/v\d+/i, '');   // 官方 Responses 端点位于根路径
+                var list = [origin + path];
+                if (isDeepSeek && path === '/responses') list.push(origin + '/v1/responses');
+                return list;
+            }
+
+            // Anthropic Messages 端点推导：DeepSeek 的「服务端联网检索」只在这条通道上真正执行。
+            // 官方端点：POST https://api.deepseek.com/anthropic/v1/messages（注意 /anthropic 前缀不可省）。
+            // 浏览器可直连（已实测：预检返回 access-control-allow-headers: content-type,x-api-key,anthropic-version）。
+            function dsAnthropicUrlCandidates(apiUrl) {
+                var origin = 'https://api.deepseek.com';
+                var forcedBase = '';
+                var s = String(apiUrl || '').trim();
+                try {
+                    if (s) {
+                        var u = new URL(s);
+                        origin = u.origin;
+                        // 用户已填 /anthropic 路径：沿用该前缀（先剥掉可能多写的 /v1/messages）
+                        var m = (u.pathname || '').match(/^(.*\/anthropic)(?:\/v\d+\/messages)?\/?$/i);
+                        if (m) forcedBase = origin + m[1];
+                    }
+                } catch (e) { origin = 'https://api.deepseek.com'; }
+                var host = origin.replace(/^https?:\/\//i, '').replace(/:\d+$/, '').toLowerCase();
+                var list = [];
+                if (forcedBase) list.push(forcedBase + '/v1/messages');
+                else if (/(^|\.)deepseek\.com$/.test(host)) list.push(origin + '/anthropic/v1/messages');
+                return list;
+            }
+
+            // 把本系统内部的 OpenAI 风格多模态内容块转成 Anthropic 内容块
+            // （data:image/...;base64,xxx → {type:'image', source:{type:'base64', media_type, data}}）
+            function _dsVisionToAnthropicBlocks(blocks) {
+                var out = [];
+                (blocks || []).forEach(function(b) {
+                    if (!b) return;
+                    if (b.type === 'text') { if (b.text) out.push({ type: 'text', text: String(b.text) }); return; }
+                    if (b.type === 'image_url') {
+                        var url = (b.image_url && b.image_url.url) || '';
+                        var m = /^data:([^;,]+);base64,(.+)$/i.exec(url);
+                        if (m) out.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
+                        else if (/^https?:\/\//i.test(url)) out.push({ type: 'image', source: { type: 'url', url: url } });
+                    }
+                });
+                return out;
+            }
+
+            // 组装 Anthropic messages：Anthropic 要求 user/assistant 交替，故对相邻同角色消息做合并；
+            // 最后一条 user 若带图片，则把该条 content 换成 [text, image...] 内容块数组。
+            function dsBuildAnthropicMessages(hist, visionContent) {
+                var list = (hist || []).filter(function(m) { return m && m.content; });
+                var lastUserIdx = -1;
+                for (var i = list.length - 1; i >= 0; i--) { if (list[i].role !== 'assistant') { lastUserIdx = i; break; } }
+                var msgs = [];
+                list.forEach(function(m, i) {
+                    var role = (m.role === 'assistant') ? 'assistant' : 'user';
+                    var content = String(m.content);
+                    if (i === lastUserIdx && visionContent) {
+                        var blocks = _dsVisionToAnthropicBlocks(visionContent);
+                        if (blocks.length) content = blocks;
+                    }
+                    var last = msgs[msgs.length - 1];
+                    if (last && last.role === role) {
+                        if (typeof last.content === 'string' && typeof content === 'string') last.content += '\n\n' + content;
+                        else {
+                            var a = Array.isArray(last.content) ? last.content : [{ type: 'text', text: String(last.content) }];
+                            var b = Array.isArray(content) ? content : [{ type: 'text', text: content }];
+                            last.content = a.concat(b);
+                        }
+                    } else {
+                        msgs.push({ role: role, content: content });
+                    }
+                });
+                if (!msgs.length) msgs.push({ role: 'user', content: '（继续）' });
+                if (msgs[0].role !== 'user') msgs.unshift({ role: 'user', content: '（继续）' });
+                return msgs;
+            }
+
+            // 直接重绘「最后一条助手气泡」（流式逐帧用，避免整表重绘）
+            function _dsPaintBubble(idx, bodyHtml, withCursor) {
+                var box = document.getElementById('ds-chat-box');
+                if (!box) return;
+                var bubbles = box.querySelectorAll('.ds-bubble-assistant');
+                var last = bubbles[bubbles.length - 1];
+                if (!last) return;
+                last.innerHTML = (bodyHtml || '') + (withCursor === false ? '' : '<span class="ds-cursor">▌</span>');
+                dsScrollBottom();
+            }
+
+            // 读取 Responses API 语义化 SSE 流：累积正文与思考过程，并统计「实际发生的检索次数与检索词」。
+            // 相关事件：response.output_text.delta / response.reasoning_text.delta /
+            //   response.output_item.done(item.type=web_search_call) / response.web_search_call.* /
+            //   response.completed|incomplete|failed（注意：Responses API 没有 data: [DONE] 结束标记）
+            async function _dsReadResponsesStream(resp, idx, isRetry) {
+                var out = { text: '', searches: 0, queries: [], failed: false };
+                if (!resp || !resp.body) return out;
+                var reader = resp.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var tick = 0;
+                var sawWsEvent = false;
+                _dsStreaming = true;
+                try {
+                    while (true) {
+                        var chunk = await reader.read();
+                        if (chunk.done) break;
+                        buffer += decoder.decode(chunk.value, { stream: true });
+                        var segs = buffer.split('\n\n');
+                        buffer = segs.pop() || '';
+                        for (var i = 0; i < segs.length; i++) {
+                            var lines = segs[i].split('\n');
+                            var dataLine = null, evName = '';
+                            for (var l = 0; l < lines.length; l++) {
+                                if (lines[l].indexOf('event:') === 0) evName = lines[l].slice(6).trim();
+                                else if (lines[l].indexOf('data:') === 0) dataLine = lines[l];
+                            }
+                            if (!dataLine) continue;
+                            var payload = dataLine.slice(5).trim();
+                            if (!payload || payload === '[DONE]') continue;
+                            var j; try { j = JSON.parse(payload); } catch (e) { continue; }
+                            var t = j.type || evName || '';
+                            if (t === 'response.output_text.delta') {
+                                out.text += (j.delta || '');
+                            } else if (t === 'response.reasoning_text.delta') {
+                                dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + (j.delta || '');
+                            } else if (t === 'response.output_item.done') {
+                                var it = j.item || {};
+                                if (it.type === 'web_search_call') {
+                                    out.searches++;
+                                    var q = (it.action && (it.action.query || it.action.q)) || it.query || '';
+                                    if (q && out.queries.indexOf(q) < 0) out.queries.push(q);
+                                }
+                            } else if (t === 'response.web_search_call.in_progress' || t === 'response.web_search_call.searching' || t === 'response.web_search_call.completed') {
+                                sawWsEvent = true;
+                            } else if (t === 'response.failed' || t === 'error') {
+                                var em = (j.error && (j.error.message || j.error.code)) || j.message || '联网检索失败';
+                                out.failed = true;
+                                dsHistory[idx].content = '❌ ' + em;
+                                dsHistory[idx].web = { failed: true, searches: out.searches, queries: out.queries, endpoint: '' };
+                                _dsStreaming = false;
+                                dsRenderAll();
+                                try { reader.cancel(); } catch (ce) {}
+                                return out;
+                            }
+                        }
+                        tick++;
+                        dsHistory[idx].content = out.text;
+                        if (tick % 3 === 0) {
+                            var shown = out.text
+                                ? dsMarkdown(out.text)
+                                : ((sawWsEvent || out.searches) ? '🌐 正在联网检索…' : (isRetry ? '🌐 正在强制联网检索…' : '正在生成…'));
+                            _dsPaintBubble(idx, shown);
+                        }
+                    }
+                } catch (_re) { /* 读取中断（用户停止/网络断开）：保留已收到的内容 */ }
+                // 部分端点只发状态事件、不发 output_item.done：退化为「至少检索过 1 次」，避免误报「未检索」
+                if (!out.searches && sawWsEvent) out.searches = 1;
+                dsHistory[idx].content = out.text;
+                _dsStreaming = false;
+                return out;
+            }
+
+            // 读取 Anthropic Messages 语义化 SSE 流（DeepSeek 的服务端联网检索走这条通道）。
+            // 关键内容块：
+            //   content_block_start{content_block.type='server_tool_use', name='web_search'} → 检索发起
+            //   content_block_delta{delta.type='input_json_delta'}                            → 检索词碎片
+            //   content_block_stop                                                            → 该次检索完成
+            //   content_block_start{content_block.type='web_search_tool_result'}              → 检索结果（内容不对外暴露明文链接）
+            //   content_block_delta{delta.type='text_delta'|'thinking_delta'}                 → 正文 / 思维链
+            async function _dsReadAnthropicStream(resp, idx, isRetry) {
+                var out = { text: '', searches: 0, queries: [], results: 0, failed: false };
+                if (!resp || !resp.body) return out;
+                var reader = resp.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var tick = 0;
+                var sawWsEvent = false;
+                var pendingTool = {};   // content_block index → {name, json}
+                _dsStreaming = true;
+                try {
+                    while (true) {
+                        var chunk = await reader.read();
+                        if (chunk.done) break;
+                        buffer += decoder.decode(chunk.value, { stream: true });
+                        var segs = buffer.split('\n\n');
+                        buffer = segs.pop() || '';
+                        for (var i = 0; i < segs.length; i++) {
+                            var lines = segs[i].split('\n');
+                            var dataLine = null;
+                            for (var l = 0; l < lines.length; l++) {
+                                if (lines[l].indexOf('data:') === 0) dataLine = lines[l];
+                            }
+                            if (!dataLine) continue;
+                            var payload = dataLine.slice(5).trim();
+                            if (!payload || payload === '[DONE]') continue;
+                            var j; try { j = JSON.parse(payload); } catch (e) { continue; }
+                            var t = j.type || '';
+                            if (t === 'content_block_start') {
+                                var cb = j.content_block || {};
+                                if (cb.type === 'server_tool_use') {
+                                    sawWsEvent = true;
+                                    pendingTool[j.index] = { name: cb.name || '', json: '' };
+                                } else if (cb.type === 'web_search_tool_result') {
+                                    sawWsEvent = true;
+                                    out.results++;
+                                } else if (cb.type === 'text' && cb.text) {
+                                    out.text += cb.text;
+                                } else if (cb.type === 'thinking' && cb.thinking) {
+                                    dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + cb.thinking;
+                                }
+                            } else if (t === 'content_block_delta') {
+                                var d = j.delta || {};
+                                if (d.type === 'text_delta') out.text += (d.text || '');
+                                else if (d.type === 'thinking_delta') dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + (d.thinking || '');
+                                else if (d.type === 'input_json_delta') {
+                                    if (!pendingTool[j.index]) pendingTool[j.index] = { name: '', json: '' };
+                                    pendingTool[j.index].json += (d.partial_json || '');
+                                }
+                            } else if (t === 'content_block_stop') {
+                                var pt = pendingTool[j.index];
+                                if (pt) {
+                                    out.searches++;
+                                    try {
+                                        var args = pt.json ? JSON.parse(pt.json) : {};
+                                        var q = args.query || args.q || '';
+                                        if (Array.isArray(args.queries)) q = args.queries.join('｜');
+                                        if (q && out.queries.indexOf(q) < 0) out.queries.push(q);
+                                    } catch (e) {}
+                                    delete pendingTool[j.index];
+                                }
+                            } else if (t === 'error' || t === 'message_stop') {
+                                if (t === 'error') {
+                                    var em = (j.error && (j.error.message || j.error.type)) || '联网检索失败';
+                                    out.failed = true;
+                                    dsHistory[idx].content = '❌ ' + em;
+                                    dsHistory[idx].web = { failed: true, searches: out.searches, queries: out.queries, endpoint: '', channel: 'anthropic' };
+                                    _dsStreaming = false;
+                                    dsRenderAll();
+                                    try { reader.cancel(); } catch (ce) {}
+                                    return out;
+                                }
+                            }
+                        }
+                        tick++;
+                        dsHistory[idx].content = out.text;
+                        if (tick % 3 === 0) {
+                            var shown = out.text
+                                ? dsMarkdown(out.text)
+                                : ((sawWsEvent || out.searches) ? '🌐 正在联网检索…' : (isRetry ? '🌐 正在强制联网检索…' : '正在生成…'));
+                            _dsPaintBubble(idx, shown);
+                        }
+                    }
+                } catch (_re) { /* 读取中断（用户停止/网络断开）：保留已收到的内容 */ }
+                // 兜底：只收到 server_tool_use / web_search_tool_result 而流被提前截断时，仍记为「检索过」
+                if (!out.searches && (sawWsEvent || out.results)) out.searches = 1;
+                dsHistory[idx].content = out.text;
+                _dsStreaming = false;
+                return out;
+            }
+
+            // 联网检索证据条：把「本轮是否真的联网」摆在用户眼前，杜绝「说联网其实没联网」的假成功
+            function dsWebChip(m) {
+                var w = m && m.web;
+                if (!w) return '';
+                var base = 'display:flex;width:fit-content;align-items:center;gap:5px;margin-bottom:8px;padding:3px 9px;border-radius:999px;font-size:0.74rem;line-height:1.5;border:1px solid ';
+                var txt, style;
+                if (w.conflict) {
+                    txt = '📎 本次含图片：已切换视觉通道（联网检索接口不支持图片，本次未联网）';
+                    style = base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)';
+                } else if (w.failed) {
+                    txt = '❌ 本次联网检索失败，回答未使用任何实时数据';
+                    style = base + 'rgba(220,38,38,0.35);background:rgba(220,38,38,0.10);color:#dc2626';
+                } else if (w.searches > 0) {
+                    var qs = (w.queries && w.queries.length) ? '：' + w.queries.slice(0, 3).join('｜') : '';
+                    var via = (w.channel === 'anthropic') ? '（Anthropic 联网通道）' : (w.channel === 'responses' ? '（Responses 通道）' : '');
+                    txt = '🌐 已联网检索 ' + w.searches + ' 次' + via + qs;
+                    style = base + 'rgba(77,107,254,0.35);background:rgba(77,107,254,0.10);color:var(--ds-blue)';
+                } else {
+                    var rf = w.retryFailed ? '（强制重试亦失败：' + String(w.retryFailed).slice(0, 90) + '）' : '';
+                    txt = '⚠️ 本次未发生实际检索' + rf + '，以下内容来自模型内部知识（可能已过时），请勿当作实时信息';
+                    style = base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)';
+                }
+                return '<div style="' + style + '">' + dsEsc(txt) + '</div>';
+            }
+
             function dsBubbleInner(idx) {
                 var m = dsHistory[idx];
                 if (!m) return '';
@@ -2232,7 +2713,7 @@
                 if (m.reasoning) {
                     reasoningHtml = '<details class="ds-reasoning" open><summary>💭 思考过程</summary><div class="ds-reasoning-body">' + dsEsc(m.reasoning) + '</div></details>';
                 }
-                return reasoningHtml + dsMarkdown(m.content || '');
+                return reasoningHtml + dsWebChip(m) + dsMarkdown(m.content || '');
             }
 
             // ============ 媒体/链接渲染（图片 · 视频 · 音频 · 外链） ============
@@ -2717,6 +3198,11 @@
         window.dsRenderAll            = typeof dsRenderAll !== 'undefined' ? dsRenderAll : function(){};
         window.dsAppendMsg            = typeof dsAppendMsg !== 'undefined' ? dsAppendMsg : function(){};
         window.getDsHistory           = (typeof dsHistory !== 'undefined') ? function(){ return dsHistory; } : function(){ return []; };
+        // 联网检索证据条：供 unified-enhancements.js 卡片化重渲染时一并重建（否则会被覆盖掉）
+        window.dsWebChip              = typeof dsWebChip !== 'undefined' ? dsWebChip : function(){ return ''; };
+        // 联网通道辅助（自检/测试用）：Anthropic 端点推导 + 消息体转换
+        window.dsAnthropicUrlCandidates = typeof dsAnthropicUrlCandidates !== 'undefined' ? dsAnthropicUrlCandidates : function(){ return []; };
+        window.dsBuildAnthropicMessages = typeof dsBuildAnthropicMessages !== 'undefined' ? dsBuildAnthropicMessages : function(){ return []; };
 
     })();
 
@@ -3034,19 +3520,36 @@
         const systemPrompt = '你是铁路安全对规专家。请基于以下【参考资料】中的真实历史案例和规章条款，分析用户输入的检查问题。\n' + refText +
           '【输出要求】\n1. 明确指出问题违反的具体条款（必须引用上述规章中的编号和内容，如果没有明确条款则说明「参考资料中无直接对应条款」）。\n2. 对比历史案例，指出相似点和特殊性。\n3. 给出具体整改建议（可借鉴案例中的有效做法）。\n4. 不得编造任何条款或数据。';
         if (container) container.innerHTML = '<div style="padding:20px">🤖 AI 正在分析，请稍候...</div>';
+        // 超时保护：此前该入口没有任何超时/中断，模型无响应时界面会永久停在「AI 正在分析」。
+        var _ac2 = new AbortController();
+        var _ac2Timer = setTimeout(function() { try { _ac2.abort(); } catch (e) {} }, 120000);
         try {
+          var _ac2Body = {
+            model: model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: '检查问题：' + problemText }
+            ],
+            temperature: 0.3, max_tokens: 3000, stream: false
+          };
+          // 思考模式：跟随设置页开关（默认开）。开启时 temperature 不生效，且思维链会占用输出预算，
+          // 故 max_tokens 由 1500 提高到 3000，避免长分析被截断。
+          if (typeof window.dsThinkingParam === 'function') {
+            Object.assign(_ac2Body, window.dsThinkingParam({ apiUrl: apiUrl, model: model }));
+          }
           const resp = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-            body: JSON.stringify({
-              model: model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: '检查问题：' + problemText }
-              ],
-              temperature: 0.3, max_tokens: 1500, stream: false
-            })
+            body: JSON.stringify(_ac2Body),
+            signal: _ac2.signal
           });
+          // ⚠️ 原先直接 resp.json() 未判 resp.ok：401/402/400 时 data.choices 为 undefined，
+          // 界面会显示正文「无响应」，把「请求失败」伪装成「模型没说话」——静默失败。
+          if (!resp.ok) {
+            var _errTxt = ''; try { _errTxt = await resp.text(); } catch (_e) {}
+            var _errMsg = ''; try { _errMsg = ((JSON.parse(_errTxt) || {}).error || {}).message || ''; } catch (_e) { _errMsg = String(_errTxt).slice(0, 200); }
+            throw new Error(typeof window.dsAiHttpError === 'function' ? window.dsAiHttpError(resp.status, _errMsg) : ('HTTP ' + resp.status));
+          }
           const data = await resp.json();
           const conclusion = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '无响应';
           // 使用 safeHtml 防止 AI 返回内容中的 XSS（如恶意 <script> / <img onerror> 等）
@@ -3060,7 +3563,10 @@
             '</div>';
           if (container) container.innerHTML = html;
         } catch(e) {
-          if (container) container.innerHTML = '<div style="color:red">对规失败：' + (typeof window.escapeHtml === 'function' ? window.escapeHtml(e.message) : String(e.message).replace(/</g,'&lt;')) + '</div>';
+          var _ac2Msg = (e && e.name === 'AbortError') ? '请求超时（120s），请稍后重试' : ((e && e.message) || String(e));
+          if (container) container.innerHTML = '<div style="color:red">对规失败：' + (typeof window.escapeHtml === 'function' ? window.escapeHtml(_ac2Msg) : String(_ac2Msg).replace(/</g,'&lt;')) + '</div>';
+        } finally {
+          if (_ac2Timer) { clearTimeout(_ac2Timer); _ac2Timer = null; }
         }
       };
 
@@ -3411,17 +3917,27 @@
             if (refineInput) refineInput.value = '';
           }
 
-          // Y1：增加整体超时（180s），避免长报告（max_tokens 6000）假死、不可中断
+          // 思考模式：跟随设置页开关（默认开）。开启时思维链会占用输出预算，
+          // 故把 max_tokens 由 6000 抬到 8192，避免「完整报告」在结尾被截断。
+          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 6000, stream: false };
+          var _riskThinking = false;
+          if (typeof window.dsThinkingParam === 'function') {
+            var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model });
+            Object.assign(_riskBody, _tp);
+            _riskThinking = !!(_tp.thinking && _tp.thinking.type === 'enabled');
+            if (_riskThinking) _riskBody.max_tokens = 8192;
+          }
+          // Y1：增加整体超时，避免长报告假死、不可中断（思考模式耗时更长，放宽到 240s）
           var _riskAbort = new AbortController();
           var _riskTimeout = setTimeout(function() {
             try { _riskAbort.abort(new Error('TimeoutError')); } catch (e) {}
-          }, 180000);
+          }, _riskThinking ? 240000 : 180000);
           var resp;
           try {
             resp = await fetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-              body: JSON.stringify({ model: model, messages: messages, temperature: 0.3, max_tokens: 6000, stream: false }),
+              body: JSON.stringify(_riskBody),
               signal: _riskAbort.signal
             });
           } finally {
@@ -3429,10 +3945,12 @@
           }
 
           if (!resp.ok) {
-            var _statusHints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 404:'模型不存在(请检查当前模型)', 429:'请求过于频繁' };
-            var _hintMsg = _statusHints[resp.status] || ('HTTP ' + resp.status);
-            // 404 多为模型名错误；CORS 由 catch 的 Failed to fetch 捕获
-            throw new Error(_hintMsg);
+            // 统一错误映射：官方错误码为 400/401/402/422/429/500/503（模型名错误以 400 返回）。
+            var _etxt = ''; try { _etxt = await resp.text(); } catch (_e) {}
+            var _edet = ''; try { _edet = ((JSON.parse(_etxt) || {}).error || {}).message || ''; } catch (_e) { _edet = String(_etxt).slice(0, 200); }
+            throw new Error(typeof window.dsAiHttpError === 'function'
+              ? window.dsAiHttpError(resp.status, _edet)
+              : ('请求失败（HTTP ' + resp.status + '）' + (_edet ? '：' + _edet : '')));
           }
           var data = await resp.json();
           var report = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '无响应';

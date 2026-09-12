@@ -2035,27 +2035,40 @@
                             }
                         }
                     } catch (_e) { /* 视觉注入失败则退化为纯文本 */ }
+                    // DeepSeek V4 起思考模式默认开启，思维链同样计费/占用生成预算，
+                    // 原 max_tokens=1024 极易被思维链吃光导致 JSON 被截断（下方那一大段「截断补全」容错
+                    // 就是被这个逼出来的）。这里抬到 4096；若用户在设置中关闭思考模式，则又回到
+                    // 「temperature 0.0 真正生效」的严格确定性模式。
+                    const _scBody = {
+                        model: model,
+                        messages: [
+                            { role: 'system', content: sysPrompt },
+                            { role: 'user', content: _checkUserMsg }
+                        ],
+                        temperature: 0.0,
+                        max_tokens: 4096,
+                        stream: false
+                    };
+                    if (typeof window.dsThinkingParam === 'function') {
+                        Object.assign(_scBody, window.dsThinkingParam({ apiUrl: apiUrl, model: model }));
+                    }
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-                        body: JSON.stringify({
-                            model: model,
-                            messages: [
-                                { role: 'system', content: sysPrompt },
-                                { role: 'user', content: _checkUserMsg }
-                            ],
-                            temperature: 0.0,
-                            max_tokens: 1024,
-                            stream: false
-                        }),
+                        body: JSON.stringify(_scBody),
                         signal: window._dsAbortController.signal
                     });
 
                     console.log('[AI对规] fetch 响应:', resp.status, resp.ok);
 
                     if (!resp.ok) {
-                        const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
-                        throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
+                        let _scErr = '';
+                        try { _scErr = await resp.text(); } catch (_e) {}
+                        let _scMsg = '';
+                        try { _scMsg = ((JSON.parse(_scErr) || {}).error || {}).message || ''; } catch (_e) { _scMsg = String(_scErr).slice(0, 200); }
+                        throw new Error(typeof window.dsAiHttpError === 'function'
+                            ? window.dsAiHttpError(resp.status, _scMsg)
+                            : ('HTTP ' + resp.status + (_scMsg ? '：' + _scMsg : '')));
                     }
 
                     const data = await resp.json();

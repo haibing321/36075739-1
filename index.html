@@ -1745,6 +1745,32 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.57 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.57 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🌐 <strong>修复联网搜索「开了却没联网」</strong>：此前联网请求走的通道已不再执行服务端检索（接口正常返回 200，但一次都不检索，模型只能用内部旧知识作答）。现已切换到真正可用的联网通道，查询「今日新闻」类问题会真实检索，回答基于当天信息。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔎 <strong>联网结果可核对</strong>：AI 回答上方会显示「已联网检索 N 次」及实际检索词；若一次都没检索成功，会明确提示「本次未发生实际检索，内容来自模型内部知识（可能已过时）」，不再把旧信息包装成「今日热点」。同时自动补一次强制检索，尽量拿到实时结果。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🖼️ <strong>联网与看图可同时使用</strong>：过去「上传图片 + 开启联网」会被迫二选一（联网通道不支持图片），现在两者并行——既能实时检索，也能识别图片内容。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>⚙️ <strong>各 AI 模块调用全面加固</strong>：智能对话、智能体、智能对规、智能写作、风险研判、代码补全统一适配新模型的思考模式；修正智能对规因输出长度过小导致结论被截断、增强对规请求失败却被显示为「无响应」、以及智能写作生成后按钮不恢复等问题。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.56 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1767,27 +1793,9 @@
                 </div>
             </div>
 
-            <!-- v3.55 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.55 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🖼️ 智能对话媒体渲染覆盖全场景：表格单元格 / 列表项 / 段落内的图片、视频、音频链接现在都会自动渲染为内嵌图片或播放器（之前只对「独立成行」的链接生效，导致表格内的链接仍是普通文字链接）。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎬 行内 / 表格内的视频站点（B 站 / YouTube / 腾讯视频）链接直接渲染为内嵌播放器；普通网页链接统一走外链卡片，富媒体展示更一致。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.55 及以下已归档（最近 2 版本为 v3.57 / v3.56） -->
 
-            <!-- v3.54 及以下已归档（最近 2 版本为 v3.56 / v3.55） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.52 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.55 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->
@@ -1901,8 +1909,7 @@
                 <!-- 模型名称补全列表（V4.1 Flash 为当前主力：原生多模态，图文同一模型） -->
                 <datalist id="api-model-list">
                     <option value="deepseek-flash">DeepSeek V4.1 Flash（原生多模态，推荐）</option>
-                    <option value="deepseek-chat">DeepSeek Chat（纯文本）</option>
-                    <option value="deepseek-reasoner">DeepSeek Reasoner（纯文本·深度思考）</option>
+                    <option value="deepseek-v4-pro">DeepSeek V4 Pro（纯文本·复杂推理/Agent）</option>
                     <option value="deepseek-v4-flash">deepseek-v4-flash（旧名·已路由至 V4.1 Flash）</option>
                     <option value="deepseek-v4-flash-vision-exp">deepseek-v4-flash-vision-exp（旧名·已路由至 V4.1 Flash）</option>
                 </datalist>

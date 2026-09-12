@@ -504,12 +504,23 @@
     }
     var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 4000 };
     if (withTools) body.tools = _toolsParam();
+    // 思考模式：跟随设置页开关（默认开）。开启后思维链占用生成预算、首 token 明显变慢，
+    // 且 temperature 不再生效（官方行为）。非 DeepSeek 端点下该函数返回 {}，不会误传参数。
+    var _agThinking = false;
+    if (typeof window.dsThinkingParam === 'function') {
+      var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model });
+      Object.assign(body, _tp);
+      _agThinking = !!(_tp.thinking && _tp.thinking.type === 'enabled');
+      if (_agThinking) body.max_tokens = 8192;   // 预留思维链预算，避免最终回答被截断
+    }
     var resp;
     var timeoutTimer;
+    // 带 tools 的 ReAct 请求叠加思考模式后，60s 明显偏紧（大上下文 + 思维链 + 工具回灌）；
+    // 思考模式下放宽到 180s，非思考模式仍保持 60s 快速失败。
+    var _llmTimeoutMs = _agThinking ? 180000 : 60000;
     try {
-      // 60s 超时：自动中断长时间无响应的请求
       var timeoutPromise = new Promise(function(_, reject) {
-        timeoutTimer = setTimeout(function() { controller.abort(); reject(new Error('请求超时（60s），请稍后重试')); }, 60000);
+        timeoutTimer = setTimeout(function() { controller.abort(); reject(new Error('请求超时（' + (_llmTimeoutMs / 1000) + 's），请稍后重试')); }, _llmTimeoutMs);
       });
       var fetchPromise = fetch(apiUrl, {
         method: 'POST',
@@ -526,11 +537,11 @@
     clearTimeout(timeoutTimer);
     if (!resp.ok) {
       var detail = '';
-      try { var ed = await resp.json(); detail = (ed.error && ed.error.message) || ''; } catch(_) {}
-      if (resp.status === 401) throw new Error('API Key 无效或未授权（401）' + (detail ? '：' + detail : ''));
-      if (resp.status === 429) throw new Error('请求过于频繁，请稍后再试（429）');
-      if (resp.status === 400) throw new Error('请求参数错误（400）' + (detail ? '：' + detail : '') + '｜若当前 API 不支持 function calling，请在设置中更换为 deepseek-flash');
-      throw new Error('API 错误 ' + resp.status + (detail ? '：' + detail : ''));
+      try { var _etxt = await resp.text(); detail = ((JSON.parse(_etxt) || {}).error || {}).message || ''; } catch(_) {}
+      if (resp.status === 400) detail += (detail ? ' ｜ ' : '') + '若当前 API 不支持 function calling，请在「设置 → API 配置」中改用 deepseek-flash';
+      throw new Error(typeof window.dsAiHttpError === 'function'
+        ? window.dsAiHttpError(resp.status, detail)
+        : ('API 错误 ' + resp.status + (detail ? '：' + detail : '')));
     }
     var data = await resp.json();
     if (!data.choices || !data.choices[0] || !data.choices[0].message) throw new Error('API 返回格式异常');
@@ -628,6 +639,12 @@
         var legacy = _parseToolCall(assistantMsg.content);
         if (legacy && legacy.tool) {
           toolCalls = [{ id: 'legacy_' + loop, type: 'function', function: { name: legacy.tool, arguments: JSON.stringify(legacy.params || {}) } }];
+          // ⚠️ 关键：合成出来的 tool_calls 必须挂回 assistant 消息本身。
+          // 此前只改了本地变量，回灌的却是「没有 tool_calls 的 assistant」+「带 tool_call_id 的 tool 消息」，
+          // 二者无法配对，API 会直接判 400（tool 消息必须响应前一条 assistant 的 tool_calls）。
+          // 同时把 JSON 代码块从正文里摘掉，避免它被当成最终回答重复展示。
+          assistantMsg.tool_calls = toolCalls;
+          assistantMsg.content = String(assistantMsg.content).replace(/```json[\s\S]*?```/g, '').trim();
         }
       }
 

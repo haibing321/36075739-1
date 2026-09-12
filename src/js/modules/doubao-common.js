@@ -496,7 +496,7 @@
     // 1) 模型名含明确视觉/多模态标识 → 支持看图
     // 2) 主流已知视觉模型（Gemini / Claude / 4o / 4v / vl / vision 等）→ 支持看图
     // 3) DeepSeek：自 V4.1 Flash 起原生支持多模态，故 flash 系支持看图；
-    //    deepseek-chat / deepseek-reasoner 等纯文本模型仍不支持（送 image_url 会被 400 拒绝）
+    //    deepseek-v4-pro 等纯文本模型仍不支持（送 image_url 会被 400 拒绝）
     // 4) 其他未知模型 → 乐观按支持处理：发现图片后自动以多模态送审
     //    （若接口不支持会返回明确错误，而非静默丢图——解决「有时不识别图片」）
     window.dsModelSupportsVision = function(modelName) {
@@ -508,10 +508,59 @@
             // V4.1 Flash（规范名 deepseek-flash）原生多模态，可直接看图；
             // 旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 已被官方路由到 V4.1 Flash，同样具备视觉能力，
             // 这里一并放行，避免老配置（未迁移）用户的图片被静默降级为纯文本。
-            // deepseek-chat / deepseek-reasoner / deepseek-v4-pro 等纯文本模型仍不支持。
+            // deepseek-v4-pro 等纯文本模型仍不支持；（deepseek-chat / deepseek-reasoner 已于 2026-07-24 退役）
             return /flash/i.test(m);
         }
         return true;                                         // 其他供应商：自动识别图片（乐观）
+    };
+
+    // ============ 跨模块共享：思考模式参数 / API 错误提示 ============
+    // DeepSeek V4 起「思考模式默认开启（effort=high）」，且**思考模式下 temperature 不生效**。
+    // 这带来两个跨模块影响：
+    //   1) 结构化任务（对规 JSON / FIM 补全）必须显式关闭，否则思维链会吃掉输出预算甚至被拒；
+    //   2) 该参数只有 DeepSeek 端点认识，其它供应商（OpenAI 等）收到未知参数会直接 400。
+    // 故所有智能模块统一经此函数取参，避免各自硬编码。
+    //   opts.mode   'auto'（默认，跟随设置页开关）| 'on' | 'off'
+    //   opts.effort 思考强度 low/high/max（仅 mode!=='off' 时生效，默认 high）
+    //   opts.apiUrl / opts.model 可显式覆盖（默认读 localStorage）
+    // 返回可直接 Object.assign 进请求体的片段；非 DeepSeek 端点返回 {}。
+    window.dsThinkingParam = function(opts) {
+        opts = opts || {};
+        var apiUrl = opts.apiUrl || localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+        var model  = opts.model  || localStorage.getItem('ds_model_v1') || 'deepseek-flash';
+        var isDeepSeek = /deepseek/i.test(String(model)) || /(^|\.)deepseek\.com$/i.test((function() {
+            try { return new URL(apiUrl).host; } catch (e) { return ''; }
+        })());
+        if (!isDeepSeek) return {};                        // 其它供应商：不发送该参数，避免 400
+        if (opts.mode === 'off') return { thinking: { type: 'disabled' } };
+        if (opts.mode !== 'on' && localStorage.getItem('ds_thinking') === '0') {
+            return { thinking: { type: 'disabled' } };      // 跟随设置页「思考模式」开关
+        }
+        var effort = opts.effort || 'high';
+        if (['low', 'medium', 'high', 'max'].indexOf(effort) < 0) effort = 'high';
+        if (effort === 'medium') effort = 'high';           // 官方映射：medium → high
+        return { thinking: { type: 'enabled' }, reasoning_effort: effort };
+    };
+
+    // 统一的 API 错误提示。官方错误码只有 400/401/402/422/429/500/503（**没有 404**，
+    // 「模型不存在」也是以 400 返回的），此前各模块只映射了 401/402/403/429，导致
+    // 400/422（最常见：模型名退役、参数不被接受）只显示裸「HTTP 400」，难以定位。
+    window.dsAiHttpError = function(status, detail) {
+        var tips = {
+            400: '请求被拒绝（400）：多数是模型名无效或参数不被接受',
+            401: 'API Key 无效或未授权（401）',
+            402: '账户余额不足（402）',
+            403: '无访问权限（403）',
+            422: '请求参数错误（422）',
+            429: '请求过于频繁，请稍后再试（429）',
+            500: 'DeepSeek 服务端故障（500），请稍后重试',
+            503: '服务繁忙（503），请稍后重试'
+        };
+        var base = tips[status] || ('请求失败（HTTP ' + status + '）');
+        var d = (detail === undefined || detail === null) ? '' : String(detail).trim();
+        if (d) { d = d.replace(/\s+/g, ' ').slice(0, 200); base += '：' + d; }
+        if (status === 400) base += '（当前模型 ' + (localStorage.getItem('ds_model_v1') || '未设置') + '，可在「设置 → API 配置」中切换为 deepseek-flash）';
+        return base;
     };
 
     console.log('✅ doubao-common.js 已加载');

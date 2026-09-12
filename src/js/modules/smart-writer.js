@@ -1999,25 +1999,39 @@
 
                     _wrAbortController = new AbortController();
                     // 【修复 E1】整体生成超时（180s），避免 API 假死导致"停止"按钮常显、writeBtn 一直禁用
-                    const _wrTimeoutMs = 180000;
-                    const _wrTimeout = setTimeout(() => {
+                    // ⚠️ 必须用 var 而非 const：这两个变量会在下面的 catch / finally 中使用，
+                    // 而 const/let 声明在 try 块内时，catch / finally 属于**另一个块**、根本看不到它们，
+                    // 会在收尾时抛「ReferenceError: _wrTimeout is not defined」，导致 finally 里的
+                    // 清理（恢复「开始写作」按钮、隐藏停止按钮、清空 _wrAbortController、复位 _wrTimedOut）
+                    // 全部不执行 —— 表现为生成完成后按钮永久禁用、停止按钮常显。
+                    var _wrTimeoutMs = 180000;
+                    var _wrTimeout = setTimeout(() => {
                         if (_wrAbortController) {
                             window._wrTimedOut = true;
                             try { _wrAbortController.abort(new Error('TimeoutError')); } catch (e) {}
                         }
                     }, _wrTimeoutMs);
+                    // 思考模式：跟随设置页开关（默认开）。开启时 temperature 不生效（官方行为），
+                    // 长文写作受益于思维链，故保留；max_tokens 16384 已远低于模型 384K 上限，无需调整。
+                    const _wrBody = { model, messages, stream: true, temperature: 0.3, max_tokens: 16384 };
+                    if (typeof window.dsThinkingParam === 'function') {
+                        Object.assign(_wrBody, window.dsThinkingParam({ apiUrl: apiUrl, model: model }));
+                    }
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-                        body: JSON.stringify({
-                            model, messages, stream: true, temperature: 0.3, max_tokens: 16384
-                        }),
+                        body: JSON.stringify(_wrBody),
                         signal: _wrAbortController.signal
                     });
 
                     if (!resp.ok) {
-                        const hints = { 401:'API Key 无效', 402:'账户余额不足', 403:'无访问权限', 429:'请求过于频繁' };
-                        throw new Error(hints[resp.status] || 'HTTP ' + resp.status);
+                        let _wrErr = '';
+                        try { _wrErr = await resp.text(); } catch (_e) {}
+                        let _wrMsg = '';
+                        try { _wrMsg = ((JSON.parse(_wrErr) || {}).error || {}).message || ''; } catch (_e) { _wrMsg = String(_wrErr).slice(0, 200); }
+                        throw new Error(typeof window.dsAiHttpError === 'function'
+                            ? window.dsAiHttpError(resp.status, _wrMsg)
+                            : ('HTTP ' + resp.status + (_wrMsg ? '：' + _wrMsg : '')));
                     }
 
                     let fullText = '';

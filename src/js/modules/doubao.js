@@ -2104,7 +2104,7 @@
                                 var _args = {};
                                 try { _args = _call.function.arguments ? JSON.parse(_call.function.arguments) : {}; } catch (e) { _args = {}; }
                                 dsHistory[assistantIdx].content = '🔧 正在调用工具：' + _call.function.name + ' …';
-                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
+                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
                                 var _exec = await _toolExec(_call.function.name, _args);
                                 // D3：工具结果可视化——在气泡中追加简短摘要（✅ 共N条 / ❌ 错误），提升调用过程可观测性，与智能体透明卡片对齐
                                 var _summary = '';
@@ -2115,14 +2115,14 @@
                                     _summary = '❌ ' + _call.function.name + '：' + ((_exec && _exec.error) || '执行失败');
                                 }
                                 dsHistory[assistantIdx].content = '🔧 ' + _summary;
-                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
+                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
                                 var _tcContent = JSON.stringify(_exec && _exec.result !== undefined ? _exec.result : _exec, null, 2);
                                 messages.push({ role: 'tool', tool_call_id: _call.id, content: _tcContent });
                             }
                             // 清空气泡，准备下一轮最终回答
                             dsHistory[assistantIdx].content = '';
                             dsHistory[assistantIdx].reasoning = '';
-                            (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'; dsScrollBottom(); } })();
+                            (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
                             // 后续轮次：回灌工具结果（仍带 tools，允许模型继续调用或总结）
                             var _bodyN = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
                             if (thinkingOn) { _bodyN.thinking = { type: 'enabled' }; _bodyN.reasoning_effort = 'high'; } else { _bodyN.thinking = { type: 'disabled' }; }
@@ -2138,7 +2138,7 @@
                     var _finalChatBox = document.getElementById('ds-chat-box');
                     var _finalBubbles = _finalChatBox.querySelectorAll('.ds-bubble-assistant');
                     var _finalBubble = _finalBubbles[_finalBubbles.length - 1];
-                    if (_finalBubble) _finalBubble.innerHTML = dsBubbleInner(assistantIdx);
+                    if (_finalBubble) dsSetHtmlKeepMedia(_finalBubble, dsBubbleInner(assistantIdx));
                     dsSaveHistory();
                     dsRenderHistoryList();
                     // 统一重渲染，确保每条 AI 回复下方都带上操作按钮（复制/下载/有用/无用/重生成/朗读）
@@ -2176,7 +2176,7 @@
                         // P8：请求超时（非用户主动停止）
                         dsHistory[assistantIdx].content = '❌ 请求超时（' + (_reqTimeoutMs / 1000) + 's）：模型响应时间过长，请稍后重试，或检查网络/API 状态。';
                         var _tBox = document.getElementById('ds-chat-box');
-                        if (_tBox) { var _lb = _tBox.querySelector('.ds-bubble-assistant:last-of-type'); if (_lb) _lb.innerHTML = dsBubbleInner(assistantIdx); }
+                        if (_tBox) { var _lb = _tBox.querySelector('.ds-bubble-assistant:last-of-type'); if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx)); }
                         dsRenderAll();
                     } else if (err.name === 'AbortError') {
                         var chatBox2 = document.getElementById('ds-chat-box');
@@ -2306,7 +2306,9 @@
                         html += '<div class="ds-row-system"><div class="ds-bubble-system">' + dsEsc(msg.content) + '</div></div>';
                     }
                 });
-                box.innerHTML = html;
+                // 用媒体块复用写入：dsRenderAll 会重建全部气泡，若直接 innerHTML 覆盖，
+                // 历史消息里已加载/已在播放的音视频会被销毁并重新下载
+                dsSetHtmlKeepMedia(box, html);
                 // 给每个 AI 回复气泡追加操作按钮（复制/下载/有用/无用/重生成/朗读），
                 // 使按钮成为消息渲染的固有部分，任何 dsRenderAll 重渲染后都稳定保留。
                 if (typeof window._addFeedbackButtons === 'function') {
@@ -2396,7 +2398,7 @@
                                         if (_cb) {
                                             var _bs = _cb.querySelectorAll('.ds-bubble-assistant');
                                             var _lb = _bs[_bs.length - 1];
-                                            if (_lb) _lb.innerHTML = dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>';
+                                            if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>');
                                             dsScrollBottom();
                                         }
                                     }
@@ -2574,7 +2576,7 @@
                 var bubbles = box.querySelectorAll('.ds-bubble-assistant');
                 var last = bubbles[bubbles.length - 1];
                 if (!last) return;
-                last.innerHTML = (bodyHtml || '') + (withCursor === false ? '' : '<span class="ds-cursor">▌</span>');
+                dsSetHtmlKeepMedia(last, (bodyHtml || '') + (withCursor === false ? '' : '<span class="ds-cursor">▌</span>'));
                 dsScrollBottom();
             }
 
@@ -2912,6 +2914,139 @@
                 }
                 return dsLinkCard(u, '');
             }
+            // ===== 媒体块复用：重建 innerHTML 时绝不丢掉已加载的播放器/图片 =====
+            // 为什么必须这么做（2026-09-12 实测定位）：气泡内容会在「流式结束渲染」「页面增强
+            // (unified-enhancements 的 enhanceBubbles)」以及每一次 dsRenderAll 时被整块 innerHTML 覆盖。
+            // 元素一旦被销毁，浏览器立即丢弃它的缓冲区、readyState 与播放进度；新插入的同 src 元素会
+            // **从头重新发起请求**。实测同一条回复里 <video>/<audio> 的 URL 被请求 3 次、字节重复传输 2 遍
+            // ——在真实外链（视频动辄几十 MB）上，这就是「转圈很久才出画面、播放卡顿」的主因。
+            // 做法：重建前按媒体块容器上的 data-ds-src / data-ds-page 收集旧块 → 写新 HTML →
+            // 按出现顺序一对一，把新块原位换回旧块（保留缓冲、播放进度、以及已展开的内嵌播放器）。
+            // 安全性：搬回去的是**文档中已存在的同一个节点**，不引入新的解析路径，故不削弱 XSS 防护
+            //（新 HTML 仍先经 DOMPurify 净化，复用只发生在净化之后）。
+            function _dsMediaKey(box) {
+                if (!box || !box.getAttribute) return '';
+                var k = box.getAttribute('data-ds-src') || box.getAttribute('data-ds-page') ||
+                        box.getAttribute('data-ds-embed') || '';
+                if (k) return k;
+                // 图片块（figure）外层没有 data-ds-*，退回取内部 img 的 src 作为身份标识
+                var inner = box.querySelector ? box.querySelector('img[src], video[src], audio[src], iframe[src]') : null;
+                return inner ? (inner.getAttribute('src') || '') : '';
+            }
+            function _dsIsPlaceholder(box) {
+                return !!(box && box.classList && box.classList.contains('ds-media-link-box'));
+            }
+            function _dsIsMediaNode(node) {
+                return !!(node && node.nodeType === 1 && node.classList && node.classList.contains('ds-media'));
+            }
+            // 递归地把 root 子树里的 .ds-media（按 key 匹配）原位替换为 keepArr 里的旧元素。
+            // 用 template.content 作 root 时整棵子树仍是 inert（不触发资源加载），
+            // 等替换完再统一 appendChild 到 host，**保持原 DOM 嵌套结构**——这是关键：
+            // 之前简单地把媒体直接 appendChild 到 host 根，会把媒体从原气泡内搬到 box 根下，
+            // 看起来"找不到媒体元素"就是这个问题。
+            // 全局媒体元素池：key(URL) → 已加载过的媒体块元素。
+            // 为什么还需要它：光在 host 内部复用不够。dsRenderAll 会整块重建会话列表，
+            // 旧气泡连同里面**已经缓冲好**的播放器一起被丢弃，新气泡里同 URL 的媒体又是从零开始
+            // ——实测这条路径让 <video>/<audio> 多下一遍整段。
+            // 浏览器对「已加载的媒体元素」在脱离文档后仍保留缓冲（实测 detach→attach 不会再发请求），
+            // 所以把被丢弃的元素收进池里，下次渲染同 URL 直接搬回来即可。
+            var _dsMediaPool = new Map();
+            var _dsMediaPoolOrder = [];
+            function _dsPoolPut(el) {
+                var k = _dsMediaKey(el);
+                if (!k) return;
+                if (!_dsMediaPool.has(k)) _dsMediaPoolOrder.push(k);
+                _dsMediaPool.set(k, el);
+                while (_dsMediaPoolOrder.length > 40) {           // 防止无限增长
+                    var old = _dsMediaPoolOrder.shift();
+                    if (_dsMediaPool.get(old) === el) continue;
+                    _dsMediaPool.delete(old);
+                }
+            }
+            // 只回收「已经脱离文档」的元素；仍挂在别处（比如另一条消息也在展示它）的不能搬走
+            function _dsPoolTake(key, host) {
+                var el = _dsMediaPool.get(key);
+                if (!el || !el.nodeType) { _dsMediaPool.delete(key); return null; }
+                if (el.isConnected) return null;                  // 还在用 → 不动
+                if (host && host.contains && host.contains(el)) return null;
+                return el;
+            }
+            function _dsPoolScan(root) {
+                if (!root || !root.querySelectorAll) return;
+                try {
+                    var list = root.querySelectorAll('.ds-media');
+                    for (var i = 0; i < list.length; i++) {
+                        if (_dsIsPlaceholder(list[i])) continue;
+                        if (_dsMediaKey(list[i])) _dsPoolPut(list[i]);
+                    }
+                } catch (e) {}
+            }
+            function _dsSwapMedia(root, keepArr, used, host, stat) {
+                if (!root || !root.childNodes || !root.childNodes.length) return;
+                if (!stat) stat = { hit: 0, pool: 0, miss: 0 };
+                var kids = Array.prototype.slice.call(root.childNodes);
+                for (var i = 0; i < kids.length; i++) {
+                    var c = kids[i];
+                    if (c.nodeType !== 1) continue;
+                    if (_dsIsPlaceholder(c)) continue;
+                    if (c.classList && c.classList.contains('ds-media')) {
+                        var key = _dsMediaKey(c);
+                        if (key) {
+                            var done = false;
+                            for (var m = 0; m < keepArr.length; m++) {   // ① 优先用本气泡内原有的
+                                if (used[m] || keepArr[m].key !== key) continue;
+                                used[m] = 1;
+                                if (c.parentNode) c.parentNode.replaceChild(keepArr[m].el, c);
+                                done = true;
+                                stat.hit++;
+                                break;
+                            }
+                            if (!done) {                                  // ② 退回全局池（跨气泡复用）
+                                var pooled = _dsPoolTake(key, host);
+                                if (pooled && c.parentNode) {
+                                    c.parentNode.replaceChild(pooled, c);
+                                    _dsMediaPool.delete(key);
+                                    stat.pool++;
+                                } else {
+                                    stat.miss++;
+                                }
+                            }
+                        }
+                    } else if (c.childNodes && c.childNodes.length) {
+                        _dsSwapMedia(c, keepArr, used, host, stat);
+                    }
+                }
+            }
+            function dsSetHtmlKeepMedia(host, html) {
+                if (!host) return;
+                // 内容完全没变就别重建：流式结束后的「最终渲染 / dsRenderAll / 页面增强」会连续
+                // 用同一份 HTML 写好几遍，每一步 detach→attach 都可能让媒体再取一次流。
+                if (host.__dsLastHtml === html) return;
+                host.__dsLastHtml = html;
+
+                var keep = [];
+                try {
+                    var olds = host.querySelectorAll('.ds-media');
+                    for (var i = 0; i < olds.length; i++) {
+                        if (_dsIsPlaceholder(olds[i])) continue;
+                        var ok = _dsMediaKey(olds[i]);
+                        if (ok) keep.push({ key: ok, el: olds[i] });
+                    }
+                } catch (e) { keep = []; }
+
+                // 始终先解析到 <template>（inert，不触发任何资源加载），再决定怎么落地
+                var tpl = document.createElement('template');
+                try { tpl.innerHTML = html; } catch (e) { host.innerHTML = html; return; }
+
+                var used = {};
+                var stat = { hit: 0, pool: 0, miss: 0 };
+                _dsSwapMedia(tpl.content, keep, used, host, stat);
+
+                host.innerHTML = '';
+                host.appendChild(tpl.content);
+                _dsPoolScan(host);          // 记下本次渲染出的媒体，供后续跨气泡复用
+            }
+            window.dsSetHtmlKeepMedia = dsSetHtmlKeepMedia;
             // 链接识别：① 带协议 URL；② 裸域名（模型常输出 pixabay.com/xxx、bilibili.com/video/BV…）
             // 中文/全角字符不参与链接，避免把紧跟 URL 的中文正文吞进链接
             var DS_TLD_STR = 'com|cn|net|org|io|co|tv|me|cc|info|biz|xyz|top|site|online|shop|gov|edu|jp|uk|de|ru|kr|hk|tw|sg|au|ca|us';

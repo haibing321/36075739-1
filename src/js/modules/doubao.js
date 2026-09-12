@@ -229,6 +229,8 @@
                 updateApiStatusBadge();
                 // 加载多对话历史
                 dsLoadConversations();
+                // 清除历史里残留的「当前模型为纯文本模型」旧提示（否则模型会在无关话题中反复复述）
+                migrateLegacyVisionNotices();
                 // 默认显示新对话（但复用已有的空对话，避免重复创建）
                 const existingEmpty = dsConversations.find(c => !c.messages || c.messages.length === 0);
                 if (existingEmpty) {
@@ -279,6 +281,32 @@
             }
 
             // ---- 多对话管理 ----
+            // 历史清洗：旧版本（≤v3.57）在「模型不支持看图 + 用户带图」时，会把
+            // 「（提示：当前模型为纯文本模型，图片无法被识别…）」直接拼进**用户消息正文**并随对话历史持久化。
+            // 后果：该提示从此常驻上下文，模型会在无关话题（例如只说了「你好」）里也复述「我当前为纯文本模型」。
+            // v3.58 起已改用「系统提示」措辞并明确禁止复述，这里把历史里已有的旧提示一并清除（含当前会话内存中的副本）。
+            function migrateLegacyVisionNotices() {
+                var RE = /（提示：当前模型为纯文本模型[^）]*）|（当前模型为纯文本模型[^）]*）/g;
+                var changed = false;
+                function clean(obj) {
+                    if (!obj) return;
+                    ['content', 'displayText'].forEach(function(k) {
+                        var v = obj[k];
+                        if (typeof v === 'string' && v.indexOf('当前模型为纯文本模型') !== -1) {
+                            var nv = v.replace(RE, '').trim();
+                            if (nv !== v) { obj[k] = nv; changed = true; }
+                        }
+                    });
+                }
+                try {
+                    (dsConversations || []).forEach(function(c) {
+                        (c.messages || []).forEach(clean);
+                    });
+                    (dsHistory || []).forEach(clean);
+                    if (changed) dsSaveConversations();
+                } catch (e) {}
+                return changed;
+            }
             function dsLoadConversations() {
                 try {
                     const saved = localStorage.getItem(DS_CONVERSATIONS_STORAGE);
@@ -1539,8 +1567,9 @@
                             return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
                         }).join('\n\n');
                         if (_vm && typeof _vm.content !== 'string' && !_visionOk) {
-                            // 提示用户图片不会被识别（避免误以为已看图）
-                            finalText += '\n\n（提示：当前模型为纯文本模型，图片无法被识别，仅作为附件说明提交。如需识别图片，请在「设置 → API 配置 → ＋新增模型」中把模型切换为 deepseek-flash（DeepSeek V4.1 Flash，原生支持图像识别））';
+                            // 提示图片不会被识别（避免误以为已看图）。措辞用「系统提示」的第三人称视角：
+                            // 若写成「当前模型为纯文本模型」，模型会把它当成自我描述，在后续无关话题里也反复声明「我看不了图」。
+                            finalText += '\n\n（系统提示：本轮附件中的图片未能送入模型识别，仅以文字说明形式提交。如需识别图片，请在「设置 → API 配置 → ＋新增模型」中把模型切换为 deepseek-flash（DeepSeek V4.1 Flash，原生支持图像识别）。本提示仅说明这一次的附件处理情况，不要在无关话题中复述或据此介绍自己的图像能力。）';
                         }
                     }
                     window._dsAttachments = [];
@@ -1704,6 +1733,21 @@
                         return realtime.test(q);
                     })(finalText);
                     var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs || autoWs;
+                    // 「按需检索」判定：联网能力开启 ≠ 必须联网检索。只有**问题本身需要实时信息**时才强制检索、
+                    // 才在零检索时告警；问候 / 闲聊 / 写作 / 代码 / 常识 / 资料分析等问题即便联网开关开着也直接作答，
+                    // 避免「你好」也被逼着搜一次（既拖慢响应，也让用户觉得莫名其妙）。
+                    var _dsRealtimeQ = (function(_q) {
+                        var q = String(_q || '').trim();
+                        if (!q) return false;
+                        // 整句即为问候/寒暄/测试时才排除（用 $ 锚定，避免「你好，帮我查下今天新闻」被误伤）
+                        if (/^(你好|您好|hi|hello|hey|在吗|在么|早上好|中午好|下午好|晚上好|谢谢|感谢|多谢|好的|收到|明白|ok|okay|测试|你是谁|你叫什么|你能做什么|你会做什么)[\s,，.。!！?？~～、]*$/i.test(q)) return false;
+                        // 业务域问题走本地数据源（与 autoWs 一致）；但明确问「最新/修订/现行有效」时仍要联网核实
+                        if (/检查信息|规章|条款|隐患|典型问题|安监|监察|工务|电务|供电|车务|机务|车辆|通信|房建|客运|货运|日志|写实|报告|手册|项点|台账|考勤|通讯录|资料库|模板|问题库/.test(q)
+                            && !/最新|修订|现行有效|废止|新规|新版/.test(q)) return false;
+                        var realtime = /新闻|头条|时事|热点|舆情|股价|行情|汇率|油价|金价|涨跌|发布会|上映|比分|赛程|夺冠|地震|台风|天气|气温|预报|今日|今天|昨天|本周|本月|最新|近期|刚刚|实时|进展|动态|政策|新规|修订|现行有效|废止|上线/;
+                        var explicit = /搜一下|搜一搜|搜索一下|查一下|查一查|联网|上网|网上|百度|谷歌/;
+                        return realtime.test(q) || explicit.test(q);
+                    })(finalText);
                     // ── 联网通道说明（2026-09 官方文档 + 实测）──────────────────────────────
                     // ① Anthropic 兼容层 POST /anthropic/v1/messages —— DeepSeek 唯一真正执行「服务端联网检索」的通道。
                     //    声明 tools:[{type:'web_search_20250305', name:'web_search'}]，检索在服务端完成，
@@ -1720,14 +1764,22 @@
                     if (useWebSearch) {
                         // 关键纪律：联网能力「已开启」不等于「已检索到」。若把两者混为一谈，模型会把内部旧知识
                         // 包装成「今日热点」（曾出现把一个月前的日期当作今天的事故）。故此处按「有无真实检索结果」分档约束。
-                        systemPrompt += '\n\n【联网搜索已启用】本次请求已开启服务端联网检索（web_search 工具），请先检索再作答。\n'
-                            + '严格的时效纪律（必须逐条遵守）：\n'
-                            + '1) 涉及新闻、时事、天气、价格、政策最新动态等实时信息，必须调用 web_search 检索后再回答；\n'
-                            + '2) 只有当你在本次上下文中确实看到了检索结果时，才可以标注「据联网检索」并给出真实来源；\n'
-                            + '3) 若确实没有看到任何检索结果，禁止使用「今日/今天/刚刚/最新/近期」等时效词去描述你的内部知识；\n'
-                            + '4) 若没有检索结果，必须明确说明「本次未取得实时检索结果」，并把内容标注为「模型内部知识（可能已过时）」；\n'
-                            + '5) 严禁把内部知识或旧信息包装成「今日热点 / 最新消息」——这是最严重的错误，会导致用户误判；\n'
-                            + '6) 严禁声称「我没有实时联网能力」：本系统已为你开启检索，请先尝试检索；检索为空时按第 4 条如实说明。';
+                        systemPrompt += '\n\n【联网搜索已启用】本次会话你具备服务端联网检索能力（web_search 工具）。'
+                            + '注意：这是「可用能力」而不是「必须动作」——**是否检索由你按问题需要自行判断**，不要为了走流程而检索。\n'
+                            + '一、按需检索的判断标准：\n'
+                            + '1) 需要检索：问题涉及新闻时事、天气、价格行情、政策法规最新动态、赛事结果、产品/软件最新版本、'
+                            + '近期刚发生的事件等时效性信息，或用户明确要求「搜一下 / 查一下 / 最新」；\n'
+                            + '2) 不需要检索（直接作答，不要调用检索）：打招呼、寒暄、感谢、闲聊，写作润色、翻译、改写，'
+                            + '代码编写与解释，逻辑推理与计算，对用户已上传资料或上文对话内容的分析总结，以及稳定不变的常识性问题'
+                            + '（如「什么是安全帽」「三级安全教育指什么」）。这类问题检索只会拖慢响应、浪费额度，对答案没有帮助；\n'
+                            + '3) 一次提问检索 0～2 次足够，不要反复检索凑次数；确认已掌握所需信息后立即作答。\n'
+                            + '二、时效纪律（无论是否检索，必须逐条遵守）：\n'
+                            + '4) 只有当你确实看到了检索结果时，才可以标注「据联网检索」并给出真实来源；\n'
+                            + '5) 若你判断无需检索、或未取得检索结果，禁止使用「今日/今天/刚刚/最新/近期」等时效词去描述内部知识；\n'
+                            + '6) 若问题确实需要实时信息但未取得检索结果，必须明确说明「本次未取得实时检索结果」，'
+                            + '并把内容标注为「模型内部知识（可能已过时）」；\n'
+                            + '7) 严禁把内部知识或旧信息包装成「今日热点 / 最新消息」——这是最严重的错误，会导致用户误判；\n'
+                            + '8) 严禁声称「我没有实时联网能力」：你已具备该能力，需要时直接调用即可。';
                     } else {
                         try {
                             if (messages[0] && messages[0].role === 'system') {
@@ -1737,21 +1789,32 @@
                             }
                         } catch (e) {}
                     }
-                    // 告知模型自身视觉能力状态：避免模型在被问「能否识别图片」时凭通用认知谎称不能
-                    // 注意：messages[0].content 只走 chat/completions；联网分支发的是 instructions(systemPrompt)，
+                    // 告知模型自身视觉能力状态：避免模型在被问「能否识别图片」时凭通用认知谎称不能。
+                    // ⚠️ 注入时机收敛（用户反馈修正）：只有「本轮确实带了图片」或「用户问到看图能力」时才写这段。
+                    //    否则普通对话（例如只说「你好」）里模型会照着这段主动声明
+                    //    「我当前为纯文本模型，不具备图像识别能力，看图请在设置里切换…」——答非所问，还让用户以为功能坏了。
+                    // 注意：messages[0].content 只走 chat/completions；联网分支发的是 instructions/system(systemPrompt)，
                     // 故两处都要写，否则联网时模型看不到这段能力声明。
                     try {
-                        var _visionNote = '';
-                        if (window.dsModelSupportsVision && window.dsModelSupportsVision(dsModel)) {
-                            _visionNote = '\n\n【图像理解已启用】你当前使用的模型（DeepSeek V4.1 Flash 系）原生支持多模态，用户通过「上传附件」传入的图片你可以直接查看、识别并分析。'
-                                + '当用户上传图片（如现场设备照片、仪表读数、隐患照片、图纸等）并提问时，请基于图片内容作答，做到有据可依、不臆测图中不存在的细节；'
-                                + '严禁声称"我无法识别图像""看不了图片"。若图片本身模糊、遮挡或信息不足，请明确指出哪一处看不清，并说明需要补拍什么。';
-                        } else {
-                            _visionNote = '\n\n【图像理解未启用】你当前使用的模型为纯文本模型，不具备图像识别能力。若用户上传图片或询问能否识别图片，请如实说明当前模型无法看图，并引导：在「设置 → API 配置 → ＋新增模型」中把模型切换为 deepseek-flash（DeepSeek V4.1 Flash，原生支持图像识别）后即可看图。';
-                        }
-                        if (_visionNote) {
-                            systemPrompt += _visionNote;
-                            if (messages[0] && messages[0].role === 'system') messages[0].content += _visionNote;
+                        var _hasImgThisTurn = !!visionUserContent;
+                        var _asksVision = /看图|看懂图|识别图|图片|照片|截图|图像|影像|能不能看|能看吗|看得见|vision/i.test(String(finalText || ''));
+                        if (_hasImgThisTurn || _asksVision) {
+                            var _visionNote = '';
+                            if (window.dsModelSupportsVision && window.dsModelSupportsVision(dsModel)) {
+                                _visionNote = '\n\n【图像理解已启用】你当前使用的模型原生支持多模态，用户通过「上传附件」传入的图片你可以直接查看、识别并分析。'
+                                    + '当用户上传图片（如现场设备照片、仪表读数、隐患照片、图纸等）并提问时，请基于图片内容作答，做到有据可依、不臆测图中不存在的细节；'
+                                    + '严禁声称"我无法识别图像""看不了图片"。若图片本身模糊、遮挡或信息不足，请明确指出哪一处看不清，并说明需要补拍什么。';
+                            } else {
+                                // 带上实际模型名：便于用户/开发者一眼看出前端识别到的模型是什么，快速定位配置问题
+                                _visionNote = '\n\n【图像理解未启用】你当前使用的模型是「' + String(dsModel || '未知') + '」，该模型不具备图像识别能力。'
+                                    + '若用户上传图片或询问能否识别图片，请如实说明当前使用的模型（' + String(dsModel || '未知') + '）无法看图，'
+                                    + '并引导：在「设置 → API 配置 → ＋新增模型」中把模型切换为 deepseek-flash（DeepSeek V4.1 Flash，原生支持图像识别）后即可看图。'
+                                    + '注意：仅在本轮用户确实上传了图片、或明确询问看图能力时才这样说明；其他话题下不要主动提及自己的图像能力。';
+                            }
+                            if (_visionNote) {
+                                systemPrompt += _visionNote;
+                                if (messages[0] && messages[0].role === 'system') messages[0].content += _visionNote;
+                            }
                         }
                     } catch (e) {}
                     // DeepSeek V4 能力开关：思考模式 / JSON 输出（仅对 DeepSeek V4 模型生效，其余供应商忽略以免报错）
@@ -1951,9 +2014,10 @@
                         // 首轮正文与思考过程留底：强制重试会先清空气泡，若重试失败必须回填，避免出现「空气泡 + 告警条」
                         var _wsTextBackup = _wsRes.text || '';
                         var _wsReasonBackup = dsHistory[assistantIdx].reasoning || '';
-                        // 关键兜底：联网开关开着，但整轮未发生任何实际检索时，强制再检索一次。
-                        // 仍失败则前端明确告警，绝不允许把内部旧知识包装成「今日热点」。
-                        if (!_wsRes.searches && !_wsRes.failed && !(_acWS && _acWS.signal.aborted)) {
+                        // 兜底：**仅当问题确实需要实时信息**（_dsRealtimeQ）却零检索时，才强制再检索一次。
+                        // 按需检索：问候、闲聊、写作、代码、常识、资料分析等问题本就不应检索，模型没检索是正确行为，
+                        // 此处不干预、也不告警；但时效性问题若零检索，则必须补搜并如实告知，绝不允许拿旧知识冒充「今日热点」。
+                        if (!_wsRes.searches && !_wsRes.failed && _dsRealtimeQ && !(_acWS && _acWS.signal.aborted)) {
                             dsHistory[assistantIdx].content = '';
                             dsHistory[assistantIdx].reasoning = '';
                             _dsPaintBubble(assistantIdx, '🌐 未检测到实际检索，正在强制联网检索…');
@@ -1963,8 +2027,10 @@
                                 if (_wsKindUsed === 'anthropic') {
                                     _forceHdr['x-api-key'] = key;
                                     _forceHdr['anthropic-version'] = '2023-06-01';
-                                    _forceBody.system = systemPrompt + '\n\n【本轮强制要求】回答前必须先调用 web_search 工具执行至少一次联网检索，'
-                                        + '并基于检索结果作答；严禁在未检索的情况下用内部知识冒充实时信息。';
+                                    // 只对「已判定需要实时信息」的问题补搜，措辞为补充说明而非硬命令（不是要求每次提问都检索）
+                                    _forceBody.system = systemPrompt + '\n\n【本轮补充说明】当前这个问题涉及到时效性信息，'
+                                        + '请调用 web_search 检索后再基于检索结果作答；若检索无结果或失败，请如实说明本次未取得实时信息，'
+                                        + '禁止用内部知识冒充实时信息。';
                                     _forceBody.tool_choice = { type: 'tool', name: 'web_search' };
                                 } else {
                                     _forceHdr['Authorization'] = 'Bearer ' + key;
@@ -2003,7 +2069,9 @@
                             endpoint: _respEndpointUsed,
                             channel: _wsKindUsed,
                             failed: !!_wsRes.failed,
-                            retryFailed: _wsRetryFail || ''
+                            retryFailed: _wsRetryFail || '',
+                            // 按需检索：问候/闲聊/写作等无需实时信息的问题即便零检索也不算异常，证据条不再打扰
+                            timeSensitive: _dsRealtimeQ
                         };
                         _dsStreaming = false;
                         dsRenderAll();
@@ -2698,9 +2766,13 @@
                     var via = (w.channel === 'anthropic') ? '（Anthropic 联网通道）' : (w.channel === 'responses' ? '（Responses 通道）' : '');
                     txt = '🌐 已联网检索 ' + w.searches + ' 次' + via + qs;
                     style = base + 'rgba(77,107,254,0.35);background:rgba(77,107,254,0.10);color:var(--ds-blue)';
+                } else if (!w.timeSensitive) {
+                    // 按需检索：问候 / 闲聊 / 写作 / 代码 / 常识 / 资料分析等问题本就不需要联网，
+                    // 模型未检索属正确行为，保持界面清爽，不显示任何提示条。
+                    return '';
                 } else {
-                    var rf = w.retryFailed ? '（强制重试亦失败：' + String(w.retryFailed).slice(0, 90) + '）' : '';
-                    txt = '⚠️ 本次未发生实际检索' + rf + '，以下内容来自模型内部知识（可能已过时），请勿当作实时信息';
+                    var rf = w.retryFailed ? '（补搜亦失败：' + String(w.retryFailed).slice(0, 90) + '）' : '';
+                    txt = '⚠️ 本次未取得实时检索结果' + rf + '，以下内容来自模型内部知识（可能已过时），请勿当作实时信息';
                     style = base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)';
                 }
                 return '<div style="' + style + '">' + dsEsc(txt) + '</div>';
@@ -2831,7 +2903,7 @@
                 var site = dsSiteEmbed(u);
                 if (site) {
                     // 直接内嵌播放器（loading=lazy，滚动到才加载，避免一次拉起多个播放器）
-                    return '<div class="ds-media ds-media-site" data-ds-embed="' + dsEsc(site.src) + '" data-ds-page="' + a + '">' +
+                    return '<div class="ds-media ds-media-site" data-ds-embed="' + dsEsc(site.src) + '" data-ds-page="' + a + '" data-ds-name="' + dsEsc(site.name) + '">' +
                         '<iframe class="ds-media-iframe" src="' + dsEsc(site.src) + '" loading="lazy" frameborder="0" scrolling="no" ' +
                         'allowfullscreen="true" referrerpolicy="no-referrer" title="' + dsEsc(site.name) + '"></iframe>' +
                         '<div class="ds-media-cap">' + dsEsc(site.name) + ' 内嵌播放 · ' +
@@ -2894,23 +2966,37 @@
             function dsMountEmbed(host) {
                 var src = dsSafeUrl(host.getAttribute('data-ds-embed'));
                 var page = dsSafeUrl(host.getAttribute('data-ds-page'));
+                var name = host.getAttribute('data-ds-name') || '视频';
                 if (!src) return;
+                // 重建整个结构（而不只是 iframe）：原先清空 host 后只放回 iframe + 一个外链，
+                // 导致 caption 行与「🔄 重新加载」按钮一起消失 —— 用户点过一次就再也无法重载。
                 host.innerHTML = '';
                 var f = document.createElement('iframe');
                 f.className = 'ds-media-iframe';
                 f.src = src;
+                f.setAttribute('loading', 'lazy');
                 f.setAttribute('frameborder', '0');
                 f.setAttribute('allowfullscreen', 'true');
                 f.setAttribute('scrolling', 'no');
                 f.setAttribute('referrerpolicy', 'no-referrer');
+                f.title = name;
                 host.appendChild(f);
+                var cap = document.createElement('div');
+                cap.className = 'ds-media-cap';
+                cap.appendChild(document.createTextNode(name + ' 内嵌播放 · '));
                 if (page) {
                     var a = document.createElement('a');
-                    a.className = 'ds-media-open';
                     a.href = page; a.target = '_blank'; a.rel = 'noopener';
                     a.textContent = '新窗口打开 ↗';
-                    host.appendChild(a);
+                    cap.appendChild(a);
+                    cap.appendChild(document.createTextNode(' · '));
                 }
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'ds-media-reload';
+                btn.textContent = '🔄 重新加载';
+                cap.appendChild(btn);
+                host.appendChild(cap);
             }
             // 全局事件委托：图片放大 / 内嵌播放 / 资源加载失败降级（DOMPurify 会剥掉内联 onerror，故用委托）
             function dsInitMediaDelegates() {
@@ -3090,9 +3176,14 @@
                         i++; continue;
                     }
                     // 形如「图片：https://…」「音频: pixabay.com/…」的短前缀行同样识别为媒体行
+                    // ⚠️ 必须排除 markdown 链接/图片语法 `[文字](url)`：DS_LINK_CHUNK 的字符类不排除 `)`，
+                    //    会把 `[看这里](https://a.com/x.png)` 的尾部当成「以 ) 结尾的 URL」抢先捕获，
+                    //    结果多吞一个右括号、丢给外链卡片，图片/视频就不会渲染（且链接是坏地址）。
+                    //    这类语法统一交给 inline() 处理，那里有正确的 DSLINK 还原逻辑。
                     var tailUrl = onlyLine.match(DS_TAIL_URL_RE);
                     if (tailUrl && tailUrl[0] && onlyLine.length - tailUrl[0].length <= 6 &&
-                        !/^[-*]\s/.test(onlyLine) && !/^\d+\./.test(onlyLine)) {
+                        !/^[-*]\s/.test(onlyLine) && !/^\d+\./.test(onlyLine) &&
+                        !/^!?\[[^\]]*\]\(/.test(onlyLine)) {
                         closeList();
                         out.push(dsMediaBlock(tailUrl[0], ''));
                         i++; continue;

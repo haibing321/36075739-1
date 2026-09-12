@@ -522,10 +522,42 @@
     //   1) 结构化任务（对规 JSON / FIM 补全）必须显式关闭，否则思维链会吃掉输出预算甚至被拒；
     //   2) 该参数只有 DeepSeek 端点认识，其它供应商（OpenAI 等）收到未知参数会直接 400。
     // 故所有智能模块统一经此函数取参，避免各自硬编码。
-    //   opts.mode   'auto'（默认，跟随设置页开关）| 'on' | 'off'
-    //   opts.effort 思考强度 low/high/max（仅 mode!=='off' 时生效，默认 high）
+    //   opts.mode   'auto'（默认，跟随设置页档位）| 'on' | 'off'
+    //   opts.effort 显式指定思考强度 low/high/max（传了就优先用，跳过自动判定）
+    //   opts.text   本轮用户问题原文。**仅智能对话传入**：传入时按问题复杂度自动分级；
+    //               对规/写作/研判/智能体等本就是深度任务的调用方不传，恒定 high，行为与改造前完全一致。
     //   opts.apiUrl / opts.model 可显式覆盖（默认读 localStorage）
     // 返回可直接 Object.assign 进请求体的片段；非 DeepSeek 端点返回 {}。
+    //
+    // 设置页「思考模式」三档（localStorage ds_thinking，v3.62 起）：
+    //   'auto'（默认）按问题自动分级 | 'on' 始终开启（high）| 'off' 始终关闭
+    // 兼容 v3.61 及以前的布尔存储：'1' → on，'0' → off，老用户配置自动延续、无需迁移。
+    window.dsThinkingLevel = function() {
+        var raw = null;
+        try { raw = localStorage.getItem('ds_thinking'); } catch (e) {}
+        if (raw === 'off' || raw === 'on' || raw === 'auto') return raw;
+        if (raw === '1') return 'on';
+        if (raw === '0') return 'off';
+        return 'auto';
+    };
+
+    // 按问题复杂度自动分级思考强度（仅智能对话调用）。
+    // 设计原则与 v3.58「联网按需检索」一致：**能力可用 ≠ 每次都跑满**。
+    // 闲聊/润色/常识类问题开 high 思考，只会拖慢响应、白烧推理 token，对答案质量毫无帮助。
+    // 返回 'off'（连思考都不必开，最快）| 'low' | 'high'
+    window.dsAutoThinkingEffort = function(text) {
+        var q = String(text == null ? '' : text).trim();
+        if (!q) return 'high';                              // 无文本：保守给 high，避免误降级
+        // 1) 纯问候/寒暄/致谢（整句锚定，避免「你好，帮我分析下」被误伤）：连思考都不必开
+        if (/^(你好|您好|hi|hello|hey|在吗|在么|在不在|早|早上好|中午好|下午好|晚上好|晚安|谢谢|感谢|多谢|辛苦|好的|收到|明白|ok|okay|测试|你是谁|你叫什么|你能做什么|你会做什么|介绍一下你)[\s,，.。!！?？~～、]*$/i.test(q)) return 'off';
+        // 2) 需要多步推理 / 交叉核对 / 逐条比对：这类才是 high 思考真正产生价值的场景
+        if (/分析|研判|评估|诊断|定级|对比|比较|核实|排查|推理|论证|对规|合规|依据|条款|引用|出处|根因|原因|为什么|怎么会|整改|措施|建议|方案|报告|总结|汇总|梳理|归纳|深度|详细|全面|系统|风险|隐患|趋势|预测|判断|审核|审查|逐条|逐项|复核|佐证|矛盾|是否构成|违反了|对应哪|怎么定性/.test(q)) return 'high';
+        // 3) 明确的轻量任务：直接作答即可，low 强度足够
+        if (/翻译|润色|改写|缩写|扩写|纠错|改错|排版|格式|转换|是什么|什么意思|定义|解释一下|介绍一下|列举|列出|怎么读|怎么念|拼写|算一下|计算一下/.test(q)) return 'low';
+        // 4) 兜底：长文本通常是复杂任务给 high，短问题给 low
+        return q.length >= 80 ? 'high' : 'low';
+    };
+
     window.dsThinkingParam = function(opts) {
         opts = opts || {};
         var apiUrl = opts.apiUrl || localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
@@ -535,10 +567,21 @@
         })());
         if (!isDeepSeek) return {};                        // 其它供应商：不发送该参数，避免 400
         if (opts.mode === 'off') return { thinking: { type: 'disabled' } };
-        if (opts.mode !== 'on' && localStorage.getItem('ds_thinking') === '0') {
-            return { thinking: { type: 'disabled' } };      // 跟随设置页「思考模式」开关
+        var level = window.dsThinkingLevel();
+        if (opts.mode !== 'on' && level === 'off') {
+            return { thinking: { type: 'disabled' } };      // 设置页「始终关闭」
         }
-        var effort = opts.effort || 'high';
+        var effort = opts.effort;
+        if (!effort) {
+            if (level === 'auto' && opts.text) {
+                // 自动档：按问题复杂度分级；判定为 off 时连思考都不开启
+                var auto = window.dsAutoThinkingEffort(opts.text);
+                if (auto === 'off') return { thinking: { type: 'disabled' } };
+                effort = auto;
+            } else {
+                effort = 'high';                           // 始终开启 / 深度任务模块（未传 text）
+            }
+        }
         if (['low', 'medium', 'high', 'max'].indexOf(effort) < 0) effort = 'high';
         if (effort === 'medium') effort = 'high';           // 官方映射：medium → high
         return { thinking: { type: 'enabled' }, reasoning_effort: effort };

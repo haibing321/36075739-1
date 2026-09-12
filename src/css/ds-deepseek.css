@@ -216,6 +216,102 @@
 }
 .ds-input-spacer { flex: 1; }
 
+/* —— 澄清条：需要用户定方向时，在输入框上方浮出（v3.65） ——
+   通用组件 dsChoiceBar 的容器。默认 display:none，由 JS 置 flex。
+   三形态共用（链接动作型 / 意图方向型 / 答后修正条），只是动作集不同。
+   用 ID 前缀提高特异性；并已把 .ds-choice-btn / .ds-choice-close 加进 flat.css
+   的 :not() 排除列表，避免暗色下的裸 button 广谱规则刷掉语义色。 */
+#ds-choice-bar {
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px 2px 8px;
+    margin-bottom: 2px;
+    border-bottom: 1px dashed #e5e9f0;
+    font-size: 0.82rem;
+    line-height: 1.2;
+}
+#ds-choice-bar .ds-choice-title {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--primary, #4d6bfe);
+    white-space: nowrap;
+}
+#ds-choice-bar .ds-choice-sub {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+#ds-choice-bar .ds-choice-acts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+#ds-choice-bar .ds-choice-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid #d8dee6;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text, #1a1a1a);
+    font-size: 0.76rem;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+#ds-choice-bar .ds-choice-btn:hover {
+    border-color: var(--primary, #4d6bfe);
+    color: var(--primary, #4d6bfe);
+    background: #f5f7ff;
+}
+#ds-choice-bar .ds-choice-btn--primary {
+    background: var(--primary, #4d6bfe);
+    border-color: var(--primary, #4d6bfe);
+    color: #fff;
+}
+#ds-choice-bar .ds-choice-btn--primary:hover {
+    background: #3f57e8;
+    border-color: #3f57e8;
+    color: #fff;
+}
+#ds-choice-bar .ds-choice-close {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+}
+#ds-choice-bar .ds-choice-close:hover { background: #f1f5f9; color: #475569; }
+/* 暗色 */
+[data-theme="dark"] #ds-choice-bar { border-bottom-color: #2a2a2a; }
+[data-theme="dark"] #ds-choice-bar .ds-choice-btn { background: #262626; border-color: #383838; color: #e2e8f0; }
+[data-theme="dark"] #ds-choice-bar .ds-choice-btn:hover { border-color: var(--primary, #4d6bfe); color: #a8bcff; background: #20293d; }
+[data-theme="dark"] #ds-choice-bar .ds-choice-btn--primary { background: var(--primary, #4d6bfe); border-color: var(--primary, #4d6bfe); color: #fff; }
+[data-theme="dark"] #ds-choice-bar .ds-choice-btn--primary:hover { background: #5a75ff; border-color: #5a75ff; }
+[data-theme="dark"] #ds-choice-bar .ds-choice-close:hover { background: #262626; color: #cbd5e1; }
+/* 小屏：隐藏域名副标题，把宽度让给动作按钮 */
+@media (max-width: 767px) {
+    #ds-choice-bar { gap: 6px; }
+    #ds-choice-bar .ds-choice-sub { display: none; }
+}
+
 /* —— 输入条左侧工具组：角色 / 模型 / 关联数据（圆形图标按钮，参考附件/发送风格） —— */
 .ds-input-tools-left {
     display: flex;

@@ -932,6 +932,14 @@
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
                         <!-- 输入区（DeepSeek 圆角输入框） -->
                         <div class="ds-input-shell">
+                            <!-- 澄清条（v3.65）：检测到需要用户定方向的场景（如输入含链接）时，在输入框上方浮出。
+                                 通用组件 dsChoiceBar —— 动作按钮由 JS 按场景生成，此处的两个按钮为链接场景的静态兜底。 -->
+                            <div id="ds-choice-bar" class="ds-choice-bar" style="display:none;">
+                                <span class="ds-choice-title" id="ds-choice-title">检测到链接</span>
+                                <span class="ds-choice-sub" id="ds-choice-sub"></span>
+                                <div class="ds-choice-acts" id="ds-choice-acts"></div>
+                                <button type="button" class="ds-choice-close" id="ds-choice-close" title="忽略，按常规发送">✕</button>
+                            </div>
                             <textarea id="ds-user-input" rows="1" placeholder="给智能助手发送消息…（Enter 发送 / Shift+Enter 换行）" oninput="autoResize(this)" class="ds-input-textarea"></textarea>
                             <div class="ds-input-bar">
                                 <!-- 左侧工具组：角色 / 模型 / 关联数据（圆形图标按钮，参考附件/发送风格） -->
@@ -1812,6 +1820,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.65 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.65 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔗 <strong>发链接时先问你一句</strong>：把网页链接贴进输入框，上方会自动浮出一条提示，给你两个选择——<strong>直接打开</strong>（用浏览器打开原网页，完全不惊动 AI）或 <strong>让 AI 读</strong>（让 AI 先去读这个网页，再基于它的内容回答）。此前是闷头直接联网，你并不知道它到底读没读。不想选就照常按回车发送，行为和以前一样。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛠️ <strong>修掉一个会「假装读过网页」的问题</strong>：此前若问题里同时含链接和业务词（例如「这个网页里的规章帮我看看」＋网址），系统会因识别到「规章」而判定为本地业务问题、跳过联网——<strong>结果链接根本没被读取，AI 却照样作答</strong>，让人以为它看过了。现已改为：只要给了链接就一定去读。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🚫 <strong>读不到就说读不到</strong>：反过来，如果 AI 确实没能读到该链接，现在会直接明说「未能读取到该链接的内容」，并建议你把网页正文粘贴过来——<strong>不允许根据网址去猜内容</strong>。宁可告诉你没读到，也不编一段看起来像真的。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.64 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1834,31 +1864,9 @@
                 </div>
             </div>
 
-            <!-- v3.63 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.63 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🧩 <strong>设置界面重新归类，更好找了</strong>：此前十几个设置项挤在一个小窗里平铺一列，「数据管理」还要再展开一层，找一项要往下滚很久。现在按 <strong>通用 / 数据 / 接口 / 关于</strong> 四类归位——电脑上左侧选分类、右侧看内容，手机上分类横排在顶部、内容整屏铺开（与主流 AI 网页版一致）。每类都补了分组标题与说明文字。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📐 <strong>按钮大小统一了</strong>：原先同一个面板里按钮从 0.72rem 到 0.88rem 大小不一，排在一起显得凌乱。现在收敛为三档——主要操作 42px、数据导入/导出/清空 30px、档位切换 36px，全面板严格一致；暗色下也一并修正了「导入/导出/清空」被刷成灰色、丢掉语义色的问题。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🏷️ <strong>页脚精简</strong>：页面底部说明由「铁路安监智能辅助系统 · 开发者：haibing© 2026 支持离线浏览」简化为「<strong>开发者：haibing</strong>」。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.63 及以下已归档（最近 2 版本为 v3.65 / v3.64） -->
 
-            <!-- v3.62 及以下已归档（最近 2 版本为 v3.64 / v3.63） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.62 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.63 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

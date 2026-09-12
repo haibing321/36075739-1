@@ -1651,6 +1651,39 @@ html[data-theme="dark"] .att-sub-btn.att-active:hover {
   background: #262626 !important;
   color: #cbd5e1 !important;
 }
+/* 内嵌网页面板的工具栏按钮例外（v3.66）：同属「需保留卡片底 + 描边」的语义按钮，
+   同款写法；flat.css 的 :not() 列表也已同步排除 .ds-embed-btn / .ds-embed-tip-close。 */
+[data-theme="dark"][data-theme] .ds-embed-btn {
+  background: #262626 !important;
+  border-color: #383838 !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] .ds-embed-btn:hover {
+  background: #20293d !important;
+  border-color: var(--primary) !important;
+  color: #a8bcff !important;
+}
+[data-theme="dark"][data-theme] .ds-embed-btn--close {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] .ds-embed-btn--close:hover {
+  background: #2f2f2f !important;
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"][data-theme] .ds-embed-tip-close {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] .ds-embed-tip-close:hover {
+  background: #2f2f2f !important;
+  color: #cbd5e1 !important;
+}
 /* 由 JS 内联样式驱动状态的按钮：!important 会压掉内联样式，故用 id 级规则显式还原。
    #check-update-btn 有 .has-update-badge 时即「发现新版本」态（switchUpdateBtn 添加该 class）。 */
 [data-theme="dark"][data-theme] #check-update-btn {

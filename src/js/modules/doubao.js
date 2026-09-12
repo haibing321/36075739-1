@@ -1535,18 +1535,154 @@
             }
             window.dsExtractLinks = dsExtractLinks;
 
-            // 「直接打开」：绕过 AI，把原网页直接交给浏览器
+            // 「直接打开」的**旧行为**（跳系统浏览器新标签）：v3.66 起不再是默认动作，
+            // 降级为内嵌面板里的「🌐 浏览器打开」出口与内嵌不可用时的兜底。
+            // ⚠️ window.open 必须在点击事件的**同步调用栈**里直呼 —— 中间一旦 await，
+            //    浏览器即判定「非用户手势」并拦截弹窗。故此处全程同步，不做任何异步校验。
             function dsOpenLinkExternal(url) {
                 var safe = dsSafeUrl(url);
                 if (!safe) { alert('该链接不被允许打开（仅支持 http/https）'); return; }
-                // ⚠️ window.open 必须在点击事件的**同步调用栈**里直呼 —— 中间一旦 await，
-                //    浏览器即判定「非用户手势」并拦截弹窗。故此处全程同步，不做任何异步校验。
                 var w = null;
                 try { w = window.open(safe, '_blank', 'noopener'); } catch (e) {}
                 if (!w) alert('浏览器拦截了新窗口。请允许本站弹出窗口，或长按复制链接后手动打开。');
                 // 用户已经作出选择 → 收起澄清条（无论是否成功打开），避免继续遮挡输入区
                 dsChoiceHide();
             }
+
+            // ════════════════════════════════════════════════════════════════
+            // 内嵌网页面板（v3.66）
+            // 需求：点「直接打开」不再跳系统浏览器，而是在**对话区内**渲染网页（对齐音视频的内嵌形态）。
+            // ⚠️ 实测结论（务必先读，别再试图"检测失败"）：
+            //   iframe 被 X-Frame-Options / CSP frame-ancestors 拒绝时，**onload 依然会触发**，
+            //   contentDocument 跨域一律为 null，'securitypolicyviolation' 事件也不触发，
+            //   contentWindow.length 在"被拒绝"与"正常但无子框架"两种情况下都是 0。
+            //   → 纯前端**无法程序化判断**网页是否被拒绝嵌入。因此本模块不自作聪明地报"失败"，
+            //     而是：① 常驻一条可关闭的诚实提示（这是网站自身策略，不是本应用故障）；
+            //           ② 永远保留「🌐 浏览器打开」出口；③ 只有真·超时才提示"加载缓慢或已被拦截"。
+            // 另：面板刻意做成 ds-chat-box 的兄弟节点，**不放进消息气泡** —— 消息气泡会被
+            //     dsRenderAll 整段重建，内嵌的浏览上下文（滚动位置、已缓冲内容）会随之丢失。
+            var _dsEmbedUrl = '';                                  // 当前内嵌地址
+            var DS_EMBED_TIP_KEY = '_ds_embed_tip_hidden';         // 提示条「不再提示」的持久化键
+
+            // 业界普遍禁止被 iframe 嵌入的站点。命中只用于**提前**给出"可能空白"的提醒，
+            // 不作为判定（未命中的站点同样可能被拒绝）。
+            var DS_EMBED_RISKY = /(^|\.)(baidu|zhihu|weixin|weibo|taobao|tmall|jd|xiaohongshu|douyin|bilibili|csdn|jianshu|toutiao|douban)\./i;
+
+            function _dsEmbedEl(id) { return document.getElementById(id); }
+
+            // 状态行：加载中 / 超时提示。传空串即隐藏。
+            function dsEmbedStatus(text, isErr) {
+                var el = _dsEmbedEl('ds-embed-status');
+                if (!el) return;
+                if (!text) { el.style.display = 'none'; el.textContent = ''; return; }
+                el.textContent = text;
+                el.className = 'ds-embed-status' + (isErr ? ' ds-embed-status--err' : '');
+                el.style.display = 'block';
+            }
+
+            // 设置 iframe.src 并挂超时兜底。抽成函数是因为「重新加载」也要复用同一套逻辑。
+            function dsEmbedLoad(safe) {
+                var frame = _dsEmbedEl('ds-embed-frame');
+                if (!frame) return;
+                // sandbox 是这里唯一能加的安全防线：跨域本身已隔离 DOM/Cookie，
+                // 但**不给 allow-top-navigation** 才能挡住内嵌页面把整个应用顶层跳转到钓鱼站。
+                try {
+                    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+                } catch (e) {}
+                dsEmbedStatus('正在加载…', false);
+                var settled = false;
+                var timer = setTimeout(function () {
+                    if (settled) return;
+                    // 走到这里只有两种可能：真的慢，或已被拒绝（拒绝通常很快触发 load，故多指向"慢"）
+                    dsEmbedStatus('该网页加载较慢，或已拒绝被嵌入显示。可点右上角「🌐 浏览器打开」。', true);
+                }, 12000);
+                frame.onload = function () {
+                    settled = true;
+                    clearTimeout(timer);
+                    dsEmbedStatus('', false);      // onload 在"被拒绝"时也会触发，故只清状态、不报成功
+                };
+                frame.setAttribute('src', safe);
+            }
+
+            // 在对话区内打开网页
+            function dsOpenLinkEmbed(url) {
+                var safe = dsSafeUrl(url);
+                if (!safe) { alert('该链接不被允许打开（仅支持 http/https）'); return; }
+                var host = _dsEmbedEl('ds-embed-host');
+                var frame = _dsEmbedEl('ds-embed-frame');
+                if (!host || !frame) { dsOpenLinkExternal(safe); return; }   // 面板缺失（旧版 HTML）→ 退回浏览器
+
+                _dsEmbedUrl = safe;
+                var hostname = safe;
+                try { hostname = new URL(safe).host.replace(/^www\./, '') || safe; } catch (e) {}
+                var t = _dsEmbedEl('ds-embed-title');
+                var u = _dsEmbedEl('ds-embed-url');
+                if (t) t.textContent = hostname;
+                if (u) u.textContent = safe;
+
+                // 提示条：用户点过「✕」就永久不再显示（localStorage 持久化，离线可用）
+                var tip = _dsEmbedEl('ds-embed-tip');
+                if (tip) {
+                    var hidden = false;
+                    try { hidden = localStorage.getItem(DS_EMBED_TIP_KEY) === '1'; } catch (e) {}
+                    tip.style.display = hidden ? 'none' : 'flex';
+                }
+
+                // 打开网页 = 用户新开了一路声音源 → 按既有互斥规则停掉对话区里正在播的音视频与朗读
+                try { if (typeof dsStopOtherMedia === 'function') dsStopOtherMedia(null, null); } catch (e) {}
+
+                host.style.display = 'flex';
+                dsEmbedLoad(safe);
+                // 命中常见禁嵌站点时，把提示换成更具体的版本（仅提前告知，不是判定）
+                if (DS_EMBED_RISKY.test(hostname)) {
+                    dsEmbedStatus('该网站通常禁止被嵌入显示，下方可能是空白 —— 请用「🌐 浏览器打开」。', true);
+                }
+                dsChoiceHide();
+                // 把面板滚进视野，避免用户以为"点了没反应"
+                try { if (host.scrollIntoView) host.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+                frame.focus && frame.focus();
+            }
+            window.dsOpenLinkEmbed = dsOpenLinkEmbed;
+
+            // 关闭并返回对话：必须清空 src，否则被隐藏的 iframe 里音视频会继续播放
+            function dsCloseLinkEmbed() {
+                var host = _dsEmbedEl('ds-embed-host');
+                var frame = _dsEmbedEl('ds-embed-frame');
+                if (frame) {
+                    try { frame.onload = null; } catch (e) {}
+                    frame.removeAttribute('src');          // 摘掉 src 即销毁浏览上下文，声音随之停止
+                }
+                if (host) host.style.display = 'none';
+                dsEmbedStatus('', false);
+                _dsEmbedUrl = '';
+            }
+            window.dsCloseLinkEmbed = dsCloseLinkEmbed;
+
+            // 面板按钮：委托到 document，不依赖对话面板的创建时机（与澄清条同款做法）
+            document.addEventListener('click', function (e) {
+                var t = e.target;
+                if (!t || !t.closest) return;
+                if (t.closest('#ds-embed-close')) { dsCloseLinkEmbed(); return; }
+                if (t.closest('#ds-embed-reload')) { if (_dsEmbedUrl) dsEmbedLoad(_dsEmbedUrl); return; }
+                if (t.closest('#ds-embed-external')) { if (_dsEmbedUrl) dsOpenLinkExternal(_dsEmbedUrl); return; }
+                if (t.closest('#ds-embed-tip-close')) {
+                    var tip = _dsEmbedEl('ds-embed-tip');
+                    if (tip) tip.style.display = 'none';
+                    try { localStorage.setItem(DS_EMBED_TIP_KEY, '1'); } catch (err) {}
+                    return;
+                }
+                // 正文里的链接（dsAutoLink 生成的 a.ds-md-link）：一律改为在对话区内嵌打开。
+                // 保留标准浏览器习惯 —— Ctrl/Cmd/Shift+点击、中键（走 auxclick）仍交给系统浏览器新标签，
+                // 这样"想对照两个网页"的老习惯不会被破坏。媒体卡片上的「新窗口打开 ↗」不属此类，不受影响。
+                var mdLink = t.closest('a.ds-md-link');
+                if (mdLink) {
+                    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                    var hrefSafe = dsSafeUrl(mdLink.getAttribute('href') || '');
+                    if (!hrefSafe) return;
+                    e.preventDefault();
+                    dsOpenLinkEmbed(hrefSafe);
+                }
+            });
 
             // 「让 AI 读」：置强制联网标记后走正常发送流程
             function dsReadLinkWithAI() {
@@ -1576,7 +1712,7 @@
                     title: '检测到链接',
                     sub: links.length > 1 ? (host + ' 等 ' + links.length + ' 个') : host,
                     actions: [
-                        { label: '🔗 直接打开', onClick: function () { dsOpenLinkExternal(links[0]); } },
+                        { label: '🔗 直接打开', onClick: function () { dsOpenLinkEmbed(links[0]); } },
                         { label: '📖 让 AI 读', primary: true, onClick: dsReadLinkWithAI }
                     ]
                 });

@@ -349,12 +349,12 @@ html.flat-mode[data-theme="dark"] .btn-data-green { background: #14532d !importa
 html.flat-mode[data-theme="dark"] .btn-data-red { background: #7f1d1d !important; color: #fca5a5 !important; border-color: #9b2c2c !important; }
 
 /* 16c. 裸 button（无 .btn 类：设置面板/弹窗/搜索导航等）圆角 10px */
-html.flat-mode button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn) {
+html.flat-mode button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-choice-btn):not(.ds-choice-close) {
   border-radius: var(--ds-radius) !important;
 }
 /* 裸 button（设置面板/API配置模态/搜索导航/弹窗）dark 下浅色块统一深底；
    保留内联主蓝的语义按钮（导出/下载/保存等）。!important 压内联 style。 */
-html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-ico-btn):not(.ds-attach-btn):not(.ds-icon-btn):not(.ds-sidebar-foot-btn):not(.ds-switch-material):not(.ds-send-circle):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
+html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-ico-btn):not(.ds-attach-btn):not(.ds-icon-btn):not(.ds-sidebar-foot-btn):not(.ds-switch-material):not(.ds-send-circle):not(.ds-choice-btn):not(.ds-choice-close):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
   background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important;
   border-radius: var(--ds-radius) !important;
 }

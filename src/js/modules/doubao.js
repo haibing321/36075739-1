@@ -1449,6 +1449,164 @@
             // ---- 发送消息 ----
             // 附件处理、文件读取、资料选择器 已移至 doubao-common.js
 
+            // ════════════════════════════════════════════════════════════════
+            // 澄清条组件 dsChoiceBar（v3.65）
+            // ════════════════════════════════════════════════════════════════
+            // 定位：凡是「系统能猜、但猜不准」的场景，把决定权交回用户，而不是替用户猜。
+            // 三种形态共用同一个容器，区别只在动作集（actions）：
+            //   ① 动作型（本期）—— 链接：直接打开 / 让 AI 读
+            //   ② 方向型（阶段二）—— 意图歧义：对规 / 研判 / 写文书 / 按你的理解答
+            //   ③ 答后修正条（阶段三）—— 挂在 AI 气泡下方，不阻塞
+            // 三条硬约束（务必保持）：
+            //   1) 默认不打扰 —— 判据拿得准就直接干，不弹。本期只在「输入真的含链接」时弹。
+            //   2) 永远给出口 —— ✕ 忽略后同一批链接不再弹；直接回车发送照常走原有自动判定。
+            //   3) 判定全本地 —— 纯前端正则，零延迟、离线可用（守住离线优先架构）。
+            var _dsChoiceLinks = [];        // 当前澄清条关联的链接（其它场景可换语义）
+            var _dsDismissedLinks = '';     // 用户 ✕ 忽略过的链接集合，避免同一批反复打扰
+            var _dsLinkReCache = null;      // DS_LINK_CHUNK 惰性构建的正则实例
+
+            function dsChoiceHide() {
+                var bar = document.getElementById('ds-choice-bar');
+                if (bar) bar.style.display = 'none';
+                _dsChoiceLinks = [];
+            }
+            window.dsChoiceHide = dsChoiceHide;
+
+            // 通用显示接口：cfg = { title, sub, actions:[{ label, primary, onClick }] }
+            // 动作按钮一律 addEventListener 绑定，**不把 URL 等动态内容拼进内联 onclick**（防注入）。
+            function dsChoiceShow(cfg) {
+                cfg = cfg || {};
+                var bar = document.getElementById('ds-choice-bar');
+                var host = document.getElementById('ds-choice-acts');
+                if (!bar || !host) return;
+                var t = document.getElementById('ds-choice-title');
+                var s = document.getElementById('ds-choice-sub');
+                if (t) t.textContent = cfg.title || '';
+                if (s) s.textContent = cfg.sub || '';
+                host.innerHTML = '';
+                (cfg.actions || []).forEach(function (a) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'ds-choice-btn' + (a.primary ? ' ds-choice-btn--primary' : '');
+                    b.textContent = a.label;
+                    b.addEventListener('click', function (ev) {
+                        ev.preventDefault(); ev.stopPropagation();
+                        a.onClick();
+                    });
+                    host.appendChild(b);
+                });
+                bar.style.display = 'flex';
+            }
+            window.dsChoiceBar = { show: dsChoiceShow, hide: dsChoiceHide };
+
+            // 从任意文本提取链接。
+            // ⚠️ 口径必须与渲染层 dsAutoLink 完全一致（共用同一份 DS_LINK_CHUNK），否则会出现
+            //    「气泡里已是可点链接、澄清条却说没检测到」的自相矛盾。
+            // DS_LINK_CHUNK 是 var 声明且位于本文件渲染区（行号在此之后）→ 惰性构建，
+            // 首次调用（用户输入时）必定已赋值，避免模块加载期的 TDZ/undefined。
+            function dsExtractLinks(text) {
+                var s = String(text || '');
+                if (!s) return [];
+                if (!_dsLinkReCache) {
+                    try {
+                        _dsLinkReCache = (typeof DS_LINK_CHUNK === 'string' && DS_LINK_CHUNK)
+                            ? new RegExp(DS_LINK_CHUNK, 'gi')
+                            : /https?:\/\/[^\s<>"']+/gi;
+                    } catch (e) {
+                        _dsLinkReCache = /https?:\/\/[^\s<>"']+/gi;
+                    }
+                }
+                _dsLinkReCache.lastIndex = 0;
+                var out = [], m;
+                while ((m = _dsLinkReCache.exec(s)) !== null) {
+                    if (m.index === _dsLinkReCache.lastIndex) _dsLinkReCache.lastIndex++;  // 防空匹配死循环
+                    // 邮箱里的域名不算网页链接（mailto:a@b.com、user@example.com）。
+                    // ⚠️ 这是与渲染层 dsAutoLink 的**有意差异**：渲染层会把 a@b.com 里的 b.com
+                    //    也渲染成链接（既有行为，非本次引入）；但输入检测若照搬，用户粘一个邮箱
+                    //    地址就会被弹「检测到链接」，属于明显误报。宁可少提示，不可乱提示。
+                    if (m.index > 0 && s.charAt(m.index - 1) === '@') continue;
+                    var raw = String(m[0]).replace(/[),.;:!?'"\]）】》]+$/, '');
+                    if (!raw) continue;
+                    var url = /^https?:/i.test(raw) ? raw : ('https://' + raw);
+                    if (!dsSafeUrl(url)) continue;                 // 协议白名单（挡掉 javascript: 等）
+                    if (out.indexOf(url) === -1) out.push(url);
+                }
+                return out;
+            }
+            window.dsExtractLinks = dsExtractLinks;
+
+            // 「直接打开」：绕过 AI，把原网页直接交给浏览器
+            function dsOpenLinkExternal(url) {
+                var safe = dsSafeUrl(url);
+                if (!safe) { alert('该链接不被允许打开（仅支持 http/https）'); return; }
+                // ⚠️ window.open 必须在点击事件的**同步调用栈**里直呼 —— 中间一旦 await，
+                //    浏览器即判定「非用户手势」并拦截弹窗。故此处全程同步，不做任何异步校验。
+                var w = null;
+                try { w = window.open(safe, '_blank', 'noopener'); } catch (e) {}
+                if (!w) alert('浏览器拦截了新窗口。请允许本站弹出窗口，或长按复制链接后手动打开。');
+                // 用户已经作出选择 → 收起澄清条（无论是否成功打开），避免继续遮挡输入区
+                dsChoiceHide();
+            }
+
+            // 「让 AI 读」：置强制联网标记后走正常发送流程
+            function dsReadLinkWithAI() {
+                var links = _dsChoiceLinks.slice();
+                if (!links.length) return;
+                dsChoiceHide();
+                // _dsForceWebSearch 由 dsSendMsg 读取后立即清除（仅本次生效）。
+                // 因 useWebSearch = 开关 || forceWs || autoWs 是「或」关系，走这条路径可绕开业务域判定，
+                // 保证链接一定被送去检索——这正是「含业务词的链接被静默忽略」那个缺陷的兜底。
+                window._dsForceWebSearch = true;
+                if (typeof window.dsSendMsg === 'function') window.dsSendMsg();
+            }
+
+            // 输入含链接时浮出澄清条（纯本地判定：无网络请求、无模型调用）
+            function dsCheckInputLinks() {
+                var input = document.getElementById('ds-user-input');
+                if (!input) return;
+                var val = input.value || '';
+                if (!val.trim()) { dsChoiceHide(); return; }
+                var links = dsExtractLinks(val);
+                if (!links.length) { dsChoiceHide(); return; }
+                if (links.join('|') === _dsDismissedLinks) { dsChoiceHide(); return; }  // 已忽略过这批
+                _dsChoiceLinks = links;
+                var host = links[0];
+                try { host = new URL(links[0]).host.replace(/^www\./, ''); } catch (e) {}
+                dsChoiceShow({
+                    title: '检测到链接',
+                    sub: links.length > 1 ? (host + ' 等 ' + links.length + ' 个') : host,
+                    actions: [
+                        { label: '🔗 直接打开', onClick: function () { dsOpenLinkExternal(links[0]); } },
+                        { label: '📖 让 AI 读', primary: true, onClick: dsReadLinkWithAI }
+                    ]
+                });
+            }
+            window.dsCheckInputLinks = dsCheckInputLinks;
+
+            // 绑定：委托到 document，不依赖 dsInit 的执行时机（对话面板是按需创建的）
+            document.addEventListener('input', function (e) {
+                var t = e.target;
+                if (t && t.id === 'ds-user-input') dsCheckInputLinks();
+            });
+            document.addEventListener('click', function (e) {
+                var t = e.target;
+                if (!t || !t.closest) return;
+                // ✕ 忽略：记住这批链接，之后不再弹（用户仍可直接回车发送）
+                if (t.closest('#ds-choice-close')) {
+                    _dsDismissedLinks = _dsChoiceLinks.join('|');
+                    dsChoiceHide();
+                    return;
+                }
+                // 点发送：立即收起澄清条。
+                // ⚠️ 清空输入框用的是 `input.value = ''`，属程序化赋值、**不会触发 input 事件**，
+                //    所以不能指望上面的 input 监听自动收起，必须在发送动作上显式处理。
+                if (t.closest('#ds-send-btn')) dsChoiceHide();
+            });
+            document.addEventListener('keydown', function (e) {
+                var t = e.target;
+                if (t && t.id === 'ds-user-input' && e.key === 'Enter' && !e.shiftKey) dsChoiceHide();
+            }, true);
+
             window.dsSendMsg = async function() {
                 if (dsStreaming) return;
                 const input = document.getElementById('ds-user-input');
@@ -1726,8 +1884,12 @@
                         var realtime = /新闻|头条|时事|热点|大事|舆情|股价|股票|汇率|油价|金价|比特币|涨跌|发布会|上映|比分|比赛结果|夺冠|地震|台风|天气|气温/;
                         // 输入含 URL/链接：自动联网检索该网页内容（还原 备份后缺失的"含 URL 自动联网"能力）
                         var hasUrl = /https?:\/\/[^\s]+|www\.[^\s]+\.[a-z]{2,}|[a-z\u4e00-\u9fa5\u3000-\u9fff0-9-]+\.(com|cn|net|org|gov|edu|io|ai|co|info)([\/?#]\S*)?/i;
+                        // ⚠️ 顺序敏感：hasUrl 必须排在 bizDomain 之前判定。
+                        // 反例（v3.64 及以前的实际缺陷）：「这个网页里的规章帮我看看 www.xxx.com」同时命中
+                        // bizDomain 的「规章」→ 先判 bizDomain 直接 return false → **链接根本没被读取，
+                        // 但 AI 照常作答**，用户以为它读过了。含链接时必须联网，与话题是否属业务域无关。
+                        if (hasUrl.test(q)) return true;            // 含链接/网址：最高优先级，强制联网读取网页内容
                         if (bizDomain.test(q)) return false;       // 业务域问题一律走本地数据源，不自动联网
-                        if (hasUrl.test(q)) return true;            // 含链接/网址：自动联网读取网页内容
                         if (freshness.test(q)) return true;
                         if (explicitWeb.test(q)) return true;
                         return realtime.test(q);
@@ -1780,6 +1942,22 @@
                             + '并把内容标注为「模型内部知识（可能已过时）」；\n'
                             + '7) 严禁把内部知识或旧信息包装成「今日热点 / 最新消息」——这是最严重的错误，会导致用户误判；\n'
                             + '8) 严禁声称「我没有实时联网能力」：你已具备该能力，需要时直接调用即可。';
+                        // 本轮提问里带了具体链接 → 追加「必须真读该链接」的硬约束。
+                        // 动机：读到内容时模型会正确引用；**读不到时若不明确禁止，模型会顺着域名猜内容**，
+                        // 用户无法分辨真伪——这种「看起来读了其实没读」的危害远大于直接承认读不到。
+                        // 链接提取复用渲染层同一套口径（window.dsExtractLinks ↔ DS_LINK_CHUNK），
+                        // 保证「气泡里渲染成链接的」与「要求模型去读的」是同一批。
+                        var _turnLinks = (typeof window.dsExtractLinks === 'function') ? window.dsExtractLinks(finalText) : [];
+                        if (_turnLinks.length) {
+                            systemPrompt += '\n\n【本轮用户提供了链接，必须真实读取】用户在提问中给出了以下链接：\n'
+                                + _turnLinks.map(function (u, i) { return '  ' + (i + 1) + '. ' + u; }).join('\n') + '\n'
+                                + '9) 必须先检索并阅读该链接的实际内容（可用链接本身、或其域名/标题/关键信息作为检索词），再作答；\n'
+                                + '10) 回答要基于该链接的真实内容逐点回应，不要泛泛而谈或绕开链接谈常识；\n'
+                                + '11) **若检索不到该链接的内容**，必须明确回答「未能读取到该链接的内容」，'
+                                + '并给出替代办法（如请用户把网页正文粘贴过来）；'
+                                + '**严禁根据域名、URL 中的关键词去猜测或编造网页内容**——这比读不到更糟；\n'
+                                + '12) 引用链接内容时标注来源，方便用户核对。';
+                        }
                     } else {
                         try {
                             if (messages[0] && messages[0].role === 'system') {

@@ -1616,6 +1616,41 @@ html[data-theme="dark"] .att-sub-btn.att-active:hover {
 [data-theme="dark"][data-theme] .ds-send-circle { background: #475569 !important; color: #f1f5f9 !important; border-color: transparent !important; }
 [data-theme="dark"][data-theme] .ds-send-circle.on { background: #4d6bfe !important; color: #fff !important; }
 [data-theme="dark"][data-theme] .ds-send-circle.stopping { background: #ef4444 !important; color: #fff !important; }
+/* 澄清条按钮例外（v3.65）：主按钮是「实心主色」语义，次按钮需保留卡片底与描边，
+   否则暗色下会与背景同色、完全看不出可点（与上面 .ds-send-circle 同一类处理）。
+   ⚠️ 同步要求：flat.css 的裸 button 广谱规则（#333 实底）也必须排除 .ds-choice-btn / .ds-choice-close，
+      且 flat.css 在 unify.css 之后加载、两条都会命中——**两处都要处理，缺一不可**。 */
+[data-theme="dark"][data-theme] .ds-choice-btn {
+  background: #262626 !important;
+  border-color: #383838 !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] .ds-choice-btn:hover {
+  background: #20293d !important;
+  border-color: var(--primary) !important;
+  color: #a8bcff !important;
+}
+[data-theme="dark"][data-theme] .ds-choice-btn--primary {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+}
+[data-theme="dark"][data-theme] .ds-choice-btn--primary:hover {
+  background: #5a75ff !important;
+  border-color: #5a75ff !important;
+  color: #fff !important;
+}
+[data-theme="dark"][data-theme] .ds-choice-close {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+}
+[data-theme="dark"][data-theme] .ds-choice-close:hover {
+  background: #262626 !important;
+  color: #cbd5e1 !important;
+}
 /* 由 JS 内联样式驱动状态的按钮：!important 会压掉内联样式，故用 id 级规则显式还原。
    #check-update-btn 有 .has-update-badge 时即「发现新版本」态（switchUpdateBtn 添加该 class）。 */
 [data-theme="dark"][data-theme] #check-update-btn {

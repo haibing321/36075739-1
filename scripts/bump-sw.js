@@ -22,11 +22,16 @@ try {
   // 避免同一分钟内重复 push 时版本号不变化导致 SW 不重新安装
   const nw = now > cur ? now : cur + 1;
   fs.writeFileSync(p, s.replace(/var CACHE_VERSION = '\d+';/, "var CACHE_VERSION = '" + nw + "';"));
-  // 同步 version.json.sw，避免「检查更新」因两者不一致而误判 SW 未变化
+  // 同步 version.json 的 sw / build 字段（同源同一时间戳），
+  // 避免「检查更新」因 sw 字段与 sw.js 不一致而误判 SW 未变化
   try {
     const vp = 'version.json';
     const v = fs.readFileSync(vp, 'utf8');
-    fs.writeFileSync(vp, v.replace(/"sw":\s*"\d+"/, '"sw": "' + nw + '"'));
+    const t = String(nw);
+    const build = t.slice(0, 8) + '_' + t.slice(8); // YYYYMMDD_HHMMSS
+    fs.writeFileSync(vp, v
+      .replace(/"sw":\s*"\d+"/, '"sw": "' + nw + '"')
+      .replace(/"build":\s*"[^"]*"/, '"build": "' + build + '"'));
   } catch (e) { /* version.json 缺失时忽略 */ }
   console.log(String(nw));
 } catch (e) {

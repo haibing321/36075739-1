@@ -221,7 +221,9 @@
       const idx = parseInt(bubble.getAttribute('data-ds-idx'), 10);
       const entry = (idx >= 0 && hist[idx]) ? hist[idx] : null;
       if (!entry || !entry.content) return;
-      if (bubble._enhContent === entry.content) return; // 内容未变，跳过（防循环）
+      // 跳过判定必须把「联网检索证据」也算进去：否则同一段正文在检索状态变化时不会重绘
+      const _enhKey = entry.content + '||' + (entry.web ? JSON.stringify(entry.web) : '');
+      if (bubble._enhContent === _enhKey) return; // 内容未变，跳过（防循环）
       _enhancing = true;
       try {
         // 思考过程（reasoning_content）折叠块：保留 DeepSeek V4 思考模式产出，
@@ -231,8 +233,12 @@
           var _esc = (typeof window.dsEsc === 'function') ? window.dsEsc : function(s){ return String(s).replace(/</g, '&lt;'); };
           reasoningHtml = '<details class="ds-reasoning" open><summary>💭 思考过程</summary><div class="ds-reasoning-body">' + _esc(entry.reasoning) + '</div></details>';
         }
-        bubble.innerHTML = reasoningHtml + renderCard(md(entry.content));
-        bubble._enhContent = entry.content;
+        // 联网检索证据条（是否真的联网/检索了几次）：同样必须在这里重建，
+        // 否则本函数会把 dsBubbleInner 刚渲染好的证据条覆盖掉。
+        var webHtml = '';
+        try { if (typeof window.dsWebChip === 'function') webHtml = window.dsWebChip(entry) || ''; } catch (e) {}
+        bubble.innerHTML = reasoningHtml + webHtml + renderCard(md(entry.content));
+        bubble._enhContent = _enhKey;
         // 重新挂载反馈按钮（复制/下载/有用/无用/重生成/朗读）
         // 必须带上本轮下标，否则「重生成」会退化成重生成最后一轮
         if (typeof window._addFeedbackButtons === 'function') {

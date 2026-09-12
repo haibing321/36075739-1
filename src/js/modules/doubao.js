@@ -2998,6 +2998,42 @@
                 cap.appendChild(btn);
                 host.appendChild(cap);
             }
+            // 媒体加载失败后重建播放器（「重试」用）：走 dsMediaBlock 生成同样的结构再取内部 HTML，
+            // 保证重建出来的播放器与首次渲染完全一致（含 caption / 新窗口入口）。
+            function dsRebuildMedia(host) {
+                if (!host) return;
+                var src = host.getAttribute('data-ds-src');
+                if (!src) return;
+                host.removeAttribute('data-ds-failed');
+                try {
+                    var tmp = document.createElement('div');
+                    tmp.innerHTML = dsMediaBlock(src, '');
+                    var box = tmp.firstChild;
+                    host.innerHTML = box ? box.innerHTML : '';
+                } catch (e) {}
+            }
+            // 按 MediaError.code + 扩展名给出**可操作**的诊断，而不是笼统一句「加载失败」：
+            //   MEDIA_ERR_ABORTED(1) / MEDIA_ERR_NETWORK(2) → 网络中断、链接失效或源站防盗链
+            //   MEDIA_ERR_DECODE(3)                          → 文件损坏或编码不受支持
+            //   MEDIA_ERR_SRC_NOT_SUPPORTED(4)               → 拿到的不是媒体文件（多为网页地址），
+            //                                                  或容器/编码浏览器不支持（MKV / FLV / 部分 MOV 常见）
+            function dsMediaFailText(err, src, kind) {
+                // 图片没有 MediaError（t.error 为 undefined），单独给更贴切的说明，避免把图片说成「媒体」
+                if (kind === 'image') return '⚠️ 图片加载失败：链接已失效，或该站点禁止外部直接引用';
+                var code = (err && err.code) || 0;
+                var ext = dsUrlExt(src);
+                var extTip = ext ? '（.' + ext + '）' : '';
+                if (code === 4) {
+                    if (/^(mkv|flv|rm|rmvb|wmv|avi|ts|m3u8)$/.test(ext)) {
+                        return '⚠️ 浏览器无法直接播放 ' + extTip + '：多为编码/容器不受支持，请点「新窗口打开」用本地播放器观看';
+                    }
+                    return '⚠️ 无法播放' + extTip + '：该地址返回的不是媒体文件（可能是网页链接），或服务器拒绝了直连';
+                }
+                if (code === 3) return '⚠️ 无法播放' + extTip + '：文件已损坏或编码不受支持';
+                if (code === 2) return '⚠️ 加载失败' + extTip + '：网络中断、链接失效，或源站限制外部直连（防盗链）';
+                if (code === 1) return '⚠️ 加载被中断，可点「重试」';
+                return '⚠️ 资源加载失败（链接失效、防盗链或不支持的格式）';
+            }
             // 全局事件委托：图片放大 / 内嵌播放 / 资源加载失败降级（DOMPurify 会剥掉内联 onerror，故用委托）
             function dsInitMediaDelegates() {
                 if (window.__dsMediaDelegates) return;
@@ -3007,6 +3043,13 @@
                     if (!t || !t.closest) return;
                     var img = t.closest('img.ds-media-img');
                     if (img && img.getAttribute('src')) { e.preventDefault(); dsShowImageViewer(img.getAttribute('src')); return; }
+                    // 「重试」：按 data-ds-src 原样重建播放器（瞬时网络抖动时不必重发问题）
+                    var retry = t.closest('.ds-media-retry');
+                    if (retry) {
+                        e.preventDefault();
+                        dsRebuildMedia(retry.closest('.ds-media'));
+                        return;
+                    }
                     var play = t.closest('.ds-media-play, .ds-media-reload');
                     if (play) {
                         e.preventDefault();
@@ -3035,12 +3078,22 @@
                     host.innerHTML = '';
                     var tip = document.createElement('div');
                     tip.className = 'ds-media-fail';
-                    tip.textContent = '⚠️ 资源加载失败（跨域限制或链接已失效）';
+                    tip.textContent = dsMediaFailText(t.error, src, t.classList.contains('ds-media-img') ? 'image' : '');
+                    host.appendChild(tip);
+                    // 失败不再只给一个「新窗口打开」：瞬时网络抖动/防盗链都可能重试成功，
+                    // 且「重试」不必让用户重新向 AI 发一遍问题（豆包等产品同样提供了重试入口）。
+                    var row = document.createElement('div');
+                    row.className = 'ds-media-fail-row';
+                    var retryBtn = document.createElement('button');
+                    retryBtn.type = 'button';
+                    retryBtn.className = 'ds-media-retry';
+                    retryBtn.textContent = '🔄 重试';
+                    row.appendChild(retryBtn);
                     var a2 = document.createElement('a');
                     a2.href = dsSafeUrl(src) || '#'; a2.target = '_blank'; a2.rel = 'noopener';
                     a2.textContent = '在新窗口打开 ↗';
-                    host.appendChild(tip);
-                    host.appendChild(a2);
+                    row.appendChild(a2);
+                    host.appendChild(row);
                 }, true);
             }
             dsInitMediaDelegates();
@@ -3062,6 +3115,22 @@
                     var solo = String(str == null ? '' : str).trim();
                     if (solo && DS_LINE_URL_RE.test(solo) && !/^!\[/.test(solo)) {
                         return dsMediaBlock(solo, '');
+                    }
+                    // 「短前缀 + 媒体直链」的行内场景：`- 视频：https://x.mp4`、`| 音频 | 音频：https://x.mp3 |`
+                    // 段落行由块级 DS_TAIL_URL_RE 分支处理，但那里**显式排除了列表项/有序列表**
+                    // （见 !/^[-*]\s/ 与 !/^\d+\./ 两个条件，本意是避免列表里所有 URL 都膨胀成大卡片）。
+                    // 后果：同样是「视频：https://…」，写成段落能内嵌播放，写进列表却只剩一个链接 ——
+                    // 而 AI 恰恰最常用「1. 视频地址：…」这种列表形式，用户就会以为「视频播不了」。
+                    // 这里只补【媒体类型】（图片/音视频直链）与【可内嵌的视频站】，普通网页链接仍保持行内 <a>。
+                    var _soloTail = solo.match(DS_TAIL_URL_RE);
+                    if (_soloTail && _soloTail[0] && solo.length - _soloTail[0].length <= 16 &&
+                        !/^!?\[[^\]]*\]\(/.test(solo)) {
+                        var _soloUrl = dsNormalizeUrl(_soloTail[0]);
+                        if (_soloUrl && (dsMediaKindOf(_soloUrl) || dsSiteEmbed(_soloUrl))) {
+                            // 前缀（如「现场作业视频：」）保留下来作为说明，别让它随媒体行一起消失
+                            var _soloPre = solo.slice(0, solo.length - _soloTail[0].length).trim();
+                            return (_soloPre ? dsEsc(_soloPre) + ' ' : '') + dsMediaBlock(_soloTail[0], '');
+                        }
                     }
                     let s = dsEsc(str);
                     // 1) markdown 图片/链接先占位，避免后续裸 URL 正则污染已生成的 href
@@ -3175,16 +3244,23 @@
                         out.push(dsMediaBlock(imgMd[2], imgMd[1]));
                         i++; continue;
                     }
-                    // 形如「图片：https://…」「音频: pixabay.com/…」的短前缀行同样识别为媒体行
+                    // 形如「图片：https://…」「现场作业视频：https://…」的前缀行同样识别为媒体行。
+                    // ⚠️ 前缀长度阈值必须放到 16：原先定的是 6，只能覆盖「视频：」「音频：」这类极短前缀，
+                    //    而 AI 实际最常写的是「现场作业视频：」「隐患照片：」「检查实录：」这类 6~8 字的说明
+                    //    ——超过 6 就被判成普通文本行，媒体直链退化成一行链接，用户看到的就是「视频播不了」。
+                    //    阈值放宽是安全的：仍需「URL 位于行尾」且前缀不含其它内容，正文里夹带网址不会被误判。
+                    // 前缀文字保留下来（作为说明），不再丢弃。
                     // ⚠️ 必须排除 markdown 链接/图片语法 `[文字](url)`：DS_LINK_CHUNK 的字符类不排除 `)`，
                     //    会把 `[看这里](https://a.com/x.png)` 的尾部当成「以 ) 结尾的 URL」抢先捕获，
                     //    结果多吞一个右括号、丢给外链卡片，图片/视频就不会渲染（且链接是坏地址）。
                     //    这类语法统一交给 inline() 处理，那里有正确的 DSLINK 还原逻辑。
                     var tailUrl = onlyLine.match(DS_TAIL_URL_RE);
-                    if (tailUrl && tailUrl[0] && onlyLine.length - tailUrl[0].length <= 6 &&
+                    if (tailUrl && tailUrl[0] && onlyLine.length - tailUrl[0].length <= 16 &&
                         !/^[-*]\s/.test(onlyLine) && !/^\d+\./.test(onlyLine) &&
                         !/^!?\[[^\]]*\]\(/.test(onlyLine)) {
                         closeList();
+                        var prefixText = onlyLine.slice(0, onlyLine.length - tailUrl[0].length).trim();
+                        if (prefixText) out.push('<p class="ds-md-p">' + dsEsc(prefixText) + '</p>');
                         out.push(dsMediaBlock(tailUrl[0], ''));
                         i++; continue;
                     }

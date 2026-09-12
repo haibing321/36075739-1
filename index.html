@@ -1745,6 +1745,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.59 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.59 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎬 <strong>视频「只给链接不播放」已修复</strong>：此前只有写成「视频：地址」这种两字前缀的行才能识别成播放器，而 AI 常写「现场作业视频：地址」（7 个字）就被当成普通文字，播放器根本不生成。现在前缀放宽到 16 字，长说明文字同样能出播放器，并保留原文作为说明。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📋 <strong>列表／表格里的媒体也能播了</strong>：过去把视频、音频地址写在「- 」列表项里，只会显示成一个蓝色链接（段落里却正常）。现在列表项、表格单元格中的媒体地址同样渲染成播放器或音乐卡片；普通网页链接保持原样，不会被误变成卡片。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔍 <strong>播放失败会说明原因</strong>：不再只给一句「资源加载失败」。现在按具体原因区分提示——网络或防盗链受限、文件已损坏、地址并非媒体文件、以及 MKV 等浏览器不支持的封装格式（会引导用本地播放器打开），并配上 <strong>🔄 重试</strong> 按钮和新窗口打开入口。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.58 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1767,35 +1789,9 @@
                 </div>
             </div>
 
-            <!-- v3.57 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.57 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌐 <strong>修复联网搜索「开了却没联网」</strong>：此前联网请求走的通道已不再执行服务端检索（接口正常返回 200，但一次都不检索，模型只能用内部旧知识作答）。现已切换到真正可用的联网通道，查询「今日新闻」类问题会真实检索，回答基于当天信息。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔎 <strong>联网结果可核对</strong>：AI 回答上方会显示「已联网检索 N 次」及实际检索词；若一次都没检索成功，会明确提示「本次未发生实际检索，内容来自模型内部知识（可能已过时）」，不再把旧信息包装成「今日热点」。同时自动补一次强制检索，尽量拿到实时结果。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🖼️ <strong>联网与看图可同时使用</strong>：过去「上传图片 + 开启联网」会被迫二选一（联网通道不支持图片），现在两者并行——既能实时检索，也能识别图片内容。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>⚙️ <strong>各 AI 模块调用全面加固</strong>：智能对话、智能体、智能对规、智能写作、风险研判、代码补全统一适配新模型的思考模式；修正智能对规因输出长度过小导致结论被截断、增强对规请求失败却被显示为「无响应」、以及智能写作生成后按钮不恢复等问题。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.57 及以下已归档（最近 2 版本为 v3.59 / v3.58） -->
 
-            <!-- v3.56 及以下已归档（最近 2 版本为 v3.58 / v3.57） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.56 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.57 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

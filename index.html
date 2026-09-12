@@ -1745,6 +1745,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.61 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.61 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔊 <strong>音视频不再「一起响」</strong>：点开一段视频／音频，其它正在播放的会自动停掉，同一时刻只允许一路在播（对齐微信、豆包的做法）。站内嵌的 B 站／腾讯视频／YouTube 播放器同样遵守——再点开另一个时，前一个会收起成「▶ 继续内嵌播放」按钮，想看再点一下即可，入口不会丢。语音朗读也一并纳入：正在朗读时点开视频，朗读会自动停止。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔢 <strong>多个媒体的先后顺序修正</strong>：同一条回复里渲染出两个以上视频／图片／音频时，此前顺序会被整体颠倒（回复里第一段视频显示在第二段的位置上），播放器落到了错误的段落下面。现已按原顺序一一对应。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🖼️ <strong>已挂着的播放器不会被误关</strong>：只停「真的动过」的播放器。历史消息里那些只是显示着、并未点击播放的内嵌播放器保持原样，不会因为你在别处播放视频而被收起。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.60 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1763,53 +1785,9 @@
                 </div>
             </div>
 
-            <!-- v3.59 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.59 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎬 <strong>视频「只给链接不播放」已修复</strong>：此前只有写成「视频：地址」这种两字前缀的行才能识别成播放器，而 AI 常写「现场作业视频：地址」（7 个字）就被当成普通文字，播放器根本不生成。现在前缀放宽到 16 字，长说明文字同样能出播放器，并保留原文作为说明。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>📋 <strong>列表／表格里的媒体也能播了</strong>：过去把视频、音频地址写在「- 」列表项里，只会显示成一个蓝色链接（段落里却正常）。现在列表项、表格单元格中的媒体地址同样渲染成播放器或音乐卡片；普通网页链接保持原样，不会被误变成卡片。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔍 <strong>播放失败会说明原因</strong>：不再只给一句「资源加载失败」。现在按具体原因区分提示——网络或防盗链受限、文件已损坏、地址并非媒体文件、以及 MKV 等浏览器不支持的封装格式（会引导用本地播放器打开），并配上 <strong>🔄 重试</strong> 按钮和新窗口打开入口。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.59 及以下已归档（最近 2 版本为 v3.61 / v3.60） -->
 
-            <!-- v3.58 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.58 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔎 <strong>联网改为「按需检索」</strong>：不再每次回答前都强制联网。像「你好」这类闲聊会直接快速作答；只有当问题涉及实时信息（今日／最新／新闻／天气／价格／人事变动等）时，才自动触发联网检索。需要时也可手动开启联网开关强制检索。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🖼️ <strong>不再误报「我是纯文本模型」</strong>：过去即使没上传任何图片，回答里也可能带一句「我当前为纯文本模型，不具备图像识别能力」。现在只有在真正带图提问、或明确问及看图能力时才会说明；并会自动清理历史对话里残留的这类过时声明。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🎬 <strong>视频／音频／图片显示修复</strong>：以 Markdown 链接形式给出的图片地址不再被拆坏成失效外链；内嵌播放器的「重新加载」按钮在页面增强后不再消失。配合既有能力，B 站／腾讯视频／YouTube 链接可直接在对话内播放，音频生成音乐卡片，图片原地展示。</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- v3.57 及以下已归档（最近 2 版本为 v3.59 / v3.58） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.58 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.59 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

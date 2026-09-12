@@ -3103,6 +3103,10 @@
                 var page = dsSafeUrl(host.getAttribute('data-ds-page'));
                 var name = host.getAttribute('data-ds-name') || '视频';
                 if (!src) return;
+                // 互斥播放：拉起本站点播放器 = 用户新开了一路声音，先把其它正在播的停掉；
+                // 同时标记本播放器「已激活」，之后别人开播时它才会被卸载（见 dsStopOtherMedia ②）。
+                dsStopOtherMedia(null, host);
+                host.setAttribute('data-ds-embed-active', '1');
                 // 重建整个结构（而不只是 iframe）：原先清空 host 后只放回 iframe + 一个外链，
                 // 导致 caption 行与「🔄 重新加载」按钮一起消失 —— 用户点过一次就再也无法重载。
                 host.innerHTML = '';
@@ -3169,6 +3173,59 @@
                 if (code === 1) return '⚠️ 加载被中断，可点「重试」';
                 return '⚠️ 资源加载失败（链接失效、防盗链或不支持的格式）';
             }
+            // ===== 音视频互斥播放（2026-09-12 用户要求）=====
+            // 需求原话：「点开一个另一个就得关闭，不然同时播放多个音视频，太乱」。即同一时刻
+            // 全局只允许一路音视频在播，对齐微信/豆包的做法。分三类声音源处理：
+            //  ① 原生 <video>/<audio>：直接 pause()，可靠无副作用（暂停只触发 pause 事件，不会回环触发本逻辑）；
+            //  ② 站点内嵌播放器（B站/YouTube/腾讯视频）：跨域 iframe 没有对外的暂停接口，
+            //     唯一可行的止声手段是把 iframe 整个摘掉（销毁浏览上下文即立刻停止声音），
+            //     同时还原成「▶ 继续内嵌播放」按钮 —— 入口不丢，想看再点一下即可；
+            //  ③ 语音朗读（speechSynthesis）：属于另一路声音，一并停掉，避免"朗读还在念、视频又响了"。
+            // ⚠️ ②不能无脑全摘：历史消息里往往挂着好几个内嵌播放器，但多数只是挂着没在播
+            // （dsSiteEmbed 生成时带 autoplay=0）。把没在播的一起摘掉会让人莫名其妙。
+            // 故只处理「用户真的碰过」的那些 —— 判定见 dsInitMediaDelegates 里的 data-ds-embed-active 标记。
+            function dsUnmountEmbed(host) {
+                if (!host) return false;
+                var f = host.querySelector('iframe.ds-media-iframe');
+                if (!f || !f.parentNode) return false;
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'ds-media-play';
+                btn.textContent = '▶ 继续内嵌播放';
+                f.parentNode.replaceChild(btn, f);
+                host.removeAttribute('data-ds-embed-active');
+                return true;
+            }
+            // exceptNative：正在播放、要放行的原生播放器；exceptSite：正在播放、要放行的内嵌播放器宿主
+            function dsStopOtherMedia(exceptNative, exceptSite) {
+                // ① 原生播放器：暂停其余所有
+                try {
+                    var list = document.querySelectorAll('video.ds-media-video, audio.ds-media-audio');
+                    for (var i = 0; i < list.length; i++) {
+                        var m = list[i];
+                        if (m === exceptNative || m.paused) continue;
+                        try { m.pause(); } catch (e) {}
+                    }
+                } catch (e) {}
+                // ② 内嵌播放器：只卸载「标记为已激活」的（用户点进去播过的）
+                try {
+                    var act = document.querySelectorAll('.ds-media-site[data-ds-embed-active="1"]');
+                    for (var j = 0; j < act.length; j++) {
+                        if (exceptSite && act[j] === exceptSite) continue;
+                        dsUnmountEmbed(act[j]);
+                    }
+                } catch (e) {}
+                // ③ 语音朗读：停掉并把按钮文字复位（cancel 不保证触发 onend，故主动复位）
+                try {
+                    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+                        window.speechSynthesis.cancel();
+                        var rbs = document.querySelectorAll('.ds-read-btn');
+                        for (var k = 0; k < rbs.length; k++) {
+                            if (rbs[k].textContent === '⏹ 停止') rbs[k].textContent = '🔊 朗读';
+                        }
+                    }
+                } catch (e) {}
+            }
             // 全局事件委托：图片放大 / 内嵌播放 / 资源加载失败降级（DOMPurify 会剥掉内联 onerror，故用委托）
             function dsInitMediaDelegates() {
                 if (window.__dsMediaDelegates) return;
@@ -3229,6 +3286,27 @@
                     a2.textContent = '在新窗口打开 ↗';
                     row.appendChild(a2);
                     host.appendChild(row);
+                }, true);
+                // 互斥播放①：某个原生播放器开始播放 → 停掉其余音视频。
+                // play 事件不冒泡，只能走捕获阶段（与上面的 error 同理）。
+                document.addEventListener('play', function (e) {
+                    var t = e.target;
+                    if (!t || !t.classList) return;
+                    if (!(t.classList.contains('ds-media-video') || t.classList.contains('ds-media-audio'))) return;
+                    dsStopOtherMedia(t, null);
+                }, true);
+                // 互斥播放②的判定：跨域 iframe 不会把用户的点击冒泡给父文档，无法直接监听"iframe 里开始播了"。
+                // 但用户点击播放器时，父窗口会 blur 且 document.activeElement 变成该 iframe —— 借此标记
+                // "这个内嵌播放器被用户动过"，后续互斥时才敢把它摘掉（没动过的挂着不动）。
+                window.addEventListener('blur', function () {
+                    setTimeout(function () {
+                        try {
+                            var ae = document.activeElement;
+                            if (!ae || ae.tagName !== 'IFRAME' || !ae.closest) return;
+                            var st = ae.closest('.ds-media-site');
+                            if (st) st.setAttribute('data-ds-embed-active', '1');
+                        } catch (err) {}
+                    }, 0);
                 }, true);
             }
             dsInitMediaDelegates();
@@ -4488,6 +4566,7 @@
         // 语音朗读按钮（仅支持 Web Speech API 的浏览器显示）
         if (typeof window.speechSynthesis !== 'undefined') {
           var readBtn = document.createElement('button');
+          readBtn.className = 'ds-read-btn';
           readBtn.textContent = '🔊 朗读';
           readBtn.style.cssText = 'background:none;border:1px solid #d1d5db;border-radius:14px;padding:3px 10px;font-size:0.75rem;cursor:pointer;color:#6b7280;transition:all 0.15s;';
           readBtn.onmouseover = function(){ this.style.borderColor='var(--warning)'; this.style.color='var(--warning)'; };

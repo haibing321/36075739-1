@@ -182,7 +182,11 @@
         for (var _i = _nodes.length - 1; _i >= 0; _i--) {
           var _el = _nodes[_i];
           var _ph = _doc.createElement('span');
-          _ph.setAttribute('data-ds-media', String(_mediaArr.length));
+          // ⚠️ 占位符编号必须用「文档顺序下标 _i」，不能写 _mediaArr.length：
+          // 本循环是倒序遍历 + unshift，mediaArr 要到循环结束才排成文档顺序，
+          // 边遍历边取长度得到的是**反序下标**，还原时媒体块整体颠倒
+          //（实测：回复里 clip_a 在前，渲染成 clip_b 在前，播放器落到错误的段落下面）。
+          _ph.setAttribute('data-ds-media', String(_i));
           _mediaArr.unshift(_el.outerHTML);
           _el.parentNode.replaceChild(_ph, _el);
         }

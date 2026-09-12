@@ -512,8 +512,7 @@ window.onclick = function(e) {
         _pendingReloadAt = Date.now();
         // 应用更新：清除红点标记（刷新后由新版本接管，_has_update 不再成立）
         try { localStorage.removeItem('_has_update'); } catch (e) {}
-        document.getElementById('tab-settings')?.classList.remove('has-update-badge');
-        document.getElementById('check-update-btn')?.classList.remove('has-update-badge');
+        setUpdateBadge(false);
         // 立即给出反馈，避免用户以为点了没反应
         var _updTitle = document.getElementById('check-update-title');
         var _updArrow = document.getElementById('check-update-arrow');
@@ -694,15 +693,59 @@ window.onclick = function(e) {
     mo.observe(document.body, { childList: true, subtree: true });
 })();
 
+// 更新红点的统一维护（v3.63）
+// 三处入口需同时同步：顶栏「设置」按钮、设置面板「关于」页的「检查更新」按钮，
+// 以及设置面板「关于」分类项本身 —— 面板改成模态后入口被遮罩盖住，若不在分类上提示，
+// 用户打开设置也看不出有新版本。
+function setUpdateBadge(on) {
+    var yes = !!on;
+    ['tab-settings', 'check-update-btn'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.toggle('has-update-badge', yes);
+    });
+    var navAbout = document.querySelector('#settings-panel .st-nav-item[data-sec="about"]');
+    if (navAbout) navAbout.classList.toggle('has-update-badge', yes);
+}
+
+// ==================== 设置面板分类导航（v3.63） ====================
+// 面板结构：通用 / 数据 / 接口 / 关于 四类，HTML 中 .st-nav-item 与 .st-sec 以 data-sec 成对匹配。
+// 切换只改 is-active，不重建 DOM —— 避免打断输入框焦点、滚动位置与已展开的折叠项。
+window.stGoSection = function(key) {
+    var panel = document.getElementById('settings-panel');
+    if (!panel || !key) return;
+    var items = panel.querySelectorAll('.st-nav-item[data-sec]');
+    var secs = panel.querySelectorAll('.st-sec[data-sec]');
+    var hit = false;
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].getAttribute('data-sec') === key) hit = true;
+    }
+    if (!hit) return;
+    for (var j = 0; j < items.length; j++) {
+        items[j].classList.toggle('is-active', items[j].getAttribute('data-sec') === key);
+    }
+    for (var k = 0; k < secs.length; k++) {
+        secs[k].classList.toggle('is-active', secs[k].getAttribute('data-sec') === key);
+    }
+    panel.setAttribute('data-active-sec', key);
+    var content = document.getElementById('st-content');
+    if (content) content.scrollTop = 0;
+    // 数据页的数量是懒加载的：分类后默认页不再是数据页，故切到该页时再刷新一次
+    if (key === 'data' && window.updateDataManagementStats) {
+        try { window.updateDataManagementStats(); } catch (e) {}
+    }
+};
+
 window.toggleSettingsPanel = function() {
     var p = document.getElementById('settings-panel');
     if (!p) return;
     var isOpening = (p.style.display === 'none' || p.style.display === '');
     if (isOpening) {
-        p.style.display = 'block';
+        p.style.display = 'flex';   // 模态：外层是遮罩容器，用 flex 让对话框居中
         if (window.updateDataManagementStats) window.updateDataManagementStats();
         if (window.syncDarkModeToggle) window.syncDarkModeToggle();
         if (window.syncCapabilityToggles) window.syncCapabilityToggles();
+        // 回到上次停留的分类（首次为「通用」）；分类状态异常时兜底回通用页，避免打开是空白
+        window.stGoSection(p.getAttribute('data-active-sec') || 'general');
         // 移动端：展开设置时自动收起顶部导航下拉（模块选择框），与其它模块按钮行为一致（否则下拉残留重叠）
         var nav = document.getElementById('mainNav');
         var toggle = document.getElementById('navToggle');
@@ -715,10 +758,12 @@ window.toggleSettingsPanel = function() {
     }
 };
 
-// 点击设置面板外部（含页面任意其它区域）自动收起设置下拉窗，与工具按钮下拉行为一致
+// 点击外部收起：v3.63 起设置面板是「遮罩 + 对话框」模态，遮罩自身已绑定关闭，
+// 这里对模态直接放行（避免与遮罩点击重复触发）；保留旧的下拉行为以兼容无遮罩的结构。
 document.addEventListener('click', function(e) {
     var p = document.getElementById('settings-panel');
     if (!p || p.style.display === 'none') return;
+    if (p.classList.contains('st-modal')) return;
     var btn = document.getElementById('tab-settings');
     if (p.contains(e.target)) return;          // 点面板内部不关
     if (btn && btn.contains(e.target)) return;  // 点设置按钮本身不关（由 toggleSettingsPanel 处理）
@@ -805,6 +850,7 @@ function syncThemeModeUI() {
     if (btns.forEach) {
         btns.forEach(function(b) {
             var on = b.getAttribute('data-mode') === mode;
+            b.classList.toggle('is-on', on);   // 供 settings.css 在暗色下强制主色（压过 flat.css 的 button 广谱覆盖）
             b.style.background = on ? 'var(--primary)' : 'var(--card-bg)';
             b.style.color = on ? '#fff' : 'var(--text)';
             b.style.borderColor = on ? 'var(--primary)' : 'var(--border)';
@@ -861,6 +907,7 @@ function syncThinkingModeUI() {
     if (btns.forEach) {
         btns.forEach(function(b) {
             var on = b.getAttribute('data-mode') === mode;
+            b.classList.toggle('is-on', on);   // 供 settings.css 在暗色下强制主色（压过 flat.css 的 button 广谱覆盖）
             b.style.background = on ? 'var(--primary)' : 'var(--card-bg)';
             b.style.color = on ? '#fff' : 'var(--text)';
             b.style.borderColor = on ? 'var(--primary)' : 'var(--border)';
@@ -902,7 +949,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.62'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.63'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';
@@ -960,8 +1007,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 离线恢复更新红点：若此前检测到新版本但未应用，离线打开仍提示（不联网拉取）
     try {
       if (localStorage.getItem('_has_update') === 'true') {
-        document.getElementById('tab-settings')?.classList.add('has-update-badge');
-        document.getElementById('check-update-btn')?.classList.add('has-update-badge');
+        setUpdateBadge(true);
       }
     } catch (e) {}
     // 折叠屏/旋转会话状态恢复：文档重建后还原模块、滚动位置、草稿、弹窗
@@ -1104,8 +1150,7 @@ async function performUpdateCheck(url, showStatus) {
 
         const isNew = compareVersions(remoteVersion, APP_VERSION) > 0;
         if (isNew) {
-            document.getElementById('tab-settings')?.classList.add('has-update-badge');
-            document.getElementById('check-update-btn')?.classList.add('has-update-badge');
+            setUpdateBadge(true);
             localStorage.setItem('_has_update', 'true');
             // v3.26：「立即更新」按钮原位覆盖「检查更新」按钮（循环图标样式）
             if (window.switchUpdateBtn) window.switchUpdateBtn('update');
@@ -1118,8 +1163,7 @@ async function performUpdateCheck(url, showStatus) {
             // 页面顶部弹出更新提示条（手动/静默检查均生效），点击即应用
             if (window.showUpdateBanner) window.showUpdateBanner(remoteVersion);
         } else {
-            document.getElementById('tab-settings')?.classList.remove('has-update-badge');
-            document.getElementById('check-update-btn')?.classList.remove('has-update-badge');
+            setUpdateBadge(false);
             localStorage.removeItem('_has_update');
             // v3.26：无新版本/更新完成 → 恢复「检查更新」按钮
             if (window.switchUpdateBtn) window.switchUpdateBtn('normal');

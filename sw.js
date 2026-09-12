@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260912162507';
+var CACHE_VERSION = '20260912171647';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -46,6 +46,7 @@ var PRECACHE_URLS = [
   './src/css/dark.css',
   './src/css/unify.css',
   './src/css/flat.css',
+  './src/css/settings.css',
   // ==== 本地JS模块（离线时功能可用）====
   './src/js/app.js',
   './src/js/modules/utils.js',

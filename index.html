@@ -43,15 +43,35 @@
          app.js 正常加载后会用同名函数覆盖本兜底版，行为一致、零冲突。 -->
     <script>
       (function () {
+        // v3.63：设置面板改为「遮罩 + 对话框」模态，分类导航（通用/数据/接口/关于）。
+        function stGo(key) {
+          var panel = document.getElementById('settings-panel');
+          if (!panel || !key) return;
+          var items = panel.querySelectorAll('.st-nav-item[data-sec]');
+          var secs = panel.querySelectorAll('.st-sec[data-sec]');
+          for (var i = 0; i < items.length; i++) {
+            items[i].classList.toggle('is-active', items[i].getAttribute('data-sec') === key);
+          }
+          for (var j = 0; j < secs.length; j++) {
+            secs[j].classList.toggle('is-active', secs[j].getAttribute('data-sec') === key);
+          }
+          panel.setAttribute('data-active-sec', key);
+          var content = document.getElementById('st-content');
+          if (content) content.scrollTop = 0;
+          if (key === 'data' && window.updateDataManagementStats) { try { window.updateDataManagementStats(); } catch (e) {} }
+        }
+        window.stGoSection = window.stGoSection || stGo;
+
         function tsOpen() {
           var p = document.getElementById('settings-panel');
           if (!p) return;
           var opening = (p.style.display === 'none' || p.style.display === '');
           if (opening) {
-            p.style.display = 'block';
+            p.style.display = 'flex';
             if (window.updateDataManagementStats) { try { window.updateDataManagementStats(); } catch (e) {} }
             if (window.syncDarkModeToggle) { try { window.syncDarkModeToggle(); } catch (e) {} }
             if (window.syncCapabilityToggles) { try { window.syncCapabilityToggles(); } catch (e) {} }
+            if (window.stGoSection) { try { window.stGoSection(p.getAttribute('data-active-sec') || 'general'); } catch (e) {} }
             var nav = document.getElementById('mainNav');
             var tg = document.getElementById('navToggle');
             if (nav && nav.classList.contains('nav-open')) {
@@ -66,6 +86,7 @@
         document.addEventListener('click', function (e) {
           var p = document.getElementById('settings-panel');
           if (!p || p.style.display === 'none') return;
+          if (p.classList.contains('st-modal')) return;   // 模态：由遮罩自身负责关闭
           var btn = document.getElementById('tab-settings');
           if (p.contains(e.target)) return;
           if (btn && btn.contains(e.target)) return;
@@ -239,6 +260,8 @@
     <link rel="stylesheet" href="src/css/dark.css">
     <link rel="stylesheet" href="src/css/unify.css">
     <link rel="stylesheet" href="src/css/flat.css">
+    <!-- 设置面板样式：必须排在 flat.css 之后（其 button:not(.btn)!important 广谱覆盖需被压回） -->
+    <link rel="stylesheet" href="src/css/settings.css">
 </head>
 <body>
     <!-- 启动遮罩：首屏立即显示，避免 Edge 等浏览器在脚本加载延迟时长时间停在 LOGO/启动界面。
@@ -1303,7 +1326,7 @@
     </div>
 
     <footer class="footer">
-        <div>铁路安监智能辅助系统 · 开发者：haibing© 2026 支持离线浏览</div>
+        <div>开发者：haibing</div>
     </footer>
 
     <!-- 备忘弹窗 -->
@@ -1591,187 +1614,180 @@
     <!-- 全域统一升级（Tier1+Tier2）：上下文注入/电话工具/卡片渲染/语义缓存/预聚合/通话联动。最后加载以正确钩接已有全局函数 -->
     <script src="src/js/modules/unified-enhancements.js" defer></script>
     <!-- 设置面板（全局浮层，不依赖任何tab） -->
-    <!-- 设置面板：改为与角色/模型/关联数据/联网一致的下拉窗（从右上角弹出，无全屏遮罩；点外部或再次点击「设置」关闭） -->
-    <div id="settings-panel" style="display:none;position:fixed;top:56px;right:12px;background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px;width:min(340px,92vw);max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(15,23,42,.16);z-index:11000;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                <span style="font-weight:700;font-size:0.95rem;color:var(--primary);">⚙️ 系统设置</span>
-                <button onclick="toggleSettingsPanel()" class="btn-close">✕</button>
+    <!-- v3.63 重构：由 340px 下拉小窗改为居中模态 —— 大屏「左导航 + 右内容」、小屏「上导航 + 下内容」，
+         设置项按 通用 / 数据 / 接口 / 关于 四类归位，按钮尺寸收敛为三档（主 42px / 小 30px / 分段 36px）。
+         仅改结构与样式：所有既有 id（updateDataManagementStats、checkForUpdate、memoryEnable 等依赖）原样保留。 -->
+    <div id="settings-panel" class="st-modal" style="display:none;">
+        <div class="st-mask" onclick="toggleSettingsPanel()"></div>
+        <div class="st-dialog" role="dialog" aria-modal="true" aria-label="系统设置">
+            <div class="st-head">
+                <span class="st-title"><span>⚙️</span><span>系统设置</span></span>
+                <button type="button" onclick="toggleSettingsPanel()" class="btn-close st-close" aria-label="关闭设置">✕</button>
             </div>
-            <div style="display:flex;flex-direction:column;gap:10px;">
-                <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">🔧 API 配置</button>
-                <button onclick="toggleSettingsPanel();switchTab('material');" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">📚 资料中心</button>
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">🧠 长期记忆</span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <button type="button" onclick="clearLongTermMemory()" style="font-size:0.72rem;color:#dc2626;background:none;border:1px solid #fecaca;border-radius:6px;padding:2px 8px;cursor:pointer;">清空</button>
-                        <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
-                    </span>
+            <div class="st-body">
+                <nav class="st-nav" id="st-nav">
+                    <button type="button" class="st-nav-item is-active" data-sec="general" onclick="stGoSection('general')"><span class="st-nav-ico">🎛</span><span>通用</span></button>
+                    <button type="button" class="st-nav-item" data-sec="data" onclick="stGoSection('data')"><span class="st-nav-ico">📦</span><span>数据</span></button>
+                    <button type="button" class="st-nav-item" data-sec="api" onclick="stGoSection('api')"><span class="st-nav-ico">🔧</span><span>接口</span></button>
+                    <button type="button" class="st-nav-item" data-sec="about" onclick="stGoSection('about')"><span class="st-nav-ico">ℹ️</span><span>关于</span></button>
+                </nav>
+                <div class="st-content" id="st-content">
+
+                    <!-- ========== 通用 ========== -->
+                    <section class="st-sec is-active" data-sec="general">
+                        <div class="st-group-title">外观与交互</div>
+                        <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                            <div class="st-row-label">🌗 主题模式</div>
+                            <div id="themeModeSeg" style="display:flex;gap:6px;">
+                                <button type="button" class="st-seg-btn" onclick="setThemeMode('system')" data-mode="system">🌗 跟随系统</button>
+                                <button type="button" class="st-seg-btn" onclick="setThemeMode('light')" data-mode="light">☀️ 亮色</button>
+                                <button type="button" class="st-seg-btn" onclick="setThemeMode('dark')" data-mode="dark">🌙 暗黑</button>
+                            </div>
+                            <div id="themeModeHint" class="st-hint"></div>
+                        </div>
+
+                        <div class="st-group-title">智能能力</div>
+                        <!-- 思考模式：跨 5 个模块共用的基础参数，不属于实验开关，故放在通用页而非折叠区 -->
+                        <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                            <div class="st-row-label">🧠 思考模式</div>
+                            <div id="thinkingModeSeg" style="display:flex;gap:6px;">
+                                <button type="button" class="st-seg-btn" onclick="setThinkingMode('auto')" data-mode="auto">自动</button>
+                                <button type="button" class="st-seg-btn" onclick="setThinkingMode('on')" data-mode="on">始终开启</button>
+                                <button type="button" class="st-seg-btn" onclick="setThinkingMode('off')" data-mode="off">始终关闭</button>
+                            </div>
+                            <div id="thinkingModeHint" class="st-hint"></div>
+                        </div>
+
+                        <div class="st-group-title">本地数据</div>
+                        <div class="st-row">
+                            <span class="st-row-label">🧠 长期记忆</span>
+                            <span class="st-actions">
+                                <button type="button" onclick="clearLongTermMemory()" class="st-mini btn-data-red">清空</button>
+                                <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
+                            </span>
+                        </div>
+                    </section>
+
+                    <!-- ========== 数据 ========== -->
+                    <section class="st-sec" data-sec="data">
+                        <div class="st-group-title">存储概览</div>
+                        <div class="st-row">
+                            <span class="st-row-label">💾 总储存量</span>
+                            <span class="st-row-sub" id="settings-total-storage" style="color:var(--primary);font-weight:600;font-size:0.82rem;opacity:1;">计算中…</span>
+                        </div>
+
+                        <div class="st-group-title">全局备份</div>
+                        <div class="st-row">
+                            <span class="st-row-label">📦 全局数据</span>
+                            <span class="st-actions">
+                                <button onclick="document.getElementById('global-restore-btn').click();" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="document.getElementById('global-backup-btn').click();" class="st-mini btn-data-green">导出</button>
+                                <button onclick="clearAllGlobalData()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+
+                        <div class="st-group-title">各模块数据</div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📖 检查手册 <span class="st-row-sub" id="set-handbook-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="document.getElementById('handbook-jsonFile').click()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="exportHandbook()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="clearHandbookData()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📊 检查信息 <span class="st-row-sub" id="set-issue-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="document.getElementById('issue-fileInput').click()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="issueExportJSON()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="issueShowClear()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📋 规章制度 <span class="st-row-sub" id="set-rule-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="document.getElementById('rule-fileInput').click()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="doExport('json')" class="st-mini btn-data-green">导出</button>
+                                <button onclick="clearAllRules()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📝 工作日志 <span class="st-row-sub" id="set-diary-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="importDiary()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="exportDiary()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="clearAllDiaries()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📞 应急电话 <span class="st-row-sub" id="set-phone-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="document.getElementById('phone-fileInput').click()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="phoneExportJSON()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="phoneShowClear()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">✍️ 写作资料 <span class="st-row-sub" id="set-wr-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="wrMaterialImportUnified()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="wrMaterialExportAll()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="wrMaterialClearAll()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📄 历史报告 <span class="st-row-sub" id="set-wrhist-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="wrImportWithType('history')" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="wrExportAllReports()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="wrClearAllReports()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">📚 铁路术语 <span class="st-row-sub" id="set-term-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="importRailwayTerms()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="exportRailwayTerms()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="if(confirm('确定清空铁路术语?')){localStorage.removeItem('patch_term_library_v2');alert('已清空，刷新后生效');}" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+
+                        <div class="st-group-title">资料</div>
+                        <button onclick="toggleSettingsPanel();switchTab('material');" class="st-btn">📚 资料中心 <span class="st-btn-arrow">→</span></button>
+                        <div class="st-hint">检查手册、规章制度、写作资料等文档的统一入口。</div>
+                    </section>
+
+                    <!-- ========== 接口 ========== -->
+                    <section class="st-sec" data-sec="api">
+                        <div class="st-group-title">模型接口</div>
+                        <button onclick="toggleSettingsPanel();document.getElementById('ds-api-config-btn').click();" class="st-btn">🔧 API 配置 <span class="st-btn-arrow">→</span></button>
+                        <div class="st-row">
+                            <span class="st-row-label">📡 连接状态</span>
+                            <span id="ds-api-status-badge" style="display:flex;align-items:center;gap:6px;">
+                                <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
+                                <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
+                            </span>
+                        </div>
+                        <div class="st-hint">支持 DeepSeek / 豆包 / OpenAI 等兼容接口；密钥仅保存在本机浏览器，不会上传。</div>
+                    </section>
+
+                    <!-- ========== 关于 ========== -->
+                    <section class="st-sec" data-sec="about">
+                        <div class="st-group-title">版本</div>
+                        <button id="check-update-btn" onclick="checkForUpdate()" class="st-btn">
+                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v2.6</span></span>
+                            <span id="check-update-arrow" class="st-btn-arrow">点击检查 →</span>
+                        </button>
+                        <div id="update-status" class="st-hint"></div>
+
+                        <div class="st-group-title">系统</div>
+                        <button onclick="toggleSettingsPanel();showAboutPanel();" class="st-btn">ℹ️ 关于系统 <span class="st-btn-arrow">→</span></button>
+                        <button onclick="clearAllCache()" class="st-btn">🗑️ 清除缓存 <span class="st-btn-arrow">→</span></button>
+                        <div class="st-hint">清除缓存会删除离线资源并刷新页面，已保存的业务数据不受影响。</div>
+                    </section>
+
                 </div>
-
-                <!-- 主题模式（跟随系统 / 亮色 / 暗黑） -->
-                <div style="padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <div style="font-size:0.88rem;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                        <span>🌗 主题模式</span>
-                    </div>
-                    <div id="themeModeSeg" style="display:flex;gap:6px;">
-                        <button type="button" onclick="setThemeMode('system')" data-mode="system" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">🌗 跟随系统</button>
-                        <button type="button" onclick="setThemeMode('light')" data-mode="light" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">☀️ 亮色</button>
-                        <button type="button" onclick="setThemeMode('dark')" data-mode="dark" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">🌙 暗黑</button>
-                    </div>
-                    <div id="themeModeHint" style="font-size:0.7rem;color:#94a3b8;margin-top:6px;"></div>
-                </div>
-
-                <!-- 思考模式（v3.62：从「DeepSeek V4 高级能力」折叠区移出——它是跨 5 个模块的基础参数，不该藏进实验开关里） -->
-                <div style="padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <div style="font-size:0.88rem;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                        <span>🧠 思考模式</span>
-                    </div>
-                    <div id="thinkingModeSeg" style="display:flex;gap:6px;">
-                        <button type="button" onclick="setThinkingMode('auto')" data-mode="auto" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">自动</button>
-                        <button type="button" onclick="setThinkingMode('on')" data-mode="on" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">始终开启</button>
-                        <button type="button" onclick="setThinkingMode('off')" data-mode="off" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">始终关闭</button>
-                    </div>
-                    <div id="thinkingModeHint" style="font-size:0.7rem;color:#94a3b8;margin-top:6px;"></div>
-                </div>
-
-                <!-- 总储存量（始终可见，替代各模块分散的存储/数量展示） -->
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f1f5f9;border-radius:10px;">
-                    <span style="font-size:0.88rem;color:#475569;">💾 总储存量</span>
-                    <span style="font-size:0.82rem;color:var(--primary);font-weight:600;" id="settings-total-storage">计算中…</span>
-                </div>
-
-                <!-- 数据管理（可展开） -->
-                <div onclick="var s=document.getElementById('set-data-mgr');s.style.display=s.style.display==='none'?'flex':'none';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                    <span style="font-weight:600;color:var(--primary);flex:1;">📦 数据管理</span>
-                    <span id="set-data-mgr-arrow" style="color:#64748b;font-size:0.75rem;transition:transform .2s;">▾</span>
-                </div>
-                <div id="set-data-mgr" style="display:none;flex-direction:column;gap:8px;padding:10px 10px 8px;background:#f8fafc;border-radius:8px;">
-                    <!-- 全局备份/恢复 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="font-size:0.8rem;color:#475569;">📦 全局备份</span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="document.getElementById('global-restore-btn').click();" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="document.getElementById('global-backup-btn').click();" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="clearAllGlobalData()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <div style="border-top:1px solid #e5e7eb;margin:2px 0;"></div>
-                    <!-- 检查手册 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📖 检查手册</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-handbook-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="document.getElementById('handbook-jsonFile').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="exportHandbook()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="clearHandbookData()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <!-- 检查信息 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📊 检查信息</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-issue-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="document.getElementById('issue-fileInput').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="issueExportJSON()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-
-                            <button onclick="issueShowClear()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <!-- 规章制度 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📋 规章制度</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-rule-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="document.getElementById('rule-fileInput').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="doExport('json')" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="clearAllRules()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <!-- 工作日志 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📝 工作日志</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-diary-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="importDiary()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="exportDiary()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="clearAllDiaries()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <!-- 应急电话 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📞 应急电话</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-phone-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="document.getElementById('phone-fileInput').click()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="phoneExportJSON()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-
-                            <button onclick="phoneShowClear()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <!-- 写作资料库 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">✍️ 写作资料</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-wr-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="wrMaterialImportUnified()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="wrMaterialExportAll()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="wrMaterialClearAll()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📊 历史报告</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-wrhist-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="wrImportWithType('history')" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="wrExportAllReports()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="wrClearAllReports()" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                    <!-- 术语库 -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:0.8rem;color:#475569;">📚 铁路术语</span>
-                            <span style="font-size:0.7rem;color:#94a3b8;" id="set-term-count">—</span>
-                        </span>
-                        <span style="display:flex;gap:6px;">
-                            <button onclick="importRailwayTerms()" class="btn-data-sm btn-data-blue" style="padding:5px 10px;font-size:0.78rem;">导入</button>
-                            <button onclick="exportRailwayTerms()" class="btn-data-sm btn-data-green" style="padding:5px 10px;font-size:0.78rem;">导出</button>
-                            <button onclick="if(confirm('确定清空铁路术语?')){localStorage.removeItem('patch_term_library_v2');alert('已清空，刷新后生效');}" class="btn-data-sm btn-data-red" style="padding:5px 10px;font-size:0.78rem;">清空</button>
-                        </span>
-                    </div>
-                </div>
-
-                <div style="border-top:1px solid #e5e7eb;"></div>
-
-                <button onclick="clearAllCache()" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">🗑️ 清除缓存</button>
-                <button onclick="toggleSettingsPanel();showAboutPanel();" class="btn-outline" style="padding:9px 14px;border-radius:10px;text-align:left;">ℹ️ 关于系统</button>
             </div>
-            <!-- 版本更新检查 -->
-            <div style="border-top:1px solid #e5e7eb; padding-top:12px; margin-top:12px;">
-                <button id="check-update-btn" onclick="checkForUpdate()" style="display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 14px; background:var(--card-bg); border:1px solid var(--border); border-radius:10px; cursor:pointer; font-size:0.85rem; text-align:left; transition:all 0.2s;"
-                        onmouseover="this.style.borderColor='#93c5fd'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span style="font-size:0.7rem; color:#94a3b8;" id="setting-current-version">v2.6</span></span>
-                    <span id="check-update-arrow" style="font-size:0.7rem; color:#3b82f6;">点击检查 →</span>
-                </button>
-                <div id="update-status" style="font-size:0.75rem; color:#64748b; margin-top:4px;"></div>
-            </div>
-        <div id="ds-api-status-badge" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
-            <span id="ds-api-status-icon" style="font-size:0.85rem;">⚪</span>
-            <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
         </div>
     </div>
 
@@ -1794,6 +1810,28 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.63 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.63 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧩 <strong>设置界面重新归类，更好找了</strong>：此前十几个设置项挤在一个小窗里平铺一列，「数据管理」还要再展开一层，找一项要往下滚很久。现在按 <strong>通用 / 数据 / 接口 / 关于</strong> 四类归位——电脑上左侧选分类、右侧看内容，手机上分类横排在顶部、内容整屏铺开（与主流 AI 网页版一致）。每类都补了分组标题与说明文字。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>📐 <strong>按钮大小统一了</strong>：原先同一个面板里按钮从 0.72rem 到 0.88rem 大小不一，排在一起显得凌乱。现在收敛为三档——主要操作 42px、数据导入/导出/清空 30px、档位切换 36px，全面板严格一致；暗色下也一并修正了「导入/导出/清空」被刷成灰色、丢掉语义色的问题。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🏷️ <strong>页脚精简</strong>：页面底部说明由「铁路安监智能辅助系统 · 开发者：haibing© 2026 支持离线浏览」简化为「<strong>开发者：haibing</strong>」。</span>
+                    </div>
+                </div>
             </div>
 
             <!-- v3.62 近期更新 -->
@@ -1822,31 +1860,9 @@
                 </div>
             </div>
 
-            <!-- v3.61 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.61 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔊 <strong>音视频不再「一起响」</strong>：点开一段视频／音频，其它正在播放的会自动停掉，同一时刻只允许一路在播（对齐微信、豆包的做法）。站内嵌的 B 站／腾讯视频／YouTube 播放器同样遵守——再点开另一个时，前一个会收起成「▶ 继续内嵌播放」按钮，想看再点一下即可，入口不会丢。语音朗读也一并纳入：正在朗读时点开视频，朗读会自动停止。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔢 <strong>多个媒体的先后顺序修正</strong>：同一条回复里渲染出两个以上视频／图片／音频时，此前顺序会被整体颠倒（回复里第一段视频显示在第二段的位置上），播放器落到了错误的段落下面。现已按原顺序一一对应。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🖼️ <strong>已挂着的播放器不会被误关</strong>：只停「真的动过」的播放器。历史消息里那些只是显示着、并未点击播放的内嵌播放器保持原样，不会因为你在别处播放视频而被收起。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.61 及以下已归档（最近 2 版本为 v3.63 / v3.62） -->
 
-            <!-- v3.60 及以下已归档（最近 2 版本为 v3.62 / v3.61） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.60 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.61 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

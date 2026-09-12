@@ -1,0 +1,447 @@
+/* ==========================================================================
+   settings.css — 系统设置面板（v3.63 重构）
+   --------------------------------------------------------------------------
+   背景：原设置面板是 340px 宽的下拉小窗，按钮尺寸从 0.72rem 到 0.88rem 不等，
+         十几个设置项平铺一列、无分组，长长的数据管理列表挤在小窗里要滚很久。
+   目标（用户要求）：
+     1) 大屏「左右」——左侧分类导航 + 右侧内容区，参照 DeepSeek 网页版设置界面；
+     2) 小屏「上下」——顶部横向分类条 + 下方内容区，内容全屏；
+     3) 按钮尺寸统一 —— 主按钮 42px / 小按钮 30px / 分段控件 36px 三档，不再逐处手写；
+     4) 归类 —— 通用 / 数据 / 接口 / 关于 四类。
+   注意：本文件必须在 flat.css 之后加载。flat.css 与 dark.css 里有
+        `button:not(.btn) { ... !important }` 这类广谱覆盖，会命中本面板的裸按钮，
+        故此处对内联/主题相关的属性统一用 !important + 更高特异性（#settings-panel 前缀）压回。
+   ========================================================================== */
+
+/* ---------- 1. 遮罩与对话框 ---------- */
+#settings-panel.st-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#settings-panel .st-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.42);
+}
+#settings-panel .st-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(780px, 94vw);
+  max-height: min(84vh, 700px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: 0 20px 56px rgba(15, 23, 42, 0.24);
+  overflow: hidden;
+}
+
+/* ---------- 2. 头部 ---------- */
+#settings-panel .st-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+#settings-panel .st-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--text);
+}
+#settings-panel .st-close {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.02rem;
+  line-height: 1;
+  border-radius: 8px !important;
+  flex: 0 0 auto;
+}
+
+/* ---------- 3. 主体：大屏左右 ---------- */
+#settings-panel .st-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#settings-panel .st-nav {
+  flex: 0 0 172px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 10px;
+  background: var(--card-bg);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+#settings-panel .st-nav-item {
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  gap: 9px;
+  width: 100% !important;
+  height: 40px !important;
+  padding: 0 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--ds-radius) !important;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.86rem !important;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+#settings-panel .st-nav-item:hover {
+  background: rgba(77, 107, 254, 0.09) !important;
+  color: var(--text) !important;
+}
+#settings-panel .st-nav-item.is-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+#settings-panel .st-nav-ico {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+/* 右侧内容区 */
+#settings-panel .st-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 18px 20px;
+}
+#settings-panel .st-sec {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+#settings-panel .st-sec.is-active {
+  display: flex;
+}
+
+/* ---------- 4. 通用行 / 卡片 ---------- */
+#settings-panel .st-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--ds-radius);
+  font-size: 0.86rem;
+  color: var(--text);
+}
+#settings-panel .st-row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+#settings-panel .st-row-sub {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+/* 数据页：模块名 + 数量 + 右侧三联按钮，空间紧（窄屏会换行） */
+#settings-panel .st-row.st-row-data {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  min-height: 46px;
+  padding: 8px 14px;
+}
+#settings-panel .st-row-data .st-row-label {
+  font-size: 0.84rem;
+  flex: 1 1 auto;
+}
+#settings-panel .st-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+/* 分组小标题 */
+#settings-panel .st-group-title {
+  font-size: 0.73rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  padding: 4px 2px 0;
+}
+#settings-panel .st-sec-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+#settings-panel .st-hint {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+/* ---------- 5. 按钮三档尺寸（统一规范） ---------- */
+/* 5.1 主按钮：API 配置 / 资料中心 / 关于系统 / 清除缓存 / 检查更新 */
+#settings-panel .st-btn {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  width: 100% !important;
+  height: 42px !important;
+  padding: 0 14px !important;
+  background: var(--bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--ds-radius) !important;
+  color: var(--text) !important;
+  font-size: 0.86rem !important;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+#settings-panel .st-btn:hover {
+  background: var(--ds-gray-100) !important;
+  border-color: var(--ds-gray-300) !important;
+}
+#settings-panel .st-btn-arrow {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+/* 检查更新按钮：右箭头在「有新版本」时加红点，沿用全局 has-update-badge */
+#settings-panel .st-btn.has-update-badge {
+  position: relative;
+  border-color: #fca5a5 !important;
+}
+
+/* 5.2 小按钮：数据管理的 导入 / 导出 / 清空 */
+#settings-panel .st-mini {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px !important;
+  height: 30px !important;
+  padding: 0 10px !important;
+  font-size: 0.76rem !important;
+  line-height: 1;
+  border-radius: 8px !important;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 5.3 分段控件：主题模式 / 思考模式 */
+#settings-panel .st-seg {
+  display: flex;
+  gap: 6px;
+}
+#settings-panel .st-seg-btn {
+  flex: 1 1 0;
+  height: 36px !important;
+  padding: 0 6px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-size: 0.8rem !important;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#settings-panel .st-seg-btn:hover {
+  border-color: var(--primary) !important;
+}
+#settings-panel .st-seg-btn.is-on {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+
+/* ---------- 6. 暗色主题：压回 flat.css / dark.css 的广谱 !important ---------- */
+[data-theme="dark"] #settings-panel .st-nav-item {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+[data-theme="dark"] #settings-panel .st-nav-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text) !important;
+}
+[data-theme="dark"] #settings-panel .st-nav-item.is-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+}
+[data-theme="dark"] #settings-panel .st-btn {
+  background: #1d1d1d !important;
+  border-color: #333333 !important;
+  color: #e2e8f0 !important;
+}
+[data-theme="dark"] #settings-panel .st-btn:hover {
+  background: #2a2a2a !important;
+  border-color: #444444 !important;
+}
+[data-theme="dark"] #settings-panel .st-seg-btn {
+  background: #1d1d1d !important;
+  border-color: #333333 !important;
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"] #settings-panel .st-seg-btn.is-on {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+}
+[data-theme="dark"] #settings-panel .st-close {
+  background: transparent !important;
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"] #settings-panel .st-close:hover {
+  background: #2a2a2a !important;
+  color: #fff !important;
+}
+[data-theme="dark"] #settings-panel .st-dialog {
+  background: #161616;
+  border-color: #333333;
+}
+[data-theme="dark"] #settings-panel .st-nav {
+  background: #1a1a1a;
+  border-right-color: #333333;
+}
+[data-theme="dark"] #settings-panel .st-row {
+  background: #1d1d1d;
+  border-color: #2f2f2f;
+}
+/* 数据页的 导入/导出/清空 三色小按钮：flat.css 的 `button:not(.btn)` 广谱覆盖会把它们一并刷成
+   中性灰（丢失语义色），这里用带 ID 前缀的更高特异性把颜色压回来。 */
+[data-theme="dark"] #settings-panel .st-mini.btn-data-blue {
+  background: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+  color: #93c5fd !important;
+}
+[data-theme="dark"] #settings-panel .st-mini.btn-data-green {
+  background: #14321f !important;
+  border-color: #28543a !important;
+  color: #86efac !important;
+}
+[data-theme="dark"] #settings-panel .st-mini.btn-data-red {
+  background: #3a1620 !important;
+  border-color: #7f1d1d !important;
+  color: #fca5a5 !important;
+}
+
+/* ---------- 7. 更新提示红点（导航项，新增） ---------- */
+#settings-panel .st-nav-item.has-update-badge {
+  position: relative;
+}
+#settings-panel .st-nav-item.has-update-badge::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--card-bg);
+  animation: stBadgePulse 1.5s ease-in-out infinite;
+}
+#settings-panel .st-nav-item.is-active.has-update-badge::after {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+@keyframes stBadgePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.82); }
+}
+
+/* ---------- 8. 小屏：上下（导航在上、内容在下，整屏铺满） ---------- */
+@media (max-width: 767px) {
+  #settings-panel.st-modal {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  #settings-panel .st-dialog {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border: none;
+    border-radius: 0;
+  }
+  #settings-panel .st-body {
+    flex-direction: column;
+  }
+  #settings-panel .st-nav {
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 6px;
+    padding: 10px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  #settings-panel .st-nav::-webkit-scrollbar {
+    height: 0;
+    display: none;
+  }
+  #settings-panel .st-nav-item {
+    width: auto !important;
+    flex: 0 0 auto;
+    height: 36px !important;
+    padding: 0 14px !important;
+    font-size: 0.82rem !important;
+  }
+  #settings-panel .st-nav-item.has-update-badge::after {
+    top: 5px;
+    right: 7px;
+  }
+  #settings-panel .st-content {
+    padding: 14px 14px 24px;
+  }
+  #settings-panel .st-head {
+    padding: 12px 14px;
+  }
+}
+
+/* ---------- 9. 超窄屏：数据行三联按钮换行占满，避免挤出横向滚动 ---------- */
+@media (max-width: 420px) {
+  #settings-panel .st-row.st-row-data .st-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+  #settings-panel .st-mini {
+    min-width: 56px !important;
+  }
+}

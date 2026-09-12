@@ -509,7 +509,9 @@
             // 旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 已被官方路由到 V4.1 Flash，同样具备视觉能力，
             // 这里一并放行，避免老配置（未迁移）用户的图片被静默降级为纯文本。
             // deepseek-v4-pro 等纯文本模型仍不支持；（deepseek-chat / deepseek-reasoner 已于 2026-07-24 退役）
-            return /flash/i.test(m);
+            // 兼容写法：除规范名 deepseek-flash 外，用户/网关也可能填 deepseek-v4.1、deepseek-v4.1-flash、
+            // deepseek-4.1 之类变体，一律按支持看图处理（宁可多送图由接口报明确错误，也不要静默降级为纯文本）。
+            return /flash|4\.1/i.test(m);
         }
         return true;                                         // 其他供应商：自动识别图片（乐观）
     };

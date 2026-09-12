@@ -1745,6 +1745,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.58 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.58 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔎 <strong>联网改为「按需检索」</strong>：不再每次回答前都强制联网。像「你好」这类闲聊会直接快速作答；只有当问题涉及实时信息（今日／最新／新闻／天气／价格／人事变动等）时，才自动触发联网检索。需要时也可手动开启联网开关强制检索。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🖼️ <strong>不再误报「我是纯文本模型」</strong>：过去即使没上传任何图片，回答里也可能带一句「我当前为纯文本模型，不具备图像识别能力」。现在只有在真正带图提问、或明确问及看图能力时才会说明；并会自动清理历史对话里残留的这类过时声明。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎬 <strong>视频／音频／图片显示修复</strong>：以 Markdown 链接形式给出的图片地址不再被拆坏成失效外链；内嵌播放器的「重新加载」按钮在页面增强后不再消失。配合既有能力，B 站／腾讯视频／YouTube 链接可直接在对话内播放，音频生成音乐卡片，图片原地展示。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.57 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1771,31 +1793,9 @@
                 </div>
             </div>
 
-            <!-- v3.56 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.56 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🧠 适配 DeepSeek V4.1 Flash（原生多模态）：模型名统一为 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">deepseek-flash</code>，修复此前因能力判定错误导致上传图片不被识别的问题——现在图片会正确送入模型分析（智能对话、智能体、智能对规、智能写作四处同步生效）。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔄 旧模型名自动迁移：已配置 <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">deepseek-v4-flash</code> / <code style="background:var(--card-bg);padding:1px 5px;border-radius:4px;">deepseek-v4-flash-vision-exp</code> 的配置会在启动时自动改写为新模型名，无需手动重配（旧名仅为临时路由，避免日后失效）。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🖼️ 看图能力增强：启用图像理解时补充识别规范（不臆测图中不存在细节、画面模糊或遮挡时明确指出需补拍位置），并更新模型配置候选列表与引导文案，删除已下线的视觉实验模型入口。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.56 及以下已归档（最近 2 版本为 v3.58 / v3.57） -->
 
-            <!-- v3.55 及以下已归档（最近 2 版本为 v3.57 / v3.56） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.55 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.56 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

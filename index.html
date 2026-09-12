@@ -258,16 +258,70 @@
       #app-boot-overlay { position:fixed; inset:0; z-index:2147483647; display:flex; flex-direction:column;
         align-items:center; justify-content:center; gap:16px; background:#0f172a;
         animation: bootAutoHide 8s ease-in forwards; }
-      #app-boot-overlay .boot-logo { width:72px; height:72px; opacity:.95; }
+      #app-boot-overlay .boot-logo { width:86px; height:86px; }
       #app-boot-overlay .boot-spin { width:36px; height:36px; border:3px solid rgba(255,255,255,.25);
         border-top-color:#ffd700; border-radius:50%; animation:bootspin .8s linear infinite; }
       #app-boot-overlay .boot-text { color:#e2e8f0; font-size:.9rem; letter-spacing:1px; }
       @keyframes bootspin { to { transform:rotate(360deg); } }
     </style>
     <div id="app-boot-overlay">
-        <svg class="boot-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <path d="M50 5 L90 20 L90 50 Q90 75 50 95 Q10 75 10 50 L10 20 Z" fill="#1e4d7b" stroke="#ffd700" stroke-width="1.5"/>
-            <text x="52" y="52" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="46" font-weight="900" fill="#ffd700">铁</text>
+        <svg class="boot-logo" viewBox="-12 -12 124 124" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="btBody" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#a6d3f2"/>
+                    <stop offset="16%" stop-color="#78b1e3"/>
+                    <stop offset="38%" stop-color="#4c8cca"/>
+                    <stop offset="62%" stop-color="#3573b4"/>
+                    <stop offset="86%" stop-color="#265a93"/>
+                    <stop offset="100%" stop-color="#1b4574"/>
+                </linearGradient>
+                <linearGradient id="btDepth" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="58%" stop-color="#061d36" stop-opacity="0"/>
+                    <stop offset="100%" stop-color="#061d36" stop-opacity="0.38"/>
+                </linearGradient>
+                <linearGradient id="btSheen" x1="8%" y1="0%" x2="58%" y2="52%">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.42"/>
+                    <stop offset="35%" stop-color="#ffffff" stop-opacity="0.09"/>
+                    <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+                </linearGradient>
+                <radialGradient id="btWell" cx="50%" cy="53%" r="48%">
+                    <stop offset="0%" stop-color="#0a2c50" stop-opacity="0.42"/>
+                    <stop offset="68%" stop-color="#0a2c50" stop-opacity="0.1"/>
+                    <stop offset="100%" stop-color="#0a2c50" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="btGold" x1="0%" y1="0%" x2="60%" y2="100%">
+                    <stop offset="0%" stop-color="#fffde8"/>
+                    <stop offset="22%" stop-color="#ffe14d"/>
+                    <stop offset="52%" stop-color="#f0b400"/>
+                    <stop offset="78%" stop-color="#c08a06"/>
+                    <stop offset="100%" stop-color="#8a5f00"/>
+                </linearGradient>
+                <linearGradient id="btText" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#fffef7"/>
+                    <stop offset="34%" stop-color="#ffe98f"/>
+                    <stop offset="70%" stop-color="#f9c012"/>
+                    <stop offset="100%" stop-color="#a97600"/>
+                </linearGradient>
+                <filter id="btHalo" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="3.6" flood-color="#5aa8f0" flood-opacity="0.7" result="halo"/>
+                    <feDropShadow in="halo" dx="0" dy="2.4" stdDeviation="2.6" flood-color="#000000" flood-opacity="0.5"/>
+                </filter>
+                <filter id="btRimFx" x="-45%" y="-45%" width="190%" height="190%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="#ffd34d" flood-opacity="0.85"/>
+                </filter>
+                <filter id="btTextFx" x="-45%" y="-45%" width="190%" height="190%">
+                    <feDropShadow dx="0" dy="1.2" stdDeviation="0.9" flood-color="#04203c" flood-opacity="0.6" result="dsh"/>
+                    <feDropShadow in="dsh" dx="0" dy="0" stdDeviation="1.3" flood-color="#ffcc33" flood-opacity="0.52"/>
+                </filter>
+            </defs>
+            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btBody)" filter="url(#btHalo)"/>
+            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btDepth)"/>
+            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btSheen)"/>
+            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btWell)"/>
+            <path d="M13.5 16.6 L50 8.2 L86.5 16.6" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M50 12.6 L84.8 24.4 L84.8 50 Q84.8 72 50 88.2 Q15.2 72 15.2 50 L15.2 24.4 Z" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="0.8"/>
+            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="none" stroke="url(#btGold)" stroke-width="3.4" stroke-linejoin="round" filter="url(#btRimFx)"/>
+            <text x="50" y="53" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="51" font-weight="900" fill="url(#btText)" stroke="#0f3459" stroke-width="1.3" paint-order="stroke" filter="url(#btTextFx)">铁</text>
         </svg>
         <div class="boot-spin"></div>
         <div class="boot-text">安监智能辅助系统 · 加载中…</div>
@@ -367,29 +421,61 @@
     <header class="header">
         <div class="header-inner">
             <div class="logo">
-                <div class="logo-icon"><svg viewBox="0 0 100 100" style="width:100%;height:100%;"><defs>
-<linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-<stop offset="0%" stop-color="#1a3a5c"/>
-<stop offset="50%" stop-color="#2563a8"/>
-<stop offset="100%" stop-color="#1e4d7b"/>
+                <div class="logo-icon"><svg viewBox="-9 -9 118 118" style="width:100%;height:100%;"><defs>
+<linearGradient id="lgBody" x1="0%" y1="0%" x2="0%" y2="100%">
+<stop offset="0%" stop-color="#9ccdf0"/>
+<stop offset="16%" stop-color="#6fabe0"/>
+<stop offset="38%" stop-color="#4485c6"/>
+<stop offset="62%" stop-color="#2f6cae"/>
+<stop offset="86%" stop-color="#21538c"/>
+<stop offset="100%" stop-color="#17406f"/>
 </linearGradient>
-<linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-<stop offset="0%" stop-color="#ffd700"/>
-<stop offset="40%" stop-color="#ffec8b"/>
-<stop offset="60%" stop-color="#daa520"/>
-<stop offset="100%" stop-color="#b8860b"/>
+<linearGradient id="lgDepth" x1="0%" y1="0%" x2="0%" y2="100%">
+<stop offset="58%" stop-color="#061d36" stop-opacity="0"/>
+<stop offset="100%" stop-color="#061d36" stop-opacity="0.38"/>
 </linearGradient>
-<filter id="glow">
-<feGaussianBlur stdDeviation="2" result="blur"/>
-<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+<linearGradient id="lgSheen" x1="8%" y1="0%" x2="58%" y2="52%">
+<stop offset="0%" stop-color="#ffffff" stop-opacity="0.4"/>
+<stop offset="35%" stop-color="#ffffff" stop-opacity="0.08"/>
+<stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+</linearGradient>
+<radialGradient id="lgWell" cx="50%" cy="53%" r="48%">
+<stop offset="0%" stop-color="#0a2c50" stop-opacity="0.42"/>
+<stop offset="68%" stop-color="#0a2c50" stop-opacity="0.1"/>
+<stop offset="100%" stop-color="#0a2c50" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="lgGold" x1="0%" y1="0%" x2="60%" y2="100%">
+<stop offset="0%" stop-color="#fffde8"/>
+<stop offset="22%" stop-color="#ffe14d"/>
+<stop offset="52%" stop-color="#f0b400"/>
+<stop offset="78%" stop-color="#c08a06"/>
+<stop offset="100%" stop-color="#8a5f00"/>
+</linearGradient>
+<linearGradient id="lgText" x1="0%" y1="0%" x2="0%" y2="100%">
+<stop offset="0%" stop-color="#fffef7"/>
+<stop offset="34%" stop-color="#ffe98f"/>
+<stop offset="70%" stop-color="#f9c012"/>
+<stop offset="100%" stop-color="#a97600"/>
+</linearGradient>
+<filter id="lgBodyFx" x="-35%" y="-35%" width="170%" height="170%">
+<feDropShadow dx="0" dy="1.8" stdDeviation="1.8" flood-color="#020c1a" flood-opacity="0.55"/>
 </filter>
-<filter id="shadow">
-<feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.35"/>
+<filter id="lgRimFx" x="-40%" y="-40%" width="180%" height="180%">
+<feDropShadow dx="0" dy="0" stdDeviation="1.3" flood-color="#ffd34d" flood-opacity="0.72"/>
+</filter>
+<filter id="lgTextFx" x="-45%" y="-45%" width="190%" height="190%">
+<feDropShadow dx="0" dy="1.1" stdDeviation="0.8" flood-color="#04203c" flood-opacity="0.6" result="dsh"/>
+<feDropShadow in="dsh" dx="0" dy="0" stdDeviation="1.15" flood-color="#ffcc33" flood-opacity="0.5"/>
 </filter>
 </defs>
-<path d="M50 5 L90 20 L90 50 Q90 75 50 95 Q10 75 10 50 L10 20 Z" fill="url(#shieldGrad)" stroke="#ffd700" stroke-width="1.5" filter="url(#shadow)"/>
-<path d="M50 12 L84 25 L84 49 Q84 70 50 87 Q16 70 16 49 L16 25 Z" fill="none" stroke="rgba(255,215,0,0.25)" stroke-width="0.8"/>
-<text x="52" y="50" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="46" font-weight="900" fill="url(#goldGrad)" letter-spacing="3" filter="url(#glow)">铁</text></svg></div>
+<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgBody)" filter="url(#lgBodyFx)"/>
+<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgDepth)"/>
+<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgSheen)"/>
+<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgWell)"/>
+<path d="M13.5 16.6 L50 8.2 L86.5 16.6" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M50 12.6 L84.8 24.4 L84.8 50 Q84.8 72 50 88.2 Q15.2 72 15.2 50 L15.2 24.4 Z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="0.8"/>
+<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="none" stroke="url(#lgGold)" stroke-width="3.4" stroke-linejoin="round" filter="url(#lgRimFx)"/>
+<text x="50" y="53" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="51" font-weight="900" fill="url(#lgText)" stroke="#0f3459" stroke-width="1.3" paint-order="stroke" filter="url(#lgTextFx)">铁</text></svg></div>
                 <div class="logo-text">
                     <div class="logo-title">安监智能辅助系统</div>
                     <div class="logo-subtitle">SAFETY INSPECTION QUERY SYSTEM</div>
@@ -1535,52 +1621,17 @@
                     <div id="themeModeHint" style="font-size:0.7rem;color:#94a3b8;margin-top:6px;"></div>
                 </div>
 
-                <!-- DeepSeek V4 高级能力（默认折叠；复用「数据管理」折叠样式，零行为变更） -->
-                <div onclick="var s=document.getElementById('set-v4-mgr');s.style.display=s.style.display==='none'?'flex':'none';var a=document.getElementById('set-v4-mgr-arrow');if(a)a.style.transform=s.style.display==='none'?'rotate(0deg)':'rotate(180deg)';" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                    <span style="font-weight:600;color:var(--primary);flex:1;">🧠 DeepSeek V4 高级能力</span>
-                    <span id="set-v4-mgr-arrow" style="color:#64748b;font-size:0.75rem;transition:transform .2s;transform:rotate(0deg);">▾</span>
-                </div>
-                <div id="set-v4-mgr" style="display:none;flex-direction:column;gap:8px;padding:2px 2px 4px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">🧠 思考模式 <span style="font-size:0.7rem;color:#94a3b8;">(V4)</span></span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <span id="thinkingHint" style="font-size:0.7rem;color:#94a3b8;">开启</span>
-                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
-                            <input type="checkbox" id="thinkingToggle" onchange="toggleThinkingMode(this.checked)" style="opacity:0;width:0;height:0;" checked>
-                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
-                        </label>
-                    </span>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">🔣 JSON 输出模式</span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <span id="jsonModeHint" style="font-size:0.7rem;color:#94a3b8;">关闭</span>
-                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
-                            <input type="checkbox" id="jsonModeToggle" onchange="toggleJsonMode(this.checked)" style="opacity:0;width:0;height:0;">
-                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
-                        </label>
-                    </span>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">🛠 工具调用 <span style="font-size:0.7rem;color:#94a3b8;">(V4)</span></span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <span id="toolCallsHint" style="font-size:0.7rem;color:#94a3b8;">关闭</span>
-                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
-                            <input type="checkbox" id="toolCallsToggle" onchange="toggleToolCalls(this.checked)" style="opacity:0;width:0;height:0;">
-                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
-                        </label>
-                    </span>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;">
-                    <span style="font-size:0.88rem;">🔒 前缀续写 <span style="font-size:0.7rem;color:#94a3b8;">Beta·非思考</span></span>
-                    <span style="display:flex;align-items:center;gap:8px;">
-                        <span id="prefixHint" style="font-size:0.7rem;color:#94a3b8;">关闭</span>
-                        <label class="switch" style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;">
-                            <input type="checkbox" id="prefixToggle" onchange="togglePrefixMode(this.checked)" style="opacity:0;width:0;height:0;">
-                            <span class="slider" style="position:absolute;inset:0;background:#cbd5e1;border-radius:24px;transition:.2s;"></span>
-                        </label>
-                    </span>
-                </div>
+                <!-- 思考模式（v3.62：从「DeepSeek V4 高级能力」折叠区移出——它是跨 5 个模块的基础参数，不该藏进实验开关里） -->
+                <div style="padding:10px 14px;background:#f8fafc;border-radius:10px;">
+                    <div style="font-size:0.88rem;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                        <span>🧠 思考模式</span>
+                    </div>
+                    <div id="thinkingModeSeg" style="display:flex;gap:6px;">
+                        <button type="button" onclick="setThinkingMode('auto')" data-mode="auto" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">自动</button>
+                        <button type="button" onclick="setThinkingMode('on')" data-mode="on" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">始终开启</button>
+                        <button type="button" onclick="setThinkingMode('off')" data-mode="off" style="flex:1;padding:7px 4px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:0.8rem;cursor:pointer;transition:all .15s;">始终关闭</button>
+                    </div>
+                    <div id="thinkingModeHint" style="font-size:0.7rem;color:#94a3b8;margin-top:6px;"></div>
                 </div>
 
                 <!-- 总储存量（始终可见，替代各模块分散的存储/数量展示） -->
@@ -1745,6 +1796,32 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.62 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.62 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧠 <strong>思考模式改为「自动」，回答更快更省</strong>：以前只有开／关两档，开着时所有问题都跑满深度推理——连「你好」也要等思维链跑完。现在默认「自动」：问候、闲聊、润色、翻译、常识提问走轻量推理甚至直接作答；分析、研判、对规、写报告这类需要多步推理的才启用深度思考。可在「设置 → 思考模式」切换为「始终开启」（质量优先）或「始终关闭」（速度优先），原有设置会自动延续。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛠 <strong>智能对话可直接查数据了</strong>：以前要先去设置里手动打开「工具调用」，智能对话才能查天气、检索检查信息与规章。现在默认具备该能力，直接提问即可——是否调用由模型按问题需要自行判断，不需要时不会多此一举。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🎨 <strong>应用标识更立体醒目</strong>：顶栏、启动画面、桌面图标（PWA）与浏览器标签页图标四处统一重做——金属质感的蓝色盾牌配金色包边与「铁」字，加入受光渐变、纵深暗影与内凹层次，在深蓝顶栏上不再「融进背景」。<em>（图标已进离线缓存清单，更新版本后才会刷新）</em></span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🧹 <strong>精简设置项</strong>：移除三个实际收益有限的开关——「JSON 输出模式」（开启后会让对话回复变成纯 JSON，日常对话并不适用；真正需要结构化输出的模块本就自带处理）、「工具调用」（现已默认开启，无需手动打开）、「前缀续写 Beta」（仅用于固定句式，且与当前主力模型的兼容性未经确认）。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.61 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1767,27 +1844,9 @@
                 </div>
             </div>
 
-            <!-- v3.60 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.60 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🚀 <strong>媒体加载大幅提速（消除重复下载）</strong>：此前气泡每次重渲染（流式结束、整表重建、页面增强）都会销毁播放器、从头重新拉取，同一段视频常被下载 3 遍，图片/音视频加载特别慢。现在重建时<strong>原位复用旧播放器</strong>并保留缓冲与进度；净化前先抽走媒体块，绕开净化触发的隐形请求；跨气泡复用已加载的播放器。实测重复下载减半（视频/音频每地址由 3 次请求降至 2 次，重复创建从 2 次降为 0）。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>⚠️ <strong>源站速度仍取决于第三方</strong>：防盗链、跨洋 CDN、链接失效等「源站本身慢」前端无法加速。本次修复的是「同一资源被反复下载」这一层——已缓存的媒体不再重下；若链接本身失效或被限，仍会给出分级提示与🔄重试入口。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.60 及以下已归档（最近 2 版本为 v3.62 / v3.61） -->
 
-            <!-- v3.59 及以下已归档（最近 2 版本为 v3.61 / v3.60） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.59 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.60 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

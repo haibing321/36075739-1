@@ -1,32 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-24 -24 560 560" width="512" height="512">
   <defs>
-    <linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1a3a5c"/>
-      <stop offset="50%" stop-color="#2563a8"/>
-      <stop offset="100%" stop-color="#1e4d7b"/>
+    <!-- 盾牌主体：顶部受光 → 底部深蓝，构成体积感 -->
+    <linearGradient id="sgBody" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9ccdf0"/>
+      <stop offset="16%" stop-color="#6fabe0"/>
+      <stop offset="38%" stop-color="#4485c6"/>
+      <stop offset="62%" stop-color="#2f6cae"/>
+      <stop offset="86%" stop-color="#21538c"/>
+      <stop offset="100%" stop-color="#17406f"/>
     </linearGradient>
-    <linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffd700"/>
-      <stop offset="40%" stop-color="#ffec8b"/>
-      <stop offset="60%" stop-color="#daa520"/>
-      <stop offset="100%" stop-color="#b8860b"/>
+    <!-- 底部压暗：纵深 -->
+    <linearGradient id="sgDepth" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="58%" stop-color="#061d36" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#061d36" stop-opacity="0.38"/>
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <!-- 左上斜向高光 -->
+    <linearGradient id="sgSheen" x1="8%" y1="0%" x2="58%" y2="52%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.4"/>
+      <stop offset="35%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <!-- 中心内凹：让金色「铁」字跳出来 -->
+    <radialGradient id="sgWell" cx="50%" cy="53%" r="48%">
+      <stop offset="0%" stop-color="#0a2c50" stop-opacity="0.42"/>
+      <stop offset="68%" stop-color="#0a2c50" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#0a2c50" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 金属金边 -->
+    <linearGradient id="sgGold" x1="0%" y1="0%" x2="60%" y2="100%">
+      <stop offset="0%" stop-color="#fffde8"/>
+      <stop offset="22%" stop-color="#ffe14d"/>
+      <stop offset="52%" stop-color="#f0b400"/>
+      <stop offset="78%" stop-color="#c08a06"/>
+      <stop offset="100%" stop-color="#8a5f00"/>
+    </linearGradient>
+    <!-- 金色文字 -->
+    <linearGradient id="sgText" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fffef7"/>
+      <stop offset="34%" stop-color="#ffe98f"/>
+      <stop offset="70%" stop-color="#f9c012"/>
+      <stop offset="100%" stop-color="#a97600"/>
+    </linearGradient>
+    <filter id="sgBodyFx" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="#020c1a" flood-opacity="0.55"/>
     </filter>
-    <filter id="shadow">
-      <feDropShadow dx="3" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
+    <filter id="sgRimFx" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6.5" flood-color="#ffd34d" flood-opacity="0.72"/>
+    </filter>
+    <filter id="sgTextFx" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="5.5" stdDeviation="4" flood-color="#04203c" flood-opacity="0.6" result="dsh"/>
+      <feDropShadow in="dsh" dx="0" dy="0" stdDeviation="6" flood-color="#ffcc33" flood-opacity="0.5"/>
     </filter>
   </defs>
-  <!-- Shield -->
+
   <path d="M256 26 L461 102 L461 256 Q461 384 256 486 Q51 384 51 256 L51 102 Z"
-        fill="url(#sg)" stroke="#ffd700" stroke-width="8" filter="url(#shadow)"/>
-  <path d="M256 64 L430 128 L430 252 Q430 364 256 450 Q82 364 82 252 L82 128 Z"
-        fill="none" stroke="rgba(255,215,0,0.25)" stroke-width="4"/>
-  <!-- Character -->
-  <text x="265" y="258" text-anchor="middle" dominant-baseline="central"
+        fill="url(#sgBody)" filter="url(#sgBodyFx)"/>
+  <path d="M256 26 L461 102 L461 256 Q461 384 256 486 Q51 384 51 256 L51 102 Z"
+        fill="url(#sgDepth)"/>
+  <path d="M256 26 L461 102 L461 256 Q461 384 256 486 Q51 384 51 256 L51 102 Z"
+        fill="url(#sgSheen)"/>
+  <path d="M256 26 L461 102 L461 256 Q461 384 256 486 Q51 384 51 256 L51 102 Z"
+        fill="url(#sgWell)"/>
+  <!-- 顶棱反光 -->
+  <path d="M69 85 L256 42 L443 85" fill="none" stroke="#ffffff" stroke-opacity="0.55"
+        stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 内圈饰线 -->
+  <path d="M256 65 L434 125 L434 256 Q434 369 256 452 Q78 369 78 256 L78 125 Z"
+        fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="4"/>
+  <!-- 金色包边 -->
+  <path d="M256 26 L461 102 L461 256 Q461 384 256 486 Q51 384 51 256 L51 102 Z"
+        fill="none" stroke="url(#sgGold)" stroke-width="17" stroke-linejoin="round" filter="url(#sgRimFx)"/>
+  <!-- 核心字 -->
+  <text x="256" y="271" text-anchor="middle" dominant-baseline="central"
         font-family="SimHei,'Microsoft YaHei',sans-serif"
-        font-size="235" font-weight="900"
-        fill="url(#gg)" letter-spacing="15" filter="url(#glow)">铁</text>
+        font-size="260" font-weight="900"
+        fill="url(#sgText)" stroke="#0f3459" stroke-width="6.5" paint-order="stroke"
+        filter="url(#sgTextFx)">铁</text>
 </svg>

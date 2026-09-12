@@ -1817,19 +1817,24 @@
                             }
                         }
                     } catch (e) {}
-                    // DeepSeek V4 能力开关：思考模式 / JSON 输出（仅对 DeepSeek V4 模型生效，其余供应商忽略以免报错）
+                    // DeepSeek 能力参数（仅对 DeepSeek 端点生效，其余供应商忽略以免报错）
                     var _isV4 = /deepseek/i.test(dsModel) || /api\.deepseek\.com/i.test(dsApiUrl);
-                    var thinkingOn = _isV4 && localStorage.getItem('ds_thinking') !== '0';
-                    var jsonOn = localStorage.getItem('ds_json_mode') === '1';
-                    // P2 对话前缀续写（Beta，默认关）：锁死助手开场白（本系统固定 OpenAI 风格，故恒可用）
-                    var _prefixOn = localStorage.getItem('ds_prefix') === '1';
-                    // P1 Tool Calls：仅 DeepSeek V4 模型 + 开关开启 + 工具 schema/执行器均可用时生效；与 JSON 模式互斥（避免 tools 与 response_format 冲突）
-                    // D1：增加 _agentToolsParam/_agentExecuteTool 可用性守卫——agent-core 未加载时降级为普通对话，避免向 API 发送 tools:null 导致 400 或工具静默失效
+                    // 思考模式三档（v3.62 起）：auto 按问题自动分级 / on 始终开启 / off 始终关闭。
+                    // 自动档复用 dsAutoThinkingEffort，与 v3.58「联网按需检索」同一套思路——能力可用 ≠ 每次跑满。
+                    var _thinkLevel = (typeof window.dsThinkingLevel === 'function') ? window.dsThinkingLevel() : 'auto';
+                    var thinkingOn = _isV4 && _thinkLevel !== 'off';
+                    var _thinkEffort = 'high';
+                    if (_isV4 && _thinkLevel === 'auto' && typeof window.dsAutoThinkingEffort === 'function') {
+                        _thinkEffort = window.dsAutoThinkingEffort(finalText);
+                        if (_thinkEffort === 'off') thinkingOn = false;   // 问候/寒暄类：连思考都不开，最快
+                    }
+                    // Tool Calls：工具 schema/执行器就绪即默认挂载，不再依赖设置开关——
+                    // 是否真正调用由模型自行判断（它完全可以不调）；前端再多一层开关只会造成
+                    // 「智能体能查天气、智能对话查不了」的能力割裂。
+                    // D1：保留可用性守卫——agent-core 未加载时降级为普通对话，避免发送 tools:null 导致 400 或工具静默失效
                     var _toolsReady = (typeof window._agentToolsParam === 'function') && (typeof window._agentExecuteTool === 'function');
-                    var _useTools = _isV4 && localStorage.getItem('ds_tool_calls') === '1' && !jsonOn && _toolsReady;
-                    // 前缀续写开启：强制关闭思考（Beta 仅非思考）+ 工具 + JSON，避免组合复杂化
-                    if (_prefixOn) { thinkingOn = false; _useTools = false; jsonOn = false; }
-                    var _toolsParamArr = (_useTools && typeof window._agentToolsParam === 'function') ? window._agentToolsParam() : null;
+                    var _useTools = _isV4 && _toolsReady;
+                    var _toolsParamArr = _useTools ? window._agentToolsParam() : null;
                     var _toolExec = (typeof window._agentExecuteTool === 'function') ? window._agentExecuteTool : null;
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
                     if (thinkingOn) maxTokens = (isFrontendRole || isCodeRequest) ? 24576 : 16384;
@@ -1897,7 +1902,7 @@
                                 instructions: systemPrompt,
                                 input: inputItems,
                                 tools: [{ type: 'web_search' }],
-                                reasoning: { effort: thinkingOn ? 'high' : 'none' },
+                                reasoning: { effort: thinkingOn ? _thinkEffort : 'none' },
                                 stream: true,
                                 temperature: 0.7,
                                 max_output_tokens: maxTokens
@@ -1956,22 +1961,11 @@
                             return;
                         }
                     } else {
-                    // JSON 输出模式：在系统提示后追加「必须输出合法 JSON」约束（仅未启用工具调用时，避免与 tools 冲突）
-                    if (jsonOn && !_useTools && messages[0] && messages[0].role === 'system') {
-                        messages[0].content += '\n\n【输出格式】你必须且只能输出合法的 JSON 对象（不要使用 markdown 代码块、不要附加任何解释文字）。';
-                    }
-                    // P2 对话前缀续写：末尾追加 assistant 前缀（prefix:true），并预填气泡以完整展示
-                    if (_prefixOn) {
-                        var _prefixText = '根据铁路安全监察相关规定，';
-                        messages.push({ role: 'assistant', content: _prefixText, prefix: true });
-                        dsHistory[assistantIdx].content = _prefixText;
-                    }
-                    // DeepSeek V4 思考模式 + JSON 模式参数
+                    // 思考模式参数：effort 由三档档位决定（自动档已按问题复杂度分级）
                     var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
-                    if (thinkingOn) { _chatBody.thinking = { type: 'enabled' }; _chatBody.reasoning_effort = 'high'; }
+                    if (thinkingOn) { _chatBody.thinking = { type: 'enabled' }; _chatBody.reasoning_effort = _thinkEffort; }
                     else { _chatBody.thinking = { type: 'disabled' }; }
-                    if (_useTools) { _chatBody.tools = _toolsParamArr; }   // P1 Tool Calls：注入本地工具 schema
-                    else if (jsonOn) { _chatBody.response_format = { type: 'json_object' }; }
+                    if (_useTools) { _chatBody.tools = _toolsParamArr; }   // Tool Calls：注入本地工具 schema
                     resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
@@ -2125,7 +2119,7 @@
                             (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
                             // 后续轮次：回灌工具结果（仍带 tools，允许模型继续调用或总结）
                             var _bodyN = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
-                            if (thinkingOn) { _bodyN.thinking = { type: 'enabled' }; _bodyN.reasoning_effort = 'high'; } else { _bodyN.thinking = { type: 'disabled' }; }
+                            if (thinkingOn) { _bodyN.thinking = { type: 'enabled' }; _bodyN.reasoning_effort = _thinkEffort; } else { _bodyN.thinking = { type: 'disabled' }; }
                             if (_useTools) { _bodyN.tools = _toolsParamArr; }
                             var _respN = await fetch(dsApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify(_bodyN), signal: window._dsAbortController.signal });
                             if (!_respN.ok) { _dsStreaming = false; var _et = await _respN.text(); dsHistory[assistantIdx].content = '❌ 工具结果回灌后请求失败（HTTP ' + _respN.status + '）：' + _et.slice(0, 200); dsRenderAll(); return; }

@@ -823,39 +823,61 @@ window.syncDarkModeToggle = function() { syncThemeModeUI(); };
 // 兼容旧开关（如有地方仍以布尔切换）
 window.toggleDarkMode = function(on) { window.setThemeMode(on ? 'dark' : 'light'); };
 
-// DeepSeek V4 能力开关：思考模式 / JSON 输出模式
-window.toggleThinkingMode = function(on) {
-    try { localStorage.setItem('ds_thinking', on ? '1' : '0'); } catch (e) {}
-    var hint = document.getElementById('thinkingHint');
-    if (hint) hint.textContent = on ? '开启' : '关闭';
+// ==================== 思考模式（自动 / 始终开启 / 始终关闭） ====================
+// v3.62：由「DeepSeek V4 高级能力」折叠区移出。它是跨 5 个模块（智能对话/智能体/对规/写作/风险研判）
+// 共用的基础参数，而非实验开关。同批移除两个零收益开关：
+//   · JSON 输出模式——全库仅此处使用，开了只会让聊天窗口吐 JSON，不开则毫无作用；
+//   · 前缀续写 Beta——FIM 能力，与主力模型 deepseek-flash 的兼容性未确认，用途极窄。
+// 自动档的分级判定在 doubao-common.js 的 dsAutoThinkingEffort()，此处只负责读写与 UI 同步。
+function _readThinkingMode() {
+    if (typeof window.dsThinkingLevel === 'function') return window.dsThinkingLevel();
+    try {
+        var raw = localStorage.getItem('ds_thinking');
+        if (raw === '1') return 'on';
+        if (raw === '0') return 'off';
+        if (raw === 'on' || raw === 'off') return raw;
+    } catch (e) {}
+    return 'auto';
+}
+
+// 设置思考模式并持久化；顺带清理已废弃开关的 localStorage 残留
+window.setThinkingMode = function(mode) {
+    if (mode !== 'auto' && mode !== 'on' && mode !== 'off') mode = 'auto';
+    try {
+        localStorage.setItem('ds_thinking', mode);
+        localStorage.removeItem('ds_json_mode');
+        localStorage.removeItem('ds_prefix');
+        localStorage.removeItem('ds_tool_calls');
+    } catch (e) {}
+    syncThinkingModeUI();
 };
-window.toggleJsonMode = function(on) {
-    try { localStorage.setItem('ds_json_mode', on ? '1' : '0'); } catch (e) {}
-    var hint = document.getElementById('jsonModeHint');
-    if (hint) hint.textContent = on ? '开启' : '关闭';
-};
-window.toggleToolCalls = function(on) {
-    try { localStorage.setItem('ds_tool_calls', on ? '1' : '0'); } catch (e) {}
-    var hint = document.getElementById('toolCallsHint');
-    if (hint) hint.textContent = on ? '开启' : '关闭';
-};
-// P2 对话前缀续写（Beta）：默认关
-window.togglePrefixMode = function(on) {
-    try { localStorage.setItem('ds_prefix', on ? '1' : '0'); } catch (e) {}
-    var hint = document.getElementById('prefixHint');
-    if (hint) hint.textContent = on ? '开启' : '关闭';
-};
-// 进入设置时同步 V4 能力开关状态
-window.syncCapabilityToggles = function() {
-    var t = document.getElementById('thinkingToggle');
-    if (t) { var on = localStorage.getItem('ds_thinking') !== '0'; t.checked = on; var h = document.getElementById('thinkingHint'); if (h) h.textContent = on ? '开启' : '关闭'; }
-    var j = document.getElementById('jsonModeToggle');
-    if (j) { var jon = localStorage.getItem('ds_json_mode') === '1'; j.checked = jon; var h2 = document.getElementById('jsonModeHint'); if (h2) h2.textContent = jon ? '开启' : '关闭'; }
-    var tc = document.getElementById('toolCallsToggle');
-    if (tc) { var tcon = localStorage.getItem('ds_tool_calls') === '1'; tc.checked = tcon; var h3 = document.getElementById('toolCallsHint'); if (h3) h3.textContent = tcon ? '开启' : '关闭'; }
-    var pf = document.getElementById('prefixToggle');
-    if (pf) { var pfon = localStorage.getItem('ds_prefix') === '1'; pf.checked = pfon; var h4 = document.getElementById('prefixHint'); if (h4) h4.textContent = pfon ? '开启' : '关闭'; }
-};
+
+// 同步三态分段控件选中态 + 提示文字（样式对齐「主题模式」分段控件）
+function syncThinkingModeUI() {
+    var seg = document.getElementById('thinkingModeSeg');
+    if (!seg) return;
+    var mode = _readThinkingMode();
+    var btns = seg.querySelectorAll('button[data-mode]');
+    if (btns.forEach) {
+        btns.forEach(function(b) {
+            var on = b.getAttribute('data-mode') === mode;
+            b.style.background = on ? 'var(--primary)' : 'var(--card-bg)';
+            b.style.color = on ? '#fff' : 'var(--text)';
+            b.style.borderColor = on ? 'var(--primary)' : 'var(--border)';
+            b.style.fontWeight = on ? '700' : '400';
+        });
+    }
+    var hint = document.getElementById('thinkingModeHint');
+    if (hint) {
+        hint.textContent = mode === 'auto'
+            ? '按问题复杂度自动选用思考强度：闲聊、润色、常识类快答，分析、研判、写报告走深度推理'
+            : (mode === 'on'
+                ? '始终使用深度推理（质量最好，但响应更慢、更费 token）'
+                : '始终不使用深度推理（响应最快，适合问答与资料检索类场景）');
+    }
+}
+// 兼容旧调用入口（设置面板打开时会调用）
+window.syncCapabilityToggles = syncThinkingModeUI;
 
 // API 配置：根据选中的 API 地址自动推荐模型
 window._updateModelList = function() {
@@ -880,7 +902,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.61'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.62'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

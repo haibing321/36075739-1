@@ -71,7 +71,7 @@
   <path d="M256 26 L461 102 L461 256 Q461 384 256 486 Q51 384 51 256 L51 102 Z"
         fill="none" stroke="url(#sgGold)" stroke-width="17" stroke-linejoin="round" filter="url(#sgRimFx)"/>
   <!-- 核心字 -->
-  <text x="256" y="258" text-anchor="middle" dominant-baseline="central"
+  <text x="256" y="246" text-anchor="middle" dominant-baseline="central"
         font-family="SimHei,'Microsoft YaHei',sans-serif"
         font-size="260" font-weight="900"
         fill="url(#sgText)" stroke="#0f3459" stroke-width="6.5" paint-order="stroke"

@@ -312,6 +312,160 @@
     #ds-choice-bar .ds-choice-sub { display: none; }
 }
 
+/* —— 内嵌网页面板：链接「直接打开」在对话区内渲染网页（v3.66） ——
+   刻意做成 ds-chat-box 的兄弟节点、而非放进消息气泡：气泡会被 dsRenderAll 整段重建，
+   内嵌的浏览上下文（滚动位置、已缓冲内容）会随之丢失。
+   高度用 min() 控制并让对话区与之同屏共存（往上滚仍能看历史消息），不整屏替换对话区。
+   ⚠️ .ds-embed-btn / .ds-embed-tip-close 是裸 button，必须同时加进
+      unify.css 的暗色例外 与 flat.css 的两处 :not() 列表，否则暗色下会被刷成透明灰字。 */
+#ds-embed-host {
+    display: none;
+    flex-direction: column;
+    flex: 0 0 auto;
+    height: min(56vh, 520px);
+    min-height: 240px;
+    margin: 8px 4px 6px;
+    border: 1px solid #e5e9f0;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+}
+/* 顶部工具栏：站点名 + 完整地址 + 操作 */
+#ds-embed-host .ds-embed-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 7px 8px 7px 10px;
+    border-bottom: 1px solid #eef1f5;
+    background: #fafbfc;
+}
+#ds-embed-host .ds-embed-favicon { flex-shrink: 0; font-size: 0.85rem; line-height: 1; }
+#ds-embed-host .ds-embed-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+#ds-embed-host .ds-embed-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text, #1a1a1a);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#ds-embed-host .ds-embed-url {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#ds-embed-host .ds-embed-acts { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+#ds-embed-host .ds-embed-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 5px 9px;
+    border: 1px solid #d8dee6;
+    border-radius: 7px;
+    background: #fff;
+    color: var(--text, #1a1a1a);
+    font-size: 0.73rem;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+#ds-embed-host .ds-embed-btn:hover {
+    border-color: var(--primary, #4d6bfe);
+    color: var(--primary, #4d6bfe);
+    background: #f5f7ff;
+}
+#ds-embed-host .ds-embed-btn--close {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 0.8rem;
+}
+#ds-embed-host .ds-embed-btn--close:hover {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: transparent;
+}
+/* 主体：iframe 填满，状态行浮在其上 */
+#ds-embed-host .ds-embed-body { position: relative; flex: 1 1 auto; min-height: 0; background: #fff; }
+#ds-embed-host .ds-embed-frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+#ds-embed-host .ds-embed-status {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, .94);
+    border-bottom: 1px solid #eef1f5;
+    font-size: 0.72rem;
+    color: #64748b;
+    text-align: center;
+}
+/* 用项目语义色 --warning（低饱和纯色），不用鲜亮告警色 */
+#ds-embed-host .ds-embed-status--err { color: #b8763a; background: rgba(255, 250, 242, .96); }
+/* 底部提示条：诚实告知"空白多为网站自身禁止嵌入"，并提供永久关闭 */
+#ds-embed-host .ds-embed-tip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 6px 8px 6px 10px;
+    border-top: 1px solid #eef1f5;
+    background: #fafbfc;
+    font-size: 0.7rem;
+    color: #94a3b8;
+}
+#ds-embed-host .ds-embed-tip span { flex: 1 1 auto; min-width: 0; }
+#ds-embed-host .ds-embed-tip-close {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+}
+#ds-embed-host .ds-embed-tip-close:hover { background: #eef1f5; color: #475569; }
+/* 暗色 */
+[data-theme="dark"] #ds-embed-host { border-color: #2a2a2a; background: #1e1e1e; }
+[data-theme="dark"] #ds-embed-host .ds-embed-bar { background: #232323; border-bottom-color: #2f2f2f; }
+[data-theme="dark"] #ds-embed-host .ds-embed-title { color: #e2e8f0; }
+[data-theme="dark"] #ds-embed-host .ds-embed-url { color: #7c8794; }
+[data-theme="dark"] #ds-embed-host .ds-embed-btn { background: #262626; border-color: #383838; color: #e2e8f0; }
+[data-theme="dark"] #ds-embed-host .ds-embed-btn:hover { border-color: var(--primary, #4d6bfe); color: #a8bcff; background: #20293d; }
+[data-theme="dark"] #ds-embed-host .ds-embed-btn--close { background: transparent; border-color: transparent; color: #7c8794; }
+[data-theme="dark"] #ds-embed-host .ds-embed-btn--close:hover { background: #2f2f2f; color: #cbd5e1; }
+[data-theme="dark"] #ds-embed-host .ds-embed-body { background: #1e1e1e; }
+[data-theme="dark"] #ds-embed-host .ds-embed-frame { background: #1e1e1e; }
+[data-theme="dark"] #ds-embed-host .ds-embed-status { background: rgba(30, 30, 30, .95); border-bottom-color: #2f2f2f; color: #94a3b8; }
+[data-theme="dark"] #ds-embed-host .ds-embed-status--err { color: #d9a06a; background: rgba(38, 32, 26, .96); }
+[data-theme="dark"] #ds-embed-host .ds-embed-tip { background: #232323; border-top-color: #2f2f2f; color: #7c8794; }
+[data-theme="dark"] #ds-embed-host .ds-embed-tip-close:hover { background: #2f2f2f; color: #cbd5e1; }
+/* 小屏：给内容更多高度；藏掉 URL，保住站点名与三个按钮 */
+@media (max-width: 767px) {
+    #ds-embed-host { height: min(62vh, 460px); min-height: 220px; margin: 6px 2px 4px; border-radius: 10px; }
+    #ds-embed-host .ds-embed-url { display: none; }
+    #ds-embed-host .ds-embed-btn { padding: 5px 7px; font-size: 0.7rem; }
+}
+
 /* —— 输入条左侧工具组：角色 / 模型 / 关联数据（圆形图标按钮，参考附件/发送风格） —— */
 .ds-input-tools-left {
     display: flex;

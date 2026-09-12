@@ -23,7 +23,12 @@
     <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/iphone-xsmax.png">
     <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/iphone-12.png">
     <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/iphone-12promax.png">
-    <!-- 内容安全策略（渐进式加固） -->
+    <!-- 内容安全策略（渐进式加固）
+         ⚠️ frame-src / child-src 为「https:」全放行，是 v3.66「链接在对话区内嵌打开」的前提。
+         原先只放行 8 个视频站白名单，导致用户点任何其它链接时 iframe 被 CSP 拦成空白
+         （浏览器内部表现为 chrome-error 页，且**前端无法检测**——onload 照样触发）。
+         放开后的安全兜底在 JS 侧：iframe 强制带 sandbox 且不含 allow-top-navigation，
+         内嵌页面无法把顶层跳转到钓鱼站，也无法碰主页面 DOM/Cookie。 -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self';
                    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdnstatic.tencentcs.com 'unsafe-inline' 'unsafe-eval';
@@ -31,10 +36,10 @@
                    connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com https://api.github.com;
                    img-src 'self' blob: data: https:;
                    media-src 'self' blob: data: https:;
-                   frame-src https://www.doubao.com https://player.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://v.qq.com https://open.iqiyi.com https://player.youku.com;
+                   frame-src https:;
                    font-src 'self';
                    worker-src 'self';
-                   child-src https://www.doubao.com https://player.bilibili.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://v.qq.com https://open.iqiyi.com https://player.youku.com;">
+                   child-src https:;">
 
     <!-- 离线兜底：设置面板开关不依赖任何外部 JS 文件。
          即使 app.js 因离线未成功加载（SW 预缓存缺失/旧缓存被清），
@@ -928,6 +933,31 @@
                         </div>
                         <!-- 对话区（居中列） -->
                         <div id="ds-chat-box" class="ds-chat-box" style="display:none;overflow-y:auto;border:none;border-radius:0;padding:6px 4px;background:transparent;flex-direction:column;gap:10px;flex:1;min-height:200px;max-height:calc(100dvh - 360px);"></div>
+                        <!-- 内嵌网页面板（v3.66）：链接「直接打开」不再跳出应用，直接在对话区内渲染网页。
+                             刻意做成 ds-chat-box 的兄弟节点而非消息气泡 —— 消息气泡会被 dsRenderAll 整段重建，
+                             内嵌的浏览上下文（滚动位置、已播放内容）会随之丢失。 -->
+                        <div id="ds-embed-host" class="ds-embed-host" style="display:none;">
+                            <div class="ds-embed-bar">
+                                <span class="ds-embed-favicon" id="ds-embed-favicon">🌐</span>
+                                <div class="ds-embed-meta">
+                                    <span class="ds-embed-title" id="ds-embed-title">网页</span>
+                                    <span class="ds-embed-url" id="ds-embed-url"></span>
+                                </div>
+                                <div class="ds-embed-acts">
+                                    <button type="button" class="ds-embed-btn" id="ds-embed-reload" title="重新加载">🔄 重新加载</button>
+                                    <button type="button" class="ds-embed-btn" id="ds-embed-external" title="在系统浏览器中打开">🌐 浏览器打开</button>
+                                    <button type="button" class="ds-embed-btn ds-embed-btn--close" id="ds-embed-close" title="关闭并返回对话">✕</button>
+                                </div>
+                            </div>
+                            <div class="ds-embed-body">
+                                <iframe id="ds-embed-frame" class="ds-embed-frame" title="内嵌网页" frameborder="0" allowfullscreen referrerpolicy="no-referrer"></iframe>
+                                <div class="ds-embed-status" id="ds-embed-status" style="display:none;"></div>
+                            </div>
+                            <div class="ds-embed-tip" id="ds-embed-tip">
+                                <span>ℹ️ 若此处空白，是该网站自身禁止被嵌入显示（并非本应用故障）。可点右上角「🌐 浏览器打开」查看。</span>
+                                <button type="button" class="ds-embed-tip-close" id="ds-embed-tip-close" title="不再提示">✕</button>
+                            </div>
+                        </div>
                         <!-- ========== 智能助手增强工具（角色/模型/关联数据 已移入输入条，圆形图标按钮风格） ========== -->
                         <div id="statsPanel" style="display: none; position: absolute; background: white; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font-size: 0.75rem; z-index: 100; min-width: 150px; margin-top: 4px;"></div>
                         <!-- 输入区（DeepSeek 圆角输入框） -->
@@ -1820,6 +1850,28 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.66 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.66 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🔗 <strong>链接、音视频「统一在对话框里打开」</strong>：网页链接点「直接打开」不再跳浏览器新标签，而是在对话区内嵌渲染（与音视频内嵌同形态）；平台视频（B站 / YouTube / 腾讯视频等）本就是内嵌；直链媒体（.mp4 / .mp3）保留富媒体卡片。三者都内联、不跳标签。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>↪️ <strong>仅三种情况跳出应用</strong>：内嵌面板里的「🌐 浏览器打开」、<strong>Ctrl / Cmd + 点击</strong>正文链接（保留对照多网页的老习惯）、媒体卡片自己的「新窗口打开 ↗」。普通点击一律内嵌。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🛡️ <strong>内嵌安全兜底</strong>：iframe 用 sandbox（不含 allow-top-navigation，挡顶层跳转劫持），仅放行 http/https；被站点策略拒绝嵌入时不再假装失败，改为常驻诚实提示 + 永远保留浏览器出口。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.65 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1842,31 +1894,9 @@
                 </div>
             </div>
 
-            <!-- v3.64 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.64 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔰 <strong>标识里的「铁」字摆正了</strong>：顶栏、启动画面、桌面图标、浏览器标签页图标是同一套盾牌标识，其中的金色「铁」字此前整体偏下一格，视觉重心压在盾牌下方收窄处，看着有点「坠」。现已上移，落在盾牌视觉重心上（上留白略少于下留白，正好补掉盾牌下缘收窄造成的下坠感），四个位置同步生效。<em>（图标已进离线缓存清单，更新版本后才会刷新）</em></span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>✨ <strong>盾牌标识加了悬浮效果</strong>：鼠标移到左上角盾牌上，盾牌会轻轻上浮一点、微微放大，并透出一圈金色光晕，移开自动回落；手机上（触屏）不触发，避免点按后卡在悬浮态。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🏷️ <strong>署名统一</strong>：关于面板底部原为「开发者：赵海兵 · 2026.08」，与页面页脚的署名格式不一致，现统一为「<strong>开发者：赵海兵 · 2026</strong>」。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.64 及以下已归档（最近 2 版本为 v3.66 / v3.65） -->
 
-            <!-- v3.63 及以下已归档（最近 2 版本为 v3.65 / v3.64） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.63 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.64 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

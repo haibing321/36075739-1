@@ -1745,6 +1745,24 @@
                 铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
             </div>
 
+            <!-- v3.60 近期更新 -->
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.60 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>🚀 <strong>媒体加载大幅提速（消除重复下载）</strong>：此前气泡每次重渲染（流式结束、整表重建、页面增强）都会销毁播放器、从头重新拉取，同一段视频常被下载 3 遍，图片/音视频加载特别慢。现在重建时<strong>原位复用旧播放器</strong>并保留缓冲与进度；净化前先抽走媒体块，绕开净化触发的隐形请求；跨气泡复用已加载的播放器。实测重复下载减半（视频/音频每地址由 3 次请求降至 2 次，重复创建从 2 次降为 0）。</span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                        <span style="color:#f59e0b;margin-top:2px;">★</span>
+                        <span>⚠️ <strong>源站速度仍取决于第三方</strong>：防盗链、跨洋 CDN、链接失效等「源站本身慢」前端无法加速。本次修复的是「同一资源被反复下载」这一层——已缓存的媒体不再重下；若链接本身失效或被限，仍会给出分级提示与🔄重试入口。</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- v3.59 近期更新 -->
             <div style="margin-bottom:14px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -1791,7 +1809,7 @@
 
             <!-- v3.57 及以下已归档（最近 2 版本为 v3.59 / v3.58） -->
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.57 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.58 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

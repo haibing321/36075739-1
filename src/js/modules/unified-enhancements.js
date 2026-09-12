@@ -167,7 +167,30 @@
   function renderCard(html) {
     if (!window.ENABLE_UNIFIED) return html;
     if (!html) return html;
-    // 0) 先保护媒体/链接 URL：URL 中可能含 11 位连续数字，会被下方"电话自动拨号"规则误伤
+
+    // 0a) 先抽离媒体块（ds-media-*）—— **绕开 DOMPurify 的解析触发二次 fetch**
+    // (2026-09-12 实测定位：DOMPurify.sanitize 内部 setAttribute('src', …) 会让同 URL 被请求 2 次)
+    // 媒体块的 src 已在 dsMediaBlock 里做过协议白名单（dsSafeUrl），再次净化收益有限、代价是双倍下载。
+    // 用 DOMParser 抽取顶层 .ds-media 元素，留在占位符位，还原时按位置插回。
+    var _mediaArr = [];
+    if (/<(?:figure|div)\s+[^>]*class=["'][^"']*\bds-media\b/.test(html)) {
+      try {
+        var _doc = new DOMParser().parseFromString('<div id="__root__">' + html + '</div>', 'text/html');
+        var _root = _doc.getElementById('__root__');
+        var _nodes = _root ? _root.querySelectorAll('.ds-media') : [];
+        // 反向遍历（先处理深层后处理浅层），避免 replaceChild 让 querySelectorAll 索引漂移
+        for (var _i = _nodes.length - 1; _i >= 0; _i--) {
+          var _el = _nodes[_i];
+          var _ph = _doc.createElement('span');
+          _ph.setAttribute('data-ds-media', String(_mediaArr.length));
+          _mediaArr.unshift(_el.outerHTML);
+          _el.parentNode.replaceChild(_ph, _el);
+        }
+        html = _root.innerHTML;
+      } catch (e) { /* DOMParser 失败就退回原路径 —— 安全仍由下方 DOMPurify 兜底 */ }
+    }
+
+    // 0b) 再保护媒体/链接 URL：URL 中可能含 11 位连续数字，会被下方"电话自动拨号"规则误伤
     var _urls = [];
     html = html.replace(/(https?:\/\/[^\s"'`<]+)/g, function (u) {
       _urls.push(u);
@@ -191,17 +214,18 @@
       '<span class="phone-number" data-phone="$1">$1 <button type="button" class="btn-call" data-phone="$1">📞 拨号</button></span>');
     // 6) 还原被保护的 URL
     html = html.replace(/@@DSURL@@(\d+)@@/g, function (m, i) { return (_urls[+i] != null) ? _urls[+i] : ''; });
-    // 5) 最后统一净化 AI 产出（原本 dsMarkdown 不净化，这里补一层安全防护）
+    // 5) 最后统一净化 AI 产出（媒体块已抽走，无需放行 media 标签）
     if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-      // 放行媒体元素：图片/音视频播放器/视频站内嵌 iframe（URL 已在 dsMarkdown 内做过协议白名单校验）
       try {
-        html = DOMPurify.sanitize(html, {
-          ADD_TAGS: ['figure', 'figcaption', 'video', 'audio', 'source', 'iframe'],
-          ADD_ATTR: ['target', 'controls', 'preload', 'playsinline', 'poster', 'loop', 'muted',
-                     'autoplay', 'width', 'height', 'loading', 'referrerpolicy',
-                     'allowfullscreen', 'frameborder', 'scrolling']
-        });
+        html = DOMPurify.sanitize(html);
       } catch (e) {}
+    }
+    // 7) 还原媒体块到原位置
+    if (_mediaArr.length) {
+      html = html.replace(/<span\s+[^>]*data-ds-media=["'](\d+)["'][^>]*>\s*<\/span>/g, function (m, i) {
+        var n = parseInt(i, 10);
+        return (n >= 0 && n < _mediaArr.length) ? _mediaArr[n] : '';
+      });
     }
     return html;
   }
@@ -237,7 +261,13 @@
         // 否则本函数会把 dsBubbleInner 刚渲染好的证据条覆盖掉。
         var webHtml = '';
         try { if (typeof window.dsWebChip === 'function') webHtml = window.dsWebChip(entry) || ''; } catch (e) {}
-        bubble.innerHTML = reasoningHtml + webHtml + renderCard(md(entry.content));
+        // 关键：写入用媒体块复用（doubao.js 的 dsSetHtmlKeepMedia）—— 否则此处的 innerHTML
+        // 覆盖会把流式渲染好的播放器/图片销毁，导致浏览器重新发起请求（同 URL 重复下载）。
+        // 老 PWA 里没有媒体时直接 innerHTML 即可，性能也最快；这里只在有媒体时多走一次遍历。
+        var _dsSet = (typeof window.dsSetHtmlKeepMedia === 'function') ? window.dsSetHtmlKeepMedia : null;
+        var _nextHtml = reasoningHtml + webHtml + renderCard(md(entry.content));
+        if (_dsSet) _dsSet(bubble, _nextHtml);
+        else bubble.innerHTML = _nextHtml;
         bubble._enhContent = _enhKey;
         // 重新挂载反馈按钮（复制/下载/有用/无用/重生成/朗读）
         // 必须带上本轮下标，否则「重生成」会退化成重生成最后一轮

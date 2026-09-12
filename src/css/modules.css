@@ -781,6 +781,20 @@
 }
 .ds-media-reload:hover { text-decoration: underline; }
 .ds-media-fail { font-size: 0.8rem; color: var(--warning, #b45309); margin-bottom: 4px; }
+.ds-media-fail-row { display: flex; align-items: center; gap: 12px; }
+.ds-media-fail-row a { color: var(--primary, #2563eb); text-decoration: none; font-size: 0.78rem; }
+.ds-media-fail-row a:hover { text-decoration: underline; }
+.ds-media-retry {
+  background: none;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  color: var(--primary, #2563eb);
+  cursor: pointer;
+  font-family: inherit;
+}
+.ds-media-retry:hover { background: #f1f5f9; }
 
 /* 图片全屏预览 */
 .ds-image-viewer {

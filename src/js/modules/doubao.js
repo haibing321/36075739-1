@@ -1041,10 +1041,13 @@
                     key = existing ? existing.apiKey : '';
                 }
                 if (!name) name = model;
-                addOrUpdateProvider({ id: pid || undefined, name: name, apiUrl: url, model: model, apiKey: key });
-                // 持久化联网搜索开关（全局行为，与具体模型配置无关）
+                // ⚠️ 必须先读复选框、再保存：addOrUpdateProvider 内部会 renderModelManager() 重建整个表单，
+                // 新节点的 checked 来自「保存前」的 localStorage 值；若在其后再读，读到的是旧状态的替身，
+                // 结果是"在表单里改「联网搜索」开关、点保存永远不生效"。
                 var _wsChk = document.getElementById('ds-pe-websearch');
-                localStorage.setItem('ds_web_search', (_wsChk && _wsChk.checked) ? '1' : '0');
+                addOrUpdateProvider({ id: pid || undefined, name: name, apiUrl: url, model: model, apiKey: key });
+                // 持久化联网搜索开关（全局行为，与具体模型配置无关）；元素不存在时保留原值，避免误重置为 0
+                if (_wsChk) localStorage.setItem('ds_web_search', _wsChk.checked ? '1' : '0');
                 // 同步输入栏地球按钮高亮（两处 UI 共用同一开关）
                 try { if (typeof window.dsSyncWebSearchBtn === 'function') window.dsSyncWebSearchBtn(); } catch (e) {}
                 if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
@@ -1160,8 +1163,13 @@
                 }
                 function loadDsCfg() {
                     var def = _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: true };
+                    // ⚠️ DOM 后缀是 wr-all，而持久化字段名是 wrAll：
+                    // 原先 def['wr-all'] 恒为 undefined，等于每次打开「关联数据」面板都把这一项强制取消勾选，
+                    // 用户勾选并「记住此次选择」后刷新即静默失效（会话内因 _sessionDataSource 仍带 wrAll 而看不出来）。
+                    var _DS_CFG_KEYMAP = { 'wr-all': 'wrAll' };
                     ['rules','issue','handbook','wr-all','phone','diary','remember'].forEach(function(k){
-                        var el = document.getElementById('ds-dialog-' + k); if (el) el.checked = def[k];
+                        var el = document.getElementById('ds-dialog-' + k);
+                        if (el) el.checked = !!(def[_DS_CFG_KEYMAP[k] || k]);
                     });
                     syncAllBox();
                 }
@@ -1542,8 +1550,14 @@
             function dsOpenLinkExternal(url) {
                 var safe = dsSafeUrl(url);
                 if (!safe) { alert('该链接不被允许打开（仅支持 http/https）'); return; }
+                // ⚠️ 不能再用 window.open(safe, '_blank', 'noopener')：按规范，windowFeatures 里带 noopener 时
+                // 返回值恒为 null，"已经成功打开"也会被判成"被拦截"，于是每次都弹"浏览器拦截了新窗口"的假警报。
+                // 改为先开空窗口、手动断 opener 再跳转，仅在真正被拦截时提示。
                 var w = null;
-                try { w = window.open(safe, '_blank', 'noopener'); } catch (e) {}
+                try {
+                    w = window.open('', '_blank');
+                    if (w) { try { w.opener = null; } catch (e) {} w.location.href = safe; }
+                } catch (e) { w = null; }
                 if (!w) alert('浏览器拦截了新窗口。请允许本站弹出窗口，或长按复制链接后手动打开。');
                 // 用户已经作出选择 → 收起澄清条（无论是否成功打开），避免继续遮挡输入区
                 dsChoiceHide();
@@ -4268,9 +4282,12 @@
       // ---------- 8. 增强智能写作 ----------
       var originalWrGenerate = window.wrGenerate;
       if (typeof originalWrGenerate === 'function') {
-        window.wrGenerate = async function() {
+        // ⚠️ 必须接收并向下透传 isRegenerate：smart-writer.js 的「🔄 重新生成」调用的是 wrGenerate(true)，
+        // 而原包裹函数没有形参、向下调用时也不传参 → isRegenerate 恒为 undefined，
+        // 使原函数里 `if (!isRegenerate && …)` 判定成立，每次"重新生成"都会再插一条用户气泡并清空输入框。
+        window.wrGenerate = async function(isRegenerate) {
           const q = document.getElementById('wr-query-input') ? document.getElementById('wr-query-input').value : '';
-          if (!q) return originalWrGenerate();
+          if (!q) return originalWrGenerate(isRegenerate);
 
           // 判断是否需要跳过本地检索
           // 新规则：只要选了资料就停止本地搜索（资料已给足，不卡死）
@@ -4286,7 +4303,7 @@
             // 跳过本地检索，直接生成
             window._wrSkipLocalSearch = true;
             try {
-              await originalWrGenerate();
+              await originalWrGenerate(isRegenerate);
             } finally {
               window._wrSkipLocalSearch = false;
             }
@@ -4308,10 +4325,10 @@
           if (originalInput && statsText) {
             const originalVal = originalInput.value;
             originalInput.value = statsText + '用户需求：' + originalVal;
-            await originalWrGenerate();
+            await originalWrGenerate(isRegenerate);
             originalInput.value = originalVal;
           } else {
-            await originalWrGenerate();
+            await originalWrGenerate(isRegenerate);
           }
         };
       }
@@ -4792,7 +4809,10 @@
         try {
           var hbData = typeof window.getHandbookData === 'function' ? window.getHandbookData() : [];
           if (hbData.length) {
-            var hbFocus = (riskFocus || '').trim();
+            // ⚠️ 注意：riskFocus 的赋值在本函数靠后几十行；var 只提升"声明"不提升"赋值"，
+            // 直接读会恒为 undefined —— "按研判重点筛选手册"这条因此永久失效。故此处先取一次值。
+            var _rfEarly = (document.getElementById('risk-focus') ? document.getElementById('risk-focus').value : '') || '';
+            var hbFocus = (_rfEarly || '').trim();
             // Y2：若用户填写了研判重点，优先筛选与重点相关的手册条目并展示实质内容，
             // 而非仅展示前 10 条目录（避免手册内容被浪费）
             var hbSampled;

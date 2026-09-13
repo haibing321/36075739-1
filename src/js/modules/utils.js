@@ -994,3 +994,23 @@ window.finishProgress = function(label) {
         } catch (e) {}
     };
 })();
+
+// ======================================================================
+// window.Toast 兼容层（纯被动代码，不参与任何启动逻辑）
+// ----------------------------------------------------------------------
+// doubao.js / backup.js 等模块以 window.Toast.success|error|warn 作为提示入口，
+// 但全仓从未定义过 window.Toast —— 于是这些守卫恒假，提示全部无声无息，
+// 包括「对话历史保存失败：存储空间不足」「已复制到剪贴板」「图片已降级保存」等。
+// 这里统一映射到真正存在的 showToast，调用点无需改动。
+// 说明：本段只做一次赋值，不读写 DOM、不发起任何请求，放在文件末尾是为了零侵入。
+// ======================================================================
+(function() {
+    if (window.Toast) return;
+    if (typeof window.showToast !== 'function') return;
+    window.Toast = {
+        success: function(msg) { return window.showToast(msg, false); },
+        info:    function(msg) { return window.showToast(msg, false); },
+        warn:    function(msg) { return window.showToast(msg, true); },
+        error:   function(msg) { return window.showToast(msg, true); }
+    };
+})();

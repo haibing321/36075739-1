@@ -206,45 +206,6 @@
                 window.downloadBlob(blob, filename);
             }
             
-            function showMobileDownloadBtn(url, filename) {
-                // 移除旧按钮
-                var old = document.getElementById('_mobile_dl_btn');
-                if (old && old.parentNode) old.parentNode.removeChild(old);
-                
-                var displayName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
-                
-                var btn = document.createElement('a');
-                btn.id = '_mobile_dl_btn';
-                btn.href = url;
-                btn.download = filename;
-                btn.innerHTML = '<span style="font-size:1.3rem;vertical-align:middle;">📥</span> 下载: ' + displayName;
-                btn.style.cssText = [
-                    'display:block;position:fixed;bottom:80px;left:50%;',
-                    'transform:translateX(-50%);',
-                    'background:linear-gradient(135deg,#4d6bfe,#3f5be0);',
-                    'color:#fff;padding:14px 28px;border-radius:25px;',
-                    'text-decoration:none;font-size:0.95rem;font-weight:600;',
-                    'z-index:99999;box-shadow:0 4px 20px rgba(77,107,254,0.4);',
-                    'white-space:nowrap;animation:_mbdlFadeIn .3s ease;'
-                ].join('');
-                
-                // 注入动画
-                if (!document.getElementById('_mobile_dl_style')) {
-                    var s = document.createElement('style');
-                    s.id = '_mobile_dl_style';
-                    s.textContent = '@keyframes _mbdlFadeIn{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}';
-                    document.head.appendChild(s);
-                }
-                
-                document.body.appendChild(btn);
-                
-                // 10秒后自动移除
-                setTimeout(function() {
-                    if (btn.parentNode) btn.parentNode.removeChild(btn);
-                    setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
-                }, 10000);
-            }
-
             // 从 HTML 提取纯文本，保留段落换行
             function stripHtml(html) {
                 if (!html) return '';

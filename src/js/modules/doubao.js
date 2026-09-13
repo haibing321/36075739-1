@@ -38,7 +38,6 @@
             let dsApiUrl  = DS_DEFAULT_API_URL;
             let dsModel   = DS_DEFAULT_MODEL;
             let dsStreaming = false;
-            window.__dsStreaming = false;
             let dsConversations = []; // 所有对话列表 [{id, title, messages, timestamp, pinned}]
             let dsCurrentConvId = null; // 当前对话ID
 
@@ -2038,7 +2037,6 @@
                     // 生成中：发送按钮变「停止」（DeepSeek 同款：深色圆钮 + 方块停止图标）
                     // 置于 try 内 + 守卫，确保设置阶段任何异常都能被 finally 复位，避免 dsStreaming 永久为 true 冻结聊天
                     dsStreaming = true;
-                    window.__dsStreaming = true;
                     var sendBtn = document.getElementById('ds-send-btn');
                     if (sendBtn) {
                         sendBtn.disabled = false;
@@ -2567,7 +2565,6 @@
                     if (_reqTimer) { clearTimeout(_reqTimer); _reqTimer = null; }
                     window._dsAbortController = null;
                     dsStreaming = false;
-                    window.__dsStreaming = false;
                     // ⚠️ 必须一并复位 _dsStreaming（渲染层真正读取的标志，见本文件 :3194）。
                     // _dsStreamChat 内部没有 try/finally，被「停止生成」或断网中止时它末尾的复位语句
                     // 不会执行；漏掉这里会让该标志永久为 true，此后整个会话的图片/音视频只会渲染成外链卡片。
@@ -3300,9 +3297,6 @@
             }
             function _dsIsPlaceholder(box) {
                 return !!(box && box.classList && box.classList.contains('ds-media-link-box'));
-            }
-            function _dsIsMediaNode(node) {
-                return !!(node && node.nodeType === 1 && node.classList && node.classList.contains('ds-media'));
             }
             // 递归地把 root 子树里的 .ds-media（按 key 匹配）原位替换为 keepArr 里的旧元素。
             // 用 template.content 作 root 时整棵子树仍是 inert（不触发资源加载），

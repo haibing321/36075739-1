@@ -13,17 +13,6 @@
             // 「储存量统一在设置面板展示」的改版从 index.html 移除（updateStats 也已清空逻辑）。
             // 原先在模块顶部无条件 getElementById 并保留引用，取到的恒为 null 且从未使用，属死代码，已删除。
 
-            const chineseNumMap = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,
-                '十一':11,'十二':12,'十三':13,'十四':14,'十五':15,'十六':16,'十七':17,'十八':18,'十九':19,'二十':20 };
-
-            function getChapterOrder(s) { const m = s.match(/第([一二三四五六七八九十]+)章/); return m ? (chineseNumMap[m[1]] || 999) : 999; }
-            function getSectionOrder(s) {
-                let m = s.match(/第([一二三四五六七八九十]+)节/); if (m) return chineseNumMap[m[1]] || 999;
-                m = s.match(/^(\d+)\./); if (m) return parseInt(m[1], 10); return 999;
-            }
-            function getItemOrder(s) { const m = s.match(/^(\d+)[\.、]/); return m ? parseInt(m[1], 10) : 999; }
-            function getSubItemOrder(s) { const m = s.match(/^(\d+)[\.、\)）]/); return m ? parseInt(m[1], 10) : 999; }
-
             // 本模块用的 HTML 转义
             function _esc(text) { if (!text) return ''; return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 

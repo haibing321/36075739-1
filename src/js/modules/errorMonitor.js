@@ -49,22 +49,6 @@
     }
 
     /**
-     * 从 URL 中提取简短的文件名+行号
-     */
-    function shortSource(url, line, col) {
-        if (!url) return '(unknown)';
-        try {
-            var u = new URL(url);
-            var path = u.pathname.split('/').pop();
-            if (line) path += ':' + line;
-            if (col) path += ':' + col;
-            return path;
-        } catch(e) {
-            return url.length > 60 ? url.substring(0, 60) + '...' : url;
-        }
-    }
-
-    /**
      * 生成唯一 ID
      */
     function uid() {

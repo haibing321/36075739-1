@@ -584,6 +584,11 @@
                 if (tab === 'doubao' && typeof window.loadDoubaoWebview === 'function') window.loadDoubaoWebview(panel);
                 _dsCurrentSub = tab;
                 if (tab === 'writer' && typeof wrInit === 'function') wrInit();
+                // 用户切到风险研判子视图时才刷新数据预览（启动路径不碰全库遍历）
+                // 注意：updateRiskPreview 定义在本文件第二个 IIFE 内，闭包取不到，必须走 window
+                if (tab === 'risk' && typeof window.updateRiskPreview === 'function') {
+                  try { window.updateRiskPreview(); } catch (e) {}
+                }
                 var sel = document.getElementById('ds-sub-select');
                 if (sel) sel.value = tab;
                 if (typeof updateModeStatus === 'function') updateModeStatus();
@@ -4395,8 +4400,9 @@
             var radio = document.querySelector('input[name="risk-format"][value="' + conf.format + '"]');
             if (radio) radio.checked = true;
           }
-          // 恢复配置后触一次预览，拉取实际DB数据
-          updateRiskPreview();
+          // 恢复配置后【不】触发预览：loadRiskConfig 在模块初始化时执行，
+          //   放在这里等于让启动路径去遍历整个问题台账（4 万+ 条）。预览只在用户动作后触发：
+          //   切换筛选条件（change/input 监听）或切到风险研判子视图（dsSwitchSub 内）。
         } catch(e) {}
       }
 
@@ -4477,78 +4483,173 @@
         if (_riskPreviewTimer) { clearTimeout(_riskPreviewTimer); _riskPreviewTimer = null; }
         _riskPreviewTimer = setTimeout(_doRiskPreview, 300); // 防抖300ms
       }
+      // 本函数与 dsSwitchSub 分处 doubao.js 的两个 IIFE，闭包不互通，
+      // 必须挂到 window 才能被「切到风险研判子视图」触发（仅依赖 typeof 判断会静默失效）
+      window.updateRiskPreview = updateRiskPreview;
+      // 数据预览的两道闸：任何一道触发即停止遍历，计数显示为「≥N」。
+      // 初衷：本机台账可达 4 万+ 条，原实现 getAll() 一次取全量并在内存里连做 3~4 次 filter
+      //   （每次都新建一个 4 万元素数组），会把主线程占满（曾造成「打开界面后点啥都不反应」）。
+      // 改为：① 总数用 count() 零遍历取；② 明细用游标逐条统计；③ 只读、不升级。
+      //   条数上限防病态大库，时间预算保证常见 4 万条能一次算完（约 100ms 级），拿到精确值。
+      var RISK_PREVIEW_MAX_SCAN = 120000;
+      var RISK_PREVIEW_MAX_MS = 400;
+      function _riskNow() { try { return performance.now(); } catch (e) { return Date.now(); } }
+      // 日期筛选：'YYYY-MM-DD HH:mm:ss'（含 'T' 分隔的 ISO）直接用前 10 位字符串比较，
+      //   等效于原 new Date() 区间判断但快一个数量级（4 万条从 ~秒级降到 ~10ms 级），
+      //   避免在游标里为每条记录做一次日期解析把时间预算吃光。
+      //   非该格式的遗留数据（如 '2026/3/1 09:30:00'）自动回退到 Date 解析，语义不变。
+      function _riskDateInRange(dt, ds, de, sd, ed) {
+        var s = typeof dt === 'string' ? dt : (dt == null ? '' : String(dt));
+        if (s.length >= 10 && s.charCodeAt(4) === 45 && s.charCodeAt(7) === 45) {
+          var day = s.slice(0, 10);
+          if (ds && day < ds) return false;
+          if (de && day > de) return false;
+          return true;
+        }
+        var t = new Date(s || '').getTime();
+        if (isNaN(t)) return false;
+        if (!isNaN(sd) && t < sd) return false;
+        if (!isNaN(ed) && t > ed) return false;
+        return true;
+      }
       function _doRiskPreview() {
         var preview = document.getElementById('risk-data-preview');
         if (!preview) return;
-        var dateStart = document.getElementById('risk-date-start')?.value || '';
-        var dateEnd = document.getElementById('risk-date-end')?.value || '';
-        var unit = document.getElementById('risk-unit')?.value.trim() || '';
+        var dateStartEl = document.getElementById('risk-date-start');
+        var dateEndEl = document.getElementById('risk-date-end');
+        var unitEl = document.getElementById('risk-unit');
+        var dateStart = (dateStartEl && dateStartEl.value) || '';
+        var dateEnd = (dateEndEl && dateEndEl.value) || '';
+        var unit = ((unitEl && unitEl.value) || '').trim();
+        var hasFilter = !!(dateStart || dateEnd || unit);
+
+        // 时间边界/关键字只解析一次，避免在游标回调里反复 new Date()
+        var sd = dateStart ? new Date(dateStart + 'T00:00:00').getTime() : NaN;
+        var ed = dateEnd ? new Date(dateEnd + 'T23:59:59').getTime() : NaN;
+        var uLower = unit.toLowerCase();
+
+        function _fail() {
+          var t = document.getElementById('risk-preview-total');
+          var f = document.getElementById('risk-preview-filtered');
+          if (t) t.textContent = '读取失败';
+          if (f) f.textContent = '读取失败';
+          if (hasFilter) preview.style.display = 'flex';
+        }
+
+        var dbRef = null;
+        function _close() { try { if (dbRef) dbRef.close(); } catch (e) {} dbRef = null; }
 
         try {
-          var dbReq = indexedDB.open('RailwayIssueDB_v2', 2);
+          // 不带版本号打开：只读预览不需要升级，也不会因版本号不一致抛 VersionError
+          var dbReq = indexedDB.open('RailwayIssueDB_v2');
+          dbReq.onblocked = _fail;
+          dbReq.onerror = _fail;
           dbReq.onsuccess = function() {
             var db = dbReq.result;
-            if (!db.objectStoreNames.contains('issues')) { db.close(); return; }
-            var tx = db.transaction('issues', 'readonly');
-            var s = tx.objectStore('issues');
-            s.getAll().onsuccess = function(e) {
-              var all = e.target.result || [];
-              var units = new Set();
-              for (var i = 0; i < all.length; i++) {
-                var d = all[i];
-                if (d.unit) units.add(d.unit);
-                if (d.department) units.add(d.department);
-              }
+            dbRef = db;
+            if (!db.objectStoreNames.contains('issues')) {
+              // 问题台账库还不存在（首次使用、issue.js 尚未初始化）：本次 open 只会建出一个空库。
+              // 按 0 条显示即可；不要 deleteDatabase —— 删除会阻塞其他模块后续的 open/upgrade。
+              _close();
+              var t0 = document.getElementById('risk-preview-total');
+              var f0 = document.getElementById('risk-preview-filtered');
+              if (t0) t0.textContent = '0 条';
+              if (f0) f0.textContent = '0 条';
+              if (hasFilter) preview.style.display = 'flex';
+              return;
+            }
+            var store;
+            try {
+              store = db.transaction('issues', 'readonly').objectStore('issues');
+            } catch (e) { _close(); _fail(); return; }
 
-              // 更新单位数据列表
-              var unitInput = document.getElementById('risk-unit');
-              if (unitInput && units.size > 0) {
-                var datalistId = 'risk-unit-list';
-                var dl = document.getElementById(datalistId);
-                if (!dl) {
-                  dl = document.createElement('datalist');
-                  dl.id = datalistId;
-                  document.body.appendChild(dl);
-                }
-                dl.innerHTML = '';
-                Array.from(units).sort().forEach(function(u) {
-                  dl.innerHTML += '<option value="'+u.replace(/"/g,'&quot;')+'">';
-                });
-                if (!unitInput.getAttribute('list')) {
-                  unitInput.setAttribute('list', datalistId);
-                }
-              }
+            var total = -1;      // -1 = count() 尚未返回
+            var scanned = 0;
+            var filtered = 0;
+            var capped = false;  // 是否因达到上限/超时提前停止
+            var cpuMs = 0;       // 本函数累计耗时（不含等待 IDB 回调的空闲时间）
+            var units = Object.create(null);
+            var done = false;
 
-              // 更新计数
+            function _render() {
               var totalEl = document.getElementById('risk-preview-total');
               var filteredEl = document.getElementById('risk-preview-filtered');
-              if (totalEl) totalEl.textContent = all.length + ' 条';
-              var filtered = all;
-              if (dateStart) {
-                var sd = new Date(dateStart + 'T00:00:00');
-                filtered = filtered.filter(function(d) {
-                  try { return new Date(d.datetime || '') >= sd; } catch(e) { return false; }
+              var totalTxt = (total >= 0 ? String(total) : (capped ? '≥' : '') + scanned) + ' 条';
+              if (totalEl) totalEl.textContent = totalTxt;
+              // 未设筛选条件时「筛选」与「总计」必然相同，直接复用总数，
+              // 否则会出现「总计 40166 条 / 筛选 ≥20000 条」这种自相矛盾的显示
+              if (filteredEl) filteredEl.textContent = hasFilter ? ((capped ? '≥' : '') + filtered + ' 条') : totalTxt;
+              if (hasFilter) preview.style.display = 'flex';
+            }
+
+            function _finish() {
+              if (done) return;
+              done = true;
+              // 单位下拉：只用已扫描到的记录填充（上限内足够用），不为此再多遍历一遍全库
+              var unitInput = document.getElementById('risk-unit');
+              var ukeys = Object.keys(units);
+              if (unitInput && ukeys.length > 0) {
+                var datalistId = 'risk-unit-list';
+                var dl = document.getElementById(datalistId);
+                if (!dl) { dl = document.createElement('datalist'); dl.id = datalistId; document.body.appendChild(dl); }
+                dl.innerHTML = '';
+                ukeys.sort().forEach(function(u) {
+                  var opt = document.createElement('option');
+                  opt.value = u;
+                  dl.appendChild(opt);
                 });
+                if (!unitInput.getAttribute('list')) unitInput.setAttribute('list', datalistId);
               }
-              if (dateEnd) {
-                var ed = new Date(dateEnd + 'T23:59:59');
-                filtered = filtered.filter(function(d) {
-                  try { return new Date(d.datetime || '') <= ed; } catch(e) { return false; }
-                });
+              _render();
+              // 提前停止游标时事务虽会自动提交，但不依赖 oncomplete 一定回调，
+              // 这里直接关闭连接（IDB 语义：close() 会等已开启的事务跑完，安全）
+              _close();
+            }
+
+            // 总数：count() 零遍历、瞬时返回
+            try {
+              var cntReq = store.count();
+              cntReq.onsuccess = function() { total = cntReq.result; if (done) _render(); };
+              cntReq.onerror = function() { total = -1; };
+            } catch (e) {}
+
+            var curReq;
+            try { curReq = store.openCursor(); } catch (e) { _finish(); _close(); return; }
+            curReq.onerror = function() { _finish(); _close(); };
+            curReq.onsuccess = function(e) {
+              var cursor = e.target.result;
+              if (!cursor || scanned >= RISK_PREVIEW_MAX_SCAN || cpuMs > RISK_PREVIEW_MAX_MS) {
+                if (cursor) capped = true; // 库里还有记录没遍历 → 计数只能给下限
+                _finish();
+                return;
               }
-              if (unit) {
-                filtered = filtered.filter(function(d) {
-                  return (d.unit || '').indexOf(unit) !== -1 || (d.department || '').indexOf(unit) !== -1;
-                });
-              }
-              if (filteredEl) filteredEl.textContent = filtered.length + ' 条';
-              if (dateStart || dateEnd || unit) {
-                preview.style.display = 'flex';
-              }
-              db.close();
+              var t0 = _riskNow();
+              try {
+                var d = cursor.value || {};
+                scanned++;
+                if (d.unit) units[d.unit] = 1;
+                if (d.department) units[d.department] = 1;
+                var ok = true;
+                if (dateStart || dateEnd) {
+                  if (!_riskDateInRange(d.datetime, dateStart, dateEnd, sd, ed)) ok = false;
+                }
+                if (ok && uLower) {
+                  if (((d.unit || '') + ' ' + (d.department || '')).toLowerCase().indexOf(uLower) === -1) ok = false;
+                }
+                if (ok) filtered++;
+              } catch (err) {}
+              cpuMs += _riskNow() - t0;
+              try { cursor.continue(); } catch (err) { _finish(); }
             };
+            // 事务收尾统一关闭连接，避免只读连接泄漏阻塞后续版本升级
+            try {
+              var txn = store.transaction;
+              txn.oncomplete = function() { _close(); };
+              txn.onabort = function() { _finish(); _close(); };
+              txn.onerror = function() { _finish(); _close(); };
+            } catch (e) {}
           };
-        } catch(e) {}
+        } catch (e) { _fail(); }
       }
 
       // ---------- 风险报告：操作按钮辅助函数 ----------
@@ -4763,6 +4864,7 @@
         var startDate = dateStart ? new Date(dateStart + 'T00:00:00') : null;
         var endDate = dateEnd ? new Date(dateEnd + 'T23:59:59') : null;
         var all = [];
+        var _ownConn = false; // 是否由本函数自己打开的连接（自己开的才关，共享连接不能关）
         try {
           // 优先用 dbManager，失败则直接打开
           var db;
@@ -4771,18 +4873,21 @@
           } catch(e) {
             console.warn('[风险] dbManager 失败，尝试直接打开:', e.message);
             db = await new Promise(function(res, rej) {
-              var r = indexedDB.open('RailwayIssueDB_v2', 2);
+              // 不带版本号打开：本库由 issue.js 升到 v3，这里写死 2 会抛 VersionError 让研判整体失败
+              var r = indexedDB.open('RailwayIssueDB_v2');
+              r.onblocked = function(){ rej(new Error('数据库被其他页面占用')); };
               r.onerror = function(){ rej(r.error); };
               r.onsuccess = function(){ res(r.result); };
             });
+            _ownConn = true;
           }
           all = await new Promise(function(res) {
             var tx = db.transaction('issues','readonly');
             var s = tx.objectStore('issues');
             s.getAll().onsuccess = function(e) { res(e.target.result || []); };
           });
-          // 非 dbManager 连接用完关闭
-          if (!window.dbManager || typeof window.dbManager.getDB !== 'function') {
+          // 只有本函数自己打开的连接才关闭（dbManager 返回的是共享连接，关掉会影响其他模块）
+          if (_ownConn) {
             try { db.close(); } catch(e) {}
           }
           if (all.length) {

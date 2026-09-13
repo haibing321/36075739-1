@@ -1947,3 +1947,76 @@ html[data-theme="dark"] .diary-seg-btn.active:hover {
 /* 「+ 添加问题」：原 border-radius:50% 配 width:100% 会被拉成怪异扁椭圆 */
 .btn-add-issue { border-radius: var(--ds-radius) !important; }
 
+/* ============================================================
+   暗黑：浅底组件兜底（2026-09-13）
+   components.css / modules.css 里有一批组件只写了浅色底、从未补暗黑覆盖，
+   在暗黑模式下整块发白（用户报障：应急电话搜索建议、天气框）。
+   这里按「统一兜底」惯例集中补齐；不改原文件，浅色主题不受影响。
+   ============================================================ */
+
+/* 电话搜索结果里的天气框：原 components.css 写死 background:#f0f7ff（近白）+ 浅蓝边框，
+   查询中 / 查询结果 / 未查到 三种状态都会露出白底 */
+[data-theme="dark"] .phone-weather-box {
+    background: #1d1d1d !important;
+    border-color: #333333 !important;
+    color: var(--text) !important;
+}
+[data-theme="dark"] .phone-weather-box .temp { color: #7aa2ff !important; }
+[data-theme="dark"] .phone-weather-box .desc,
+[data-theme="dark"] .phone-weather-box .stats span { color: var(--text-secondary) !important; }
+
+/* 电话号码胶囊：原为浅绿渐变底 + #86efac 边框（components.css 定义了两处，后者生效）。
+   注意它同时出现在对话气泡的号码高亮里，所以暗黑下影响面不止电话模块 */
+[data-theme="dark"] .phone-number {
+    background: #16281f !important;
+    border-color: #2f5b42 !important;
+    color: #8ce6ac !important;
+    box-shadow: none !important;
+}
+
+/* 搜索建议下拉（新建于 components.css）：暗黑配色 */
+[data-theme="dark"] .search-suggestions {
+    background: #1d1d1d !important;
+    border-color: #333333 !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55) !important;
+}
+[data-theme="dark"] .search-suggestions > div {
+    color: var(--text) !important;
+    border-bottom-color: #2a2a2a !important;
+}
+[data-theme="dark"] .search-suggestions > div:hover {
+    background: #262626 !important;
+    color: #7aa2ff !important;
+}
+
+/* 对话区媒体块：图片占位 / 音频卡 / 外链卡 / 提示条 / 重试按钮 hover 原为 #f1f5f9/#f8fafc/#eef2f7 */
+[data-theme="dark"] .ds-media-img { background: #202020 !important; }
+[data-theme="dark"] .ds-media-audio-box,
+[data-theme="dark"] .ds-media-link-box { background: #1d1d1d !important; border-color: #333333 !important; }
+[data-theme="dark"] .ds-media-tip { background: #242424 !important; color: var(--text-secondary) !important; }
+[data-theme="dark"] .ds-media-retry:hover { background: #2a2a2a !important; }
+
+/* 规章引用《xxx》高亮：原为浅蓝渐变底 */
+[data-theme="dark"] .rule-ref {
+    background: #1b2740 !important;
+    border-color: #2f4a7a !important;
+    color: #9dc0ff !important;
+}
+[data-theme="dark"] .rule-ref:hover {
+    background: #22304f !important;
+    border-color: #3b5c94 !important;
+}
+
+/* 浏览器自动填充（:-webkit-autofill）：UA 会用它自带的浅色底盖住输入框，
+   连 !important 的 background 也压不住，只能用 inset box-shadow 覆盖；
+   这是「暗黑模式下往输入框里一打字底色就变白」的典型成因（原生下拉/表单记忆被触发）。 */
+[data-theme="dark"] input:-webkit-autofill,
+[data-theme="dark"] input:-webkit-autofill:hover,
+[data-theme="dark"] input:-webkit-autofill:focus,
+[data-theme="dark"] textarea:-webkit-autofill,
+[data-theme="dark"] select:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px #1e1e1e inset !important;
+    -webkit-text-fill-color: #e2e8f0 !important;
+    caret-color: #e2e8f0 !important;
+}
+

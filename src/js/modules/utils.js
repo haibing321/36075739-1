@@ -592,7 +592,9 @@
 
                         getAllReq.onsuccess = function() {
                             var allRecords = getAllReq.result || [];
-                            if (allRecords.length === 0) resolve({ removed: 0, freedMB: 0 });
+                            // 必须 return：原实现只 resolve 不返回，空库时后续代码仍会继续跑一遍
+                            // （再算一遍 cutoff/排序/删除，并二次 resolve）。结果虽相同，但属真实控制流错误。
+                            if (allRecords.length === 0) return resolve({ removed: 0, freedMB: 0 });
 
                             var now = Date.now();
                             var cutoffTime = now - maxAgeDays * 24 * 60 * 60 * 1000;

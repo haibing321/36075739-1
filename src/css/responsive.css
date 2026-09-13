@@ -187,23 +187,10 @@
     .card { box-shadow: none; border: 1px solid #000; page-break-inside: avoid; }
     .card-body { padding: 10px; }
     body { background: #fff; color: #000; font-size: 12pt; }
-}/* ---- 骨架屏加载态 ---- */
-.skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.5s ease-in-out infinite;
-    border-radius: 6px;
-    position: relative;
-    overflow: hidden;
-}
-@keyframes skeleton-shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-}
-.skeleton-text { height: 16px; margin-bottom: 10px; }
-.skeleton-text:last-child { margin-bottom: 0; }
-.skeleton-title { height: 24px; width: 60%; margin-bottom: 16px; }
-.skeleton-card { height: 120px; margin-bottom: 16px; border-radius: 12px; }
+}/* ---- 骨架屏加载态（.skeleton / .skeleton-text / .skeleton-title / .skeleton-card
+   与 @keyframes skeleton-shimmer）已于 v3.70 移除：全仓（index.html + 全部 js）没有任何
+   地方给元素加过这些类，属从未生效的死样式；其浅灰渐变若被用起来，在暗色下还会形成刺眼浅块。
+   如后续要做骨架屏，请一并补 [data-theme="dark"] 覆盖。 ---- */
 
 /* ========== 增强响应式适配 ========== */
 

@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260913161939';
+var CACHE_VERSION = '20260913164821';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -63,6 +63,7 @@ var PRECACHE_URLS = [
   './src/js/modules/swipe.js',
   './src/js/modules/doubao-common.js',
   './src/js/modules/smart-check.js',
+  './src/js/modules/docx-export.js',
   './src/js/modules/smart-writer.js',
   './src/js/modules/doubao.js',
   './src/js/modules/agent-memory.js',

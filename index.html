@@ -1302,6 +1302,10 @@
                     <button onclick="wrCopyReport()" style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">📋 复制</button>
                     <button onclick="wrModifyReportFromView()" style="padding:6px 12px;border:1px solid #bfdbfe;border-radius:var(--radius-sm);background:#eff6ff;color:#1d4ed8;font-size:0.82rem;cursor:pointer;">✏️ 修改</button>
                     <button onclick="wrDownloadReport()" style="padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📥 下载TXT</button>
+                    <select id="wr-docx-style" onchange="wrSetDocxStyle(this.value)" title="DOCX 导出排版（模板导出时以模板版式为准）" style="padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#f8fafc;font-size:0.82rem;cursor:pointer;">
+                        <option value="gongwen">公文格式</option>
+                        <option value="plain">通用排版</option>
+                    </select>
                     <button onclick="wrDownloadDocxFromTemplate()" style="padding:6px 12px;background:#2b6cb0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:0.82rem;cursor:pointer;">📄 导出DOCX</button>
                     <button onclick="document.getElementById('wr-report-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--text-secondary);padding:0 4px;">✕</button>
                 </div>
@@ -1645,6 +1649,8 @@
     <script src="src/js/modules/swipe.js" defer></script>
     <script src="src/js/modules/doubao-common.js" defer></script>
     <script src="src/js/modules/smart-check.js" defer></script>
+    <!-- DOCX 导出引擎（真·OOXML 生成 + 上传模板填充），须先于 smart-writer.js 加载 -->
+    <script src="src/js/modules/docx-export.js" defer></script>
     <script src="src/js/modules/smart-writer.js" defer></script>
     <script src="src/js/modules/doubao.js" defer></script>
     <script src="src/js/modules/agent-memory.js" defer></script>
@@ -1864,6 +1870,8 @@
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔇 <strong>移除语音输入</strong>：发送按钮回归原简洁样式（不再显示麦克风图标），输入框提示同步恢复</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ <strong>发送保持稳定</strong>：点击即发送，空输入置灰 / 有内容点亮，整页还原后依旧可用</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 <strong>报告导出 DOCX 重构</strong>：改为真·Word 排版（公文格式：A4 / 版心边距 / 仿宋三号 / 固定行距 28pt / 奇偶页码），WPS、Mac、LibreOffice 均可正常打开</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧩 <strong>支持按上传模板导出</strong>：模板里写 {{正文}} / {{标题}} / {{日期}} 即可套用其原版式</span></div>
                 </div>
             </div>
 

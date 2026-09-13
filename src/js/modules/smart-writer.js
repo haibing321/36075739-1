@@ -2640,19 +2640,64 @@
                 if (/<(p|h[1-6]|ul|ol|table|blockquote)\b/i.test(md)) return md;
                 return (typeof window.dsMarkdown === 'function') ? window.dsMarkdown(md) : md;
             }
+            // 解析报告关联的「上传模板」原始字节（.docx），用于「按模板导出」。
+            // 报告在保存时记录 templateId；模板字节存在资料库条目的 templateBuffer 上（导入时写入）。
+            async function wrResolveTemplateBytes(report) {
+                try {
+                    if (report && report.templateId != null) {
+                        let tpl = null;
+                        try { tpl = await wrDbGet(WR_MAT_STORE, report.templateId); } catch (e) {}
+                        if (!tpl || !tpl.templateBuffer) {
+                            try {
+                                const t = await wrDbGet(WR_TPL_STORE, report.templateId);
+                                if (t && t.templateBuffer) tpl = t;
+                            } catch (e) {}
+                        }
+                        if (tpl && tpl.templateBuffer) return tpl.templateBuffer;
+                    }
+                    // 兜底：资料库里恰好只有一个带原始字节的模板时直接使用它
+                    const all = await wrDbGetAll(WR_MAT_STORE);
+                    const withBuf = (all || []).filter(m => m && m.templateBuffer);
+                    if (withBuf.length === 1) return withBuf[0].templateBuffer;
+                } catch (e) {
+                    console.warn('[wr] 读取模板字节失败：', e && e.message ? e.message : e);
+                }
+                return null;
+            }
+
             window.wrDownloadDocxFromTemplate = async function() {
                 const modal = document.getElementById('wr-report-modal');
                 const report = modal && modal._currentReport;
+                let content = null, title = '报告', tplBytes = null;
                 if (report) {
-                    await exportDocxFromHtml(wrMdToDocxHtml(report.content), report.title || '报告');
+                    content = report.content;
+                    title = report.title || '报告';
+                    tplBytes = await wrResolveTemplateBytes(report);
+                } else if (window._wrCurrentReportContent) {
+                    content = window._wrCurrentReportContent;
+                } else {
+                    alert('没有可导出的报告');
                     return;
                 }
-                if (window._wrCurrentReportContent) {
-                    await exportDocxFromHtml(wrMdToDocxHtml(window._wrCurrentReportContent), '报告');
-                    return;
-                }
-                alert('没有可导出的报告');
+                await exportDocxFromHtml(wrMdToDocxHtml(content), title, { templateBytes: tplBytes });
             };
+
+            // 导出排版偏好（公文格式 / 通用排版）：写入 localStorage，下次沿用
+            window.wrSetDocxStyle = function(v) {
+                if (!window.RGDocx) return;
+                window.RGDocx.setStyle(v);
+                if (typeof Toast !== 'undefined' && Toast.success) {
+                    Toast.success('导出排版已切换为「' + (v === 'plain' ? '通用排版' : '公文格式') + '」');
+                }
+            };
+
+            // 载入时把下拉框同步为上次选择
+            (function syncDocxStyleSelect() {
+                try {
+                    const sel = document.getElementById('wr-docx-style');
+                    if (sel && window.RGDocx) sel.value = window.RGDocx.getStyle();
+                } catch (e) {}
+            })();
             // 资料库查看弹窗：导出当前资料/报告为 DOCX
             window.wrDownloadDocxFromMaterial = async function() {
                 const modal = document.getElementById('wr-mat-view-modal');
@@ -2661,11 +2706,62 @@
                 await exportDocxFromHtml(wrMdToDocxHtml(modal._content), title);
             };
 
-            async function exportDocxFromHtml(htmlContent, fileName) {
+            // ---- 导出 DOCX ----
+            // 通道优先级（v3.69 起）：
+            //   A1 真·OOXML 引擎 + 上传模板填充（保住模板原版式，模板内无 {{占位符}} 时自动跳过）
+            //   A2 真·OOXML 引擎独立生成（公文格式 GB/T 9704-2012 / 通用排版）
+            //   B  html-docx-js（altChunk）—— 历史通道，仅当 A 失败时兜底
+            //   C  HTML 版 .doc —— 完全离线兜底，Word/WPS 均可打开
+            const WR_DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+            async function exportDocxFromHtml(htmlContent, fileName, opts) {
+                opts = opts || {};
                 if (!htmlContent || htmlContent.trim() === '') {
                     alert('报告内容为空，无法导出');
                     return;
                 }
+                // 去除 dsMarkdown 代码块内的「下载」按钮（Word 中无意义）
+                let cleanHtml = String(htmlContent || '').replace(/<button\b[^>]*>[\s\S]*?<\/button>/gi, '');
+
+                // ================= 通道 A：真·OOXML 引擎 =================
+                if (window.RGDocx) {
+                    const style = window.RGDocx.getStyle();
+                    const notify = function(msg) {
+                        if (typeof Toast !== 'undefined' && Toast.success) Toast.success(msg);
+                        else alert(msg);
+                    };
+                    try {
+                        // A1：模板填充
+                        if (opts.templateBytes) {
+                            const filled = await window.RGDocx.fillTemplate(
+                                opts.templateBytes,
+                                { title: fileName || '报告', html: cleanHtml },
+                                { style: style }
+                            );
+                            if (filled && filled.bytes && filled.bytes.length > 1000) {
+                                window.downloadBlob(new Blob([filled.bytes], { type: WR_DOCX_MIME }), (fileName || '报告') + '.docx');
+                                notify('DOCX 已生成（套用上传模板' + (filled.stat && filled.stat.bodyInjected ? '·正文已注入' : '') + '）');
+                                return;
+                            }
+                            console.log('[wr] 模板内未发现 {{正文}} 等占位符，改用标准排版独立生成');
+                        }
+                        // A2：独立生成（公文格式 / 通用排版）
+                        const bytes = await window.RGDocx.fromHtml(cleanHtml, {
+                            title: fileName || '报告',
+                            style: style,
+                            images: true
+                        });
+                        if (bytes && bytes.length > 1000) {
+                            window.downloadBlob(new Blob([bytes], { type: WR_DOCX_MIME }), (fileName || '报告') + '.docx');
+                            notify('DOCX 已生成（' + (style === 'plain' ? '通用排版' : '公文格式') + '）');
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn('[wr] 真·OOXML 导出失败，回退 html-docx-js：', e && e.message ? e.message : e);
+                    }
+                }
+
+                // ================= 通道 B/C：历史链路兜底 =================
                 // 尝试加载 html-docx-js（国内手机网络可能失败，故用 try/catch 兜底，不抛出）
                 if (typeof window.htmlDocx === 'undefined') {
                     try { await window.loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js'); }
@@ -2683,8 +2779,7 @@
                     } catch (e) {}
                 }
                 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-                // 去除 dsMarkdown 代码块内的「下载」按钮（Word 中无意义）
-                let cleanHtml = String(htmlContent || '').replace(/<button\b[^>]*>[\s\S]*?<\/button>/gi, '');
+                // cleanHtml 已在函数开头生成（含代码块「下载」按钮剥离），此处不再重复处理
                 var hasBlockHtml = /<(p|h[1-6]|ul|ol|li|table|thead|tbody|tr|td|th|blockquote|strong|em)\b/i.test(cleanHtml);
                 // 手机端：若已是结构化 HTML（来自 dsMarkdown），原样保留；否则极简纯文本化
                 if (isMobile) {

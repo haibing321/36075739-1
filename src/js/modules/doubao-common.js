@@ -379,7 +379,7 @@
             if (!a) return;
             has = true;
             var tag = document.createElement('div');
-            tag.style.cssText = 'display:flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:3px 6px;font-size:0.72rem;color:#475569;max-width:160px;';
+            tag.style.cssText = 'display:flex;align-items:center;gap:4px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:3px 6px;font-size:0.72rem;color:var(--text-secondary);max-width:160px;';
             if (a.isImage && a.dataUrl) {
                 var thumb = document.createElement('img');
                 thumb.src = a.dataUrl;

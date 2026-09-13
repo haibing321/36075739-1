@@ -2525,10 +2525,7 @@
                         sendBtn2.classList.remove('stopping');
                         sendBtn2.style.opacity = '';
                         sendBtn2.style.background = '';
-                        sendBtn2.title = '发送';
-                        sendBtn2.onclick = function() { dsSendMsg(); };
-                        sendBtn2.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>';
-                        // 输入已被清空 → 恢复置灰态（DeepSeek 行为）
+                        // 复位统一状态函数刷新图标（空输入→麦克风 / 有内容→发送）；点击改走 #panel-doubao 委托
                         if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
                     }
                 }
@@ -4963,29 +4960,159 @@
         window.speechSynthesis.speak(utter);
       };
 
+      // ========== 语音输入（Web Speech API）+ 发送按钮集成（豆包式：空输入显麦克风 / 有内容显发送箭头）==========
+      // dsVoice 在模块作用域声明，供 syncSendState / 流式结束复位共用。
+      var dsVoice = { supported: false, recording: false, sr: null, finalText: '', baseText: '', _t: null };
+
+      // 轻量 toast（语音识别的权限/错误提示，不依赖其它模块）
+      function dsVoiceToast(msg) {
+        var el = document.getElementById('ds-voice-toast');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'ds-voice-toast';
+          el.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:rgba(20,24,33,.92);color:#fff;font-size:0.8rem;padding:8px 14px;border-radius:20px;z-index:99999;max-width:80vw;line-height:1.45;text-align:center;pointer-events:none;';
+          document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.style.display = 'block';
+        clearTimeout(dsVoice._t);
+        dsVoice._t = setTimeout(function () { el.style.display = 'none'; }, 2800);
+      }
+
+      // 集中点击处理：录音中→停止；有内容/附件→发送；空且支持语音→开始语音；空且不支持→聚焦输入框
+      function dsSendBtnClick() {
+        var ta = document.getElementById('ds-user-input');
+        var hasText = !!(ta && ta.value && ta.value.trim());
+        var hasAttach = !!((window._dsAttachments || []).filter(Boolean).length);
+        if (dsVoice.recording) { dsStopVoice(); return; }
+        if (hasText || hasAttach) { if (typeof window.dsSendMsg === 'function') window.dsSendMsg(); return; }
+        if (dsVoice.supported) { dsToggleVoice(); return; }
+        if (ta) ta.focus();
+      }
+
+      function dsToggleVoice() {
+        if (dsVoice.recording) { dsStopVoice(); return; }
+        if (!dsVoice.supported || !dsVoice.sr) { dsVoiceToast('当前浏览器不支持语音输入'); return; }
+        try {
+          var ta = document.getElementById('ds-user-input');
+          dsVoice.baseText = (ta && ta.value) ? ta.value : '';
+          if (dsVoice.baseText && !/\s$/.test(dsVoice.baseText)) dsVoice.baseText += ' ';
+          dsVoice.finalText = '';
+          dsVoice.sr.start();
+        } catch (e) { dsVoiceToast('无法启动语音识别：' + (e && e.message ? e.message : e)); }
+      }
+
+      function dsStopVoice() {
+        if (dsVoice.sr) { try { dsVoice.sr.stop(); } catch (e) {} }
+      }
+
+      (function initVoiceInput() {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        dsVoice.supported = !!SR;
+        if (!SR) return; // 华为/鸿蒙等不支持 → 按钮保持原发送态
+        var sr = new SR();
+        sr.lang = 'zh-CN';
+        sr.interimResults = true;
+        sr.continuous = false;
+        sr.maxAlternatives = 1;
+        sr.onstart = function () {
+          dsVoice.recording = true;
+          dsVoiceToast('🎤 正在聆听…点击按钮停止');
+          if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+        };
+        sr.onresult = function (ev) {
+          var ta = document.getElementById('ds-user-input');
+          if (!ta) return;
+          var interim = '';
+          for (var i = ev.resultIndex; i < ev.results.length; i++) {
+            var r = ev.results[i];
+            if (r.isFinal) dsVoice.finalText += r[0].transcript;
+            else interim += r[0].transcript;
+          }
+          ta.value = dsVoice.baseText + dsVoice.finalText + interim;
+          if (typeof autoResize === 'function') autoResize(ta);
+          if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+        };
+        sr.onend = function () {
+          dsVoice.recording = false;
+          dsVoice.finalText = '';
+          if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+        };
+        sr.onerror = function (ev) {
+          dsVoice.recording = false;
+          dsVoice.finalText = '';
+          var msg = '语音识别出错';
+          if (ev && ev.error) {
+            if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') msg = '麦克风权限被拒绝，请在浏览器设置中允许';
+            else if (ev.error === 'no-speech') msg = '没有检测到语音';
+            else if (ev.error === 'audio-capture') msg = '未找到麦克风设备';
+            else if (ev.error === 'network') msg = '语音识别需要联网，请检查网络';
+            else msg = '语音识别出错：' + ev.error;
+          }
+          dsVoiceToast(msg);
+          if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+        };
+        dsVoice.sr = sr;
+        // 绑定集中点击（流式逻辑会临时覆盖 onclick，结束复位时再指回 dsSendBtnClick）
+        var sendBtn = document.getElementById('ds-send-btn');
+        if (sendBtn) sendBtn.onclick = dsSendBtnClick;
+        if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+      })();
+
       // ========== 输入框自适应高度 + 发送按钮启用态（DeepSeek：空输入时发送按钮置灰）==========
       (function initInputHeightSync() {
-        var ta = document.getElementById('ds-user-input');
-        if (!ta) return;
-        var sendBtn = document.getElementById('ds-send-btn');
+        // 事件委托挂到静态父容器 #panel-doubao：page-state 整页还原会用 p.innerHTML 替换
+        // #ds-sub-chat 子节点（含发送按钮/输入框），直接绑在原节点的监听器会随之丢失、导致「语音/键盘
+        // 无法切换」。委托 + 每次动态查询节点，对还原免疫（与 v3.23/24 模型菜单修复同思路）。
         function syncSendState() {
+          var sendBtn = document.getElementById('ds-send-btn');
+          var ta = document.getElementById('ds-user-input');
           if (!sendBtn) return;
-          // 有文字 或 有附件 → 激活；否则置灰（DeepSeek 行为）
-          var hasText = !!(ta.value && ta.value.trim());
+          if (typeof dsStreaming !== 'undefined' && dsStreaming) return; // 生成中由流式逻辑接管，勿覆盖
+          var hasText = !!(ta && ta.value && ta.value.trim());
           var hasAttach = !!((window._dsAttachments || []).filter(Boolean).length);
-          if (hasText || hasAttach) sendBtn.classList.add('on');
-          else sendBtn.classList.remove('on');
+          var ARROW = '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>';
+          var MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>';
+          if (dsVoice.recording) {
+            sendBtn.classList.remove('on');
+            sendBtn.classList.add('recording');
+            sendBtn.title = '点击停止语音输入';
+            if (sendBtn.dataset.mode !== 'rec') { sendBtn.innerHTML = MIC; sendBtn.dataset.mode = 'rec'; }
+          } else if (hasText || hasAttach) {
+            sendBtn.classList.add('on');
+            sendBtn.classList.remove('recording');
+            sendBtn.title = '发送';
+            if (sendBtn.dataset.mode !== 'send') { sendBtn.innerHTML = ARROW; sendBtn.dataset.mode = 'send'; }
+          } else if (dsVoice.supported) {
+            sendBtn.classList.remove('on');
+            sendBtn.classList.remove('recording');
+            sendBtn.title = '语音输入';
+            if (sendBtn.dataset.mode !== 'mic') { sendBtn.innerHTML = MIC; sendBtn.dataset.mode = 'mic'; }
+          } else {
+            sendBtn.classList.remove('on');
+            sendBtn.classList.remove('recording');
+            sendBtn.title = '发送';
+            if (sendBtn.dataset.mode !== 'send') { sendBtn.innerHTML = ARROW; sendBtn.dataset.mode = 'send'; }
+          }
         }
-        function sync() {
-          if (typeof autoResize === 'function') autoResize(ta);
-          syncSendState();
+        function onClick(e) {
+          var t = e.target;
+          if (t && t.closest && t.closest('#ds-send-btn')) dsSendBtnClick();
         }
-        window.dsSyncInputHeight = sync;
+        function onInput(e) {
+          var t = e.target;
+          if (t && t.id === 'ds-user-input') {
+            if (typeof autoResize === 'function') autoResize(t);
+            syncSendState();
+          }
+        }
+        window.dsSyncInputHeight = function (el) { if (el && typeof autoResize === 'function') autoResize(el); syncSendState(); };
         window.dsSyncSendState = syncSendState;
-        ta.addEventListener('input', syncSendState);
-        sync();
-        // 面板从隐藏变为可见 / 窗口缩放时重新计算
-        window.addEventListener('resize', sync);
+        var root = document.getElementById('panel-doubao') || document;
+        root.addEventListener('click', onClick);
+        root.addEventListener('input', onInput);
+        window.addEventListener('resize', syncSendState);
+        syncSendState();
       })();
 
       // ========== 联网搜索开关（输入栏按钮：带文字说明菜单，与「模型管理」面板复选框共用 ds_web_search）==========

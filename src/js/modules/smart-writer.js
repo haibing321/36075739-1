@@ -1594,12 +1594,15 @@
                 if (hasMatches) {
                     filtered = scored.filter(x => x.score > 0);
                 } else {
-                    const rt = (materials && materials.parsed && materials.parsed.reportType) || '';
+                    // ⚠️ 原为 materials（本函数形参是 parsedQuery，作用域内无该变量）→
+                    // 关键词一个都没命中时必然 ReferenceError，导致 wrRetrieveMaterials 整体 reject，
+                    // 被 wrGenerate 静默降级为空资料（模板/台账/历史报告/规章全部丢失）。
+                    const rt = (parsedQuery && parsedQuery.reportType) || '';
                     const relatedTypes = ({
                         monthly: ['stats', 'check', 'fault', 'inspect'],
                         check:   ['check', 'fault', 'stats', 'inspect'],
-                        accident:['fault', 'stats', 'notice'],
-                        rectify: ['check', 'fault', 'notice'],
+                        accident:['fault', 'stats', 'bulletin'],
+                        rectify: ['check', 'fault', 'bulletin'],
                         summary: ['stats', 'check', 'fault'],
                         report:  ['report', 'stats', 'fault'],
                         inspect: ['inspect', 'check', 'stats'],

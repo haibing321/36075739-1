@@ -625,6 +625,7 @@
     var maxLoops = 15; // B#6: 上限 15，复杂任务更从容（含搜索+detail+分析+report）
     var planShown = false;
     var lastCallKey = '', repeatCount = 0;
+    var reflectUsed = false; // A1-P2 反思回灌只允许一次，避免模型持续重复时空转剩余轮次
 
     // 整个循环包一层 try：中途网络抖动/401/超时时，不能把已执行的工具调用与计划说明
     // 整轮丢弃 —— 对排查有价值，任务记录也应落盘供下次回顾。
@@ -676,12 +677,17 @@
           // 原为 >= 2：首次相同只自增不设 lastCallKey，实际要连续 3 次才触发，
           // 与注释「连续两次即终止」不符，白搭一轮 API 调用与等待。
           if (repeatCount >= 1) {
-            if (window._agentEnhanceOn && window._agentEnhanceOn()) {
+            if (!reflectUsed && window._agentEnhanceOn && window._agentEnhanceOn()) {
               // A1-P2 反思回灌：提示模型换策略，不再重复，继续循环一轮（上限保证不无限）
               var reflectMsg = '⚠️ 你正在重复调用相同工具，请停止重复，直接基于已有信息给出最终自然语言回答，或换一个不同的检索角度。';
               messages.push({ role: 'user', content: reflectMsg });
               renderMsgs.push({ role: 'agent-tool', content: '🔄 反思：检测到重复调用，已提示智能体换策略' });
-              lastCallKey = ''; repeatCount = 0; // 重置，下一轮重新判定
+              reflectUsed = true;
+              repeatCount = 0;
+              // ⚠️ 必须 continue：反思的语义就是「本轮不再执行工具」。原先缺少 continue 会用同一批
+              // toolCalls 再执行一遍（write_diary/save_report 产生重复条目），并在 assistant(tool_calls)
+              // 与其配对 tool 消息之间插入 user 消息，违反 API 契约导致该轮 400。
+              continue;
             } else {
               // 纯净 ReAct：保持原行为，直接终止避免文案矛盾
               var dupMsg = '⚠️ 检测到重复调用，已提前终止';

@@ -1726,13 +1726,21 @@
                             if (node.nodeType === Node.TEXT_NODE) {
                                 const text = node.textContent;
                                 const kw = keywords[kwIdx];
-                                const regex = new RegExp('(' + escapeRegExp(kw) + ')', 'gi');
-                                if (regex.test(text)) {
+                                // 与同文件「纯文本模式」路径统一的约定：关键词与文本都先转义，再在转义后的文本上匹配
+                                const kwEsc = escapeHtml(kw);
+                                const escaped = escapeHtml(text);
+                                const regex = new RegExp('(' + escapeRegExp(kwEsc) + ')', 'gi');
+                                if (regex.test(escaped)) {
+                                    // ★ 安全且快：文本先转义 → 正文里的 &lt;img onerror=…&gt; 不会被二次解析成真标签
+                                    //   （此处原先是把 node.textContent 直接回写 innerHTML，构成存储型 XSS）；
+                                    //   高亮用【一次 innerHTML】完成，不逐个 createElement —— 后者在关键词命中多时
+                                    //   要创建上万个元素并逐次解析 CSS，慢一个量级。
+                                    const color = KW_COLORS[kwIdx % KW_COLORS.length];
                                     const span = document.createElement('span');
-                                    span.innerHTML = text.replace(regex, (match) => {
-                                        const color = KW_COLORS[kwIdx % KW_COLORS.length];
-                                        return `<mark class="rule-fv-hl" data-kw-idx="${kwIdx}" style="background:${color.bg};color:${color.text};font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ${color.border};">${match}</mark>`;
-                                    });
+                                    span.innerHTML = escaped.replace(
+                                        regex,
+                                        '<mark class="rule-fv-hl" data-kw-idx="' + kwIdx + '" style="background:' + color.bg + ';color:' + color.text + ';font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ' + color.border + ';">$1</mark>'
+                                    );
                                     return span;
                                 }
                             } else if (node.nodeType === Node.ELEMENT_NODE && node.childNodes) {
@@ -1958,13 +1966,21 @@
                             if (node.nodeType === Node.TEXT_NODE) {
                                 const text = node.textContent;
                                 const kw = keywords[kwIdx];
-                                const regex = new RegExp('(' + escapeRegExp(kw) + ')', 'gi');
-                                if (regex.test(text)) {
+                                // 与同文件「纯文本模式」路径统一的约定：关键词与文本都先转义，再在转义后的文本上匹配
+                                const kwEsc = escapeHtml(kw);
+                                const escaped = escapeHtml(text);
+                                const regex = new RegExp('(' + escapeRegExp(kwEsc) + ')', 'gi');
+                                if (regex.test(escaped)) {
+                                    // ★ 安全且快：文本先转义 → 正文里的 &lt;img onerror=…&gt; 不会被二次解析成真标签
+                                    //   （此处原先是把 node.textContent 直接回写 innerHTML，构成存储型 XSS）；
+                                    //   高亮用【一次 innerHTML】完成，不逐个 createElement —— 后者在关键词命中多时
+                                    //   要创建上万个元素并逐次解析 CSS，慢一个量级。
+                                    const color = KW_COLORS[kwIdx % KW_COLORS.length];
                                     const span = document.createElement('span');
-                                    span.innerHTML = text.replace(regex, (match) => {
-                                        const color = KW_COLORS[kwIdx % KW_COLORS.length];
-                                        return `<mark class="rule-fv-hl" data-kw-idx="${kwIdx}" style="background:${color.bg};color:${color.text};font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ${color.border};">${match}</mark>`;
-                                    });
+                                    span.innerHTML = escaped.replace(
+                                        regex,
+                                        '<mark class="rule-fv-hl" data-kw-idx="' + kwIdx + '" style="background:' + color.bg + ';color:' + color.text + ';font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ' + color.border + ';">$1</mark>'
+                                    );
                                     return span;
                                 }
                             } else if (node.nodeType === Node.ELEMENT_NODE && node.childNodes) {

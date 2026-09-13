@@ -171,8 +171,10 @@
 
             // 从检查信息一键记入日志（方案 A：直接追加到今天）
             // content: 问题描述, regulation: 规章依据, date: 可选，默认今天
+            // 返回 {ok, reason, message, date}：供 app.js 的智能体桥接层回报真实结果，
+            // 避免"AI 向用户确认日志已写入、其实什么都没写"的假成功。
             window.addIssueToDiary = function(content, regulation, date) {
-                if (!content || !content.trim()) return;
+                if (!content || !content.trim()) return { ok: false, reason: 'empty', message: '内容为空，未写入' };
                 const targetDate = date || (function() {
                     var d = new Date();
                     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -186,7 +188,7 @@
                     const c = content.trim();
                     // 去重：当日已存在完全相同的问题则不重复记入
                     if (existing.issues.some(function(x) { return x === c; })) {
-                        return;
+                        return { ok: false, reason: 'duplicate', message: '当日已存在完全相同的问题，已去重未重复写入', date: targetDate };
                     }
                     existing.issues.push(c);
                     existing.regulations.push((regulation || '').trim());
@@ -203,6 +205,7 @@
                 diaries.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
                 saveDiaries();
                 updateDiaryCount();
+                return { ok: true, reason: 'saved', message: '已写入 ' + targetDate + ' 的工作日志', date: targetDate };
             };
 
             window.saveDiary = async function(opts) {

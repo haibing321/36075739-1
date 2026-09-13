@@ -369,13 +369,16 @@
                     request.onerror = () => reject(request.error);
                 });
             }
-            async function saveToStorage() {
+            async function saveToStorage(opts) {
                 try {
                     await saveRulesToDB(rules);
                     updateStorageInfo();
                     return true;
                 } catch (e) {
-                    alert('保存失败：' + e.message);
+                    // opts.silent：由调用方负责提示时（例如导入流程要给出可操作的回滚说明），
+                    // 避免连续弹两个 alert。
+                    if (!(opts && opts.silent)) alert('保存失败：' + e.message);
+                    console.warn('[rule] 保存失败:', e && e.message);
                     return false;
                 }
             }
@@ -1050,7 +1053,17 @@
                         successCount++;
                     } catch (err) { console.error(err); skipCount++; }
                 }
-                await saveToStorage(); refreshTradeSelect(); updateTotalBadge(); renderResults();
+                // B4：保存失败必须让用户知道，并把内存回滚到库里的真实状态 ——
+                // 否则界面显示"导入成功"，刷新后数据全部消失。
+                if (!(await saveToStorage({ silent: true }))) {
+                    if (btn) btn.innerHTML = '📥 导入';
+                    isProcessing = false;
+                    try { await loadRulesFromDB(); } catch (e) { console.warn('[rule] 回滚失败:', e && e.message); }
+                    refreshTradeSelect(); updateTotalBadge(); renderResults();
+                    alert('导入内容未能写入本地存储（通常是存储空间不足或数据库被其它标签页占用），已回滚本次导入。\n原有规章不受影响；建议先删除部分含图规章或清理图片后重试。');
+                    return;
+                }
+                refreshTradeSelect(); updateTotalBadge(); renderResults();
                 if (btn) btn.innerHTML = '📥 导入';
                 isProcessing = false;
                 var libTip = missingLibs.length
@@ -1356,7 +1369,14 @@
                         }
                     }
                     
-                    await saveToStorage();
+                    if (!(await saveToStorage({ silent: true }))) {
+                        try { await loadRulesFromDB(); } catch (e) { console.warn('[rule] 回滚失败:', e && e.message); }
+                        refreshTradeSelect();
+                        updateTotalBadge();
+                        renderResults();
+                        alert('备份内容未能写入本地存储（通常是存储空间不足），已回滚本次导入。\n原有规章不受影响，请清理后再试。');
+                        return;
+                    }
                     refreshTradeSelect();
                     updateTotalBadge();
                     renderResults();

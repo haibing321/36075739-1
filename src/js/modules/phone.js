@@ -197,16 +197,28 @@
 
             // escapeHtml 已统一到 utils.js (window.escapeHtml)，此处不再重复定义
 
-            // 按站名去重合并：同名站点以导入数据覆盖，新站点追加
+            // 按站名去重合并：同名站点以导入数据覆盖，新站点追加。
+            // ⚠️ 无站名的记录必须原样保留：导入侧允许"有单位、无站名"的行入库（见 phoneHandleFile 的
+            // `if (item.单位 || item.站名)`），而这里原先只用带站名的记录重建整个数据集 →
+            // 下一次选择「追加合并」时，这些记录会被整批静默抹掉（用户只看到"导入成功"）。
             function phoneMergeByStation(incoming) {
                 const map = new Map();
-                phoneData.forEach(function(it) { if (it.站名) map.set(it.站名, it); });
+                const noStation = []; // 无站名、无法参与去重的记录：旧数据与新导入均原样保留
+                phoneData.forEach(function(it) {
+                    if (it && it.站名) map.set(it.站名, it);
+                    else if (it) noStation.push(it);
+                });
                 let replaced = 0;
                 incoming.forEach(function(it) {
-                    if (it.站名 && map.has(it.站名)) replaced++;
-                    if (it.站名) map.set(it.站名, it);
+                    if (!it) return;
+                    if (it.站名) {
+                        if (map.has(it.站名)) replaced++;
+                        map.set(it.站名, it);
+                    } else {
+                        noStation.push(it);
+                    }
                 });
-                return { data: Array.from(map.values()), replaced: replaced };
+                return { data: Array.from(map.values()).concat(noStation), replaced: replaced };
             }
 
             window.phoneHandleFile = async function(e) {

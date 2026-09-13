@@ -221,8 +221,15 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (issues && String(issues).trim()) {
                 fullContent += (fullContent ? '｜' : '') + '发现问题：' + String(issues).trim();
             }
-            // addIssueToDiary 无返回值（成功亦为 undefined），未抛异常即视为写入成功
-            window.addIssueToDiary(fullContent, '', date || '');
+            // ⚠️ 必须采用 diary.js 返回的真实结果：它区分
+            // saved / empty（内容为空）/ duplicate（当日重复已去重）。
+            // 原先无条件 return ok:true，导致"AI 向用户确认日志已写入、其实什么都没写"。
+            if (!fullContent) return { ok: false, error: 'content 不能为空：未提供要写入日志的内容' };
+            var res = window.addIssueToDiary(fullContent, '', date || '');
+            if (res && res.ok) return { ok: true, message: res.message || '日志已写入', date: res.date };
+            if (res && res.reason === 'duplicate') return { ok: false, error: res.message || '当日已存在完全相同的问题，未重复写入' };
+            if (res && res.reason) return { ok: false, error: res.message || '日志未写入' };
+            // 兼容旧实现（无返回值）：未抛异常即视为写入成功
             return { ok: true, message: '日志已写入' };
         } catch(e) { return { ok: false, error: e.message }; }
     };
@@ -237,10 +244,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (typeof window._wrGetAllReports === 'function') existing = await window._wrGetAllReports();
                 else if (typeof window.getWrMatList === 'function') existing = await window.getWrMatList();
             } catch(e) { existing = []; }
-            var sameCount = existing.filter(function(m) { return (m.title||'').trim() === (title||'').trim(); }).length;
-            var finalTitle = sameCount > 0 ? (title + '（v' + (sameCount + 1) + '）') : title;
-            var ok = window.wrAgentSaveMaterial(finalTitle, content);
-            return { ok: !!ok, message: ok ? '报告已保存' : '保存失败', title: finalTitle };
+            // 版本号：扫描已存在的「标题（vN）」取最大 N 再 +1。
+            // 原先只统计与基础标题"完全相同"的条数：已存在的 X（v2）不计入，
+            // 于是第二次保存仍生成 X（v2），报告库里堆出多条同名同版本，用户无法分辨先后。
+            var baseTitle = String(title || '').trim();
+            var maxV = 0;
+            existing.forEach(function(m) {
+                var t = String(m.title || '').trim();
+                if (t === baseTitle) { maxV = Math.max(maxV, 1); return; }
+                try {
+                    var mm = t.match(new RegExp('^' + baseTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '（v(\\d+)）$'));
+                    if (mm) maxV = Math.max(maxV, parseInt(mm[1], 10) || 0);
+                } catch (e) {}
+            });
+            var finalTitle = maxV > 0 ? (baseTitle + '（v' + (maxV + 1) + '）') : baseTitle;
+            // ⚠️ wrAgentSaveMaterial 是 async：原先 `var ok = window.wrAgentSaveMaterial(...)` 后取 !!ok，
+            // Promise 恒为真 → 落库失败（配额/异常）也报"报告已保存"。改为 await 真实结果，
+            // 并加 20s 上限，避免底层 Promise 不 settle 时把智能体整轮卡死。
+            var saved = await Promise.race([
+                window.wrAgentSaveMaterial(finalTitle, content),
+                new Promise(function(res) { setTimeout(function() { res('__timeout__'); }, 20000); })
+            ]);
+            if (saved === '__timeout__') {
+                return { ok: false, error: '保存超时（20s）未确认写入；报告内容仍在对话里，可手动复制保存' };
+            }
+            var ok = saved !== false;
+            return { ok: ok, message: ok ? '报告已保存' : '保存失败（可能是存储空间不足）', title: finalTitle };
         } catch(e) { return { ok: false, error: e.message }; }
     };
 

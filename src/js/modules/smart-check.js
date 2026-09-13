@@ -2,7 +2,7 @@
  * 安监智能辅助系统 - 智能对规模块
  * ===================================================
  * 从 doubao.js 拆分，包含：
- *   - 两阶段AI对规（BM25召回 → AI筛选 → 本地拼装）
+ *   - 两阶段AI对规（本地关键词召回 → AI筛选 → 本地拼装）
  *   - 铁路专业术语库（PATCH_TERM_LIBRARY）
  *   - 关键词选择器（候选词+自定义词+词库管理）
  *   - 对规反馈收集
@@ -409,27 +409,6 @@
                 '中断', '错误', '丢失', '遗忘',
             ]);
 
-            // 铁路安监领域扩展停用词表
-            const AUTOCHECK_STOP_WORDS = new Set([
-                // 通用停用词
-                '的', '了', '和', '与', '或', '对', '在', '被', '把', '让', '给', '向', '从', '到',
-                '上', '下', '内', '外', '中', '里', '等', '及', '以及', '并且', '而且', '但是',
-                '如果', '那么', '因为', '所以', '是', '有', '不', '也', '都', '还', '要', '会',
-                '可以', '能', '可能', '应该', '必须', '需要', '这个', '那个', '这些', '那些',
-                // 常见连接词
-                '进行', '开展', '情况', '相关', '工作', '发现', '存在', '问题',
-                '单位', '部门', '领导', '负责', '组织', '实施', '执行',
-                // 铁路安监领域无实际检索价值的词
-                '第一', '预防', '为主', '综合', '治理', '强化', '落实', '确保', '保障',
-                '提高', '加强', '完善', '建立', '健全', '推动', '促进', '实现',
-                '车间', '工区', '班组', '职工', '干部', '督查', '巡视',
-                '养护', '制度', '措施', '方案', '流程',
-                '按照', '根据', '依照', '参照', '依据', '对于', '关于', '针对', '鉴于',
-                '操作', '使用', '维护', '保养', '报告', '通知', '办法',
-                '细则', '规程', '规则', '条例', '文件', '函', '电报',
-                '严重', '一般', '较大', '重大', '特别', '主要', '次要'
-            ]);
-
             // ---- 单位名称判定：匹配以"段"、"站"等结尾，或包含"车间"等词的模式 ----
             function isOrgName(term) {
                 if (!term || term.length > 12) return false; // 过长的词可能是描述，保留
@@ -513,75 +492,6 @@
                     }
                     return true;
                 });
-            }
-
-            // ---- 纯关键词提取（不依赖词库建议，用于检索，严格过滤单位名称） ----
-            function acExtractPureKeywords(text) {
-                const kwSet = new Set();
-
-                // 1. 提取违规行为关键词
-                VIOLATION_ACTION_WORDS.forEach(function(word) {
-                    // 确保关键词前后有边界，避免 "未设" 匹配到 "设计" 等
-                    const boundaryRegex = new RegExp('(?:^|[^\\w\\d\u4e00-\u9fa5])(' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=[^\\w\\d\u4e00-\u9fa5]|$)', 'i');
-                    if (boundaryRegex.test(text)) {
-                        kwSet.add(word);
-                    }
-                });
-
-                // 2. 从词库中提取专业术语，但精确过滤掉单位名称
-                PATCH_TERM_LIBRARY.forEach(function(item) {
-                    if (text.includes(item.term)) {
-                        // 严格过滤单位名称：只保留非单位名称的专业术语
-                        if (!isOrgName(item.term)) {
-                            kwSet.add(item.term);
-                        }
-                    }
-                });
-
-                // 3. 提取长度大于等于3且不包含在词库中的词组（自然语言关键词）
-                // 简单按标点、空格分词，提取有意义的较长词组
-                const segments = text.split(/[，。！？、；：""''（）\s]+/);
-                segments.forEach(seg => {
-                    if (seg.length >= 3 && seg.length <= 12) { // 限制长度，避免长句
-                        // 排除纯数字、纯标点
-                        if (/^[\d\.\-\+\/]+$/.test(seg)) return;
-                        // 作为文本固有词提取
-                        kwSet.add(seg);
-                    }
-                });
-
-                // 最后过滤一遍，确保结果中没有单位名称
-                return Array.from(kwSet).filter(kw => !isOrgName(kw));
-            }
-
-
-            // ---- 文本片段高亮关键词命中位置 ----
-            function acGetSnippet(content, keywords, maxLen) {
-                maxLen = maxLen || 200;
-                let bestPos = -1, bestKw = '';
-                for (const kw of keywords) {
-                    const pos = content.toLowerCase().indexOf(kw);
-                    if (pos !== -1 && (bestPos === -1 || kw.length > bestKw.length)) { bestPos = pos; bestKw = kw; }
-                }
-                if (bestPos === -1) return content.length > maxLen ? content.slice(0, maxLen) + '…' : content;
-                const half = Math.floor(maxLen / 2);
-                const start = Math.max(0, bestPos - half);
-                const end = Math.min(content.length, bestPos + half);
-                return (start > 0 ? '…' : '') + content.slice(start, end) + (end < content.length ? '…' : '');
-            }
-
-            // ---- 计算文本与关键词的匹配得分 ----
-            function acScore(text, titleText, keywords) {
-                let score = 0;
-                const lc = text.toLowerCase(), tlc = (titleText || '').toLowerCase();
-                for (const kw of keywords) {
-                    if (lc.includes(kw) || tlc.includes(kw)) {
-                        let s = Math.min(3, 1 + kw.length / 3);
-                        if (tlc.includes(kw)) s += 2; // 标题命中奖励
-                        score += s;
-                    }
-                }
-                return keywords.length ? score / (keywords.length * 4) : 0;
             }
 
             // ============================================================
@@ -1149,135 +1059,8 @@
             window.acViewRuleDetail = window.acRuleDetailModal;
 
             // ============================================================
-            // BM25 倒排索引与评分
+            // 本地召回：已放弃 BM25 倒排索引（见下方函数内注释），改用关键词匹配
             // ============================================================
-            const BM25_K1 = 1.5, BM25_B = 0.75;
-            let _bm25Index = null; // 延迟构建
-
-            function bm25Tokenize(text) {
-                const tokens = new Set();
-                // 第一步：术语感知分词（优先匹配完整术语，避免拆散）
-                const lowerText = text.toLowerCase();
-                const sortedTerms = Array.from(RAILWAY_TERMS).sort(function(a, b) { return b.length - a.length; });
-                var usedRanges = []; // 记录已匹配的字符范围
-                sortedTerms.forEach(function(term) {
-                    var pos = 0;
-                    while (true) {
-                        var idx = lowerText.indexOf(term.toLowerCase(), pos);
-                        if (idx === -1) break;
-                        var end = idx + term.length;
-                        // 检查是否与已匹配范围重叠
-                        var overlap = usedRanges.some(function(r) { return idx < r[1] && end > r[0]; });
-                        if (!overlap) {
-                            tokens.add(term.toLowerCase());
-                            usedRanges.push([idx, end]);
-                        }
-                        pos = idx + 1;
-                        if (usedRanges.length > 200) break; // 安全限制
-                    }
-                });
-                // 第二步：对未覆盖的文本部分做 N-gram 分词
-                // 标记所有已覆盖的位置
-                var covered = new Array(text.length).fill(false);
-                usedRanges.forEach(function(r) { for (var i = r[0]; i < r[1]; i++) covered[i] = true; });
-                // 提取未覆盖的连续中文段落
-                var uncovered = '';
-                for (var i = 0; i < text.length; i++) {
-                    if (!covered[i]) {
-                        var ch = text[i];
-                        if (/[\u4e00-\u9fa5]/.test(ch)) uncovered += ch;
-                        else {
-                            // 非中文字符：如果前面有积累的中文，做分词
-                            if (uncovered.length >= 2) {
-                                for (var len = 2; len <= Math.min(4, uncovered.length); len++) {
-                                    for (var j = 0; j <= uncovered.length - len; j++) {
-                                        tokens.add(uncovered.slice(j, j + len));
-                                    }
-                                }
-                            }
-                            uncovered = '';
-                            // 英文/数字 token
-                            if (/[a-zA-Z0-9]/.test(ch)) tokens.add(ch.toLowerCase());
-                        }
-                    } else {
-                        if (uncovered.length >= 2) {
-                            for (var len = 2; len <= Math.min(4, uncovered.length); len++) {
-                                for (var j = 0; j <= uncovered.length - len; j++) {
-                                    tokens.add(uncovered.slice(j, j + len));
-                                }
-                            }
-                        }
-                        uncovered = '';
-                    }
-                }
-                if (uncovered.length >= 2) {
-                    for (var len = 2; len <= Math.min(4, uncovered.length); len++) {
-                        for (var j = 0; j <= uncovered.length - len; j++) {
-                            tokens.add(uncovered.slice(j, j + len));
-                        }
-                    }
-                }
-                // 去停用词
-                return Array.from(tokens).filter(function(t) { return !AUTOCHECK_STOP_WORDS.has(t); });
-            }
-
-            // 建索引专用极简分词：纯2-gram，不遍历术语集，速度快10倍
-            function bm25TokenizeFast(text) {
-                const tokens = new Set();
-                const t = text.toLowerCase();
-                for (let i = 0; i < t.length - 1; i++) {
-                    const ch = t[i];
-                    if (/[\u4e00-\u9fa5]/.test(ch)) {
-                        tokens.add(t.slice(i, i + 2));
-                        if (i + 2 < t.length && /[\u4e00-\u9fa5]/.test(t[i+1])) {
-                            // 3-gram可选，跳过以保证速度
-                        }
-                    } else if (/[a-z0-9]/.test(ch)) {
-                        tokens.add(ch);
-                    }
-                }
-                return tokens;
-            }
-
-            function buildBM25Index(docs) {
-                const df = {}, idf = {}, docLens = [], avgLen = { v: 0 };
-                const N = docs.length;
-                docs.forEach((doc, i) => {
-                    // 建索引用快速分词，不遍历术语集，避免大规章库卡顿
-                    const tokens = bm25TokenizeFast(doc._text || '');
-                    docLens[i] = tokens.size;
-                    tokens.forEach(t => { df[t] = (df[t] || 0) + 1; });
-                });
-                avgLen.v = docLens.reduce((s, l) => s + l, 0) / Math.max(N, 1);
-                Object.keys(df).forEach(t => {
-                    idf[t] = Math.log((N - df[t] + 0.5) / (df[t] + 0.5) + 1);
-                });
-                return { docs, df, idf, docLens, avgLen, N };
-            }
-
-            function bm25Score(idx, queryTokens, docI) {
-                // queryTokens: 预分好的token数组，避免每条规章重复分词
-                const qTokens = queryTokens;
-                const doc = idx.docs[docI];
-                const docText = doc._text || '';
-                const dl = idx.docLens[docI];
-                const avgDl = idx.avgLen.v;
-                let score = 0;
-                qTokens.forEach(t => {
-                    if (!t) return;
-                    const idf = idx.idf[t] || 0;
-                    if (idf === 0 && !docText.includes(t)) return; // 快速跳过不可能匹配的token
-                    // TF 用出现次数近似
-                    let tf = 0;
-                    let pos = 0;
-                    while ((pos = docText.indexOf(t, pos)) !== -1) { tf++; pos += t.length; }
-                    if (tf === 0) return; // 该token未出现，跳过
-                    const tfN = (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / Math.max(avgDl, 1)));
-                    score += idf * tfN;
-                });
-                return score;
-            }
-
             function localBM25Recall(query, topK) {
                 topK = topK || 6;
                 const rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
@@ -1651,24 +1434,8 @@
             }
 
             // ============================================================
-            // AI 对规：BM25召回 + AI精排 + 本地验证
+            // AI 对规：本地关键词召回 + AI精排 + 本地验证
             // ============================================================
-            // ── 计算历史案例匹配相似度（0-100） ──
-            function calcIssueMaxSimilarity(query) {
-                const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
-                if (!issues.length) return 0;
-                const qWords = bm25Tokenize(query);
-                if (!qWords.length) return 0;
-                let maxScore = 0;
-                issues.forEach(iss => {
-                    const text = ((iss.content || '') + ' ' + (iss.regulation || '') + ' ' + (iss.category || '')).toLowerCase();
-                    const hitCount = qWords.filter(w => text.includes(w)).length;
-                    const score = Math.round((hitCount / qWords.length) * 100);
-                    if (score > maxScore) maxScore = score;
-                });
-                return maxScore;
-            }
-
             // ── 使用指定关键词计算历史案例匹配相似度（与本地匹配一致） ──
             function calcIssueMaxSimilarityWithKeywords(query, keywords) {
                 const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
@@ -2464,7 +2231,6 @@
                 // 清除缓存
                 window._lastACIssues = [];
                 window._lastACRules = [];
-                _bm25Index = null;
             };
 
             // ===== 两态合并按钮绑定（本地匹配后锁定AI对规）=====

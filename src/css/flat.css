@@ -353,8 +353,23 @@ html.flat-mode button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-li
   border-radius: var(--ds-radius) !important;
 }
 /* 裸 button（设置面板/API配置模态/搜索导航/弹窗）dark 下浅色块统一深底；
-   保留内联主蓝的语义按钮（导出/下载/保存等）。!important 压内联 style。 */
-html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-ico-btn):not(.ds-attach-btn):not(.ds-icon-btn):not(.ds-sidebar-foot-btn):not(.ds-switch-material):not(.ds-send-circle):not(.ds-choice-btn):not(.ds-choice-close):not(.ds-embed-btn):not(.ds-embed-tip-close):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]) {
+   保留内联主蓝的语义按钮（导出/下载/保存等）。!important 压内联 style。
+   v3.70 修正：原排除名单只认字面量 #4d6bfe / #3b82f6 / rgb(77,107,254)，
+   而实测 45 个裸按钮里 12 个用的是内联 background:var(--primary)（开始写作、导入资料、
+   风险研判主按钮、保存模板、下载TXT…），既没被排除、又因 !important 压过内联样式，
+   在暗色下全被压成 #333 —— 表现为「主按钮像禁用态」。
+   现在按两条原则排除（不再逐个硬编码主色）：
+     ① 内联背景值本身用了 CSS 变量 → 该颜色已随主题变化（--primary/--bg/--card-bg/--ds-blue），
+        主题自己会处理暗色，不需要压成灰。只匹配 background/background-color 的值，
+        不用宽泛的 [style*="var("]：否则「background:#fff;border:1px solid var(--primary)」
+        这类白底按钮会被误保护，暗色下留白块。
+     ② 内联的是饱和语义色字面量（#2b6cb0 蓝 / #10b981 绿 / #e53e3e 红）→ 是语义动作按钮，保留。
+     ③ 由 JS 自己换底的交互色：hover 主蓝 #2563eb（风险研判主按钮，
+        onmouseover 会把内联值改成它，序列化后为 rgb(37, 99, 235)，此时若不再排除
+        就会在 hover 瞬间被压成灰）、复制成功反馈绿 #276749（复制成功后短暂变绿）。
+   浅色底字面量（#f8fafc / #fff / #eff6ff / #fee2e2 / #fef2f2 / #dbeafe / #f0fdf4 / #fff1f2）
+   照旧被压成深底，这正是本条规则存在的意义。 */
+html.flat-mode[data-theme="dark"] button:not(.btn):not(.btn-close):not(.ds-close):not(.att-clear-link):not(.nav-btn):not(.ds-newchat-btn):not(.ds-ico-btn):not(.ds-attach-btn):not(.ds-icon-btn):not(.ds-sidebar-foot-btn):not(.ds-switch-material):not(.ds-send-circle):not(.ds-choice-btn):not(.ds-choice-close):not(.ds-embed-btn):not(.ds-embed-tip-close):not([style*="background:#4d6bfe"]):not([style*="background: rgb(77, 107, 254)"]):not([style*="background:rgb(77, 107, 254)"]):not([style*="background:#3b82f6"]):not([style*="background:var(--"]):not([style*="background: var(--"]):not([style*="background-color:var(--"]):not([style*="background-color: var(--"]):not([style*="background:#2b6cb0"]):not([style*="background:#10b981"]):not([style*="background:#e53e3e"]):not([style*="background:#2563eb"]):not([style*="background:rgb(37, 99, 235)"]):not([style*="background:#276749"]) {
   background: #333333 !important; color: #e2e8f0 !important; border-color: #444444 !important;
   border-radius: var(--ds-radius) !important;
 }

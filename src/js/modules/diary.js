@@ -1108,6 +1108,21 @@
             }
             window.closeMultimediaPanel = closeMultimediaPanel;
 
+            // ---------- DiaryMediaDB schema：在【模块加载时】注册（而不是首次读写媒体时） ----------
+            // ⚠️ 根因：utils.js 的 cleanupOldMedia、smart-writer 的写作中心都可能**先一步**调用
+            // dbManager.getDB('DiaryMediaDB')。那时既没有升级回调、也没有 store 白名单，
+            // dbManager 会用兜底 {version:1, fn:null, stores:null} 建出一个**没有 media store 的空库并缓存**；
+            // 之后这里再 register（同版本）不会清缓存 → 事务抛 NotFoundError 且被静默吞掉，
+            // 表现为「照片永远不入库」，且刷新也不自愈（版本已达标，不再触发 onupgradeneeded）。
+            // 放到模块加载时执行即可从根上避免；刻意**不传 store 白名单**，以免启用"升版本重建"分支。
+            // 下面 saveMediaToDB/getMediaFromDB 里保留了同样的兜底注册（被标记挡住，不会重复执行）。
+            if (window.dbManager && typeof window.dbManager.register === 'function' && !window._diaryMediaDBRegistered) {
+                window.dbManager.register('DiaryMediaDB', 1, function(db, e) {
+                    e.target.result.createObjectStore('media', { keyPath: 'id', autoIncrement: true });
+                });
+                window._diaryMediaDBRegistered = true;
+            }
+
             // 多媒体文件存储到 IndexedDB（使用 dbManager 共享连接）
             function saveMediaToDB(file, captureTime) {
                 return new Promise((resolve) => {

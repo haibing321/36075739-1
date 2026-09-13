@@ -1112,16 +1112,26 @@
                                     // 同时导入历史报告
                                     if (jsonReports && jsonReports.length > 0) {
                                         console.log('[导入] JSON检测到' + jsonReports.length + '篇历史报告，写入数据库');
+                                        // ⚠️ 字段名必须与 wrSaveReport 的 schema 对齐（query/date/category/source/templateId）。
+                                        // 原先读的是 prompt/createdAt：导入后分类全变"未分类"，日期被 wrMigrateReportDates
+                                        // 用导入时刻回填 → 所有历史报告日期都变成导入当天，原始 query 也丢失。
+                                        // ⚠️ 也不能沿用备份里的 id：本机报告 id 同样是自增 1..N，命中即**静默覆盖**本地不同内容的报告。
+                                        let rptImported = 0;
                                         for (const r of jsonReports) {
+                                            if (!r || typeof r !== 'object') continue;
                                             await wrDbPut(WR_RPT_STORE, {
-                                                id:        r.id || undefined,
-                                                title:     r.title || '',
+                                                title:     r.title || '导入的报告',
                                                 content:   r.content || '',
-                                                prompt:    r.prompt || '',
-                                                createdAt: r.createdAt || Date.now(),
+                                                query:     r.query || r.prompt || '',
+                                                category:  r.category || 'other',
+                                                date:      r.date || r.createdAt || Date.now(),
+                                                templateId: r.templateId != null ? r.templateId : null,
+                                                source:    r.source || 'import',
                                                 materialCount: r.materialCount || { issues: 0, rules: 0, reports: 0 }
                                             });
+                                            rptImported++;
                                         }
+                                        console.log('[导入] 历史报告已写入 ' + rptImported + ' 篇（不沿用备份 id，避免覆盖本机同 id 报告）');
                                     }
 
                                     if (jsonItems || jsonReports) {

@@ -2020,3 +2020,44 @@ html[data-theme="dark"] .diary-seg-btn.active:hover {
     caret-color: #e2e8f0 !important;
 }
 
+/* 对话内行内代码（`code`）：原为浅灰底 #eef2f7 + 深红字 #c7254e，
+   暗黑下是一块亮色 chip 且深红字对比度不足 */
+[data-theme="dark"] .ds-md-code {
+    background: #2a2a2a !important;
+    color: #ff9db1 !important;
+}
+
+/* 日历：日期格 hover 底色（#e2e8f0）与关闭按钮（#fee2e2 浅粉）原为浅色 */
+[data-theme="dark"] .diary-calendar-day:hover:not(.empty):not(.has-record) {
+    background: #262626 !important;
+}
+[data-theme="dark"] .diary-calendar-nav .btn-close-calendar {
+    background: #3a1d1d !important;
+    color: #f78b8b !important;
+}
+
+/* 表单里被禁用的 select（原 #edf2f7 浅灰） */
+[data-theme="dark"] .selector-item select:disabled {
+    background: #242424 !important;
+    color: #6b7280 !important;
+    border-color: #333333 !important;
+    opacity: 1 !important;
+}
+
+/* 智能对话侧栏/历史列表的滚动条手柄（原 #cbd5e1 浅灰，暗黑下过于扎眼） */
+[data-theme="dark"] #ds-sidebar::-webkit-scrollbar-thumb,
+[data-theme="dark"] #ds-history-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18) !important;
+}
+[data-theme="dark"] #ds-sidebar::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] #ds-history-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.30) !important;
+}
+
+/* 检查手册目录树：层级文字色写死为深色（level2 #475569 在深底上对比度约 1.8:1，
+   几乎看不清；level1 的 #0d9488、level3 的 #64748b 同样偏暗），暗黑下改用亮色 */
+[data-theme="dark"] .hb-tree-level-0 > .hb-tree-header { color: #7aa2ff !important; }
+[data-theme="dark"] .hb-tree-level-1 > .hb-tree-header { color: #2dd4bf !important; }
+[data-theme="dark"] .hb-tree-level-2 > .hb-tree-header { color: var(--text-secondary) !important; }
+[data-theme="dark"] .hb-tree-level-3 > .hb-tree-header { color: var(--text-secondary) !important; }
+

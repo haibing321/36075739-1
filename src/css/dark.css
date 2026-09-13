@@ -4,6 +4,14 @@
    注意：所有覆盖均使用 [data-theme="dark"] 作用域 + !important，避免影响浅色主题。
 */
 
+/* ---------- 0a. 原生控件深浅（color-scheme）----------
+   此前全项目未声明 color-scheme，导致暗黑模式下"浏览器自绘"的部分仍是浅色：
+   滚动条、日期/时间选择器弹层、<select> 下拉、input 的自动填充底色、
+   以及浏览器自带的输入历史下拉（一打字就冒出来的白框）。
+   color-scheme 是这些原生 UI 唯一的总开关，纯 CSS 覆盖管不到。 */
+html[data-theme="dark"] { color-scheme: dark; }
+html:not([data-theme="dark"]) { color-scheme: light; }
+
 /* ---------- 0. 暗黑模式开关（全局，浅/暗色均生效） ---------- */
 .switch .slider::before {
     content: "";

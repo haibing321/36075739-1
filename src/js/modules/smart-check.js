@@ -700,12 +700,12 @@
                             'style="' +
                             'display:inline-flex;align-items:center;padding:6px 10px;border-radius:16px;font-size:0.85rem;' +
                             'cursor:pointer;transition:all 0.15s;user-select:none;' +
-                            'background:#f1f5f9;color:var(--text);border:2px solid #e2e8f0;' +
+                            'background:var(--card-bg);color:var(--text);border:2px solid var(--border);' +
                             '" ' +
                             'onclick="acToggleCandidateKeyword(\'' + acEscOnclick(kw) + '\')" ' +
                             'title="点击选中" ' +
-                            'onmouseover="if(!this.dataset.selected){this.style.background=\'#e2e8f0\';this.style.borderColor=\'var(--primary)\';}" ' +
-                            'onmouseout="if(!this.dataset.selected){this.style.background=\'#f1f5f9\';this.style.borderColor=\'#e2e8f0\';}" ' +
+                            'onmouseover="if(!this.dataset.selected){this.style.background=\'rgba(127,127,127,0.20)\';this.style.borderColor=\'var(--primary)\';}" ' +
+                            'onmouseout="if(!this.dataset.selected){this.style.background=\'var(--card-bg)\';this.style.borderColor=\'var(--border)\';}" ' +
                             '>' + acEscHtml(kw) + ' <span style="margin-left:4px;font-size:0.75rem;opacity:0.5;">+</span></span>';
                     }
                 });

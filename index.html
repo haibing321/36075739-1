@@ -2,69 +2,6 @@
 <html lang="zh-CN" class="flat-mode">
 <head>
     <meta charset="UTF-8">
-    <!-- ============================================================
-         【临时诊断条】没有 F12 也能看到错误（本次小步验证期间保留，确认无误后移除）
-           · 有 JS 报错 / 资源加载失败 → 底部常驻深红色条，显示错误原文、文件与行号
-           · 无报错 → 5 秒后只闪一条绿色小字（8 秒后自动消失），不打扰使用
-           · 点击条体可复制内容，双击关闭
-         ============================================================ -->
-    <script>
-    (function () {
-      var errs = [], box = null, autoHide = null;
-      function ensureBox() {
-        if (box && box.isConnected) return box;
-        box = document.createElement('div');
-        box.id = '__diag_bar';
-        box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;' +
-          'background:#7f1d1d;color:#fff;font:12px/1.55 ui-monospace,Consolas,monospace;' +
-          'padding:8px 12px;max-height:45vh;overflow:auto;white-space:pre-wrap;word-break:break-all;' +
-          'box-shadow:0 -4px 16px rgba(0,0,0,.5);';
-        box.title = '点击复制全部内容，双击关闭';
-        box.addEventListener('click', function () { try { navigator.clipboard.writeText(box.textContent); } catch (e) {} });
-        box.addEventListener('dblclick', function () { box.remove(); });
-        (document.body || document.documentElement).appendChild(box);
-        return box;
-      }
-      function render() {
-        var b = ensureBox();
-        b.textContent = '【诊断】' + new Date().toLocaleTimeString() + '\n' + errs.join('\n');
-      }
-      function push(s) { if (autoHide) { clearTimeout(autoHide); autoHide = null; } errs.push(s); render(); }
-
-      window.addEventListener('error', function (e) {
-        if (e && e.target && e.target.tagName && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
-          push('✗ 资源加载失败: ' + (e.target.src || e.target.href));
-          return;
-        }
-        push('✗ JS 错误: ' + (e && e.message ? e.message : e) +
-             (e && e.filename ? '\n    文件: ' + e.filename + ':' + e.lineno + ':' + e.colno : ''));
-      }, true);
-      window.addEventListener('unhandledrejection', function (e) {
-        var r = e && e.reason;
-        push('✗ 未处理的 Promise 异常: ' + (r && r.message ? r.message : String(r)) +
-             (r && r.stack ? '\n    ' + String(r.stack).split('\n').slice(0, 3).join('\n    ') : ''));
-      });
-
-      setTimeout(function () {
-        if (errs.length) return;   // 有错就一直显示红色条
-        var need = {
-          '数据层(dbManager)': 'dbManager', '切换模块(switchTab)': 'switchTab', '智能助手(dsInit)': 'dsInit',
-          '检查信息': 'issueDoSearch', '规章制度': 'getRulesData', '工作日志': 'saveDiary',
-          '应急电话': 'phoneDoSearch', '检查手册': 'hbSearch', '备忘': 'openMemoModal',
-          '备份恢复': 'oneClickBackup', '页面状态': '_savePageState'
-        };
-        var miss = [];
-        for (var k in need) { if (typeof window[need[k]] === 'undefined') miss.push(k); }
-        var b = ensureBox();
-        b.style.background = miss.length ? '#7f1d1d' : '#14532d';
-        b.style.fontSize = '11px';
-        b.textContent = '【诊断】' + new Date().toLocaleTimeString() +
-          (miss.length ? ('  ⚠ 模块缺失: ' + miss.join('、')) : '  ✓ 无报错 · 模块齐全') +
-          ' · 脚本 ' + document.scripts.length + ' 个';
-        if (!miss.length) { autoHide = setTimeout(function () { try { b.remove(); } catch (e) {} }, 8000); }
-      }, 5000);
-    })();
-    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <title>安监智能辅助系统</title>
     <meta name="theme-color" content="#1a365d">

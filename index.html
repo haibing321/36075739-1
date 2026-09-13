@@ -970,7 +970,7 @@
                                 <div class="ds-choice-acts" id="ds-choice-acts"></div>
                                 <button type="button" class="ds-choice-close" id="ds-choice-close" title="忽略，按常规发送">✕</button>
                             </div>
-                            <textarea id="ds-user-input" rows="1" placeholder="给智能助手发送消息…（Enter 发送 / Shift+Enter 换行）" oninput="autoResize(this)" class="ds-input-textarea"></textarea>
+                            <textarea id="ds-user-input" rows="1" placeholder="给智能助手发送消息…（回车发送 · 点右侧🎤可语音输入）" oninput="autoResize(this)" class="ds-input-textarea"></textarea>
                             <div class="ds-input-bar">
                                 <!-- 左侧工具组：角色 / 模型 / 关联数据（圆形图标按钮，参考附件/发送风格） -->
                                 <div class="ds-input-tools-left">
@@ -1060,7 +1060,7 @@
                                     <div onclick="dsToggleAttachMenu();dsOpenMaterialPicker();">📚 写作资料</div>
                                 </div>
                                 <!-- 发送（DeepSeek：圆形按钮，空输入置灰 / 有内容变蓝） -->
-                                <button onclick="dsSendMsg()" id="ds-send-btn" class="ds-send-circle" title="发送">
+                                <button id="ds-send-btn" class="ds-send-circle" title="发送">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
                                         <path d="M12 19V6"/>
                                         <path d="M6 12l6-6 6 6"/>
@@ -1851,53 +1851,37 @@
             </div>
 
             <!-- 系统简介 -->
-            <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">
-                铁路安全监察智能辅助系统。覆盖检查手册、检查信息、规章制度、应急电话、工作日志等基础模块，以及智能对话、智能体、智能对规、智能写作、风险研判、资料中心等 AI 能力；数据本地存储，支持离线使用。
+            <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
+                六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.68 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.68 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎤 <strong>语音/键盘/发送一体化按钮</strong>：豆包式三态（空→🎤、有字→↑、录音中→红脉冲），不新增 DOM、风格沿用原圆形按钮</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 <strong>修复整页还原后切换失效</strong>：语音/键盘/发送事件委托至 #panel-doubao，对齐还原铁律</span></div>
+                </div>
             </div>
 
             <!-- v3.67 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
                     <span>v3.67 近期更新</span>
                 </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🩹 <strong>止血批次1（稳定性修复）</strong>：修复不可逆数据丢失、静默失败与逻辑错误等 10 项隐患，覆盖检查信息、资料库、设置等模块的边界场景，避免误操作与脏数据。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🌙 <strong>暗黑模式配色修正</strong>：修复应急电话卡片在暗色主题下的白色底块（搜索建议框 / 天气框 / 号码胶囊），并一并清理同类原生控件与内联浅底块，统一为原生控件暗色样式 + 暗色文字，暗色下不再有刺眼亮块。</span>
-                    </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩹 <strong>稳定性修复</strong>：止血批次1，修复 10 项数据丢失 / 静默失败 / 逻辑错误隐患</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🌙 <strong>暗黑模式修正</strong>：修复应急电话等卡片白色底块，统一为原生暗色样式</span></div>
                 </div>
             </div>
 
-            <!-- v3.66 近期更新 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.66 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🔗 <strong>链接、音视频「统一在对话框里打开」</strong>：网页链接点「直接打开」不再跳浏览器新标签，而是在对话区内嵌渲染（与音视频内嵌同形态）；平台视频（B站 / YouTube / 腾讯视频等）本就是内嵌；直链媒体（.mp4 / .mp3）保留富媒体卡片。三者都内联、不跳标签。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>↪️ <strong>仅三种情况跳出应用</strong>：内嵌面板里的「🌐 浏览器打开」、<strong>Ctrl / Cmd + 点击</strong>正文链接（保留对照多网页的老习惯）、媒体卡片自己的「新窗口打开 ↗」。普通点击一律内嵌。</span>
-                    </div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;">
-                        <span style="color:#f59e0b;margin-top:2px;">★</span>
-                        <span>🛡️ <strong>内嵌安全兜底</strong>：iframe 用 sandbox（不含 allow-top-navigation，挡顶层跳转劫持），仅放行 http/https；被站点策略拒绝嵌入时不再假装失败，改为常驻诚实提示 + 永远保留浏览器出口。</span>
-                    </div>
-                </div>
-            </div>
+            <!-- v3.66 及以下已归档（最近 2 版本为 v3.68 / v3.67） -->
 
-            <!-- v3.65 及以下已归档（最近 2 版本为 v3.67 / v3.66） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.64 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.66 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->
@@ -1943,14 +1927,12 @@
             </div>
 
             <!-- 技术信息 -->
-            <div style="background:#f8fafc;border-radius:10px;padding:12px;font-size:0.75rem;color:#64748b;line-height:1.8;">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                    <span style="font-weight:600;color:var(--text);">💡 技术特性</span>
-                </div>
-                <div>• AI 能力：支持多模型 API（DeepSeek V4 等 OpenAI 兼容格式）+ 智能体 ReAct 自主执行循环，可调用本地数据/工具完成任务</div>
-                <div>• 数据存储：IndexedDB + localStorage，全部数据存于本地，支持离线使用（配额随浏览器与磁盘空间动态分配）</div>
-                <div>• 部署形态：纯静态站点 + PWA 离线应用（CloudStudio / GitHub Pages 双地址同步发布）</div>
-                <div>• 兼容适配：苹果 iPhone（添加到主屏幕 PWA，含启动屏与安全区适配）/ 鸿蒙 6 华为浏览器 / Chrome / Edge / 安卓手机端（含折叠屏）全面适配</div>
+            <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:0.74rem;color:#64748b;line-height:1.7;">
+                <div style="font-weight:600;color:var(--text);margin-bottom:4px;">💡 技术特性</div>
+                <div>• AI：多模型 API（DeepSeek V4 等 OpenAI 兼容）+ 智能体 ReAct 自主循环</div>
+                <div>• 数据：IndexedDB 本地存储，支持离线</div>
+                <div>• 部署：纯静态 + PWA 离线应用（GitHub Pages / 云端双地址）</div>
+                <div>• 适配：iPhone PWA / 鸿蒙 / Chrome / Edge / 安卓</div>
             </div>
 
             <!-- 底部信息 -->

@@ -414,6 +414,35 @@
     font-size: 0.95rem;
 }
 
+/* 电话搜索建议下拉：由 phone.js 的 showPhoneSuggestions() 动态创建
+   （<div id="phone-suggestions" class="search-suggestions">…</div>，挂到 .phone-search-bar 下）。
+   ⚠️ 此前全项目没有任何 .search-suggestions 规则：该容器以「无样式块元素」出现在 flex 搜索条里，
+   既不是下拉浮层（会把输入框挤走 / 与输入框混排），也拿不到任何主题配色。
+   .phone-search-bar 上的 position:relative 正是为这个浮层预留的，这里补齐。 */
+.search-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 40;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg, 0 8px 24px rgba(15, 23, 42, 0.12));
+}
+.search-suggestions > div {
+    padding: 9px 14px;
+    font-size: 0.88rem;
+    color: var(--text);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+}
+
+.search-suggestions > div:last-child { border-bottom: none; }
+.search-suggestions > div:hover { background: #eff6ff; color: var(--primary); }
+
 /* ========== 结果统计条 ========== */
 .results-stats {
     display: flex;

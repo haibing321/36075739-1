@@ -88,6 +88,53 @@
                 });
             }
 
+            // ========== 规章正文安全净化（v3.70）==========
+            // 背景：rule.js 一直把库里的 contentHtml 直接 innerHTML 渲染，而写入库里的那条链路上
+            //   唯一的"清洗"是 cleanHtml —— 它只规整空白与排版（空段落/连续 br/表格内空格），
+            //   **不做任何安全净化**：不删 script、不剥 on* 属性、没有标签白名单。
+            //   风险来源也不止"历史遗留数据"：JSON / ZIP 备份导入会把外部 HTML 原样落库
+            //   （别人给的备份文件 = 不可信输入），粘贴编辑同理。
+            // 两道独立防线：
+            //   ① 落库前净化（_ruleSanitizeForStore）：只在内容出现可疑特征时才动用 DOMPurify，
+            //      正常 docx 转换产物（可能上千条正文）不付这份开销；净化失败时【原样保留】，
+            //      绝不转义写入 —— 否则会把 HTML 永久写成文本，属数据损坏。
+            //   ② 渲染前净化（renderRuleHtml 内调用）：失败时转义为纯文本（安全方向）。
+            //   两条都失败也不会渲染出可执行内容。
+            // 白名单必须包含 docx 常见的排版属性（colspan/rowspan/width/align…），
+            //   否则表格会散架（这些属性在 safeHtml 的默认白名单里是没有的）。
+            var RULE_CONTENT_TAGS = ['b','i','em','strong','u','s','sub','sup','p','br','span','div',
+                'h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code',
+                'table','thead','tbody','tfoot','tr','th','td','caption','colgroup','col',
+                'img','a','hr','mark'];
+            var RULE_CONTENT_ATTRS = ['href','src','alt','title','class','id','style','target','rel',
+                'data-img-id','colspan','rowspan','width','height','align','valign','border',
+                'cellpadding','cellspacing','bgcolor','scope','headers','start','type'];
+            // 可疑特征探测：命中才走 DOMPurify（落库路径的快路径）
+            var RULE_RISKY_RE = /<\s*(script|iframe|object|embed|link|meta|base|form|svg|math|style)\b|on[a-z]+\s*=|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html/i;
+
+            function _rulePurify(html, forStore) {
+                if (!html) return html || '';
+                var s = String(html);
+                if (forStore && !RULE_RISKY_RE.test(s)) return s; // 正常正文：零开销直通
+                if (typeof DOMPurify === 'undefined' || !DOMPurify.sanitize) {
+                    if (forStore) return s; // 落库：原样保留，交由渲染期防线兜底
+                    try { return window.escapeHtml ? window.escapeHtml(s) : ''; } catch (e) { return ''; }
+                }
+                try {
+                    return DOMPurify.sanitize(s, {
+                        ALLOWED_TAGS: RULE_CONTENT_TAGS,
+                        ALLOWED_ATTR: RULE_CONTENT_ATTRS,
+                        FORCE_BODY: false
+                    });
+                } catch (e) {
+                    console.warn('[rule] 正文净化失败:', e && e.message);
+                    if (forStore) return s;
+                    try { return window.escapeHtml ? window.escapeHtml(s) : ''; } catch (e2) { return ''; }
+                }
+            }
+            // 落库前净化（导入路径用）
+            function _ruleSanitizeForStore(html) { return _rulePurify(html, true); }
+
             // 渲染规章 HTML（兼容旧格式__IMG_ID__占位符 + 新格式 data-img-id 属性）
             function renderRuleHtml(html) {
                 if (!html) return html;
@@ -99,7 +146,10 @@
                 html = html.replace(/__IMG_ID__([a-zA-Z0-9_-]+)__/g, (match, id) => {
                     return `<img class="rule-lazy-img" data-img-id="${id}" src="">`;
                 });
-                return html;
+                // ★ 安全净化放在最后：保证真正进入 innerHTML 的这串 HTML 一定过了一趟白名单。
+                //   本函数是全部 4 个渲染点（全文查看 / 编辑预览 / 两处高亮预览）的唯一漏斗，
+                //   单条规章、仅用户点开时执行 —— 不进列表渲染（687 条）也不进启动路径。
+                return _rulePurify(html, false);
             }
 
 
@@ -937,7 +987,7 @@
                                         trade,
                                         title: section.title,
                                         content: section.content,  // 保留换行的纯文本（stripHtml结果）
-                                        contentHtml: section.contentHtml,
+                                        contentHtml: _ruleSanitizeForStore(section.contentHtml),
                                         imageIds: section.imageIds || []
                                     };
                                     if (dupIdx !== -1) rules[dupIdx] = ruleData;
@@ -992,7 +1042,7 @@
                                             trade: itemTrade, 
                                             title: item.title, 
                                             content: item.content || stripHtml(item.contentHtml),
-                                            contentHtml: hasRealHtml ? item.contentHtml : '',
+                                            contentHtml: hasRealHtml ? _ruleSanitizeForStore(item.contentHtml) : '',
                                             imageIds: item.imageIds || []
                                         };
                                         if (dupIdx !== -1) rules[dupIdx] = ruleData;
@@ -1013,7 +1063,7 @@
                             trade, 
                             title, 
                             content: plainText || searchText,  // 保留换行的纯文本（DOCX用plainText，PDF等用searchText）
-                            contentHtml: contentHtml,
+                            contentHtml: _ruleSanitizeForStore(contentHtml),
                             imageIds: imageIds
                         };
                         if (dupIdx !== -1) rules[dupIdx] = ruleData;
@@ -1318,7 +1368,7 @@
                                 trade: item.trade || '通用',
                                 title: item.title,
                                 content: item.content || stripHtml(item.contentHtml),
-                                contentHtml: hasRealHtml ? item.contentHtml : '',
+                                contentHtml: hasRealHtml ? _ruleSanitizeForStore(item.contentHtml) : '',
                                 imageIds: item.imageIds || []
                             };
                             if (dupIdx !== -1) {

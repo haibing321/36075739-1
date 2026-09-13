@@ -603,6 +603,9 @@
                             if (searchFields.includes('category')) text += (item.category || '') + ' ';
                             if (searchFields.includes('content')) text += (item.content || '') + ' ';
                             if (item.regulation) text += (item.regulation || '') + ' ';
+                            // 离线降级路径的字段集必须与 Fuse keys / issueItemContainsKeyword 一致，
+                            // 否则按单位检索（如「兰州电务段」）会出现联网有结果、断网无结果。
+                            if (searchFields.includes('unit')) text += (item.unit || '') + ' ';
                             text = text.toLowerCase();
 
                             let match = 0;

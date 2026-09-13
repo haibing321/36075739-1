@@ -952,7 +952,7 @@
                     return 2;                                  // 异专业：最后
                 }
                 matchedRules.sort(function(a, b) {
-                    if (a.mode !== b.mode) return a.mode === 'and' ? 1 : -1; // and 优先
+                    if (a.mode !== b.mode) return a.mode === 'and' ? -1 : 1; // and 优先（-1=排前面）
                     var ta = _tradeRank(a.rule, _pmTrade), tb = _tradeRank(b.rule, _pmTrade);
                     if (ta !== tb) return ta - tb;
                     return b.matchScore - a.matchScore;
@@ -2162,7 +2162,7 @@
                                     + '<div style="background:#e8f5e9;padding:10px;border-radius:6px;font-size:0.88rem;line-height:1.7;color:#1b5e20;">'
                                     + '"' + acEscHtml(c.clause) + '"'
                                     + '</div>'
-                                    + '<div style="margin-top:6px;"><button class="btn btn-info btn-small" style="font-size:0.72rem;padding:2px 10px;" onclick="window.acRuleViewByRef(\'' + acEscJsStr(c.title) + '\',\'' + acEscJsStr(c.fileNumber || '') + '\',\'' + acEscJsStr(c.article || '') + '\')">📄 查看全文</button></div>'
+                                    + '<div style="margin-top:6px;"><button class="btn btn-info btn-small" style="font-size:0.72rem;padding:2px 10px;" onclick="window.acRuleViewByRef(\'' + acEscOnclick(c.title) + '\',\'' + acEscOnclick(c.fileNumber || '') + '\',\'' + acEscOnclick(c.article || '') + '\')">📄 查看全文</button></div>'
                                     + '</div>';
                             });
                         }
@@ -2412,13 +2412,18 @@
                     records = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
                 } catch(e) { records = []; }
 
-                const rec = records.find(r => r.id === recordId);
+                // ⚠️ 必须字符串化后比较：recordId 由内联 onclick 拼接传入（字符串），
+                // 而 rec.id 是 Date.now() 数字，严格 === 恒为 false → 修正会被静默丢弃（连提示都没有）。
+                const rec = records.find(r => String(r.id) === String(recordId));
                 if (rec) {
                     rec.correction = correction.trim();
                     rec.correctionTime = new Date().toISOString();
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
                     alert('已记录修正：' + correction.trim());
                     console.log('[对规反馈修正]', rec.query.slice(0, 30), '→', correction.trim());
+                } else {
+                    // 找不到也要让用户知道，避免"辛苦输入完却什么都没发生"
+                    alert('未找到对应的对规记录，修正内容未保存。请重新生成对规后再试。');
                 }
             };
 

@@ -2515,6 +2515,10 @@
                     window._dsAbortController = null;
                     dsStreaming = false;
                     window.__dsStreaming = false;
+                    // ⚠️ 必须一并复位 _dsStreaming（渲染层真正读取的标志，见本文件 :3194）。
+                    // _dsStreamChat 内部没有 try/finally，被「停止生成」或断网中止时它末尾的复位语句
+                    // 不会执行；漏掉这里会让该标志永久为 true，此后整个会话的图片/音视频只会渲染成外链卡片。
+                    _dsStreaming = false;
                     var sendBtn2 = document.getElementById('ds-send-btn');
                     if (sendBtn2) {
                         sendBtn2.disabled = false;
@@ -3676,7 +3680,10 @@
                         if (!safe) return m;
                         const kind = dsMediaKindOf(safe);
                         if (l.img && kind === 'image') {
-                            return '<img class="ds-media-img ds-media-img-inline" src="' + safe + '" alt="' + l.txt + '" loading="lazy" referrerpolicy="no-referrer">';
+                            // alt 必须转义：l.txt 是 markdown 链接文本（可含双引号），而本行是块级版本
+                            // （:3197 用 dsEsc）之外唯一漏转义的插值点；其产物由 dsSetHtmlKeepMedia
+                            // 直接落地、不经净化，未转义即可闭合属性注入事件处理器。
+                            return '<img class="ds-media-img ds-media-img-inline" src="' + safe + '" alt="' + dsEsc(l.txt || '') + '" loading="lazy" referrerpolicy="no-referrer">';
                         }
                         // 非 ![](md 图片) 语法的行内/表格链接 → 全部走块级媒体渲染：
                         //   视频站点 → 内嵌 iframe；视频/音频直链 → 内嵌播放器；图片直链 → 内嵌图片；

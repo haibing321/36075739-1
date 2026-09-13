@@ -1625,7 +1625,12 @@
       首屏只需加载 ~50KB 的核心 JS，无需等待 ~2MB 的大型库
       保留 DOMPurify 确保安全防护随时可用
     -->
-    <script src="src/js/vendor/purify.min.js" defer onerror="window.DOMPurify={sanitize:function(s){return s==null?'':String(s);}};console.warn('[Local] DOMPurify 加载失败，已启用兜底')"></script>
+    <!-- 兜底脚本：DOMPurify 加载失败时【不再】伪造一个恒等 sanitize。
+         原因：所有调用方都以「DOMPurify.sanitize 存在」作为"净化已生效"的依据
+         （utils.js:safeHtml / unified-enhancements.js:renderCard / smart-writer.js:wrSafeBubbleHtml），
+         而恒等实现会让它们误判为已净化、把未经处理的 HTML 直接落地。不定义该属性后，
+         各调用方会自动走各自的"转义降级"分支（安全方向），行为与 purify 完全缺失时一致。 -->
+    <script src="src/js/vendor/purify.min.js" defer onerror="console.error('[Local] DOMPurify 未加载：净化能力不可用，渲染将自动降级为转义（请检查网络或 SW 缓存）')"></script>
     <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
     <!-- 本地模块（defer: 并行下载，DOM 解析后按顺序执行） -->
     <script src="src/js/modules/utils.js" defer></script>

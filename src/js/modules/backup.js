@@ -21,7 +21,14 @@
 // ========== 全局数据备份与恢复 ==========
 (function() {
     function readIndexedDB(dbName, storeName, version) {
-        return new Promise(function(resolve) {
+        return new Promise(function(resolve, reject) {
+            // ⚠️ 语义约定：只有「store 不存在」与「确实读到 0 条」才 resolve([])；
+            // 任何「读取失败」都必须 reject。原因：恢复端以「备份里是否存在该模块」为清空依据
+            // （见本文件恢复段的 Array.isArray 判断），把读失败降级成空数组等于产出一份"空备份"，
+            // 用户恢复后会把整库真实数据清掉 —— 备份本该是最后防线，不能自己成为事故源。
+            var failRead = function(err) {
+                reject(err instanceof Error ? err : new Error('[backup] 读取 ' + dbName + '.' + storeName + ' 失败: ' + (err && err.message ? err.message : err)));
+            };
             try {
                 // 优先用 dbManager 获取共享连接，避免版本冲突
                 if (window.dbManager && typeof window.dbManager.getDB === 'function') {
@@ -31,15 +38,17 @@
                         var store = tx.objectStore(storeName);
                         var getAll = store.getAll();
                         getAll.onsuccess = function(){ resolve(getAll.result || []); };
-                        getAll.onerror = function(){ resolve([]); };
-                    }).catch(function(){ resolve([]); });
+                        getAll.onerror = function(){ failRead(getAll.error); };
+                        tx.onabort = function(){ failRead(tx.error); };
+                    }).catch(function(e){ failRead(e); });
                     return;
                 }
             } catch(e) { /* fallback */ }
             
             // 回退：直接打开
             var req = indexedDB.open(dbName, version || 1);
-            req.onerror = function(){ resolve([]); };
+            req.onerror = function(){ failRead(req.error); };
+            req.onblocked = function(){ failRead(new Error('[backup] 数据库 ' + dbName + ' 被其它标签页占用')); };
             req.onsuccess = function(){
                 var db = req.result;
                 if (!db.objectStoreNames.contains(storeName)) { db.close(); return resolve([]); }
@@ -47,8 +56,9 @@
                 var store = tx.objectStore(storeName);
                 var getAll = store.getAll();
                 getAll.onsuccess = function(){ resolve(getAll.result || []); };
-                getAll.onerror = function(){ resolve([]); };
+                getAll.onerror = function(){ failRead(getAll.error); };
                 tx.oncomplete = function(){ db.close(); };
+                tx.onabort = function(){ failRead(tx.error); };
             };
         });
     }

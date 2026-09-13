@@ -4,6 +4,8 @@
         (function() {
             const STORAGE_KEY = 'railway_work_diary_v2';
             let diaries = [];
+            let _diaryLoadFailed = false; // 本地日志解析失败标志：为 true 时禁止任何覆写，避免把损坏当"空数据"写回
+            let _diaryLoadFailedWarned = false; // 保护态提示只弹一次
             let issueCount = 0;
             const MAX_ISSUES = 20;
             let diaryFilterMode = 'today';
@@ -15,8 +17,47 @@
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
 
-            function loadDiaries() { try { const data = localStorage.getItem(STORAGE_KEY); if (data) { diaries = JSON.parse(data); diaries.forEach(d => { if (!d.regulations) d.regulations = []; if (d.issues && d.issues.length > d.regulations.length) { while (d.regulations.length < d.issues.length) d.regulations.push(''); } }); } } catch (e) { diaries = []; } }
-            function saveDiaries() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries)); } catch (e) { alert('保存失败：' + e.message); } }
+            // 解析与归一化必须分开：原先 try 覆盖了整段 forEach，只要有一条脏记录
+            // （如 issues 为字符串）就整体 catch 成 diaries=[]，随后用户敲一个字触发 2 秒防抖
+            // 自动保存，就把只含当前一条的记录写回 localStorage —— 全部历史日志被永久覆盖且无提示。
+            function loadDiaries() {
+                let parsed = null;
+                try {
+                    const data = localStorage.getItem(STORAGE_KEY);
+                    if (data) parsed = JSON.parse(data);
+                } catch (e) {
+                    // 解析失败：备份原文、置失败标志并禁止后续覆写（绝不当成"没有数据"处理）
+                    console.error('[diary] 本地日志解析失败，已保留原文并进入只读保护:', e);
+                    _diaryLoadFailed = true;
+                    try { localStorage.setItem(STORAGE_KEY + '_corrupt_backup', localStorage.getItem(STORAGE_KEY) || ''); } catch (e2) {}
+                    diaries = [];
+                    return;
+                }
+                if (!Array.isArray(parsed)) { diaries = []; return; }
+                // 逐条归一化：单条脏记录只丢它自己，不影响其它记录
+                diaries = parsed.filter(d => d && typeof d === 'object' && !Array.isArray(d));
+                diaries.forEach(d => {
+                    if (!Array.isArray(d.issues)) d.issues = (d.issues == null || d.issues === '') ? [] : [String(d.issues)];
+                    if (!Array.isArray(d.regulations)) d.regulations = [];
+                    if (d.issues.length > d.regulations.length) { while (d.regulations.length < d.issues.length) d.regulations.push(''); }
+                });
+            }
+            function saveDiaries() {
+                try {
+                    if (_diaryLoadFailed) {
+                        // 保护态下拒绝覆写是必须的（否则损坏数据会被"空数据"覆盖），
+                        // 但绝不能静默 —— 否则用户以为记上了、其实没保存。每次会话只提示一次，避免防抖反复弹窗。
+                        console.error('[diary] 处于解析失败保护态，拒绝覆写本地存储');
+                        if (!_diaryLoadFailedWarned) {
+                            _diaryLoadFailedWarned = true;
+                            alert('本地工作日志数据解析失败，已进入只读保护（原始数据已备份到 railway_work_diary_v2_corrupt_backup）。\n' +
+                                  '当前填写的内容不会被保存，请先导出/清理本地数据后再重新记录，以免覆盖可恢复的原文。');
+                        }
+                        return;
+                    }
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(diaries));
+                } catch (e) { alert('保存失败：' + e.message); }
+            }
 
             // 自动保存（防抖 2 秒）
             var _autoSaveTimer = null;

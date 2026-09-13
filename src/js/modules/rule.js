@@ -327,13 +327,18 @@
                         const request = store.get(1);
                         request.onsuccess = () => {
                             const result = request.result;
-                            // 只有当 data 是长度>0的数组时才使用，空数组或非法数据回退到示例
-                            if (result && Array.isArray(result.data) && result.data.length > 0) {
+                            // ⚠️ 必须区分「用户主动清空」与「首次使用」：
+                            //   · 建库时的 schema 回调会预写一条 {id:1, data:[]}，
+                            //     所以"有记录"并不等于"用户已初始化"，不能用 Array.isArray 判定；
+                            //   · 用户清空/导入/编辑都会经 saveRulesToDB 写入 initialized:true。
+                            // 因此：data 非空 或 带 initialized 标记 → 如实使用（清空后就该是空列表）；
+                            // 否则（首次使用）才注入示例规章 —— 少了这个判定，用户清空后一刷新示例就会自己回来。
+                            if (result && Array.isArray(result.data) && (result.data.length > 0 || result.initialized === true)) {
                                 rules = result.data;
                                 console.log('[loadRulesFromDB] 加载成功，共 ' + rules.length + ' 条规章');
                             } else {
                                 rules = sampleRules.map(r => ({ ...r }));
-                                console.log('[loadRulesFromDB] IndexedDB 无数据或为空，使用 ' + rules.length + ' 条示例规章');
+                                console.log('[loadRulesFromDB] 首次使用（未初始化标记），注入 ' + rules.length + ' 条示例规章');
                             }
                             resolve(rules);
                         };
@@ -364,7 +369,9 @@
                     transaction.onerror = () => reject(transaction.error);
                     transaction.onabort = () => reject(new Error('IndexedDB 事务中断'));
                     const store = transaction.objectStore(STORE_NAME);
-                    const request = store.put({ id: 1, data: rulesArray });
+                    // initialized:true 是「用户已初始化」标记：用于区分"用户主动清空(data:[])"与"首次使用"。
+                    // 所有写入路径（导入/编辑/删除/清空）都经由此函数，故一处打标即可覆盖全部。
+                    const request = store.put({ id: 1, data: rulesArray, initialized: true });
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });

@@ -45,6 +45,9 @@
             // 全局候选映射表，用于"本地组装对规结论"（三阶段强约束）
             let _globalCandidatesMap = {}; // 已移至 smart-check.js
             window._dsAbortController = null; // 智能对话流式终止控制器
+            // 对话历史"解析失败保护态"：为 true 时拒绝覆写 localStorage，
+            // 避免把可恢复的损坏原文洗成空数组（见 dsLoadConversations / dsSaveConversations）。
+            let _dsConvLoadFailed = false;
 
             /**
              * 获取 API Key（统一入口）
@@ -308,10 +311,19 @@
                 return changed;
             }
             function dsLoadConversations() {
+                var _corrupt = false;
                 try {
                     const saved = localStorage.getItem(DS_CONVERSATIONS_STORAGE);
                     if (saved) {
-                        dsConversations = JSON.parse(saved);
+                        const parsed = JSON.parse(saved);
+                        // ⚠️ 必须校验形状：解析出 {} / null 时不拦，后面 dsConversations.find 会抛错并中断整个 dsInit
+                        //（模型下拉、模式切换、下拉菜单全部不初始化）。
+                        if (Array.isArray(parsed)) {
+                            dsConversations = parsed.filter(function (c) { return c && typeof c === 'object' && !Array.isArray(c); });
+                        } else {
+                            console.error('[doubao] 对话历史不是数组，按损坏处理');
+                            _corrupt = true;
+                        }
                     } else {
                         // 兼容旧版本：从单对话迁移
                         const oldHistory = localStorage.getItem(DS_CHAT_STORAGE);
@@ -331,10 +343,32 @@
                             }
                         }
                     }
-                } catch(e) { dsConversations = []; }
+                } catch(e) {
+                    console.error('[doubao] 对话历史解析失败:', e && e.message);
+                    _corrupt = true;
+                }
+                if (_corrupt) {
+                    // 关键：**不清空存储、不覆盖**。原先此处把内存置空，紧接着 dsInit 的 dsSaveConversations()
+                    // 会把空数组写回同一键 —— 一次解析异常就让全部对话历史不可恢复地消失。
+                    // 现在进入保护态：备份原文 + 本次会话拒绝覆写，用户仍有机会人工恢复。
+                    dsConversations = [];
+                    _dsConvLoadFailed = true;
+                    try {
+                        const raw = localStorage.getItem(DS_CONVERSATIONS_STORAGE);
+                        if (raw) localStorage.setItem(DS_CONVERSATIONS_STORAGE + '_corrupt_backup', raw);
+                    } catch (e2) {}
+                    if (window.Toast && window.Toast.error) {
+                        window.Toast.error('对话历史读取失败：已保留原始数据并暂停自动保存（避免覆盖），请先不要在此状态继续重要对话。');
+                    }
+                }
             }
 
             function dsSaveConversations() {
+                // 解析失败保护态：拒绝覆写，避免把可恢复的原文洗成空数组
+                if (_dsConvLoadFailed) {
+                    console.warn('[doubao] 对话历史处于解析失败保护态，本次不写回存储');
+                    return;
+                }
                 try {
                     localStorage.setItem(DS_CONVERSATIONS_STORAGE, JSON.stringify(dsConversations));
                 } catch(e) {

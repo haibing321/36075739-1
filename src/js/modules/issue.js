@@ -6,6 +6,10 @@
             const MATCH_THRESHOLD = 75;
             const searchMode = 'OR';
             const searchFields = ['性质', 'category', 'content', 'regulation', 'unit'];
+            // 「已初始化」标记：区分"用户主动清空"与"首次使用"。
+            // 检查信息是按条存储的，没有单条记录可挂 initialized 字段，故用 localStorage 标记。
+            // 缺了它，用户清空后一刷新，演示数据就会自己回来（表现为"删不掉"）。
+            const ISSUE_INIT_FLAG = 'railway_issue_initialized_v1';
             let currentPage = 1, pageSize = 20, totalPages = 1, allFilteredResults = [];
 
             // 立即注册 DB schema（模块加载时，确保 backup.js writeIndexedDB 调用前 schema 已就绪）
@@ -47,6 +51,8 @@
                 if (!db || !ensureStoreExists()) await initDB();
                 await replaceAllData(dataArray);
                 dataCache = dataArray;
+                // 写入成功即视为「已初始化」：此后即便数据为空，也不再自动注入演示数据
+                try { localStorage.setItem(ISSUE_INIT_FLAG, '1'); } catch (e) {}
                 // 显式写入即视为数据已就绪（供后台盯控等外部模块判断可读）
                 window.__issueDataReady = true;
                 // 数据已变更，使 Fuse 索引失效，下次搜索时重建（避免覆盖导入同条数后命中长期缓存）
@@ -101,7 +107,11 @@
                     const transaction = db.transaction([STORE_NAME], 'readwrite');
                     const store = transaction.objectStore(STORE_NAME);
                     const request = store.clear();
-                    request.onsuccess = () => resolve();
+                    request.onsuccess = () => {
+                        // 清空同样是「用户已初始化」的动作：打标后刷新不会再冒出演示数据
+                        try { localStorage.setItem(ISSUE_INIT_FLAG, '1'); } catch (e) {}
+                        resolve();
+                    };
                     request.onerror = () => reject(request.error);
                 });
             }
@@ -1014,7 +1024,9 @@
                         else issueAddKeyword();
                     })();
                     const data = await loadData();
-                    if (data.length === 0) await issueLoadDemoData();
+                    // 只有「从未初始化」时才注入演示数据；用户清空过（已打 ISSUE_INIT_FLAG）不再注入，
+                    // 否则清空后一刷新演示数据就会自己回来（用户表现为"删不掉"）。
+                    if (data.length === 0 && localStorage.getItem(ISSUE_INIT_FLAG) !== '1') await issueLoadDemoData();
                     // 标记「数据已就绪」：后台盯控（agent-goals）在 DOMContentLoaded 就开始跑，
                     // 而本模块是在 window.load 里才从 IndexedDB 读完数据。
                     // 若拿空数组当基线，5 分钟后会误报「新增 N 条相关记录」。

@@ -1912,7 +1912,7 @@
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
                 if (!q.trim()) { alert('请输入写作需求'); return; }
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
-                const apiUrl = localStorage.getItem(WR_API_URL_K) || 'https://api.deepseek.com/chat/completions';
+                const apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
                 const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-flash';
                 if (!apiKey) { alert('请先在智能助手模块中配置 API Key。'); return; }
 

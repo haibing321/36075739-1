@@ -13,16 +13,25 @@
     // ==================== API 地址归一化 + 自愈（v3.70）====================
     // 为什么必须有：API 地址是「按设备」存在各浏览器 localStorage 的 ds_api_url_v1 键里，
     //   而保存时只做了 trim。手机端与电脑端各存各的，一个手输/误粘贴的地址在手机上是常态。
-    // 关键机理：缺 scheme 的地址（如 api.deepseek.com/chat/completions）不会让 fetch 报错 ——
-    //   它会被当成【相对路径】按页面同源解析，请求于是打到本站自己的静态服务器，
-    //   换回一个 HTTP 404。这与本文件 dsAiHttpError 处的既有结论完全吻合：
-    //   「官方错误码只有 400/401/402/422/429/500/503，**没有 404**」——
-    //   所以一旦看到 404，基本可断定请求根本没到 API 端点，而是地址配错了。
+    // 关键机理：这类"地址不对"会以两种常见形态出现，且都不会报"配置错误"，而是直接给一个 404：
+    //   a) 缺 scheme（如 api.deepseek.com/chat/completions）—— fetch 不报错，把它当【相对路径】
+    //      按页面同源解析，请求打到本站自己的静态服务器，换回本站的 404；
+    //   b) 绝对地址但路径写错（真实案例：手机上手输 https://api.deepseek.com/chat/completion，
+    //      少结尾的 s）—— 服务器上不存在该路径，官方返回 404。
+    //   两种都会让四个 AI 功能（对话/对规/写作/风险研判）同时失效，因为它们共享本配置键。
+    //   （注：官方对业务错误——模型名无效、参数不对——一律用 400 返回，所以「404」本身
+    //     就是"地址不对"的强信号。）
     // 归一化规则（只修"客观错误"，绝不猜第三方网关）：
     //   ① 去掉误粘贴的引号/尖括号/首尾空白；
     //   ② 缺 scheme 且不是以 / 开头的绝对路径 → 补 https://（以 / 开头的是有意为之的同源路径，不动）；
-    //   ③ 只对「已知供应商域名 + 路径为空或仅 /v1」补全 chat 路径（这些域名不补必定 404）；
-    //      未知域名一律原样返回 —— 根路径代理可能是故意的，改了反而弄坏。
+    //   ③ 只对「已知供应商域名」补全/纠正 chat 路径：
+    //      · 路径为空或仅 /v1 → 补全（这些域名不补必定 404）；
+    //      · 路径里出现 completion 但不是规范写法（少结尾的 s、多末尾斜杠、大小写不同、
+    //        v1/completion 之类）→ 纠正为规范路径。真实案例：手机上手输
+    //        https://api.deepseek.com/chat/completion（少一个 s）→ 该路径在官方服务器上
+    //        不存在 → 404，且四个 AI 功能会同时失效。
+    //      未知域名一律原样返回 —— 第三方网关/根路径代理可能是故意配的，改了反而弄坏；
+    //      /responses、/messages、/anthropic 等其它合法通道也一律不动。
     window.dsNormalizeApiUrl = function(raw) {
         var u = String(raw == null ? '' : raw).trim().replace(/^[<"'\s]+|[>"'\s]+$/g, '');
         if (!u) return '';
@@ -31,6 +40,7 @@
             var url = new URL(u);
             var host = url.host.toLowerCase();
             var path = url.pathname.replace(/\/+$/, '');
+            var lower = path.toLowerCase();
             var KNOWN = {
                 'api.deepseek.com': '/chat/completions',
                 'api.openai.com': '/v1/chat/completions',
@@ -42,9 +52,33 @@
                 'api.stepfun.com': '/v1/chat/completions'
             };
             var tail = KNOWN[host];
-            if (tail && (path === '' || path === '/v1')) {
-                url.pathname = (path === '/v1' && tail.indexOf('/v1') !== 0) ? ('/v1' + tail) : tail;
-                return url.toString();
+            if (tail) {
+                var tl = tail.toLowerCase();
+                var want = null;                       // 期望的 pathname（null = 不动）
+                if (path === '') {
+                    want = tail;                        // 只填了域名
+                } else if (path === '/v1') {
+                    want = (tl.indexOf('/v1') !== 0) ? ('/v1' + tail) : tail;   // 只填了 /v1
+                } else if (lower.indexOf('completion') !== -1) {
+                    // 与规范路径"忽略大小写相同"（含 /v1、/beta 前缀）→ 只统一大小写与末尾斜杠
+                    var isExact = (lower === tl) || (('/v1' + tl) === lower) || (('/beta' + tl) === lower);
+                    if (isExact) {
+                        want = lower;
+                    } else {
+                        // 明显是"想写 chat/completions 但写错了"（少结尾的 s、多一段 chat、
+                        // v1/completion 等）→ 纠正为规范路径，保留合法的 /v1、/beta 前缀
+                        var prefix = '';
+                        if (lower.indexOf('/v1/') === 0 && tl.indexOf('/v1') !== 0) prefix = '/v1';
+                        else if (lower.indexOf('/beta/') === 0 && tl.indexOf('/beta') !== 0) prefix = '/beta';
+                        want = prefix + tail;
+                    }
+                }
+                if (want && url.pathname !== want) {
+                    // 只在"语义被纠正"时告警；纯大小写/末尾斜杠归一不吵人
+                    if (want !== lower) console.warn('[api url] 地址路径疑似写错，已纠正：' + raw + ' → ' + url.origin + want);
+                    url.pathname = want;
+                    return url.toString();
+                }
             }
         } catch (e) {}
         return u;
@@ -643,8 +677,11 @@
             401: 'API Key 无效或未授权（401）',
             402: '账户余额不足（402）',
             403: '无访问权限（403）',
-            404: '接口不存在（404）：DeepSeek 官方 API 不会返回 404 —— 说明请求没打到 API，'
-               + '绝大多数是 API 地址配错/不完整（缺 https:// 时会被当成本站相对路径，于是本站返回 404）',
+            404: '地址不存在（404）：说明请求的【路径】在服务器上不存在 —— 绝大多数是 API 地址写错或不完整。'
+               + '官方 API 对业务错误（模型名无效、参数不对）一律用 400 返回，所以出现 404 时基本可以断定'
+               + '地址本身不对：少了结尾的 s（/chat/completion）、少了 /chat/completions 路径、'
+               + '或漏写 https:// 被当成相对路径打到本站。请在「设置 → API 配置」核对地址，'
+               + 'DeepSeek 应为 https://api.deepseek.com/chat/completions',
             405: '请求方式不被接受（405）：地址可能指向了非对话接口',
             422: '请求参数错误（422）',
             429: '请求过于频繁，请稍后再试（429）',

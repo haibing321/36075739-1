@@ -85,10 +85,12 @@
             // 同步回旧版单配置键，供 agent-core / smart-check / smart-writer / risk 等读取点自动生效
             function syncLegacyKeys(p) {
                 if (!p) return;
+                var _u = window.dsNormalizeApiUrl ? window.dsNormalizeApiUrl(p.apiUrl || '') : (p.apiUrl || '');
+                if (!_u) _u = DS_DEFAULT_API_URL;
                 localStorage.setItem(DS_API_KEY_STORAGE, p.apiKey || '');
-                localStorage.setItem(DS_API_URL_STORAGE, p.apiUrl || DS_DEFAULT_API_URL);
+                localStorage.setItem(DS_API_URL_STORAGE, _u);
                 localStorage.setItem(DS_MODEL_STORAGE, p.model || DS_DEFAULT_MODEL);
-                dsApiKey = p.apiKey || ''; dsApiUrl = p.apiUrl || DS_DEFAULT_API_URL; dsModel = p.model || DS_DEFAULT_MODEL;
+                dsApiKey = p.apiKey || ''; dsApiUrl = _u; dsModel = p.model || DS_DEFAULT_MODEL;
             }
             function setActiveProvider(id) {
                 var arr = getProviders();
@@ -160,7 +162,11 @@
                 try {
                     var lm = localStorage.getItem(DS_MODEL_STORAGE) || '';
                     var _map2 = Object.assign({}, DS_LEGACY_MODEL_MAP);
-                    if (_isDsEndpoint(localStorage.getItem('ds_api_url_v1'))) Object.assign(_map2, DS_RETIRED_MODEL_MAP);
+                    // 这里的地址只用于判断"是否 DeepSeek 官方端点"，同样先归一化 ——
+                    // 缺 scheme 的旧值会让 new URL() 抛错、_isDsEndpoint 误判为非官方端点，
+                    // 结果退役模型名不会被改写（留下必报错的配置）
+                    var _urlForCheck = window.dsGetApiUrl ? window.dsGetApiUrl() : localStorage.getItem('ds_api_url_v1');
+                    if (_isDsEndpoint(_urlForCheck)) Object.assign(_map2, DS_RETIRED_MODEL_MAP);
                     var mapped = _map2[lm.toLowerCase()];
                     if (mapped) { localStorage.setItem(DS_MODEL_STORAGE, mapped); changed = true; }
                 } catch (e) {}
@@ -218,15 +224,51 @@
                 try { sel.dispatchEvent(new Event('ds-rebuild', { bubbles: true })); } catch(e){}
             }
 
+            // ==================== API 地址自愈（v3.70）====================
+            // 场景：地址是按设备存的，某台设备（常见于手机）里存的地址若缺 https:// 或缺少
+            //   /chat/completions 路径，请求会被 fetch 当相对路径解析 → 打到本站自己 → 404，
+            //   四个 AI 功能（对话/对规/写作/风险研判）会同时失效。
+            // 这里在启动时把「已存坏的值」就地修正并回写，用户无需重新输入；
+            // 只修客观错误（缺 scheme、已知供应商缺路径），第三方网关的自定义地址一律不动。
+            function repairApiUrlConfig() {
+                var changed = false;
+                try {
+                    var raw = localStorage.getItem(DS_API_URL_STORAGE) || '';
+                    var fixed = window.dsNormalizeApiUrl ? window.dsNormalizeApiUrl(raw) : raw;
+                    if (raw && fixed && fixed !== raw) {
+                        localStorage.setItem(DS_API_URL_STORAGE, fixed);
+                        changed = true;
+                        console.warn('[doubao] API 地址不完整，已自动修正：' + raw + ' → ' + fixed);
+                    }
+                } catch (e) {}
+                try {
+                    var arr = getProviders(), hit = false;
+                    arr.forEach(function(p) {
+                        if (!p.apiUrl) return;
+                        var f = window.dsNormalizeApiUrl ? window.dsNormalizeApiUrl(p.apiUrl) : p.apiUrl;
+                        if (f && f !== p.apiUrl) { console.warn('[doubao] 模型「' + (p.name || p.model) + '」地址已修正：' + p.apiUrl + ' → ' + f); p.apiUrl = f; hit = true; }
+                    });
+                    if (hit) { saveProviders(arr); changed = true; }
+                } catch (e) {}
+                return changed;
+            }
+
             // ---- 初始化 ----
             function dsInit() {
                 migrateLegacyApiConfig();
                 // 旧模型名（deepseek-v4-flash / -vision-exp 等）统一改写为 deepseek-flash
                 // 必须放在 migrateLegacyApiConfig 之后：后者可能刚从 ds_model_v1 生成 Provider 条目
                 migrateLegacyModelNames();
+                // 修正已存的坏 API 地址（必须在读 activeProvider 之前，否则本次仍用坏地址发起请求）
+                repairApiUrlConfig();
                 var ap = getActiveProvider();
                 if (ap) { dsApiKey = ap.apiKey || ''; dsApiUrl = ap.apiUrl || DS_DEFAULT_API_URL; dsModel = ap.model || DS_DEFAULT_MODEL; }
                 else { dsApiKey = ''; dsApiUrl = DS_DEFAULT_API_URL; dsModel = DS_DEFAULT_MODEL; }
+                // 旧配置键也一并归一化，供 agent-core / smart-check / smart-writer / risk 读取点自愈
+                try {
+                    var _liveUrl = window.dsNormalizeApiUrl ? window.dsNormalizeApiUrl(dsApiUrl) : dsApiUrl;
+                    if (_liveUrl && _liveUrl !== dsApiUrl) { dsApiUrl = _liveUrl; localStorage.setItem(DS_API_URL_STORAGE, _liveUrl); }
+                } catch (e) {}
                 
                 updateApiStatusBadge();
                 // 加载多对话历史
@@ -1069,6 +1111,14 @@
                 var model = document.getElementById('ds-pe-model').value.trim();
                 var key = document.getElementById('ds-pe-key').value.trim();
                 if (!url) { alert('请输入 API 地址'); return; }
+                // 地址归一化 + 明示：缺 https:// 的地址会被 fetch 当相对路径解析（请求打到本站 → 404），
+                // 缺 /chat/completions 路径的已知供应商地址同样 404。这里补全并即时告知，不静默改写。
+                var _fixedUrl = window.dsNormalizeApiUrl ? window.dsNormalizeApiUrl(url) : url;
+                if (_fixedUrl && _fixedUrl !== url) {
+                    console.warn('[doubao] API 地址已自动补全：' + url + ' → ' + _fixedUrl);
+                    if (typeof Toast !== 'undefined' && Toast.success) Toast.success('API 地址已补全为：' + _fixedUrl);
+                    url = _fixedUrl;
+                }
                 if (!model) { alert('请输入模型名称'); return; }
                 var pid = f ? f.dataset.pid : '';
                 var existing = pid ? getProviders().filter(function(p){ return p.id === pid; })[0] : null;
@@ -4253,7 +4303,7 @@
         const { rules, issues } = await retrieveLocalData(problemText, { topNRules: 4, topNIssues: 4 });
         const refText = buildReferenceText(rules, issues);
         const apiKey = await (typeof _getApiKey === 'function' ? _getApiKey() : Promise.resolve(localStorage.getItem('ds_api_key_v1') || ''));
-        const apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+        const apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
         const model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
         if (!apiKey) {
           if (container) container.innerHTML = '<div style="color:var(--warning)">请先配置 API Key</div>';
@@ -4705,7 +4755,7 @@
         try {
           var apiKey = localStorage.getItem('ds_api_key_v1') || '';
           if (!apiKey) { container.innerHTML = '<div style="color:#dc2626;padding:20px;">请先配置 API Key</div>'; return; }
-          var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+          var apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
           var model   = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
 
           var messages = [];

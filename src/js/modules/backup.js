@@ -666,7 +666,10 @@
                     var active = (provs.filter(function(p){ return p.id === aid; })[0]) || provs[0];
                     if (active) {
                         localStorage.setItem('ds_api_key_v1', active.apiKey || '');
-                        localStorage.setItem('ds_api_url_v1', active.apiUrl || '');
+                        // 备份文件可能来自配置有误的设备：地址入库前归一化（缺 https:// 的地址会被
+                        // fetch 当相对路径 → 请求打到本站 → 404，四个 AI 功能会同时失效）
+                        var _bUrl = window.dsNormalizeApiUrl ? window.dsNormalizeApiUrl(active.apiUrl || '') : (active.apiUrl || '');
+                        localStorage.setItem('ds_api_url_v1', _bUrl);
                         localStorage.setItem('ds_model_v1', active.model || '');
                     }
                 }

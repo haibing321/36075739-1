@@ -484,7 +484,7 @@
   // ========== 调用 LLM（官方 function-calling）==========
   async function _callLLM(messages, withTools) {
     var apiKey = localStorage.getItem('ds_api_key_v1') || '';
-    var apiUrl = localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+    var apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
     var model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
     if (!apiKey) throw new Error('请先在设置中配置 API Key');
     var controller = new AbortController();

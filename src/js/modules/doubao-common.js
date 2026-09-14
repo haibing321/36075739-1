@@ -10,6 +10,53 @@
 (function() {
     'use strict';
 
+    // ==================== API 地址归一化 + 自愈（v3.70）====================
+    // 为什么必须有：API 地址是「按设备」存在各浏览器 localStorage 的 ds_api_url_v1 键里，
+    //   而保存时只做了 trim。手机端与电脑端各存各的，一个手输/误粘贴的地址在手机上是常态。
+    // 关键机理：缺 scheme 的地址（如 api.deepseek.com/chat/completions）不会让 fetch 报错 ——
+    //   它会被当成【相对路径】按页面同源解析，请求于是打到本站自己的静态服务器，
+    //   换回一个 HTTP 404。这与本文件 dsAiHttpError 处的既有结论完全吻合：
+    //   「官方错误码只有 400/401/402/422/429/500/503，**没有 404**」——
+    //   所以一旦看到 404，基本可断定请求根本没到 API 端点，而是地址配错了。
+    // 归一化规则（只修"客观错误"，绝不猜第三方网关）：
+    //   ① 去掉误粘贴的引号/尖括号/首尾空白；
+    //   ② 缺 scheme 且不是以 / 开头的绝对路径 → 补 https://（以 / 开头的是有意为之的同源路径，不动）；
+    //   ③ 只对「已知供应商域名 + 路径为空或仅 /v1」补全 chat 路径（这些域名不补必定 404）；
+    //      未知域名一律原样返回 —— 根路径代理可能是故意的，改了反而弄坏。
+    window.dsNormalizeApiUrl = function(raw) {
+        var u = String(raw == null ? '' : raw).trim().replace(/^[<"'\s]+|[>"'\s]+$/g, '');
+        if (!u) return '';
+        if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(u) && u.charAt(0) !== '/') u = 'https://' + u;
+        try {
+            var url = new URL(u);
+            var host = url.host.toLowerCase();
+            var path = url.pathname.replace(/\/+$/, '');
+            var KNOWN = {
+                'api.deepseek.com': '/chat/completions',
+                'api.openai.com': '/v1/chat/completions',
+                'dashscope.aliyuncs.com': '/compatible-mode/v1/chat/completions',
+                'open.bigmodel.cn': '/api/paas/v4/chat/completions',
+                'api.moonshot.cn': '/v1/chat/completions',
+                'api.baichuan-ai.com': '/v1/chat/completions',
+                'api.minimax.chat': '/v1/text/chatcompletion_v2',
+                'api.stepfun.com': '/v1/chat/completions'
+            };
+            var tail = KNOWN[host];
+            if (tail && (path === '' || path === '/v1')) {
+                url.pathname = (path === '/v1' && tail.indexOf('/v1') !== 0) ? ('/v1' + tail) : tail;
+                return url.toString();
+            }
+        } catch (e) {}
+        return u;
+    };
+    // 读配置的统一入口：读取时即归一化，这样即使库里的值已被写坏也能自愈（无需用户重输）
+    window.dsGetApiUrl = function(def) {
+        var raw = '';
+        try { raw = localStorage.getItem('ds_api_url_v1') || ''; } catch (e) {}
+        var fixed = window.dsNormalizeApiUrl(raw);
+        return fixed || def || 'https://api.deepseek.com/chat/completions';
+    };
+
     // ---- 附件处理 ----
     window._dsAttachments = []; // [{name, text}]
 
@@ -560,7 +607,7 @@
 
     window.dsThinkingParam = function(opts) {
         opts = opts || {};
-        var apiUrl = opts.apiUrl || localStorage.getItem('ds_api_url_v1') || 'https://api.deepseek.com/chat/completions';
+        var apiUrl = opts.apiUrl ? window.dsNormalizeApiUrl(opts.apiUrl) : window.dsGetApiUrl();
         var model  = opts.model  || localStorage.getItem('ds_model_v1') || 'deepseek-flash';
         var isDeepSeek = /deepseek/i.test(String(model)) || /(^|\.)deepseek\.com$/i.test((function() {
             try { return new URL(apiUrl).host; } catch (e) { return ''; }
@@ -596,6 +643,9 @@
             401: 'API Key 无效或未授权（401）',
             402: '账户余额不足（402）',
             403: '无访问权限（403）',
+            404: '接口不存在（404）：DeepSeek 官方 API 不会返回 404 —— 说明请求没打到 API，'
+               + '绝大多数是 API 地址配错/不完整（缺 https:// 时会被当成本站相对路径，于是本站返回 404）',
+            405: '请求方式不被接受（405）：地址可能指向了非对话接口',
             422: '请求参数错误（422）',
             429: '请求过于频繁，请稍后再试（429）',
             500: 'DeepSeek 服务端故障（500），请稍后重试',
@@ -605,6 +655,18 @@
         var d = (detail === undefined || detail === null) ? '' : String(detail).trim();
         if (d) { d = d.replace(/\s+/g, ' ').slice(0, 200); base += '：' + d; }
         if (status === 400) base += '（当前模型 ' + (localStorage.getItem('ds_model_v1') || '未设置') + '，可在「设置 → API 配置」中切换为 deepseek-flash）';
+        // 404/405 直接把「实际用的地址」摊开给用户看 —— 这类故障几乎都是地址问题，
+        // 而地址是分设备存的，报错里不带地址时用户与开发者都无从判断。
+        // 若库里存的值与归一化后的值不同，两个都显示（用户一眼能看出是自己少写了 https:// 还是少写了路径）。
+        if (status === 404 || status === 405) {
+            var _raw = '';
+            try { _raw = (localStorage.getItem('ds_api_url_v1') || '').trim(); } catch (e) {}
+            var _fixed = window.dsNormalizeApiUrl(_raw);
+            base += '（当前 API 地址：' + (_raw || '未设置（用默认 https://api.deepseek.com/chat/completions）');
+            if (_fixed && _raw && _fixed !== _raw) base += '；已自动按 ' + _fixed + ' 请求';
+            else if (_fixed && _raw) base += '；请求地址 ' + _fixed;
+            base += '）';
+        }
         return base;
     };
 

@@ -390,6 +390,9 @@
             async function saveToStorage(opts) {
                 try {
                     await saveRulesToDB(rules);
+                    // v3.72：规章数据已变更 → 丢弃智能检索（BM25）索引，导完资料即可被「一键对规/
+                    // 智能写作」检索到，无需刷新页面。所有写入路径（导入/编辑/删除/清空）都收口于此。
+                    if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('rules');
                     updateStorageInfo();
                     return true;
                 } catch (e) {

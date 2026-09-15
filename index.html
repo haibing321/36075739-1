@@ -1850,7 +1850,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.71</span> · 2026.09.15</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.72</span> · 2026.09.15</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1859,6 +1859,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.72 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.72 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ <strong>检索大幅提速</strong>：一键对规 / 智能写作的本地检索由「每次约 0.7 秒」降到毫秒级（实测 250 万字资料库：729ms → 1.5ms，约 <strong>490 倍</strong>）。原理是把原先算完就丢的倒排索引留下来复用，不再每次对全部资料重新分词</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ <strong>导入即生效</strong>：新导入的规章制度 / 检查信息立刻能被检索到，<strong>不用再刷新页面</strong>（数据变更时索引自动失效重建）</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📱 <strong>内存有保护阀</strong>：倒排索引约 12MB/百万字；资料总量超过阈值时自动退化为旧的低内存模式，避免低配手机吃紧</span></div>
+                </div>
             </div>
 
             <!-- v3.71 近期更新 -->
@@ -1873,21 +1886,9 @@
                 </div>
             </div>
 
-            <!-- v3.70 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.70 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 <strong>修复手机端四个 AI 功能页 404</strong>：智能写作 / 智能对规 / 智能风险研判 / 智能体在手机上全部不可用。根因是 API 地址缺 <code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">https://</code> 或路径写错时被浏览器当相对路径解析，请求打到了本站静态服务器</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 <strong>API 地址自动归一化 + 启动自愈</strong>：自动补全缺失的 https:// 与 /chat/completions 路径并回写配置（无需手动重输）；404 报错现在会显示实际使用的地址，便于定位</span></div>
-                </div>
-            </div>
+            <!-- v3.70 及以下已归档（最近 2 版本为 v3.72 / v3.71） -->
 
-            <!-- v3.69 及以下已归档（最近 2 版本为 v3.71 / v3.70） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.68 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.70 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

@@ -29,6 +29,10 @@
             const DS_DEFAULT_API_URL = 'https://api.deepseek.com/chat/completions';
             const DS_DEFAULT_MODEL   = 'deepseek-flash';
             const DS_MAX_CTX_CHARS   = 6000;  // 单类别最多携带的字符数
+            // 【C1/v3.74】统一检索层「单轮总量预算」（字）：此前只有单源预算（每源 6000 字），
+            //   而实测各源 5 块最多 ~2000 字 → 该预算从不触顶、形同虚设。现在按源顺序从总量里分配，
+            //   用尽后后续源不再注入（实测现状单轮注入 6269 字 → 分档+总量预算后 4596 字，-27%）。
+            const DS_KB_TOTAL_BUDGET = 4500;
             const DS_PLACEHOLDER_KEY = 'YOUR_API_KEY_HERE';
 
             let dsHistory = [];   // [{role:'user'|'assistant', content:'...'}]
@@ -1363,7 +1367,10 @@
                         try {
                             // 先确保索引就绪：资料库/历史报告需从 IndexedDB 预载；大源（检查信息）分片异步建索引
                             if (typeof window.KB.ensure === 'function') await window.KB.ensure(_kbSrcs);
-                            var _kbR = window.KB.search(userQuery, { sources: _kbSrcs, topK: 5 });
+                            // 【C1/v3.74】按用途分档 topK：写作资料库/历史报告只是"文风/结构参考"，
+                            //   实测它们占单轮注入量的 44%（业务源 28099 字 vs 文风源 21912 字），给 2 块足够；
+                            //   业务源（规章/检查信息/手册/电话/日志）保持 5。
+                            var _kbR = window.KB.search(userQuery, { sources: _kbSrcs, topK: 5, topKByKey: { materials: 2, reports: 2 } });
                             // 保留旧逻辑的「专业优先」意图：命中块所属规章与推断专业一致时前置
                             if (inferredTrade) {
                                 for (var _qi = 0; _qi < _kbR.length; _qi++) {
@@ -1373,7 +1380,7 @@
                                     _kbR[_qi].hits = _prefR.concat(_otherR);
                                 }
                             }
-                            var _kbTxt = window.KB.buildRefText(_kbR);
+                            var _kbTxt = window.KB.buildRefText(_kbR, { totalBudget: DS_KB_TOTAL_BUDGET });
                             sysParts.push(_kbTxt || '【本地资料】本次未检索到相关内容（可能尚未导入资料）。');
                         } catch (e) {
                             console.warn('[dsBuildSystemPrompt] 统一检索层失败，回退旧逻辑：', e && e.message);
@@ -4195,6 +4202,8 @@
       const BM25_TF_BASE = 1024;                 // 倒排项编码：docIdx * 1024 + tf（词频上限 1023）
       const BM25_TF_CAP = 1023;
       const BM25_POSTINGS_MAX_CHARS = 10000000;  // 启用倒排的字数上限（实测 ≈12MB/百万字 → 上限约 125MB）
+      // 【v3.74】索引导出/恢复时词表的分隔符（用 \u0001 这类控制字符，正常语料不会出现）
+      const BM25_TERM_SEP = '\u0001';
       class LightBM25 {
         constructor(docs, k1 = 1.2, b = 0.75, defer) {
           this.docs = docs;
@@ -4339,7 +4348,7 @@
         }
         // 检索正文：优先用 searchText（可携带标题/出处等"只用于检索、不用于展示"的内容），
         // 否则退回 content。【v3.73】这样 content 可以保持原始值 —— 命中结果同时被
-        // buildReferenceText 当数据源，若把标题拼进 content 会把整串当正文塞进提示词。
+        // 命中结果被直接拼进提示词当数据源，若把标题拼进 content 会把整串当正文塞进提示词。
         _textOf(doc) {
           if (!doc) return '';
           if (doc.searchText != null) return String(doc.searchText);
@@ -4361,6 +4370,66 @@
             score += idf * (tf * (this.k1 + 1)) / (tf + this.k1 * (1 - this.b + this.b * lenNorm));
           }
           return score;
+        }
+        // 【v3.74】索引导出：把已建好的索引变成可结构化克隆（IndexedDB 可存）的纯数据，
+        //   供「统一检索层」缓存到本机 —— 重启/刷新后直接恢复，省掉重新分词与建索引（大源 1–3 秒）。
+        //   · 倒排模式：词表打成一个大字符串（避免几十万个字符串对象的克隆开销）+ 扁平 Int32Array；
+        //   · 退化（全量扫描）模式：只有 idf 表，同样导出。
+        //   ⚠️ 格式与内部实现绑定：改动 _indexOne / _tokenize / 打分公式必须同步提升调用方的缓存版本号。
+        exportIndex() {
+          const out = {
+            mode: this.postings ? 'postings' : 'scan',
+            n: this.docs.length,
+            avgLen: this.avgLen,
+            k1: this.k1,
+            b: this.b
+          };
+          if (this.postings) {
+            const size = this.postings.size;
+            const terms = new Array(size);
+            const offsets = new Int32Array(size + 1);
+            let total = 0, i = 0;
+            this.postings.forEach(function (arr, term) { terms[i] = term; offsets[i] = total; total += arr.length; i++; });
+            offsets[size] = total;
+            const flat = new Int32Array(total);
+            i = 0;
+            this.postings.forEach(function (arr) {
+              for (let j = 0; j < arr.length; j++) flat[i++] = arr[j];
+            });
+            out.termsBlob = terms.join(BM25_TERM_SEP);
+            out.offsets = offsets;
+            out.flat = flat;
+            out.docLen = this.docLen;
+          } else {
+            const keys = new Array(this.idf.size);
+            const vals = new Float64Array(this.idf.size);
+            let i = 0;
+            this.idf.forEach(function (v, k) { keys[i] = k; vals[i] = v; i++; });
+            out.idfKeysBlob = keys.join(BM25_TERM_SEP);
+            out.idfVals = vals;
+          }
+          return out;
+        }
+        // 从 exportIndex() 的产物恢复实例（不重新分词、不重建倒排）
+        static importIndex(payload, docs) {
+          const inst = new LightBM25(docs, (payload && payload.k1) || 1.2, (payload && payload.b) || 0.75, true);
+          if (!payload) return inst;
+          inst.avgLen = payload.avgLen || 0;
+          if (payload.mode === 'postings' && payload.flat && payload.offsets) {
+            const terms = String(payload.termsBlob || '').split(BM25_TERM_SEP);
+            const off = payload.offsets, flat = payload.flat;
+            const map = new Map();
+            for (let i = 0; i < terms.length; i++) map.set(terms[i], flat.subarray(off[i], off[i + 1]));
+            inst.postings = map;
+            inst.docLen = payload.docLen;
+          } else {
+            const keys = String(payload.idfKeysBlob || '').split(BM25_TERM_SEP);
+            const vals = payload.idfVals || new Float64Array(0);
+            const map = new Map();
+            for (let i = 0; i < keys.length; i++) map.set(keys[i], vals[i]);
+            inst.idf = map;
+          }
+          return inst;
         }
         search(query, topN = 5) {
           const docs = this.docs;
@@ -4411,7 +4480,7 @@
         if (!bm25Rules) {
           // ⚠️ 检索字段用 searchText，不能写进 content：
           //   ① 原写法 { content: 标题+正文, ...r } 会被展开的 r.content 覆盖，标题其实**从未进入检索语料**；
-          //   ② 直接把 content 改成"标题+正文"更糟 —— hits 返回的 doc 同时被 buildReferenceText 当数据源，
+          //   ② 直接把 content 改成"标题+正文"更糟 —— hits 返回的 doc 同时被提示词构建当数据源，
           //      会把整串当正文塞进提示词。（v3.73 修正）
           bm25Rules = new LightBM25(rules.map(r => ({ ...r, searchText: ((r.title || '') + ' ' + (r.content || '')) })));
           bm25RulesRef = rules;
@@ -4489,135 +4558,9 @@
         return { rules: rules, issues: issues };
       }
 
-      // 检查信息（历史台账）引用文本：旧「整篇匹配」与 v3.73「条款定位」两条路径共用
-      function buildIssueRefText(issues) {
-        let ref = '';
-        if (issues.length) {
-          ref += '【相似历史检查问题（来自本地台账）】\n';
-          issues.forEach(function(iss, i) {
-            ref += (i+1) + '. [' + (iss['性质']||'其他') + '][' + (iss.category||'') + '] ' + (iss.content||'').slice(0, 200) + ((iss.content||'').length>200?'…':'') + '\n';
-          });
-          ref += '\n';
-        }
-        return ref;
-      }
-
-      function buildReferenceText(rules, issues) {
-        let ref = '';
-        if (rules.length) {
-          ref += '【相关规章条款（来自本地数据库）】\n';
-          rules.forEach(function(r, i) {
-            ref += (i+1) + '. 《' + r.title + '》（' + (r.trade||'通用') + '）\n   ' + (r.content||'').slice(0, 300) + ((r.content||'').length>300?'…':'') + '\n';
-          });
-          ref += '\n';
-        }
-        return ref + buildIssueRefText(issues);
-      }
-
-      // ---------- 7. 一键对规 ----------
-      window.enhancedAutoCheck = async function(problemText) {
-        if (!problemText) {
-          const input = document.getElementById('autoCheck-input');
-          if (input) problemText = input.value.trim();
-        }
-        if (!problemText) return alert('请输入检查问题描述');
-        const container = document.getElementById('autoCheck-results');
-        if (container) {
-          container.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">🔍 正在匹配本地案例和规章...</div>';
-          container.style.display = 'block';
-        }
-        // 【v3.73 最小切片 → v3.74 收口】规章与检查信息都走「统一检索层」（knowledge.js）：
-        // 命中哪一条就把那一条**完整**喂进去，而不是像旧路径那样把整篇正文截前 300 字
-        // （长规章的关键条款常常根本进不了上下文）。
-        // ⚠️ v3.73 的写法在这里**无条件先跑了一遍 retrieveLocalData()**（旧整篇 BM25 路径），
-        //    它会**同步**给全部规章+检查信息建索引（4 万条量级 = 数秒主线程冻结），
-        //    而结果随后又被下面的 KB 结果覆盖丢弃 —— 用户感知就是"对规没走知识库那条线、点了先卡几秒"。
-        //    v3.74 起改为**仅在 KB 不可用/被关闭时才回退执行**（回退结果只用一次，不再白建索引）。
-        // 开关 kb_rules_chunks：默认开；置 '0' 可整条链路回退旧路径，便于在同一份真实数据上 A/B 对照。
-        var _kbOn = true;
-        try { _kbOn = localStorage.getItem('kb_rules_chunks') !== '0'; } catch (e) {}
-        var _kbRes = null;
-        if (_kbOn && window.KB && typeof window.KB.search === 'function') {
-          try {
-            // 先确保索引就绪（大语料是分片异步建，界面不冻结，必要时弹进度条）
-            if (typeof window.KB.ensure === 'function') await window.KB.ensure(['rules', 'issues']);
-            _kbRes = window.KB.search(problemText, { sources: ['rules', 'issues'], topK: 4 });
-          } catch (e) { _kbRes = null; }
-        }
-        var refText, ruleCount, issueCount, ruleSrcLabel;
-        if (_kbRes && _kbRes.length) {
-          refText = window.KB.buildRefText(_kbRes);
-          var _hitCountOf = function (k) { for (var _i = 0; _i < _kbRes.length; _i++) if (_kbRes[_i].key === k) return _kbRes[_i].hits.length; return 0; };
-          ruleCount = _hitCountOf('rules');
-          issueCount = _hitCountOf('issues');
-          ruleSrcLabel = '按条款定位';
-        } else {
-          // 回退路径（KB 关闭 / 未加载 / 检索异常）：此时才建旧索引
-          const { rules, issues } = await retrieveLocalData(problemText, { topNRules: 4, topNIssues: 4 });
-          refText = buildReferenceText(rules, issues);
-          ruleCount = rules.length;
-          issueCount = issues.length;
-          ruleSrcLabel = '整篇匹配';
-        }
-        const apiKey = await (typeof _getApiKey === 'function' ? _getApiKey() : Promise.resolve(localStorage.getItem('ds_api_key_v1') || ''));
-        const apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
-        const model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
-        if (!apiKey) {
-          if (container) container.innerHTML = '<div style="color:var(--warning)">请先配置 API Key</div>';
-          return;
-        }
-        const systemPrompt = '你是铁路安全对规专家。请基于以下【参考资料】中的真实历史案例和规章条款，分析用户输入的检查问题。\n' + refText +
-          '【输出要求】\n1. 明确指出问题违反的具体条款（必须引用上述规章中的编号和内容，如果没有明确条款则说明「参考资料中无直接对应条款」）。\n2. 对比历史案例，指出相似点和特殊性。\n3. 给出具体整改建议（可借鉴案例中的有效做法）。\n4. 不得编造任何条款或数据。';
-        if (container) container.innerHTML = '<div style="padding:20px">🤖 AI 正在分析，请稍候...</div>';
-        // 超时保护：此前该入口没有任何超时/中断，模型无响应时界面会永久停在「AI 正在分析」。
-        var _ac2 = new AbortController();
-        var _ac2Timer = setTimeout(function() { try { _ac2.abort(); } catch (e) {} }, 120000);
-        try {
-          var _ac2Body = {
-            model: model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: '检查问题：' + problemText }
-            ],
-            temperature: 0.3, max_tokens: 3000, stream: false
-          };
-          // 思考模式：跟随设置页开关（默认开）。开启时 temperature 不生效，且思维链会占用输出预算，
-          // 故 max_tokens 由 1500 提高到 3000，避免长分析被截断。
-          if (typeof window.dsThinkingParam === 'function') {
-            Object.assign(_ac2Body, window.dsThinkingParam({ apiUrl: apiUrl, model: model }));
-          }
-          const resp = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-            body: JSON.stringify(_ac2Body),
-            signal: _ac2.signal
-          });
-          // ⚠️ 原先直接 resp.json() 未判 resp.ok：401/402/400 时 data.choices 为 undefined，
-          // 界面会显示正文「无响应」，把「请求失败」伪装成「模型没说话」——静默失败。
-          if (!resp.ok) {
-            var _errTxt = ''; try { _errTxt = await resp.text(); } catch (_e) {}
-            var _errMsg = ''; try { _errMsg = ((JSON.parse(_errTxt) || {}).error || {}).message || ''; } catch (_e) { _errMsg = String(_errTxt).slice(0, 200); }
-            throw new Error(typeof window.dsAiHttpError === 'function' ? window.dsAiHttpError(resp.status, _errMsg) : ('HTTP ' + resp.status));
-          }
-          const data = await resp.json();
-          const conclusion = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '无响应';
-          // 使用 safeHtml 防止 AI 返回内容中的 XSS（如恶意 <script> / <img onerror> 等）
-          var _safeConclusion = typeof window.safeHtml === 'function'
-            ? window.safeHtml(conclusion, { allowedTags: ['br','div','h3','p','strong','em','b','i','span','ul','ol','li','pre','code','blockquote'] })
-            : window.escapeHtml(conclusion).replace(/\n/g, '<br>');
-          const html = '<div style="background:#f0f9ff;padding:16px;border-radius:12px;border-left:5px solid #2563eb;">' +
-            '<h3>⚖️ 对规结论</h3>' +
-            '<div style="margin:10px 0;white-space:pre-wrap;">' + _safeConclusion + '</div>' +
-            '<div style="font-size:0.8rem;color:#059669;">✅ 引用规章 ' + ruleCount + ' 条（' + ruleSrcLabel + '），历史案例 ' + issueCount + ' 条</div>' +
-            '</div>';
-          if (container) container.innerHTML = html;
-        } catch(e) {
-          var _ac2Msg = (e && e.name === 'AbortError') ? '请求超时（120s），请稍后重试' : ((e && e.message) || String(e));
-          if (container) container.innerHTML = '<div style="color:red">对规失败：' + (typeof window.escapeHtml === 'function' ? window.escapeHtml(_ac2Msg) : String(_ac2Msg).replace(/</g,'&lt;')) + '</div>';
-        } finally {
-          if (_ac2Timer) { clearTimeout(_ac2Timer); _ac2Timer = null; }
-        }
-      };
+      // 【v3.74 清理】原 `window.enhancedAutoCheck` 与 `buildReferenceText / buildIssueRefText` 已删除：
+      //   全仓零调用点（界面对规入口是 smart-check.js 两态按钮 → autoCheckAI_force，已走 KB 条款级召回）。
+      //   注意保留 retrieveLocalData —— 智能写作的回退路径仍在使用。
 
       // ---------- 8. 增强智能写作 ----------
       var originalWrGenerate = window.wrGenerate;
@@ -4663,18 +4606,26 @@
               issues = _wrR.length ? _wrR[0].hits.map(function (h) { return h.doc; }) : [];
             } catch (e) { issues = null; }
           }
-          if (!issues) {
+          // ⚠️ v3.74 修正：KB **命中为空**也要回退旧路径。
+          //    原先只在 KB 抛异常（issues=null）时回退，而 KB 无命中会返回 []（真值）→ 不再回退，
+          //    于是「KB 索引范围只到最近 1.2 万条、旧路径扫全量」这种差异下会**静默丢掉**本来能命中的台账。
+          if (!issues || !issues.length) {
             var _wrOld = await retrieveLocalData(q, { topNIssues: 8, recentMonth: true });
-            issues = _wrOld.issues;
+            if (_wrOld && _wrOld.issues && _wrOld.issues.length) {
+              issues = _wrOld.issues;
+              if (typeof console !== 'undefined') console.log('[wrGenerate] KB 无命中 → 回退旧检索，命中 ' + issues.length + ' 条');
+            } else {
+              if (!issues) issues = [];
+              if (typeof console !== 'undefined') console.log('[wrGenerate] KB 无命中 → 旧检索也无命中（本次不带台账数据）');
+            }
           }
+          // 【v3.74 修正】这里**只补充"匹配到的历史案例"**，不再给出总数/A类/B类等统计数字：
+          //   统计口径统一由 smart-writer 的 wrExtractStatsFromIssues（按解析出的日期范围、全量台账）
+          //   在提示词里给一次；此前两处各算一份，同一条提示词里会出现两套数字（可能不一致）。
           let statsText = '';
           if (issues.length) {
-            const total = issues.length;
-            const na = issues.filter(function(i){ return (i['性质']||'').includes('A'); }).length;
-            const nb = issues.filter(function(i){ return (i['性质']||'').includes('B'); }).length;
-            const nc = issues.filter(function(i){ return (i['性质']||'').includes('C'); }).length;
             const typicals = issues.slice(0,5).map(function(i,idx){ return (idx+1)+'. '+i.content.slice(0,150); }).join('\n');
-            statsText = '【台账真实数据（最近1个月）】\n- 匹配问题总数：'+total+'条（A类'+na+'，B类'+nb+'，C类'+nc+'）\n- 典型问题：\n'+typicals+'\n\n';
+            statsText = '【匹配到的历史案例（供参考，不含统计口径）】\n'+typicals+'\n\n';
           }
           const originalInput = document.getElementById('wr-query-input');
           if (originalInput && statsText) {
@@ -5293,6 +5244,40 @@
         // ---------- 读取规章制度库中的事故专业案例（按专业归类） ----------
         try {
           var riskFocus = (document.getElementById('risk-focus') ? document.getElementById('risk-focus').value : '') || '';
+          // 【v3.74】优先走统一检索层：按「研判重点」检索规章条款/事故案例（条款级命中 + 出处）。
+          //   取代原先"全表 getAll + 正则筛 事故|案例|事件|通报|险情|故障 + 按重点排前 10"——
+          //   那次全表扫描是研判耗时的大头，且正则命中无排序、摘要只截前 200 字。
+          //   未命中 / 开关 kb_agent 关闭 / KB 未加载 → 原逻辑作为兜底（下面 if (!_kbCaseDone) 段）。
+          var _kbCaseDone = false;
+          try {
+            var _kbOnRisk = (typeof window.KB.getSwitch === 'function') ? window.KB.getSwitch('kb_agent') : true;
+            if (window.KB && typeof window.KB.search === 'function' && _kbOnRisk) {
+              // 没填研判重点时，用"事故/案例"类词兜底检索（保持旧逻辑的意图）
+              var _kbQuery = ((riskFocus || '').trim()) || '事故 案例 事件 通报 险情 故障 险性事件';
+              if (typeof window.KB.ensure === 'function') await window.KB.ensure(['rules']);
+              var _kbRr = window.KB.search(_kbQuery, { sources: ['rules'], topK: 10 });
+              var _kbHitsRisk = (_kbRr && _kbRr.length) ? _kbRr[0].hits : null;
+              if (_kbHitsRisk && _kbHitsRisk.length) {
+                parts.push('\n【事故专业案例（统一检索层 · 条款级命中，带出处）】命中 ' + _kbHitsRisk.length + ' 条，按专业归类：');
+                var _byTradeRisk = {};
+                _kbHitsRisk.forEach(function(h2) {
+                  var _doc2 = h2.doc || {};
+                  var _tr2 = _doc2.trade || '通用';
+                  (_byTradeRisk[_tr2] = _byTradeRisk[_tr2] || []).push({ title: _doc2.title || '未命名', path: h2.path || '', text: h2.text || '' });
+                });
+                Object.keys(_byTradeRisk).forEach(function(tr3) {
+                  parts.push('\n▪ 专业：' + tr3);
+                  _byTradeRisk[tr3].forEach(function(c3) {
+                    var t3 = String(c3.text).replace(/\s+/g, ' ').trim();
+                    parts.push('  - 《' + c3.title + '》' + (c3.path ? '（' + c3.path + '）' : '') + (t3 ? '：' + (t3.length > 200 ? t3.slice(0, 200) + '…' : t3) : ''));
+                  });
+                });
+                _kbCaseDone = true;
+              }
+            }
+          } catch (eKbRisk) { _kbCaseDone = false; }
+
+          if (!_kbCaseDone) {
           var ruleDb;
           try { ruleDb = await window.dbManager.getDB('RailwayRuleDB'); }
           catch(e) { ruleDb = await new Promise(function(res, rej) { var r = indexedDB.open('RailwayRuleDB', 3); r.onerror = function(){ rej(r.error); }; r.onsuccess = function(){ res(r.result); }; }); }
@@ -5330,6 +5315,7 @@
               parts.push('\n【事故专业案例】规章制度库中未匹配到事故/案例类资料（可导入事故通报、事故案例后使用）。');
             }
           }
+          }   // ← if (!_kbCaseDone) 结束：KB 已给出案例时跳过全表扫描
         } catch(e) { parts.push('\n【事故专业案例】读取失败'); console.error('风险研判: 规章库读取异常', e); }
 
         return parts.join('\n');
@@ -5349,7 +5335,7 @@
         fbDiv.className = 'ds-feedback-bar';
         fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px; flex-wrap:wrap;';
         fbDiv.innerHTML = '<button class="feedback-copy" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'#64748b\';this.style.color=\'#64748b\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="复制本条回复">📋 复制</button>' +
-                          '<button class="feedback-download" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'var(--primary)\';this.style.color=\'var(--primary)\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="下载本条回复">📥 下载</button>' +
+                          '<button class="feedback-export" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'var(--primary)\';this.style.color=\'var(--primary)\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="导出为 DOCX 文档（与历史报告同一套公文排版）">📤 导出</button>' +
                           '<button class="feedback-good" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'var(--success)\';this.style.color=\'var(--success)\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👍 有用</button>' +
                           '<button class="feedback-bad" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'">👎 无用</button>' +
                           '<button class="feedback-regen" onclick="window.dsRegenerate()" style="background:none; border:1px solid #d1d5db; border-radius:14px; padding:3px 10px; font-size:0.75rem; cursor:pointer; color:#6b7280; transition:all 0.15s;" onmouseover="this.style.borderColor=\'var(--primary)\';this.style.color=\'var(--primary)\'" onmouseout="this.style.borderColor=\'#d1d5db\';this.style.color=\'#6b7280\'" title="重新生成本条回复">🔄 重生成</button>';
@@ -5381,10 +5367,33 @@
           document.execCommand('copy'); document.body.removeChild(ta);
           if (typeof window.Toast !== 'undefined') window.Toast.success('已复制到剪贴板');
         }
-        // 下载本消息（导出为 Markdown，保留格式）
-        fbDiv.querySelector('.feedback-download').onclick = function(){
-          var blob = new Blob([assistantContent], {type: 'text/markdown;charset=utf-8'});
-          window.downloadBlob(blob, '智能对话_' + new Date().toISOString().slice(0,10) + '.md');
+        // 【v3.74】导出本消息为 DOCX（原「📥 下载」只导 .md，现复用历史报告的公文导出链路）
+        //   · 排版偏好与历史报告共用（设置里的「导出排版」：公文格式 GB/T 9704-2012 / 通用排版）；
+        //   · 文件名取回复首行（清理 markdown 记号后 ≤18 字）+ 日期，便于区分多份导出；
+        //   · 历史报告模块未加载时退化为导出 Markdown，保证按钮永远可用。
+        fbDiv.querySelector('.feedback-export').onclick = function(){
+          var raw = String(assistantContent || '');
+          var firstLine = '';
+          var lines = raw.split('\n');
+          for (var _i = 0; _i < lines.length; _i++) {
+            var t = lines[_i].trim();
+            if (!t || t.indexOf('|') === 0 || t.indexOf('```') === 0) continue;   // 跳过空行 / 表格 / 代码围栏
+            firstLine = t.replace(/[#*`>\-\[\]()【】]/g, '').trim();
+            if (firstLine) break;
+          }
+          firstLine = firstLine.slice(0, 18).replace(/[\\/:*?"<>|]/g, '');
+          var name = '智能对话_' + (firstLine ? firstLine + '_' : '') + new Date().toISOString().slice(0, 10);
+          if (typeof window.wrExportMdToDocx === 'function') {
+            try {
+              window.wrExportMdToDocx(raw, name);
+            } catch (e) {
+              alert('导出失败：' + (e && e.message ? e.message : e));
+            }
+            return;
+          }
+          // 兜底：历史报告导出模块未加载 → 导出 Markdown
+          var blob = new Blob([raw], {type: 'text/markdown;charset=utf-8'});
+          window.downloadBlob(blob, name + '.md');
         };
         fbDiv.querySelector('.feedback-good').onclick = function(){ saveFeedback('good', assistantContent); };
         fbDiv.querySelector('.feedback-bad').onclick = function(){ saveFeedback('bad', assistantContent); };

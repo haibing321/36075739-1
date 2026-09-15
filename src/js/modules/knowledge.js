@@ -286,6 +286,8 @@
     // 检查信息索引范围：台账动辄几万条，全量常驻代价过高（实测 40166 条 → 建索引 3.57s、常驻 157MB）。
     // 默认只索引**最近 12000 条**；面板可切 1 万 / 2 万 / 全部。全量「按单位/日期精确查询」仍由
     // 智能体的 search_issues、以及各模块自己的全量过滤负责，不受此限制（只是粗排不覆盖老数据）。
+    // 【C2-a/v3.74】窗口外的老数据不再"沉默查不到"：检索时空命中或命中不足会**自动做一次全量兜底扫描**
+    //   （实测 4 万条 15~45ms），并在提示词里如实标注"索引只覆盖最近 N 条"；置 `kb_fallback`='0' 可关。
     var ISSUE_LIMIT_DEFAULT = 12000;
     function issueLimit() {
         try {
@@ -358,18 +360,116 @@
         return STATE[key];
     }
 
+    // ==================== 索引持久化（v3.74）====================
+    // 索引只存在内存里 → 重启/刷新即清空，首次检索要重建（大源 1–3 秒，用户可感）。
+    // 这里把「切块结果 + BM25 索引」缓存到 IndexedDB，启动后命中缓存就直接恢复。
+    // 有效性的唯一判据是**数据指纹**（sourceSig）：数据变了指纹就变 → 视为失效并重建。
+    // ⚠️ 序列化格式与 LightBM25 内部实现绑定：改动分词/倒排/打分必须提升 KB_INDEX_VER。
+    var CACHE_DB = 'RailwayKBCache_v1';
+    var CACHE_STORE = 'kb_index';
+    var KB_INDEX_VER = 1;
+    var KB_CACHE_MAX_ITEMS = 50000;      // 超过此条数不做缓存（避免几十 MB 的写入与配额风险）
+    var _lastCacheErr = '';              // 最近一次缓存写入失败原因（面板展示，便于诊断）
+    var _cacheDbp = null;
+
+    function cacheDB() {
+        if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB 不可用'));
+        if (_cacheDbp) return _cacheDbp;
+        _cacheDbp = new Promise(function (resolve, reject) {
+            var req = indexedDB.open(CACHE_DB, 1);
+            req.onupgradeneeded = function () {
+                var db = req.result;
+                if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE);
+            };
+            req.onsuccess = function () { resolve(req.result); };
+            req.onerror = function () { _cacheDbp = null; reject(req.error || new Error('打开缓存库失败')); };
+        });
+        return _cacheDbp;
+    }
+
+    function cacheTx(mode, fn) {
+        return cacheDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(CACHE_STORE, mode);
+                var store = tx.objectStore(CACHE_STORE);
+                var out = fn(store);
+                tx.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
+                tx.onerror = function () { reject(tx.error || new Error('缓存事务失败')); };
+                tx.onabort = function () { reject(tx.error || new Error('缓存事务中止')); };
+            });
+        });
+    }
+    function cacheGet(key) { return cacheTx('readonly', function (s) { return s.get(key); }); }
+    function cachePut(key, rec) { return cacheTx('readwrite', function (s) { s.put(rec, key); return null; }); }
+    function cacheDel(key) { return cacheTx('readwrite', function (s) { s.delete(key); return null; }); }
+    function cacheClear() { return cacheTx('readwrite', function (s) { s.clear(); return null; }); }
+
+    // 数据指纹：条数 + 每条的位置/正文长度/正文首尾片段/关键字段（改一条正文也会变）
+    function sourceSig(items) {
+        var h = 2166136261;
+        function mix(str) {
+            for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = (h * 16777619) >>> 0; }
+        }
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i] || {};
+            var c = String(it.content == null ? '' : it.content);
+            mix(String(i)); mix(String(c.length)); mix(c.slice(0, 24)); mix(c.slice(-24));
+            mix(String(it.title || '') + String(it.datetime || '') + String(it['性质'] || '') + String(it.category || '') + String(it.trade || '') + String(it.fileNumber || ''));
+        }
+        return items.length + ':' + (h >>> 0).toString(36);
+    }
+
+    // 切块 → 可持久化形式：doc 换成在 prepared 中的下标（恢复时挂回**同一个对象引用**），
+    // searchText 由 path+text 现算，不存。
+    function packChunks(chunks, prepared) {
+        var idxOf = new Map();
+        for (var i = 0; i < prepared.length; i++) idxOf.set(prepared[i], i);
+        return chunks.map(function (c) {
+            var o = {};
+            for (var k in c) { if (c.hasOwnProperty(k) && k !== 'doc' && k !== 'searchText') o[k] = c[k]; }
+            var d = idxOf.get(c.doc);
+            o.d = (typeof d === 'number') ? d : -1;
+            return o;
+        });
+    }
+    function unpackChunks(packed, prepared) {
+        return (packed || []).map(function (o) {
+            var c = {};
+            for (var k in o) { if (o.hasOwnProperty(k) && k !== 'd') c[k] = o[k]; }
+            c.doc = (o.d >= 0 && o.d < prepared.length) ? prepared[o.d] : null;
+            c.searchText = String(c.path == null ? '' : c.path) + '\n' + String(c.text == null ? '' : c.text);
+            return c;
+        });
+    }
+    // 切块 → BM25 文档（检索字段用 searchText，text 保持原样供提示词引用）
+    function bmDocsOf(chunks) {
+        return chunks.map(function (c) {
+            return { src: c.src, srcLabel: c.srcLabel, path: c.path, text: c.text, doc: c.doc, ref: c.ref, trade: c.trade, title: c.title, date: c.date, searchText: c.searchText };
+        });
+    }
+
     // 统一「预载 + 建索引」（v3.73）：
     //   · async 源（资料库/历史报告在 IndexedDB）先取数
     //   · 所有源都用**分片异步**建索引（大语料不冻结界面），超过 250ms 的用全局进度条提示
+    //   · 【v3.74】建好后缓存到 IndexedDB；下次启动先尝试缓存恢复（force 时跳过恢复）
     // 消费方约定：检索前先 await KB.ensure(要用的源)，之后 KB.search 就是纯内存毫秒级操作。
     function ensure(sources, opts) {
         opts = opts || {};
         var keys = (sources && sources.length) ? sources : SOURCES.map(function (s) { return s.key; });
         var onProgress = opts.onProgress;
-        return Promise.all(keys.map(function (key) { return ensureOne(key, onProgress); }));
+        // countOnly（v3.74）：只把 async 源的数据取进内存（供面板显示条数），**不切块、不建索引**。
+        // 设置页「刷新」原先走全量 ensure → 打开面板就会把写作资料库/历史报告 6000+ 块索引静默建起来，
+        // 表现为"其余源都是 ⚪、只有这两个 🟢"，既误导用户又白吃内存。
+        var countOnly = !!opts.countOnly;
+        // force（v3.74）：「一键重建」用 —— 跳过"从缓存恢复"，强制重新切块建索引（建完覆盖缓存）
+        var force = !!opts.force;
+        // restoreOnly（v3.74）：启动后台自动载入用 —— 只尝试"从缓存恢复"，**绝不触发重建**
+        // （数据变过就保持未载入，留给首次检索按需重建，避免开机就白跑几秒 CPU）
+        var restoreOnly = !!opts.restoreOnly;
+        return Promise.all(keys.map(function (key) { return ensureOne(key, onProgress, countOnly, force, restoreOnly); }));
     }
 
-    function ensureOne(key, onProgress) {
+    function ensureOne(key, onProgress, countOnly, force, restoreOnly) {
         var s = SRC_MAP[key];
         if (!s) return Promise.resolve();
         // —— 1) async 源：先取数（只存原始 list，chunks 交给 ensureSource 建）——
@@ -390,6 +490,7 @@
         }
         // —— 2) 分片切块 + 分片异步建索引 ——
         return pre.then(function () {
+            if (countOnly) return null;                    // 面板只要条数：取到 list 就够，索引留给首次检索（懒建）
             var raw = s.async ? ((STATE[key] && STATE[key].list) || EMPTY) : srcList(s);
             var st = STATE[key];
             // 数据未变且索引已在 → 直接复用
@@ -397,6 +498,12 @@
             var prepared = s.prepare ? s.prepare(raw) : raw;
             var startedAt = Date.now();
             var big = prepared.length >= 2000;
+            // 缓存相关（v3.74）：指纹用于判缓存有效性；超量源不缓存，避免几十 MB 写入与配额风险
+            var _BM = (typeof window !== 'undefined') ? window.LightBM25 : null;
+            var _canWrite = !!(_BM && _BM.prototype && typeof _BM.prototype.exportIndex === 'function');
+            var _canRead = !!(_BM && typeof _BM.importIndex === 'function');
+            var _cacheable = prepared.length > 0 && prepared.length <= KB_CACHE_MAX_ITEMS && _canWrite;
+            var _sig = _cacheable ? sourceSig(prepared) : '';
             function report(phase, done, total) {
                 if (typeof onProgress === 'function') { try { onProgress(key, done, total, phase); } catch (e) {} }
                 if (big && typeof window !== 'undefined' && typeof window.showProgress === 'function' && Date.now() - startedAt > 250) {
@@ -416,31 +523,72 @@
                 indexed: prepared.length, rawTotal: raw.length
             };
             STATE[key] = myState;
-            return chunkAllAsync(s, prepared, function (done, total) { report('chunk', done, total); }).then(function (chunks) {
-                if (STATE[key] !== myState) {                  // 切块期间已被失效/替换 → 丢弃本次结果
-                    if (big && typeof window !== 'undefined' && typeof window.finishProgress === 'function') window.finishProgress('索引构建已取消（数据已变更，下次检索会自动重建）');
+            // —— a) 先尝试「本机缓存恢复」（v3.74）——
+            //   仅当：未强制重建 + 源可缓存 + 缓存版本与数据指纹都对得上。恢复期间同样要防失效。
+            var restore = (!force && _cacheable && _canRead)
+                ? cacheGet(key).then(function (rec) {
+                    if (!rec || rec.ver !== KB_INDEX_VER || rec.sig !== _sig || !rec.chunks || !rec.bm) return false;
+                    if (STATE[key] !== myState) return true;                 // 期间已被失效 → 放弃恢复
+                    var chunks = unpackChunks(rec.chunks, prepared);
+                    if (!chunks.length || chunks.length !== rec.chunks.length) return false;
+                    if (rec.bm.mode === 'postings' && rec.bm.docLen && rec.bm.docLen.length !== chunks.length) return false;
+                    myState.chunks = chunks;
+                    myState.bm = _BM.importIndex(rec.bm, bmDocsOf(chunks));
+                    myState.restored = true;
+                    if (typeof console !== 'undefined') console.log('[KB] 已从本机缓存恢复索引：' + s.label + '（' + chunks.length + ' 块）');
+                    return true;
+                }).catch(function () { return false; })
+                : Promise.resolve(false);
+
+            return restore.then(function (restored) {
+                if (restored) return null;
+                if (restoreOnly) {                            // 只恢复不重建：没有可用缓存就直接返回
+                    if (STATE[key] === myState && !myState.chunks) { delete STATE[key]; }   // 不留"空壳状态"，面板显示才准确
                     return null;
                 }
-                myState.chunks = chunks;
-                if (!chunks.length) return null;
-                var BM = (typeof window !== 'undefined') ? window.LightBM25 : null;
-                if (typeof BM !== 'function') return null;
-                var docs = chunks.map(function (c) {
-                    return { src: c.src, srcLabel: c.srcLabel, path: c.path, text: c.text, doc: c.doc, ref: c.ref, trade: c.trade, title: c.title, date: c.date, searchText: c.searchText };
-                });
-                var inst = new BM(docs, 1.2, 0.75, true);      // defer：不在构造里同步建
-                return inst.buildAsync({
-                    slice: 400,
-                    onProgress: function (done, total) { report('index', done, total); }
-                }).then(function () {
-                    if (STATE[key] !== myState) {              // 建索引期间被失效/替换 → 丢弃（不把陈旧索引塞回去）
+                if (STATE[key] !== myState) return null;      // 等缓存期间已被失效 → 交给新的持有者
+                return chunkAllAsync(s, prepared, function (done, total) { report('chunk', done, total); }).then(function (chunks) {
+                    if (STATE[key] !== myState) {                  // 切块期间已被失效/替换 → 丢弃本次结果
                         if (big && typeof window !== 'undefined' && typeof window.finishProgress === 'function') window.finishProgress('索引构建已取消（数据已变更，下次检索会自动重建）');
                         return null;
                     }
-                    myState.bm = inst;
-                    if (big && typeof window !== 'undefined' && typeof window.finishProgress === 'function') {
-                        window.finishProgress('✅ 本地索引已就绪（' + s.label + '，' + chunks.length + ' 块）');
-                    }
+                    myState.chunks = chunks;
+                    if (!chunks.length) return null;
+                    var inst = new _BM(bmDocsOf(chunks), 1.2, 0.75, true);   // defer：不在构造里同步建
+                    return inst.buildAsync({
+                        slice: 400,
+                        onProgress: function (done, total) { report('index', done, total); }
+                    }).then(function () {
+                        if (STATE[key] !== myState) {              // 建索引期间被失效/替换 → 丢弃（不把陈旧索引塞回去）
+                            if (big && typeof window !== 'undefined' && typeof window.finishProgress === 'function') window.finishProgress('索引构建已取消（数据已变更，下次检索会自动重建）');
+                            return null;
+                        }
+                        myState.bm = inst;
+                        // —— b) 建好即缓存到本机。——
+                        // ⚠️ 必须**等写完**再报"就绪"：大源（1.2 万条 ≈ 7MB）序列化 + 落盘要一段时间，
+                        //    原先"发射后不管"会让用户看到"已重建"就立刻重启 → 缓存还没写完 → 索引看似没保留。
+                        var _writeP = Promise.resolve();
+                        if (_cacheable && typeof inst.exportIndex === 'function') {
+                            if (big && typeof window !== 'undefined' && typeof window.showProgress === 'function') {
+                                window.showProgress(96, '正在写入本机缓存（重启后免重建）：' + s.label);
+                            }
+                            try {
+                                _writeP = cachePut(key, { ver: KB_INDEX_VER, sig: _sig, at: Date.now(), chunks: packChunks(chunks, prepared), bm: inst.exportIndex() })
+                                    .then(function () { _lastCacheErr = ''; })
+                                    .catch(function (e) {                     // 配额不足等 → 不影响本次使用，但记下来供面板提示
+                                        _lastCacheErr = (e && e.name ? e.name + '：' : '') + ((e && e.message) || '写入失败');
+                                        if (typeof console !== 'undefined') console.warn('[KB] 索引缓存写入失败：', _lastCacheErr);
+                                    });
+                            } catch (e2) { /* 忽略 */ }
+                        }
+                        return _writeP.then(function () {
+                            if (STATE[key] !== myState) return null;      // 写缓存期间被失效 → 不报"就绪"
+                            if (big && typeof window !== 'undefined' && typeof window.finishProgress === 'function') {
+                                window.finishProgress('✅ 本地索引已就绪（' + s.label + '，' + chunks.length + ' 块'
+                                    + (_cacheable ? '，已缓存到本机' : '') + '）');
+                            }
+                        });
+                    });
                 });
             });
         }).catch(function (e) {
@@ -456,10 +604,7 @@
         if (!st.bm) {
             var BM = (typeof window !== 'undefined') ? window.LightBM25 : null;
             if (typeof BM !== 'function') return null;
-            st.bm = new BM(st.chunks.map(function (c) {
-                // 用 searchText 作检索字段，text 保持原样供提示词引用
-                return { src: c.src, srcLabel: c.srcLabel, path: c.path, text: c.text, doc: c.doc, ref: c.ref, trade: c.trade, title: c.title, date: c.date, searchText: c.searchText };
-            }));
+            st.bm = new BM(bmDocsOf(st.chunks));   // 检索字段用 searchText，text 保持原样供提示词引用
         }
         return st.bm;
     }
@@ -474,19 +619,24 @@
         opts = opts || {};
         var keys = (opts.sources && opts.sources.length) ? opts.sources : SOURCES.map(function (s) { return s.key; });
         var topK = opts.topK || 4;
+        var topKByKey = opts.topKByKey || null;      // 【C1】按源分档 topK（如"仅文风参考"的资料库/历史报告给 2）
         var perDoc = opts.perDoc || MAX_PER_DOC;
         var oneMonthAgo = Date.now() - 30 * 24 * 3600 * 1000;
+        // 【C2-a】窗口外老数据的全量兜底：默认开，置 localStorage `kb_fallback`='0' 可关（应急/对照用）
+        var fbOn = opts.fallbackScan !== false;
+        if (fbOn) { try { fbOn = localStorage.getItem('kb_fallback') !== '0'; } catch (e) {} }
         var results = [];
         keys.forEach(function (key) {
             var s = SRC_MAP[key];
             if (!s) return;
             var st = ensureSource(key);
             if (!st || !st.chunks.length) return;
+            var k = Math.max(1, (topKByKey && topKByKey[key]) || topK);
             var bm = getBM(key);
             if (!bm) return;
-            var raw = bm.search(query, Math.max(topK * 4, 12));
+            var raw = bm.search(query, Math.max(k * 4, 12));
             var seen = new Map(), hits = [];
-            for (var i = 0; i < raw.length && hits.length < topK; i++) {
+            for (var i = 0; i < raw.length && hits.length < k; i++) {
                 var h = raw[i];
                 if (opts.recentMonth && key === 'issues') {
                     var t = h.date ? new Date(h.date).getTime() : 0;
@@ -497,9 +647,119 @@
                 seen.set(h.doc, n + 1);
                 hits.push(h);
             }
-            if (hits.length) results.push({ key: key, label: s.label, grain: s.grain, total: st.srcLen, chunks: st.chunks.length, hits: hits });
+            // 该源索引是否只覆盖了部分数据（窗口）→ 供上限提示与兜底判断
+            var windowed = !!(st.indexed && st.rawTotal > st.indexed);
+            var fb = false;
+            // 【C2-a】窗口外老数据兜底：**始终扫描**（实测 4 万条 5~50ms，代价可忽略），
+            //   因为"只在空命中时兜底"几乎不会触发 —— BM25 对外窗口外的老数据总有模糊命中，
+            //   hits 非空 → 老数据照样查不到（实测仍 0/30）。并入策略：
+            //   ① BM25 无命中 → 直接用兜底结果；
+            //   ② topK 未填满 → 用兜底补足；
+            //   ③ 兜底命中"强证据"（≥3 个查询词命中）时，额外最多并入 2 条（不挤掉已有命中）。
+            if (fbOn && windowed && !s.async && s.prepare && typeof s.chunk === 'function') {
+                var fh = fallbackScan(key, query, Math.max(k * 4, 12));
+                if (fh && fh.length) {
+                    if (!hits.length) {
+                        hits = fh.slice(0, k);
+                        fb = true;
+                    } else {
+                        var merged = hits.slice(0, k);
+                        var extra = (merged.length < k) ? (k - merged.length) : 0;
+                        var added = 0;
+                        for (var x = 0; x < fh.length && (added < extra || (added < extra + 2 && fh[x].fbScore >= 3)); x++) {
+                            var cand = fh[x];
+                            if (cand.fbScore < 3 && added >= extra) break;
+                            var dup = false;
+                            for (var y = 0; y < merged.length; y++) {
+                                if (merged[y] === cand || (merged[y].doc && merged[y].doc === cand.doc)) { dup = true; break; }
+                            }
+                            if (dup) continue;
+                            merged.push(cand); added++; fb = true;
+                        }
+                        hits = merged;
+                    }
+                }
+            }
+            if (hits.length) {
+                results.push({
+                    key: key, label: s.label, grain: s.grain,
+                    total: st.srcLen, chunks: st.chunks.length,
+                    indexed: st.indexed || 0, windowed: windowed, fallback: fb,
+                    hits: hits
+                });
+            }
         });
         return results;
+    }
+
+    // 【C2-a】全量兜底扫描（仅"有窗口截断"的源用得上，目前只有检查信息）：
+    //   索引只覆盖最近 N 条时，老数据在 KB 路径里是**沉默查不到**的（实测窗口外召回 0/30）。
+    //   实测 4 万条按 8 个词 indexOf 全扫 ≈ 30~50ms → 空命中时兜底扫描的代价可忽略，
+    //   换来"老数据不再查不到"。命中块复用该源自己的 chunk 函数，出处/字段与常规命中完全一致。
+    function fbGrams(q) {
+        var s = String(q || '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]+/g, ' ').trim();
+        if (!s) return [];
+        var seenG = {}, list = [];
+        function add(g) { if (g.length >= 2 && !seenG[g]) { seenG[g] = 1; list.push(g); } }
+        s.split(/\s+/).forEach(function (w) {
+            if (w.length <= 4) { add(w); return; }
+            for (var i = 0; i + 4 <= w.length; i++) add(w.slice(i, i + 4));   // 4 字滑窗
+        });
+        list.sort(function (a, b) { return b.length - a.length; });
+        return list.slice(0, 8);
+    }
+    function fallbackScan(key, query, topK) {
+        var s = SRC_MAP[key];
+        if (!s) return null;
+        var full = srcList(s);                       // 全量（未经 prepare 窗口截断）
+        if (!full || !full.length) return null;
+        var grams = fbGrams(query);
+        if (!grams.length) return null;
+        var need = Math.min(2, grams.length);        // 单词查询放宽到 1 个即可
+        // 性能（实测 4 万条 8 个词逐一 indexOf = 238ms/次，太贵）：
+        //   先用**一个合并正则**做单遍快筛（原生扫描，比 JS 层 8 次 indexOf 快得多），
+        //   只有通过快筛的少量候选才做"命中几个词"的精确计数 → 实测降到 ~40ms 量级。
+        var re = null;
+        try {
+            re = new RegExp(grams.map(function (g) { return g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|'));
+        } catch (e) { re = null; }
+        var scored = [];
+        for (var i = 0; i < full.length; i++) {
+            var it = full[i];
+            if (!it) continue;
+            var c0 = String(it.content == null ? '' : it.content);
+            if (re && !re.test(c0)) continue;        // 快筛：正文里一个查询词都没有 → 直接跳过
+            var score = 0, matched = 0;
+            for (var g = 0; g < grams.length; g++) {
+                if (c0.indexOf(grams[g]) !== -1) { score += grams[g].length * grams[g].length; matched++; }
+            }
+            if (matched < need) {                    // 少数记录正文没命中，再看标题/分类/单位等字段
+                var alt = String(it.title || '') + ' ' + String(it.category || '') + ' '
+                    + String(it.unit || '') + ' ' + String(it['性质'] || '');
+                for (var g2 = 0; g2 < grams.length; g2++) {
+                    if (alt.indexOf(grams[g2]) !== -1) { score += grams[g2].length * grams[g2].length; matched++; }
+                }
+            }
+            if (matched >= need) {
+                scored.push({ it: it, score: score, matched: matched, t: it.datetime ? (new Date(it.datetime).getTime() || 0) : 0 });
+            }
+        }
+        if (!scored.length) return null;
+        scored.sort(function (a, b) { return (b.score - a.score) || (b.t - a.t); });   // 同分取较新
+        var picked = scored.slice(0, Math.max(topK * 2, 8)).map(function (x) { return x.it; });
+        var matchedOf = new Map();
+        for (var m = 0; m < picked.length; m++) matchedOf.set(picked[m], scored[m].matched);
+        var chunks = s.chunk(picked) || [];
+        var seen = new Map(), out = [];
+        for (var c = 0; c < chunks.length && out.length < topK; c++) {
+            var n = seen.get(chunks[c].doc) || 0;
+            if (n >= MAX_PER_DOC) continue;
+            seen.set(chunks[c].doc, n + 1);
+            chunks[c].fallback = true;
+            chunks[c].fbScore = matchedOf.get(chunks[c].doc) || 0;   // 命中查询词个数：并入策略的"强证据"判据
+            out.push(chunks[c]);
+        }
+        return out.length ? out : null;
     }
 
     // 单源便捷检索（对规等只关心规章时用）
@@ -509,16 +769,31 @@
     }
 
     // 组装引用文本（带出处路径，每块完整内容；单源超预算则截断）
+    // 【C1/v3.74】新增 opts.totalBudget —— 单轮**总量**预算（字）。
+    //   此前只有"单源预算" SRC_BUDGET=6000，而实测各源 5 块最多 ~2000 字 → 该预算从不触顶、形同虚设，
+    //   真正生效的只有 topK。现按源顺序从总量里分配：用尽后**后续源不再注入**，单源仍受单源预算约束。
+    // 【C2-a】header 里如实标注"索引仅覆盖最近 N 条 / 本次为窗口外兜底命中"，让模型知道口径边界。
     function buildRefText(results, opts) {
         opts = opts || {};
         var budget = opts.budget || SRC_BUDGET;
+        var total = opts.totalBudget || 0;          // 0 = 不限（保持旧行为）
+        var used = 0;
         var out = '';
         (results || EMPTY).forEach(function (r) {
-            var txt = '【' + r.label + '（数据 ' + r.total + ' 条 → 命中 ' + r.hits.length + ' 块，按' + r.grain + '定位）】\n';
+            if (total && used >= total) return;     // 总量已用尽：后续源不再注入
+            var cap = total ? Math.min(budget, total - used) : budget;
+            var txt = '【' + r.label + '（数据 ' + r.total + ' 条 → 命中 ' + r.hits.length + ' 块，按' + r.grain + '定位';
+            if (r.windowed) {
+                txt += '；⚠️ 本源索引仅覆盖最近 ' + r.indexed + ' 条，更早的 '
+                    + Math.max(0, r.total - r.indexed) + ' 条不在索引内，查历史数据请用精确查询工具';
+            }
+            if (r.fallback) txt += '；本次为窗口外全量兜底命中';
+            txt += '）】\n';
             r.hits.forEach(function (h, i) {
                 txt += (i + 1) + '. ' + h.path + '\n   ' + h.text + '\n';
             });
-            if (txt.length > budget) txt = txt.slice(0, budget) + '\n（内容已截断）\n';
+            if (txt.length > cap) txt = txt.slice(0, cap) + '\n（内容已截断）\n';
+            used += txt.length;
             out += txt + '\n';
         });
         return out;
@@ -544,6 +819,8 @@
                 chunks: st && st.chunks ? st.chunks.length : 0,
                 built: !!(st && st.chunks),
                 async: !!s.async,
+                // 本次索引是否来自本机缓存恢复（v3.74）
+                restored: !!(st && st.restored),
                 // 异步源（资料库/历史报告在 IndexedDB）是否已取过数：没取过 ≠ 没数据，
                 // 面板必须区分这两种状态，否则会误报"无数据"（v3.73 修）
                 loaded: !s.async || !!(st && st.list)
@@ -564,7 +841,7 @@
             var s = SRC_MAP[key];
             if (!s) return step();
             // 统一走 ensure：async 源会先取数，所有源都用分片异步建索引（进度由 ensure 回调上报）
-            return ensure([key], { onProgress: onProgress }).catch(function (e) {
+            return ensure([key], { onProgress: onProgress, force: true }).catch(function (e) {
                 failures.push((SRC_MAP[key] ? SRC_MAP[key].label : key) + '：' + (e && e.message ? e.message : e));
             }).then(function () {
                 return new Promise(function (r) { setTimeout(r, 0); });
@@ -580,18 +857,127 @@
 
     // ==================== 设置页「知识库」面板 ====================
 
+    function fmtBytes(bytes) {
+        if (!bytes) return '—';
+        return bytes >= 1048576 ? (Math.round(bytes / 1048576 * 10) / 10) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    }
+    // 索引缓存能力是否就绪：需要 doubao.js 新版提供的 exportIndex / importIndex。
+    // 若页面跑的是被浏览器/SW 缓存的旧脚本，这里会是 false —— 表现为"重建了也留不住索引"。
+    function cacheCapable() {
+        var BM = (typeof window !== 'undefined') ? window.LightBM25 : null;
+        if (typeof BM !== 'function') return false;
+        return (typeof BM.importIndex === 'function') && !!(BM.prototype && typeof BM.prototype.exportIndex === 'function');
+    }
+
+    // 输出落到折叠区里时，自动把祖先折叠项展开（面板里"高级与自检/说明"是收起的，否则用户看不到结果）
+    function revealInFolds(elm) {
+        var n = elm;
+        while (n && n.tagName && n.tagName !== 'BODY') {
+            if (n.tagName === 'DETAILS') {
+                n.open = true;
+                if (typeof window.stRememberFold === 'function') { try { window.stRememberFold(n); } catch (e) {} }
+            }
+            n = n.parentNode;
+        }
+    }
+
+    // 缓存自检：一次性回答"为什么索引没留住"
+    function diag() {
+        var BM = (typeof window !== 'undefined') ? window.LightBM25 : null;
+        var out = {
+            cacheVer: KB_INDEX_VER,
+            maxItems: KB_CACHE_MAX_ITEMS,
+            lightBM25: typeof BM === 'function',
+            canExport: !!(BM && BM.prototype && typeof BM.prototype.exportIndex === 'function'),
+            canImport: !!(BM && typeof BM.importIndex === 'function'),
+            idb: typeof indexedDB !== 'undefined',
+            cacheCount: 0,
+            cacheBytes: 0,
+            lastErr: _lastCacheErr,
+            diagErr: '',
+            sources: []
+        };
+        return cacheInfo().then(function (list) {
+            var byKey = {};
+            list.forEach(function (x) { byKey[x.key] = x; out.cacheBytes += x.bytes || 0; });
+            out.cacheCount = list.length;
+            stats().forEach(function (r) {
+                var cc = byKey[r.key];
+                out.sources.push({
+                    key: r.key, label: r.label,
+                    built: !!r.chunks, restored: !!r.restored,
+                    cacheBytes: cc ? cc.bytes : 0,
+                    cacheOk: cc ? sigMatches(r, cc) : null,
+                    cacheAt: cc ? cc.at : 0
+                });
+            });
+            return out;
+        }).catch(function (e) {
+            out.diagErr = (e && e.name ? e.name + '：' : '') + ((e && e.message) || '读取缓存失败');
+            return out;
+        });
+    }
+
+    function panelDiag() {
+        if (typeof document === 'undefined') return;
+        var host = document.getElementById('kb-diag-out');
+        var sum = document.getElementById('kb-summary');
+        if (host) { host.style.display = 'block'; host.textContent = '正在自检…'; revealInFolds(host); }
+        diag().then(function (d) {
+            var lines = [];
+            var capable = d.canExport && d.canImport;
+            lines.push(capable
+                ? '✅ 脚本能力正常（索引导出 ✓ / 恢复 ✓）'
+                : '⚠️ 脚本能力缺失：导出 ' + (d.canExport ? '✓' : '✗') + ' / 恢复 ' + (d.canImport ? '✓' : '✗')
+                  + ' —— 当前页面运行的很可能不是 v3.74 脚本（被浏览器/Service Worker 缓存了旧文件）。请强制刷新（Ctrl+F5）或「设置 → 清除缓存」后再试。');
+            lines.push('IndexedDB：' + (d.idb ? '可用' : '不可用')
+                + '；缓存记录 ' + d.cacheCount + ' 个 / 合计 ' + fmtBytes(d.cacheBytes)
+                + '；缓存格式版本 v' + d.cacheVer + '；单源上限 ' + d.maxItems + ' 条');
+            if (d.lastErr) lines.push('⚠️ 最近一次缓存写入失败：' + d.lastErr);
+            if (d.diagErr) lines.push('⚠️ 自检读取出错：' + d.diagErr);
+            d.sources.forEach(function (x) {
+                lines.push('· ' + x.label + '：' + (x.built ? (x.restored ? '已从缓存恢复' : '已建（本次新建）') : '未建')
+                    + '；本机缓存 ' + (x.cacheBytes ? fmtBytes(x.cacheBytes) : '无')
+                    + (x.cacheOk === true ? '（与当前数据一致 → 重启可直接恢复）'
+                        : x.cacheOk === false ? '（与当前数据不一致 → 重启会重建；属正常，只要改过数据）' : ''));
+            });
+            if (host) host.textContent = lines.join('\n');
+            if (sum && !capable) sum.textContent = '⚠️ 索引缓存能力缺失：页面可能仍运行旧脚本，请强制刷新（Ctrl+F5）后重试';
+        });
+    }
+
+    // 缓存是否"对得上当前数据"：算一次数据指纹与缓存里的对比（只在面板/自检时算，不在检索路径上）
+    function sigMatches(r, cc) {
+        if (!cc || !cc.sig) return null;
+        var s = SRC_MAP[r.key];
+        if (!s || !r.loaded) return null;               // 异步源还没取数 → 先不下结论
+        try {
+            var raw = s.async ? ((STATE[r.key] && STATE[r.key].list) || EMPTY) : srcList(s);
+            var prepared = s.prepare ? s.prepare(raw) : raw;
+            return sourceSig(prepared) === cc.sig;
+        } catch (e) { return null; }
+    }
+
     function panelRender(hint) {
         if (typeof document === 'undefined') return;
         var host = document.getElementById('kb-source-list');
         var sum = document.getElementById('kb-summary');
         if (!host) return;
-        function paint(rows) {
+        var _chk = document.getElementById('kb-autoload-chk');
+        if (_chk) _chk.checked = autoLoadEnabled();
+        syncSwitchUI();
+        var fmtMB = fmtBytes;
+        function paint(rows, cacheMap, sigMap) {
+            cacheMap = cacheMap || {};
+            sigMap = sigMap || {};
             var totalItems = 0, totalChunks = 0, pending = 0;
             rows.forEach(function (r) { totalItems += r.total; totalChunks += r.chunks; if (!r.loaded) pending++; });
             if (sum) {
                 sum.textContent = '共 ' + totalItems + ' 条数据 → ' + totalChunks + ' 块索引'
                     + (pending ? '（' + pending + ' 个源读取中…）' : '')
-                    + (hint ? '（' + hint + '）' : '');
+                    + (hint ? '（' + hint + '）' : '')
+                    + (_lastCacheErr ? '｜⚠️ 缓存写入失败：' + _lastCacheErr : '')
+                    + (cacheCapable() ? '' : '｜⚠️ 缺少「索引缓存」能力（页面可能在跑被缓存的旧脚本）→ 请强制刷新 Ctrl+F5 或「设置 → 清除缓存」后重试');
             }
             var scopeEl = document.getElementById('kb-issue-scope');
             if (scopeEl) {
@@ -604,18 +990,53 @@
             host.innerHTML = rows.map(function (r) {
                 if (!r.loaded) return '<div>⏳ ' + r.label + '：读取中…（按' + r.grain + '切）</div>';
                 var dot = r.chunks ? '🟢' : (r.total ? '⚪' : '⚫');
+                var cc = cacheMap[r.key];
+                // 🟡 = 本机已有可用缓存（未载入内存）：重启后不需要重建，首次用到该源时秒级载入
+                if (!r.chunks && cc && cacheCapable() && sigMap[r.key] !== false) dot = '🟡';
                 var head = dot + ' ' + r.label + '：' + r.total + ' 条 / ' + r.chunks + ' 块，按' + r.grain + '切';
                 var tail;
-                if (r.chunks) tail = (r.indexed && r.total && r.indexed < r.total) ? '（已索引最近 ' + r.indexed + ' 条）' : '';
-                else tail = r.total ? '（未建索引：首次检索该源时自动建，也可点「一键重建」）' : '（无数据）';
+                if (r.chunks) {
+                    var notes = [];
+                    if (r.restored) notes.push('本机缓存恢复');
+                    if (r.indexed && r.total && r.indexed < r.total) notes.push('已索引最近 ' + r.indexed + ' 条');
+                    if (cc) notes.push('已写入本机缓存 ' + fmtMB(cc.bytes));
+                    tail = notes.length ? '（' + notes.join('；') + '）' : '';
+                } else if (!r.total) {
+                    tail = '（无数据）';
+                } else if (cc) {
+                    var ok = sigMap[r.key];
+                    if (!cacheCapable()) tail = '（未建索引：⚠️ 当前脚本缺少「索引缓存」能力，本机缓存暂时无法恢复 → 请强制刷新 Ctrl+F5）';
+                    else if (ok === true) tail = '（未建索引：本机缓存可用 ' + fmtMB(cc.bytes) + '，首次检索时直接恢复、无需重建）';
+                    else if (ok === false) tail = '（未建索引：本机缓存 ' + fmtMB(cc.bytes) + ' 已过期——数据有变更，首次检索时自动重建）';
+                    else tail = '（未建索引：本机已有缓存 ' + fmtMB(cc.bytes) + '）';
+                } else if (cacheCapable()) {
+                    tail = '（未建索引：首次检索该源时自动建；建好后会写入本机缓存，重启/刷新免重建）';
+                } else {
+                    tail = '（未建索引：首次检索该源时自动建。⚠️ 当前脚本缺少「索引缓存」能力，重建后重启不会保留）';
+                }
                 return '<div>' + head + tail + '</div>';
             }).join('');
         }
         var rows = stats();
-        paint(rows);
+        var cacheMap = {};
+        var sigMap = {};
+        paint(rows, cacheMap, sigMap);
+        // 顺带读出本机缓存清单（体积 + 是否对得上当前数据），让"有没有缓存"一眼可见（v3.74）
+        cacheInfo().then(function (list) {
+            list.forEach(function (x) { cacheMap[x.key] = x; });
+            stats().forEach(function (r) { if (cacheMap[r.key]) sigMap[r.key] = sigMatches(r, cacheMap[r.key]); });
+            paint(stats(), cacheMap, sigMap);
+        }).catch(function () {});
         // 异步源（资料库/历史报告）计数要先去 IndexedDB 取；取完再补一次真实数字
+        // 只取数（countOnly）——面板是"状态显示"，不该顺手把 6000+ 块索引建起来（v3.74 修）
         var waiting = rows.filter(function (r) { return !r.loaded; }).map(function (r) { return r.key; });
-        if (waiting.length) ensure(waiting).then(function () { paint(stats()); }).catch(function () {});
+        if (waiting.length) {
+            ensure(waiting, { countOnly: true }).then(function () {
+                var rows2 = stats();                       // 取到数后才能判定异步源的缓存是否可用
+                rows2.forEach(function (r) { if (cacheMap[r.key] && sigMap[r.key] === undefined) sigMap[r.key] = sigMatches(r, cacheMap[r.key]); });
+                paint(rows2, cacheMap, sigMap);
+            }).catch(function () {});
+        }
     }
 
     function panelRebuild() {
@@ -664,13 +1085,135 @@
         if (!inp || !out) return;
         var q = String(inp.value || '').trim();
         if (!q) { out.textContent = '请先输入一句检查问题或关键词'; return; }
+        revealInFolds(out);
         out.textContent = '检索中…';
         var t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-        ensure(['materials', 'reports']).then(function () {
+        ensure(['rules', 'issues', 'handbook', 'materials', 'reports']).then(function () {
             var txt = testSearch(q, { topK: 3 });
             var ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
             out.textContent = txt ? (txt + '— 耗时 ' + ms + 'ms') : '未命中任何内容（' + ms + 'ms）';
         }).catch(function (e) { out.textContent = '检索失败：' + (e && e.message ? e.message : e); });
+    }
+
+    // ==================== 统一检索层开关（v3.74 上设置页）====================
+    // 背景：v3.73 起有几个 localStorage 开关散落在各模块里（kb_prompt / kb_autocheck），
+    // 只能手改 localStorage。这里统一成面板上的勾选框，默认都是"开"。
+    //   kb_prompt    ：智能对话 / 智能写作 使用统一检索层（'0' = 回退旧多源采样）
+    //   kb_autocheck ：AI 对规使用统一检索层的条款级召回（'0' = 回退关键词召回）
+    //   kb_agent     ：智能体的旧检索工具（search_rules/search_handbook/search_material）
+    //                  与风险研判的案例检索优先走统一检索层（'0' = 回退各自的原实现）
+    var UI_SWITCH_KEYS = ['kb_prompt', 'kb_autocheck', 'kb_agent'];
+
+    function getSwitch(key) {
+        if (UI_SWITCH_KEYS.indexOf(key) === -1) return true;
+        var v = '1';
+        try { v = localStorage.getItem(key) || '1'; } catch (e) {}
+        return v !== '0';
+    }
+    function setSwitch(key, on) {
+        if (UI_SWITCH_KEYS.indexOf(key) === -1) return false;
+        try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {}
+        if (typeof console !== 'undefined') console.log('[KB] 开关 ' + key + ' → ' + (on ? '开' : '关') + '（下次检索生效）');
+        return !!on;
+    }
+    function syncSwitchUI() {
+        if (typeof document === 'undefined') return;
+        var map = { kb_prompt: 'kb-sw-prompt', kb_autocheck: 'kb-sw-autocheck', kb_agent: 'kb-sw-agent' };
+        for (var k in map) {
+            if (!map.hasOwnProperty(k)) continue;
+            var el = document.getElementById(map[k]);
+            if (el) el.checked = getSwitch(k);
+        }
+    }
+
+    // ==================== 启动后自动载入索引（v3.74）====================
+    // 用户诉求：「重启后不该还要手动点『载入索引』」。页面就绪后延后 1.2s，在空闲时**逐个源**
+    // 做"仅恢复"尝试：有可用缓存 → 秒级载入（🟡→🟢）；无缓存或数据已变更 → 保持未载入，
+    // 留给首次检索时按需重建（绝不在开机时白跑 CPU）。每源之间让出事件循环，不阻塞界面。
+    // 开关 kb_autoload：'0' 关闭（低配手机想省内存时可关，面板上有勾选框）。
+    function autoLoadEnabled() {
+        var on = true;
+        try { on = localStorage.getItem('kb_autoload') !== '0'; } catch (e) {}
+        return on;
+    }
+    function setAutoLoad(on) {
+        try { localStorage.setItem('kb_autoload', on ? '1' : '0'); } catch (e) {}
+        if (on) autoLoadCaches();
+        return !!on;
+    }
+    function autoLoadCaches() {
+        if (!autoLoadEnabled() || !cacheCapable()) return Promise.resolve(0);
+        var keys = ['issues', 'rules', 'handbook', 'materials', 'reports', 'phone', 'diary'];  // 常用源优先
+        var i = 0, loaded = 0;
+        function step() {
+            if (i >= keys.length) {
+                if (loaded) {
+                    if (typeof document !== 'undefined' && document.getElementById('kb-source-list')) panelRender();
+                    if (typeof console !== 'undefined') console.log('[KB] 启动自动载入完成，已从本机缓存恢复 ' + loaded + ' 个源的索引');
+                }
+                return Promise.resolve(loaded);
+            }
+            var key = keys[i++];
+            return ensureOne(key, null, false, false, true).then(function () {
+                if (STATE[key] && STATE[key].chunks) loaded++;
+            }).catch(function () { /* 单源失败不影响其它 */ }).then(function () {
+                return new Promise(function (r) { setTimeout(r, 0); });
+            }).then(step);
+        }
+        return step();
+    }
+
+    // 清空本机索引缓存（设置页按钮）：只删缓存，不动业务数据；下次检索会重新建立
+    function clearCache() {
+        return cacheClear().then(function () {
+            if (typeof console !== 'undefined') console.log('[KB] 已清空本机索引缓存');
+            return true;
+        }).catch(function () { return false; });
+    }
+    // 「载入索引」：把各源索引准备好（有缓存就是秒级恢复，无缓存才真正建立）。
+    // 给"重启后想立刻看到索引就位"的场景用；不点也不影响功能（首次用到该源时会自动载入）。
+    function panelWarm() {
+        if (typeof document === 'undefined') return;
+        var sum = document.getElementById('kb-summary');
+        var t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        if (sum) sum.textContent = '正在载入索引（优先使用本机缓存）…';
+        return ensure(null).then(function () {
+            var ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
+            panelRender('索引已载入，耗时 ' + ms + 'ms');
+        }).catch(function (e) {
+            panelRender('载入失败：' + (e && e.message ? e.message : e));
+        });
+    }
+
+    function panelClearCache() {
+        if (typeof document === 'undefined') return;
+        var sum = document.getElementById('kb-summary');
+        if (sum) sum.textContent = '正在清空索引缓存…';
+        clearCache().then(function (ok) {
+            invalidate();          // 内存里的索引也一并丢弃，面板状态才诚实
+            panelRender(ok ? '已清空索引缓存（下次检索会重新建立）' : '清空失败（可能是浏览器限制）');
+        });
+    }
+    // 缓存清单（自检/诊断用）：返回每个源缓存的大小与指纹
+    function cacheInfo() {
+        return cacheTx('readonly', function (s) { return s.getAllKeys(); }).then(function (keys) {
+            var out = [];
+            return (keys || []).reduce(function (p, k) {
+                return p.then(function () {
+                    return cacheGet(k).then(function (rec) {
+                        if (!rec) return;
+                        out.push({
+                            key: k, ver: rec.ver, sig: rec.sig,
+                            chunks: rec.chunks ? rec.chunks.length : 0,
+                            at: rec.at,
+                            bytes: (rec.bm && rec.bm.flat ? rec.bm.flat.byteLength : 0)
+                                 + (rec.bm && rec.bm.termsBlob ? rec.bm.termsBlob.length : 0)
+                                 + (rec.chunks ? rec.chunks.length * 200 : 0)
+                        });
+                    });
+                });
+            }, Promise.resolve()).then(function () { return out; });
+        }).catch(function () { return []; });
     }
 
     // 打开设置面板「数据」分区时刷新面板（自包含：不改 app.js 的设置面板逻辑）
@@ -682,6 +1225,13 @@
         });
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { panelRender(); });
         else panelRender();
+
+        // 启动后延后 1.2s 自动从本机缓存载入索引（让首屏先渲染完再干这活）
+        function _autoLoadLater() {
+            setTimeout(function () { autoLoadCaches(); }, 1200);
+        }
+        if (document.readyState === 'complete') _autoLoadLater();
+        else window.addEventListener('load', _autoLoadLater, { once: true });
     }
 
     var KB = {
@@ -709,7 +1259,21 @@
         panelRebuild: panelRebuild,
         panelTest: panelTest,
         setIssueLimit: setIssueLimit,
-        getIssueLimit: issueLimit
+        getIssueLimit: issueLimit,
+        clearCache: clearCache,
+        panelWarm: panelWarm,
+        panelClearCache: panelClearCache,
+        autoLoad: autoLoadCaches,
+        setAutoLoad: setAutoLoad,
+        getAutoLoad: autoLoadEnabled,
+        setSwitch: setSwitch,
+        getSwitch: getSwitch,
+        cacheInfo: cacheInfo,
+        diag: diag,
+        panelDiag: panelDiag,
+        cacheCapable: cacheCapable,
+        CACHE_VER: KB_INDEX_VER,
+        BUILD: 'v3.74'   // 运行期版本标记：用于确认页面加载的是哪一版 knowledge.js（排查缓存旧脚本）
     };
     window.KB = KB;
 })();

@@ -46,6 +46,23 @@
   // 内置车站经纬度字典的模块级缓存（字面量有 100+ 键，不必每次调用 get_weather 都重建）
   var _staticCoordCache = null;
 
+  // ========== 统一检索层优先（v3.74）==========
+  // 让旧的单项检索工具（search_rules / search_handbook / search_material）内部**先走 KB**：
+  // 命中就返回"条款/项点/段落级片段 + 出处"（比"整篇前 150 字摘要"更准），
+  // 未命中 / 开关 kb_agent 关闭 / KB 未加载 / 异常时，回退各自原来的关键词搜索。
+  // 目的：即便模型没直接调用 kb_search，走旧工具也能拿到 KB 质量的结果（旧工具 = 兜底）。
+  async function _kbHitsFirst(sourceKey, query, topK) {
+    try {
+      if (!query) return null;
+      if (!window.KB || typeof window.KB.search !== 'function') return null;
+      if (typeof window.KB.getSwitch === 'function' && !window.KB.getSwitch('kb_agent')) return null;
+      if (typeof window.KB.ensure === 'function') await window.KB.ensure([sourceKey]);
+      var res = window.KB.search(query, { sources: [sourceKey], topK: Math.min(Math.max(topK || 8, 1), 12) });
+      var hits = (res && res.length) ? res[0].hits : null;
+      return (hits && hits.length) ? hits : null;
+    } catch (e) { return null; }
+  }
+
   // ========== 工具注册表（标准 OpenAI/DeepSeek tools 格式）==========
   var TOOLS = [
     {
@@ -110,15 +127,33 @@
     },
     {
       name: 'search_rules',
-      description: '搜索规章制度数据库，按关键词查找规章条款。keyword 可选(不传则返回最近条目)。返回精简列表(id=全量下标+标题+专业+摘要)，需要全文请用 get_rule_detail(id)',
+      description: '搜索规章制度数据库。给出关键词时优先走统一检索层（命中条款级片段+出处，摘要即为命中的那一条），无命中才回退关键词模糊匹配。返回精简列表(id=全量下标+标题+专业+摘要)，需要全文请用 get_rule_detail(id)',
       parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词(可选，不传返回最近条目)'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:[] },
       handler: async function(args) {
-        var results = window._agentGetRules(args.keyword || '', args.limit || 10);
         var full = [];
         try { if (typeof window.getRulesData === 'function') full = window.getRulesData(); } catch(e) {}
         // 用 Map 反查全量下标，O(1) 且保证 id 100% 准确（避免 8000+ 规章时 indexOf 偶发 -1）
         var idxMap = new Map();
         for (var fi = 0; fi < full.length; fi++) { if (!idxMap.has(full[fi])) idxMap.set(full[fi], fi); }
+        // ① 统一检索层优先（条款级命中）
+        var hits = await _kbHitsFirst('rules', String(args.keyword || '').trim(), args.limit || 10);
+        if (hits) {
+          var seen = new Set(), itemsKb = [];
+          hits.forEach(function(h) {
+            var doc = h.doc || null;
+            if (!doc || seen.has(doc)) return;
+            seen.add(doc);
+            itemsKb.push({
+              id: idxMap.has(doc) ? idxMap.get(doc) : -1,
+              标题: doc.title || '', 专业: doc.trade || '',
+              命中出处: h.path || '',
+              摘要: String(h.text || '').replace(/<[^>]+>/g, '').slice(0, 150)
+            });
+          });
+          if (itemsKb.length) return { total: itemsKb.length, items: itemsKb, 检索方式: '统一检索层（条款级命中，摘要=命中的那一条）' };
+        }
+        // ② 回退：原关键词搜索
+        var results = window._agentGetRules(args.keyword || '', args.limit || 10);
         return { total: results.total, items: (results.items || []).map(function(r) {
           var realIdx = idxMap.has(r) ? idxMap.get(r) : -1;
           return { id: realIdx, 标题: r.title||'', 专业: r.trade||'', 摘要: (r.content||'').replace(/<[^>]+>/g,'').slice(0,150) };
@@ -136,15 +171,33 @@
     },
     {
       name: 'search_handbook',
-      description: '查询检查手册，按关键词模糊搜索检查项点。返回精简列表(id=全量下标+标题+摘要)，需要全文请用 get_handbook_detail(id)',
+      description: '查询检查手册。优先走统一检索层（命中项点级片段+出处），无命中才回退关键词模糊搜索。返回精简列表(id=全量下标+标题+摘要)，需要全文请用 get_handbook_detail(id)',
       parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:['keyword'] },
       handler: async function(args) {
-        var results = window._agentGetHandbook(args.keyword || '', args.limit || 10);
         var full = [];
         try { if (typeof window.getHandbookData === 'function') full = window.getHandbookData(); } catch(e) {}
         // 用 Map 反查全量下标，O(1) 且保证 id 100% 准确
         var idxMap = new Map();
         for (var fi = 0; fi < full.length; fi++) { if (!idxMap.has(full[fi])) idxMap.set(full[fi], fi); }
+        // ① 统一检索层优先（项点级命中）
+        var hits = await _kbHitsFirst('handbook', String(args.keyword || '').trim(), args.limit || 10);
+        if (hits) {
+          var seenH = new Set(), itemsKb = [];
+          hits.forEach(function(h) {
+            var doc = h.doc || null;
+            if (!doc || seenH.has(doc)) return;
+            seenH.add(doc);
+            itemsKb.push({
+              id: idxMap.has(doc) ? idxMap.get(doc) : -1,
+              标题: (doc.chapter||'')+(doc.section?(' / '+doc.section):'')+(doc.item?(' / '+doc.item):''),
+              命中出处: h.path || '',
+              摘要: String(h.text || doc.content || doc.rules || '').slice(0, 120)
+            });
+          });
+          if (itemsKb.length) return { total: itemsKb.length, items: itemsKb, 检索方式: '统一检索层（项点级命中）' };
+        }
+        // ② 回退：原关键词搜索
+        var results = window._agentGetHandbook(args.keyword || '', args.limit || 10);
         return { total: results.total, items: (results.items || []).map(function(h) {
           var realIdx = idxMap.has(h) ? idxMap.get(h) : -1;
           return { id: realIdx, 标题: (h.chapter||'')+(h.section?(' / '+h.section):'')+(h.item?(' / '+h.item):''), 摘要: ((h.content||h.rules||'')).slice(0,120) };
@@ -379,8 +432,27 @@
       handler: async function(args) {
         var all = [];
         try { if (typeof window._wrGetAllMaterials === 'function') all = await window._wrGetAllMaterials(); } catch(e) {}
+        // ① 统一检索层优先（段落级命中，带出处）——资料库为空/未命中时回退原模糊匹配
+        var kw0 = String(args.keyword || '').trim();
+        var hits = await _kbHitsFirst('materials', kw0, args.limit || 10);
+        if (hits) {
+          var seenM = new Set(), itemsKb = [];
+          hits.forEach(function(h) {
+            var doc = h.doc || null;
+            if (!doc || seenM.has(doc)) return;
+            if (args.type && String(doc.type || doc.matType || '') !== String(args.type)) return;
+            seenM.add(doc);
+            itemsKb.push({
+              id: (doc.id !== undefined ? doc.id : ''),
+              标题: doc.title || '', 类型: doc.type || doc.matType || '',
+              命中出处: h.path || '',
+              摘要: String(h.text || doc.content || '').slice(0, 150)
+            });
+          });
+          if (itemsKb.length) return { total: itemsKb.length, items: itemsKb, 检索方式: '统一检索层（段落级命中）' };
+        }
         if (!all || !all.length) return { total: 0, items: [], note: '资料库为空' };
-        var kw = (args.keyword || '').trim();
+        var kw = kw0;
         var matched = kw ? all.filter(function(m) {
           return ((m.title||'') + ' ' + (m.content||'')).indexOf(kw) !== -1;
         }) : all;
@@ -461,12 +533,19 @@
           var res = window.KB.search(args.query, { sources: srcs, topK: topK });
           if (!res.length) return { total: 0, items: [], note: '知识库中未检索到相关内容（可能尚未导入资料）' };
           var items = [];
+          var wNotes = [];       // 【C2-a/v3.74】口径提醒：哪些源的索引只覆盖部分数据
           res.forEach(function(r) {
+            if (r.windowed) {
+              wNotes.push(r.label + ' 索引仅覆盖最近 ' + r.indexed + '/' + r.total + ' 条'
+                + (r.fallback ? '（本次已用全量兜底命中窗口外数据）' : ''));
+            }
             r.hits.forEach(function(h) {
               items.push({ 来源: r.label, 出处: h.path, 内容: h.text, 摘要: String(h.text).slice(0, 60) });
             });
           });
-          return { total: items.length, items: items };
+          var out = { total: items.length, items: items };
+          if (wNotes.length) out['口径提醒'] = wNotes.join('；') + '。查更早的明细请用 search_issues（全量精确查询）';
+          return out;
         } catch (e) {
           return { error: '检索失败：' + (e && e.message) };
         }
@@ -635,6 +714,7 @@
     system += '7. 整个任务控制在 5 轮以内完成\n';
     system += '8. 引用典型问题写报告时，默认列举不超过 35 条；若用户明确要更多，可在 search_issues 中加大 limit（无上限），不要自行截断或估算\n';
     system += '9. 做统计/计数（如"某时段共多少条""按性质分布"）时，必须用 count_issues 或读取 search_issues 返回的 total（该值为时间范围内真实总数，不封顶）；务必统计时间范围内的全部，不得因条数多而只取前 N 条或估算\n';
+    system += '10. 检索本地资料（规章条款 / 检查信息 / 检查手册 / 写作资料 / 历史报告 / 应急电话 / 工作日志）时，优先用 kb_search：它跨源统一检索、按条款/段落粒度返回并带出处，通常比逐个调用单项检索更全；只有需要精确计数或按时间范围列明细时，才用 count_issues / search_issues 等单项工具\n';
 
     try {
       var ctx = await window.getRecentAgentContext();

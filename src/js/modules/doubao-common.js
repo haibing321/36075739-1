@@ -25,11 +25,16 @@
     //   ① 去掉误粘贴的引号/尖括号/首尾空白；
     //   ② 缺 scheme 且不是以 / 开头的绝对路径 → 补 https://（以 / 开头的是有意为之的同源路径，不动）；
     //   ③ 只对「已知供应商域名」补全/纠正 chat 路径：
-    //      · 路径为空或仅 /v1 → 补全（这些域名不补必定 404）；
+    //      · 路径为空、等于该供应商文档里的「基址」、或仅 /v1（且该域名无基址前缀）→ 补全；
     //      · 路径里出现 completion 但不是规范写法（少结尾的 s、多末尾斜杠、大小写不同、
     //        v1/completion 之类）→ 纠正为规范路径。真实案例：手机上手输
     //        https://api.deepseek.com/chat/completion（少一个 s）→ 该路径在官方服务器上
     //        不存在 → 404，且四个 AI 功能会同时失效。
+    //      ⚠️ v3.71 修复两处（均为"补全规则本身"的缺陷，不动其它语义）：
+    //        ① 旧规则对"基址非 /v1"的域名（如 dashscope 的 /compatible-mode/v1）也会拼 /v1 前缀，
+    //           产出 /v1/compatible-mode/v1/chat/completions 这种任何服务器都不存在的怪路径；
+    //        ② 旧规则只认"空路径"和"/v1"，用户在手机上填供应商文档里的**基址**
+    //           （dashscope /compatible-mode/v1、智谱 /api/paas/v4）时不补全，仍是 404。
     //      未知域名一律原样返回 —— 第三方网关/根路径代理可能是故意配的，改了反而弄坏；
     //      /responses、/messages、/anthropic 等其它合法通道也一律不动。
     window.dsNormalizeApiUrl = function(raw) {
@@ -41,24 +46,30 @@
             var host = url.host.toLowerCase();
             var path = url.pathname.replace(/\/+$/, '');
             var lower = path.toLowerCase();
+            // tail = 规范 chat 路径；base = 该供应商文档里给的「基址」（用户常直接照抄基址）
             var KNOWN = {
-                'api.deepseek.com': '/chat/completions',
-                'api.openai.com': '/v1/chat/completions',
-                'dashscope.aliyuncs.com': '/compatible-mode/v1/chat/completions',
-                'open.bigmodel.cn': '/api/paas/v4/chat/completions',
-                'api.moonshot.cn': '/v1/chat/completions',
-                'api.baichuan-ai.com': '/v1/chat/completions',
-                'api.minimax.chat': '/v1/text/chatcompletion_v2',
-                'api.stepfun.com': '/v1/chat/completions'
+                'api.deepseek.com':       { tail: '/chat/completions',                    base: '' },
+                'api.openai.com':         { tail: '/v1/chat/completions',                 base: '/v1' },
+                'dashscope.aliyuncs.com': { tail: '/compatible-mode/v1/chat/completions', base: '/compatible-mode/v1' },
+                'open.bigmodel.cn':       { tail: '/api/paas/v4/chat/completions',        base: '/api/paas/v4' },
+                'api.moonshot.cn':        { tail: '/v1/chat/completions',                 base: '/v1' },
+                'api.baichuan-ai.com':    { tail: '/v1/chat/completions',                 base: '/v1' },
+                'api.minimax.chat':       { tail: '/v1/text/chatcompletion_v2',           base: '/v1' },
+                'api.stepfun.com':        { tail: '/v1/chat/completions',                 base: '/v1' }
             };
-            var tail = KNOWN[host];
-            if (tail) {
+            var meta = KNOWN[host];
+            if (meta) {
+                var tail = meta.tail;
                 var tl = tail.toLowerCase();
                 var want = null;                       // 期望的 pathname（null = 不动）
-                if (path === '') {
-                    want = tail;                        // 只填了域名
-                } else if (path === '/v1') {
-                    want = (tl.indexOf('/v1') !== 0) ? ('/v1' + tail) : tail;   // 只填了 /v1
+                if (path === '' || path === meta.base) {
+                    // 只填了域名（含结尾斜杠），或只填了供应商文档里的基址 → 补上 chat 路径
+                    want = tail;
+                } else if (path === '/v1' && !meta.base) {
+                    // DeepSeek 官方同时支持 /v1 作为 OpenAI 兼容基址。仅当该域名自身没有基址前缀时
+                    // 才这样补 —— 否则（如 dashscope 的 /compatible-mode/v1）会拼出
+                    // /v1/compatible-mode/v1/... 这种任何服务器都不存在的路径（v3.71 修复）
+                    want = '/v1' + tail;
                 } else if (lower.indexOf('completion') !== -1) {
                     // 与规范路径"忽略大小写相同"（含 /v1、/beta 前缀）→ 只统一大小写与末尾斜杠
                     var isExact = (lower === tl) || (('/v1' + tl) === lower) || (('/beta' + tl) === lower);

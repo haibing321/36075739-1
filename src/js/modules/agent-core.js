@@ -22,7 +22,8 @@
     search_phone: '检索应急电话通讯录',
     search_material: '检索写作参考资料库',
     get_material_detail: '调取参考资料详情',
-    read_diary: '读取历史工作日志'
+    read_diary: '读取历史工作日志',
+    kb_search: '统一检索本地知识库（跨源、按条款/段落粒度，带出处）'
   };
   function _toolPurpose(name) { return _TOOL_PURPOSE[name] || '调用工具'; }
   function _toolEvidence(execResult) {
@@ -432,6 +433,43 @@
         return { total: diaryTotal, items: matched.map(function(d) {
           return { 日期: d.date || '', 工作: d.work || '', 问题: (d.issues || []).join(' / '), 规章依据: (d.regulations || []).join(' / ') };
         }) };
+      }
+    },
+    // 【v3.73】统一检索层入口：一次可跨源检索，且返回的是**按自然粒度切好的片段**（规章按条款、
+    // 手册按项点、资料按段落，每段完整≤500 字 + 出处路径），比 search_rules/search_issues 更适合
+    // "引用依据、查条款原文"这类需求。
+    {
+      name: 'kb_search',
+      description: '统一检索本地知识库（规章制度/检查手册/检查信息/写作资料/历史报告/应急电话/工作日志），返回命中片段（带出处路径，规章精确到条款、手册精确到项点、资料精确到段落）。用于引用依据、查条款原文、找相似案例；比 search_rules / search_issues 覆盖面更全、粒度更细',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '检索问题或关键词（尽量用业务用词，越具体越准）' },
+          sources: { type: 'string', description: '要检索的源，逗号分隔(可选)：rules,issues,handbook,materials,reports,phone,diary；默认 rules,issues,handbook,materials,reports' },
+          topK: { type: 'number', description: '每个源返回条数(可选，默认 4，最大 8)' }
+        },
+        required: ['query']
+      },
+      handler: async function(args) {
+        if (!window.KB || typeof window.KB.search !== 'function') return { error: '知识库未就绪（knowledge.js 未加载）' };
+        var allowed = ['rules', 'issues', 'handbook', 'materials', 'reports', 'phone', 'diary'];
+        var srcs = String(args.sources || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return allowed.indexOf(s) !== -1; });
+        if (!srcs.length) srcs = ['rules', 'issues', 'handbook', 'materials', 'reports'];
+        var topK = Math.min(Math.max(parseInt(args.topK, 10) || 4, 1), 8);
+        try {
+          if (typeof window.KB.ensure === 'function') await window.KB.ensure(srcs);
+          var res = window.KB.search(args.query, { sources: srcs, topK: topK });
+          if (!res.length) return { total: 0, items: [], note: '知识库中未检索到相关内容（可能尚未导入资料）' };
+          var items = [];
+          res.forEach(function(r) {
+            r.hits.forEach(function(h) {
+              items.push({ 来源: r.label, 出处: h.path, 内容: h.text, 摘要: String(h.text).slice(0, 60) });
+            });
+          });
+          return { total: items.length, items: items };
+        } catch (e) {
+          return { error: '检索失败：' + (e && e.message) };
+        }
       }
     }
   ];

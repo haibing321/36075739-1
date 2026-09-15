@@ -1652,6 +1652,9 @@
     <!-- DOCX 导出引擎（真·OOXML 生成 + 上传模板填充），须先于 smart-writer.js 加载 -->
     <script src="src/js/modules/docx-export.js" defer></script>
     <script src="src/js/modules/smart-writer.js" defer></script>
+    <!-- v3.73 统一检索层：规章按条款分块检索（给「一键对规」用）。懒依赖 doubao.js 暴露的 LightBM25，
+         故加载顺序不敏感；放在 doubao.js 之前只是为了让依赖关系一眼可见。 -->
+    <script src="src/js/modules/knowledge.js" defer></script>
     <script src="src/js/modules/doubao.js" defer></script>
     <script src="src/js/modules/agent-memory.js" defer></script>
     <script src="src/js/modules/agent-core.js" defer></script>
@@ -1804,6 +1807,37 @@
                         <div class="st-group-title">资料</div>
                         <button onclick="toggleSettingsPanel();switchTab('material');" class="st-btn">📚 资料中心 <span class="st-btn-arrow">→</span></button>
                         <div class="st-hint">检查手册、规章制度、写作资料等文档的统一入口。</div>
+
+                        <!-- v3.73 知识库（统一检索层）：源/条目数/索引状态 + 一键重建 + 检索自测 -->
+                        <div class="st-group-title">知识库（智能检索）</div>
+                        <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                            <span class="st-row-label">📚 索引状态 <span class="st-row-sub" id="kb-summary">—</span></span>
+                            <div id="kb-source-list" style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);line-height:1.5;"></div>
+                            <span class="st-actions">
+                                <button onclick="KB.panelRender()" class="st-mini btn-data-blue">刷新</button>
+                                <button onclick="KB.panelRebuild()" class="st-mini btn-data-green">一键重建</button>
+                            </span>
+                        </div>
+                        <div class="st-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+                            <span class="st-row-label">📊 检查信息索引范围 <span class="st-row-sub" id="kb-issue-scope">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="KB.setIssueLimit(10000)" class="st-mini btn-data-blue">最近 1 万条</button>
+                                <button onclick="KB.setIssueLimit(20000)" class="st-mini btn-data-blue">最近 2 万条</button>
+                                <button onclick="KB.setIssueLimit(0)" class="st-mini btn-data-green">全部</button>
+                            </span>
+                            <div class="st-hint" style="margin:0;">台账条数多时全量索引会占较多内存与时间（实测 4 万条约 157MB / 3.6 秒）。默认只索引最近 1.2 万条；「全部」会明显变慢，低配手机不建议。</div>
+                        </div>
+                        <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                            <span class="st-row-label">🔎 检索自测</span>
+                            <input id="kb-test-input" type="text" placeholder="输入一句检查问题或关键词…"
+                                style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;background:#f8fafc;">
+                            <span class="st-actions">
+                                <button onclick="KB.panelTest()" class="st-mini btn-data-blue">检索</button>
+                                <button onclick="document.getElementById('kb-test-out').textContent=''" class="st-mini">清空</button>
+                            </span>
+                            <div id="kb-test-out" style="font-size:0.76rem;color:var(--text-secondary);white-space:pre-wrap;max-height:220px;overflow:auto;background:#f8fafc;border-radius:8px;padding:8px;"></div>
+                        </div>
+                        <div class="st-hint">全部检索都在本机完成：规章按「条」、手册按「项点」、资料按「段」切块，命中片段连同出处一起交给 AI；导入新资料后索引自动重建，无需手动操作。</div>
                     </section>
 
                     <!-- ========== 接口 ========== -->
@@ -1850,7 +1884,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.72</span> · 2026.09.15</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.73</span> · 2026.09.15</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1859,6 +1893,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.73 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.73 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 <strong>统一检索层</strong>：智能对话 · <strong>AI 对规</strong> · 智能写作 · 智能体 改用同一套本地检索，各源按自然粒度分块（规章按「条」、手册按「项点」、资料按「段」、问题库/电话/日志按「条」）；「AI 对规」的候选条款由「整篇前 1000 字」改为<strong>条款级召回</strong>，长规章里的关键条款不再被字数窗口挡住</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <strong>引用精确到出处</strong>：命中片段<strong>完整</strong>送达并带路径（如「规章制度 &gt; 第 12 条」）。旧逻辑只给正文开头 300 字，长规章的关键条款常常根本没送到（实测 2% → 100%）</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 <strong>新增「📚 知识库」入口</strong>（设置 → 数据）：各源条目数 / 索引状态 / 一键重建 / <strong>检索自测</strong>（直接看到会喂给 AI 的内容）</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 <strong>修复检索索引缺陷</strong>：规章标题、检查信息类别/性质原本被展开覆盖、<strong>从未进入检索语料</strong>，现已修正</span></div>
+                </div>
             </div>
 
             <!-- v3.72 近期更新 -->
@@ -1874,21 +1922,9 @@
                 </div>
             </div>
 
-            <!-- v3.71 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.71 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 <strong>API 地址补全更完整</strong>：把供应商文档里的<strong>基址</strong>直接粘贴过来也能用 —— 阿里云百炼 <code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">/compatible-mode/v1</code>、智谱 <code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">/api/paas/v4</code> 会自动补上 chat 路径（不再出现「填了地址仍 404」）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 <strong>修正补全规则自身的一处错误</strong>：<code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">/v1</code> 前缀不再叠加到已带基址的域名上（此前会拼出 <code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">/v1/compatible-mode/v1/chat/completions</code> 这种任何服务器都不存在的路径）</span></div>
-                </div>
-            </div>
+            <!-- v3.71 及以下已归档（最近 2 版本为 v3.73 / v3.72） -->
 
-            <!-- v3.70 及以下已归档（最近 2 版本为 v3.72 / v3.71） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.70 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.71 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

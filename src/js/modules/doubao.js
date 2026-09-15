@@ -1345,6 +1345,44 @@
                 const kws = smartExtractKeywords(userQuery, 5, false);
                 const inferredTrade = window.patchInferTrade ? window.patchInferTrade(userQuery) : null;
 
+                // 【v3.73】本地资料统一走「统一检索层」（knowledge.js）：按自然粒度分块
+                // （规章按条、手册按项点、资料按段落、问题库/电话/日志按条），命中块**完整**进上下文
+                // 并带出处路径，取代下面各源"各自采样 + 截前 200/300/500 字"的旧逻辑。
+                // 开关 kb_prompt：默认开；置 '0' 立即回退旧逻辑（便于对照与应急）。
+                var _kbOnP = true;
+                try { _kbOnP = localStorage.getItem('kb_prompt') !== '0'; } catch (e) {}
+                if (_kbOnP && window.KB && typeof window.KB.search === 'function') {
+                    var _kbSrcs = [];
+                    if (useRules) _kbSrcs.push('rules');
+                    if (useIssue) _kbSrcs.push('issues');
+                    if (useHandbook) _kbSrcs.push('handbook');
+                    if (useWrAll) _kbSrcs.push('materials', 'reports');
+                    if (usePhone) _kbSrcs.push('phone');
+                    if (useDiary) _kbSrcs.push('diary');
+                    if (_kbSrcs.length) {
+                        try {
+                            // 先确保索引就绪：资料库/历史报告需从 IndexedDB 预载；大源（检查信息）分片异步建索引
+                            if (typeof window.KB.ensure === 'function') await window.KB.ensure(_kbSrcs);
+                            var _kbR = window.KB.search(userQuery, { sources: _kbSrcs, topK: 5 });
+                            // 保留旧逻辑的「专业优先」意图：命中块所属规章与推断专业一致时前置
+                            if (inferredTrade) {
+                                for (var _qi = 0; _qi < _kbR.length; _qi++) {
+                                    if (_kbR[_qi].key !== 'rules') continue;
+                                    var _prefR = [], _otherR = [];
+                                    _kbR[_qi].hits.forEach(function (h) { (h.trade === inferredTrade ? _prefR : _otherR).push(h); });
+                                    _kbR[_qi].hits = _prefR.concat(_otherR);
+                                }
+                            }
+                            var _kbTxt = window.KB.buildRefText(_kbR);
+                            sysParts.push(_kbTxt || '【本地资料】本次未检索到相关内容（可能尚未导入资料）。');
+                        } catch (e) {
+                            console.warn('[dsBuildSystemPrompt] 统一检索层失败，回退旧逻辑：', e && e.message);
+                            _kbOnP = false;
+                        }
+                    }
+                }
+                if (!_kbOnP) {
+
                 // 规章制度：专业优先 + 关键词评分 → top 5
                 if (useRules && typeof window.getRulesData === 'function') {
                     let rules = window.getRulesData();
@@ -1501,6 +1539,7 @@
                         sysParts.push(txt);
                     }
                 }
+                } // ← if (!_kbOnP) 结束：以上为「统一检索层不可用或已关闭」时的旧逻辑
 
                 return sysParts.join('\n\n');
             }
@@ -4157,7 +4196,7 @@
       const BM25_TF_CAP = 1023;
       const BM25_POSTINGS_MAX_CHARS = 10000000;  // 启用倒排的字数上限（实测 ≈12MB/百万字 → 上限约 125MB）
       class LightBM25 {
-        constructor(docs, k1 = 1.2, b = 0.75) {
+        constructor(docs, k1 = 1.2, b = 0.75, defer) {
           this.docs = docs;
           this.k1 = k1;
           this.b = b;
@@ -4165,35 +4204,90 @@
           this.idf = new Map();     // 仅退化（全量扫描）模式使用
           this.postings = null;     // 倒排：Map<term, number[]>，元素 = docIdx*1024+tf
           this.docLen = null;
-          if (docs.length) this._build();
+          // defer=true 时不在此同步建索引，改由 buildAsync() 分片建（大语料用，避免冻结界面）
+          if (docs.length && !defer) this._build();
         }
         _build() {
           const docs = this.docs;
           const docCount = docs.length;
           let totalLen = 0;
-          for (let i = 0; i < docCount; i++) totalLen += (docs[i].content || '').length;
+          for (let i = 0; i < docCount; i++) totalLen += this._textOf(docs[i]).length;
           this.avgLen = totalLen / docCount;
           if (totalLen > BM25_POSTINGS_MAX_CHARS) { this._buildScan(); return; }
           // ---- 倒排模式 ----
-          const postings = new Map();
-          const docLen = new Float64Array(docCount);
-          for (let idx = 0; idx < docCount; idx++) {
-            const content = docs[idx].content || '';
-            docLen[idx] = content.length;
-            const tokens = this._tokenize(content);
-            const tfMap = new Map();
-            for (let i = 0; i < tokens.length; i++) {
-              const t = tokens[i];
-              tfMap.set(t, (tfMap.get(t) || 0) + 1);
-            }
-            tfMap.forEach((tf, term) => {
-              let arr = postings.get(term);
-              if (arr === undefined) { arr = []; postings.set(term, arr); }
-              arr.push(idx * BM25_TF_BASE + (tf > BM25_TF_CAP ? BM25_TF_CAP : tf));
+          this.postings = new Map();
+          this.docLen = new Float64Array(docCount);
+          for (let idx = 0; idx < docCount; idx++) this._indexOne(idx);
+        }
+        // 单篇入库（_build 与 _buildAsync 共用，保证两条路径行为完全一致）
+        _indexOne(idx) {
+          const content = this._textOf(this.docs[idx]);
+          this.docLen[idx] = content.length;
+          const tokens = this._tokenize(content);
+          const tfMap = new Map();
+          for (let i = 0; i < tokens.length; i++) {
+            const t = tokens[i];
+            tfMap.set(t, (tfMap.get(t) || 0) + 1);
+          }
+          tfMap.forEach((tf, term) => {
+            let arr = this.postings.get(term);
+            if (arr === undefined) { arr = []; this.postings.set(term, arr); }
+            arr.push(idx * BM25_TF_BASE + (tf > BM25_TF_CAP ? BM25_TF_CAP : tf));
+          });
+        }
+        // 【v3.73】分片异步建索引：4 万条级别语料一次性同步建会冻结界面数秒（实测检查信息 40166 条
+        //   → 3.57s 主线程阻塞 + 157MB）。这里按片执行、片间让出事件循环，界面保持可响应并能报进度。
+        //   注意：检索结果与同步 _build 完全一致（同一套 _indexOne，同一顺序）。
+        buildAsync(opts) {
+          opts = opts || {};
+          const sliceSize = opts.slice || 400;
+          const docs = this.docs, docCount = docs.length;
+          const onProgress = opts.onProgress;
+          const self = this;
+          let totalLen = 0;
+          for (let i = 0; i < docCount; i++) totalLen += this._textOf(docs[i]).length;
+          this.avgLen = docCount ? totalLen / docCount : 0;
+          if (totalLen > BM25_POSTINGS_MAX_CHARS) {
+            // 超大语料退化模式：同样分片，避免一次阻塞
+            const termDocs = new Map();
+            let i = 0;
+            return new Promise(function (resolve) {
+              function step() {
+                const end = Math.min(i + sliceSize, docCount);
+                for (; i < end; i++) {
+                  const tokens = self._tokenize(self._textOf(docs[i]));
+                  const uniq = new Set(tokens);
+                  uniq.forEach(function (t) {
+                    if (!termDocs.has(t)) termDocs.set(t, []);
+                    termDocs.get(t).push(i);
+                  });
+                }
+                if (onProgress) onProgress(i, docCount);
+                if (i < docCount) setTimeout(step, 0);
+                else {
+                  termDocs.forEach(function (docsArr, term) {
+                    const freq = docsArr.length;
+                    self.idf.set(term, Math.log((docCount - freq + 0.5) / (freq + 0.5) + 1));
+                  });
+                  resolve(true);
+                }
+              }
+              step();
             });
           }
-          this.postings = postings;
-          this.docLen = docLen;
+          this.postings = new Map();
+          this.docLen = new Float64Array(docCount);
+          let i = 0;
+          return new Promise(function (resolve) {
+            function step() {
+              const end = Math.min(i + sliceSize, docCount);
+              for (; i < end; i++) self._indexOne(i);
+              if (onProgress) onProgress(i, docCount);
+              if (i < docCount) setTimeout(step, 0);
+              else resolve(true);
+            }
+            step();
+          });
         }
         // 超大语料的退化路径：只保留 idf 表，不常驻倒排（与 v3.71 及以前完全一致的实现）
         _buildScan() {
@@ -4201,7 +4295,7 @@
           const docCount = docs.length;
           const termDocs = new Map();
           docs.forEach((doc, idx) => {
-            const tokens = this._tokenize(doc.content || '');
+            const tokens = this._tokenize(this._textOf(doc));
             const uniq = new Set(tokens);
             for (let t of uniq) {
               if (!termDocs.has(t)) termDocs.set(t, []);
@@ -4243,10 +4337,19 @@
         _idfOf(df) {
           return Math.log((this.docs.length - df + 0.5) / (df + 0.5) + 1);
         }
+        // 检索正文：优先用 searchText（可携带标题/出处等"只用于检索、不用于展示"的内容），
+        // 否则退回 content。【v3.73】这样 content 可以保持原始值 —— 命中结果同时被
+        // buildReferenceText 当数据源，若把标题拼进 content 会把整串当正文塞进提示词。
+        _textOf(doc) {
+          if (!doc) return '';
+          if (doc.searchText != null) return String(doc.searchText);
+          return String(doc.content == null ? '' : doc.content);
+        }
         _score(query, doc) {
           const qTokens = this._tokenize(query);
           if (!qTokens.length) return 0;
-          const docTokens = this._tokenize(doc.content || '');
+          const docText = this._textOf(doc);
+          const docTokens = this._tokenize(docText);
           const tfMap = new Map();
           for (let t of docTokens) tfMap.set(t, (tfMap.get(t) || 0) + 1);
           let score = 0;
@@ -4254,7 +4357,7 @@
             const tf = tfMap.get(t) || 0;
             if (tf === 0) continue;
             const idf = this.idf.get(t) || 0;
-            const lenNorm = doc.content.length / this.avgLen;
+            const lenNorm = docText.length / this.avgLen;
             score += idf * (tf * (this.k1 + 1)) / (tf + this.k1 * (1 - this.b + this.b * lenNorm));
           }
           return score;
@@ -4290,6 +4393,9 @@
           return hits.sort((a, b2) => b2.score - a.score).slice(0, topN).map(x => x.doc);
         }
       }
+      // 【v3.73】对外暴露检索器，供「统一检索层」knowledge.js 在分块语料上复用同一套打分
+      // （避免两处各写一份 BM25；knowledge.js 首次检索时才取用，是懒依赖，不受脚本加载顺序影响）
+      window.LightBM25 = LightBM25;
 
       let bm25Rules = null, bm25Issues = null;
       const _BM25_EMPTY = [];   // 数据源返回空值时的稳定占位（避免每次调用生成新数组 → 指纹恒变 → 反复重建）
@@ -4303,7 +4409,11 @@
         const rules = window.getRulesData() || _BM25_EMPTY;
         if (bm25Rules && (rules !== bm25RulesRef || rules.length !== bm25RulesLen)) bm25Rules = null;
         if (!bm25Rules) {
-          bm25Rules = new LightBM25(rules.map(r => ({ content: (r.title + ' ' + r.content), ...r })));
+          // ⚠️ 检索字段用 searchText，不能写进 content：
+          //   ① 原写法 { content: 标题+正文, ...r } 会被展开的 r.content 覆盖，标题其实**从未进入检索语料**；
+          //   ② 直接把 content 改成"标题+正文"更糟 —— hits 返回的 doc 同时被 buildReferenceText 当数据源，
+          //      会把整串当正文塞进提示词。（v3.73 修正）
+          bm25Rules = new LightBM25(rules.map(r => ({ ...r, searchText: ((r.title || '') + ' ' + (r.content || '')) })));
           bm25RulesRef = rules;
           bm25RulesLen = rules.length;
         }
@@ -4314,7 +4424,8 @@
         const issues = window.getIssueData() || _BM25_EMPTY;
         if (bm25Issues && (issues !== bm25IssuesRef || issues.length !== bm25IssuesLen)) bm25Issues = null;
         if (!bm25Issues) {
-          bm25Issues = new LightBM25(issues.map(i => ({ content: (i.content + ' ' + (i.category||'') + ' ' + (i['性质']||'')), ...i })));
+          // 同上：类别/性质只进检索字段，content 保持原值供提示词引用（v3.73 修正，原先同样被展开覆盖）
+          bm25Issues = new LightBM25(issues.map(i => ({ ...i, searchText: ((i.content || '') + ' ' + (i.category || '') + ' ' + (i['性质'] || '')) })));
           bm25IssuesRef = issues;
           bm25IssuesLen = issues.length;
         }
@@ -4329,6 +4440,8 @@
         try {
           if (k === 'all' || k === 'rules') { bm25Rules = null; bm25RulesRef = null; bm25RulesLen = 0; }
           if (k === 'all' || k === 'issues') { bm25Issues = null; bm25IssuesRef = null; bm25IssuesLen = 0; }
+          // 【v3.73】统一检索层（knowledge.js）的条款分块索引走同一套失效契约
+          if (typeof window.KB === 'object' && window.KB && typeof window.KB.invalidate === 'function') window.KB.invalidate();
         } catch (e) {}
       }
       window.dsInvalidateRagCache = dsInvalidateRagCache;
@@ -4376,6 +4489,19 @@
         return { rules: rules, issues: issues };
       }
 
+      // 检查信息（历史台账）引用文本：旧「整篇匹配」与 v3.73「条款定位」两条路径共用
+      function buildIssueRefText(issues) {
+        let ref = '';
+        if (issues.length) {
+          ref += '【相似历史检查问题（来自本地台账）】\n';
+          issues.forEach(function(iss, i) {
+            ref += (i+1) + '. [' + (iss['性质']||'其他') + '][' + (iss.category||'') + '] ' + (iss.content||'').slice(0, 200) + ((iss.content||'').length>200?'…':'') + '\n';
+          });
+          ref += '\n';
+        }
+        return ref;
+      }
+
       function buildReferenceText(rules, issues) {
         let ref = '';
         if (rules.length) {
@@ -4385,14 +4511,7 @@
           });
           ref += '\n';
         }
-        if (issues.length) {
-          ref += '【相似历史检查问题（来自本地台账）】\n';
-          issues.forEach(function(iss, i) {
-            ref += (i+1) + '. [' + (iss['性质']||'其他') + '][' + (iss.category||'') + '] ' + (iss.content||'').slice(0, 200) + ((iss.content||'').length>200?'…':'') + '\n';
-          });
-          ref += '\n';
-        }
-        return ref;
+        return ref + buildIssueRefText(issues);
       }
 
       // ---------- 7. 一键对规 ----------
@@ -4407,8 +4526,39 @@
           container.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">🔍 正在匹配本地案例和规章...</div>';
           container.style.display = 'block';
         }
-        const { rules, issues } = await retrieveLocalData(problemText, { topNRules: 4, topNIssues: 4 });
-        const refText = buildReferenceText(rules, issues);
+        // 【v3.73 最小切片 → v3.74 收口】规章与检查信息都走「统一检索层」（knowledge.js）：
+        // 命中哪一条就把那一条**完整**喂进去，而不是像旧路径那样把整篇正文截前 300 字
+        // （长规章的关键条款常常根本进不了上下文）。
+        // ⚠️ v3.73 的写法在这里**无条件先跑了一遍 retrieveLocalData()**（旧整篇 BM25 路径），
+        //    它会**同步**给全部规章+检查信息建索引（4 万条量级 = 数秒主线程冻结），
+        //    而结果随后又被下面的 KB 结果覆盖丢弃 —— 用户感知就是"对规没走知识库那条线、点了先卡几秒"。
+        //    v3.74 起改为**仅在 KB 不可用/被关闭时才回退执行**（回退结果只用一次，不再白建索引）。
+        // 开关 kb_rules_chunks：默认开；置 '0' 可整条链路回退旧路径，便于在同一份真实数据上 A/B 对照。
+        var _kbOn = true;
+        try { _kbOn = localStorage.getItem('kb_rules_chunks') !== '0'; } catch (e) {}
+        var _kbRes = null;
+        if (_kbOn && window.KB && typeof window.KB.search === 'function') {
+          try {
+            // 先确保索引就绪（大语料是分片异步建，界面不冻结，必要时弹进度条）
+            if (typeof window.KB.ensure === 'function') await window.KB.ensure(['rules', 'issues']);
+            _kbRes = window.KB.search(problemText, { sources: ['rules', 'issues'], topK: 4 });
+          } catch (e) { _kbRes = null; }
+        }
+        var refText, ruleCount, issueCount, ruleSrcLabel;
+        if (_kbRes && _kbRes.length) {
+          refText = window.KB.buildRefText(_kbRes);
+          var _hitCountOf = function (k) { for (var _i = 0; _i < _kbRes.length; _i++) if (_kbRes[_i].key === k) return _kbRes[_i].hits.length; return 0; };
+          ruleCount = _hitCountOf('rules');
+          issueCount = _hitCountOf('issues');
+          ruleSrcLabel = '按条款定位';
+        } else {
+          // 回退路径（KB 关闭 / 未加载 / 检索异常）：此时才建旧索引
+          const { rules, issues } = await retrieveLocalData(problemText, { topNRules: 4, topNIssues: 4 });
+          refText = buildReferenceText(rules, issues);
+          ruleCount = rules.length;
+          issueCount = issues.length;
+          ruleSrcLabel = '整篇匹配';
+        }
         const apiKey = await (typeof _getApiKey === 'function' ? _getApiKey() : Promise.resolve(localStorage.getItem('ds_api_key_v1') || ''));
         const apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
         const model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
@@ -4458,7 +4608,7 @@
           const html = '<div style="background:#f0f9ff;padding:16px;border-radius:12px;border-left:5px solid #2563eb;">' +
             '<h3>⚖️ 对规结论</h3>' +
             '<div style="margin:10px 0;white-space:pre-wrap;">' + _safeConclusion + '</div>' +
-            '<div style="font-size:0.8rem;color:#059669;">✅ 引用规章 ' + rules.length + ' 条，历史案例 ' + issues.length + ' 条</div>' +
+            '<div style="font-size:0.8rem;color:#059669;">✅ 引用规章 ' + ruleCount + ' 条（' + ruleSrcLabel + '），历史案例 ' + issueCount + ' 条</div>' +
             '</div>';
           if (container) container.innerHTML = html;
         } catch(e) {
@@ -4501,7 +4651,22 @@
           }
 
           // 需要本地检索：仅搜索最近1个月检查信息（recentMonth: true）
-          const { issues } = await retrieveLocalData(q, { topNIssues: 8, recentMonth: true });
+          // 【v3.73】优先走「统一检索层」（问题库按条分块：命中即整条进上下文，不再截 200 字）；
+          // 关闭 kb_prompt 或调用失败时回退旧路径。
+          var _wrKbOn = true;
+          try { _wrKbOn = localStorage.getItem('kb_prompt') !== '0'; } catch (e) {}
+          var issues = null;
+          if (_wrKbOn && window.KB && typeof window.KB.search === 'function') {
+            try {
+              if (typeof window.KB.ensure === 'function') await window.KB.ensure(['issues']);
+              var _wrR = window.KB.search(q, { sources: ['issues'], topK: 8, recentMonth: true });
+              issues = _wrR.length ? _wrR[0].hits.map(function (h) { return h.doc; }) : [];
+            } catch (e) { issues = null; }
+          }
+          if (!issues) {
+            var _wrOld = await retrieveLocalData(q, { topNIssues: 8, recentMonth: true });
+            issues = _wrOld.issues;
+          }
           let statsText = '';
           if (issues.length) {
             const total = issues.length;

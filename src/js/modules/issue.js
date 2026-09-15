@@ -58,6 +58,8 @@
                 // 数据已变更，使 Fuse 索引失效，下次搜索时重建（避免覆盖导入同条数后命中长期缓存）
                 _fuseInstance = null;
                 _fuseDataRef = null;
+                // v3.72：同样丢弃智能检索（BM25）索引 —— 覆盖导入同条数时长度指纹不变，必须显式失效
+                if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('issues');
             }
 
             /**

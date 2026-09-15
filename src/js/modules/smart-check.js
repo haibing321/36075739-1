@@ -14,6 +14,9 @@
 
     var _globalCandidatesMap = {};
     var _acAbortController = null;
+    // 【v3.74】本次对规的召回是否已由统一检索层（KB）提供候选：是则不再在 user 消息里重复
+    //   注入"本地匹配摘要"（同一问题库两套口径，会互相干扰）。
+    var _acKbRecallUsed = false;
             // ========== 自动对规子模块 ==========
             // ========== 结构化术语库（带专业标签） ==========
             let PATCH_TERM_LIBRARY = [];
@@ -325,6 +328,14 @@
             function _buildAICheckUserMsg(query) {
                 var lines = ['检查问题：' + query, ''];
                 var ctxParts = [];
+                // 【v3.74】统一检索层已给出候选时（_acKbRecallUsed）跳过本地匹配摘要：
+                //   下面两块来自"本地匹配"（_lastACIssues/_lastACRules，关键词口径），与 system 里的
+                //   KB 条款级候选是两套口径，同时注入会让 AI 在两份不一致的清单间摇摆。
+                //   仅当 KB 未参与（开关关闭/无命中）时，才用它作为补充信息。
+                if (_acKbRecallUsed) {
+                    lines.push('请在上方【候选条款列表】中挑选与检查问题最相关的条款，并输出要求的 JSON。');
+                    return lines.join('\n');
+                }
                 // 本地匹配的历史案例摘要（top 5）
                 var issues = (window._lastACIssues || []).slice(0, 5);
                 if (issues.length) {
@@ -1735,6 +1746,8 @@
                     console.log('[AI对规] 历史案例召回', issueCandidates.length, '条');
                     _acRecallSrc = '规章：' + (_acKbRulesUsed ? '统一检索层' : '关键词召回')
                                  + '；案例：' + (_kbIssueHits.length ? '统一检索层' : '本地匹配缓存');
+                    // KB 已提供候选（规章或案例任一）→ user 消息不再重复注入本地匹配摘要
+                    _acKbRecallUsed = !!(_acKbRulesUsed || _kbIssueHits.length);
                 } catch (e) {
                     console.error('[AI对规] 召回候选条款异常:', e);
                     var _escErr = typeof window.escapeHtml === 'function' ? window.escapeHtml : function(s){return String(s).replace(/</g,'&lt;');};

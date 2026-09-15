@@ -2716,6 +2716,15 @@
                 await exportDocxFromHtml(wrMdToDocxHtml(modal._content), title);
             };
 
+            // 【v3.74】对外通用入口：任意 Markdown → DOCX（复用历史报告那套导出链路）
+            //   智能对话气泡上的「📤 导出」按钮走这里：
+            //   · 同一套 RGDocx 真·OOXML 引擎、同一份排版偏好（localStorage `wr_docx_style`：公文格式 / 通用排版）；
+            //   · 失败时自动走 exportDocxFromHtml 内置的 html-docx-js / HTML .doc 兜底通道。
+            window.wrExportMdToDocx = function(md, name) {
+                if (!md || !String(md).trim()) { alert('没有可导出的内容'); return Promise.resolve(false); }
+                return exportDocxFromHtml(wrMdToDocxHtml(String(md)), name || '智能对话');
+            };
+
             // ---- 导出 DOCX ----
             // 通道优先级（v3.69 起）：
             //   A1 真·OOXML 引擎 + 上传模板填充（保住模板原版式，模板内无 {{占位符}} 时自动跳过）

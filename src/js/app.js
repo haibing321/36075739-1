@@ -764,6 +764,35 @@ window.stGoSection = function(key) {
     }
 };
 
+// ==================== 设置页折叠分组（v3.74 数据页整理） ====================
+// <details class="st-fold" data-fold-key="xxx" ontoggle="stRememberFold(this)">
+// 目的：把「各模块数据」「知识库」这类长列表默认收起，界面一眼清爽；
+//       用户展开过一次后记住状态，下次打开面板仍是展开。
+window.stRememberFold = function(el) {
+    if (!el || !el.getAttribute) return;
+    var k = el.getAttribute('data-fold-key');
+    if (!k) return;
+    try { localStorage.setItem('st_fold_' + k, el.open ? '1' : '0'); } catch (e) {}
+};
+window.stRestoreFolds = function() {
+    var panel = document.getElementById('settings-panel');
+    if (!panel) return;
+    var list = panel.querySelectorAll('details.st-fold[data-fold-key]');
+    for (var i = 0; i < list.length; i++) {
+        var k = list[i].getAttribute('data-fold-key');
+        var v = null;
+        try { v = localStorage.getItem('st_fold_' + k); } catch (e) {}
+        // 只在用户明确设置过时恢复；默认保持 HTML 里的初始状态（收起）
+        if (v === '1') list[i].open = true;
+        else if (v === '0') list[i].open = false;
+    }
+};
+
+// 时机兜底：defer 脚本正常时早于 DOMContentLoaded；但若脚本执行时页面已就绪（实测会遇到），
+// 也必须恢复一次 —— 否则监听器永不触发，表现就是"记住展开状态"失效。
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.stRestoreFolds);
+else window.stRestoreFolds();
+
 window.toggleSettingsPanel = function() {
     var p = document.getElementById('settings-panel');
     if (!p) return;
@@ -775,6 +804,8 @@ window.toggleSettingsPanel = function() {
         if (window.syncCapabilityToggles) window.syncCapabilityToggles();
         // 回到上次停留的分类（首次为「通用」）；分类状态异常时兜底回通用页，避免打开是空白
         window.stGoSection(p.getAttribute('data-active-sec') || 'general');
+        // 折叠分组的展开状态：每次打开展板再同步一次（幂等，避免加载时序问题导致状态丢失）
+        if (window.stRestoreFolds) window.stRestoreFolds();
         // 移动端：展开设置时自动收起顶部导航下拉（模块选择框），与其它模块按钮行为一致（否则下拉残留重叠）
         var nav = document.getElementById('mainNav');
         var toggle = document.getElementById('navToggle');
@@ -978,7 +1009,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v3.73'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v3.74'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

@@ -28,16 +28,8 @@
       );
     }
   };
-  window.AppRegistry.rule = {
-    search: (kw) => (typeof window.getRulesData === 'function')
-      ? window.getRulesData().filter(r => ((r.title || '') + ' ' + (r.content || '')).toLowerCase().indexOf(String(kw || '').toLowerCase()) !== -1)
-      : []
-  };
-  window.AppRegistry.issue = {
-    search: (kw) => (typeof window.getIssueData === 'function')
-      ? window.getIssueData().filter(i => ((i.content || '') + ' ' + (i.category || '') + ' ' + (i['性质'] || '') + ' ' + (i.unit || '')).toLowerCase().indexOf(String(kw || '').toLowerCase()) !== -1)
-      : []
-  };
+  // 【v3.74 清理】原 AppRegistry.rule / AppRegistry.issue 已删除：整表 indexOf 的第三套检索实现，
+  // 全仓无调用点（仅 AppRegistry.phone.search 在用）。规章/检查信息统一走 KB（knowledge.js）。
 
   // ---------- 2. 智能上下文注入（自动感知当前 Tab，使用真实 API） ----------
   function getTabContext() {
@@ -328,27 +320,8 @@
     }
   };
 
-  // ---------- 5. 前端预聚合（风险研判专用，作为独立工具暴露） ----------
-  function preAggregateIssueData(records) {
-    if (!records || records.length === 0) return null;
-    const catCount = {}, unitCount = {};
-    records.forEach(r => {
-      const cat = r.category || '其他';
-      catCount[cat] = (catCount[cat] || 0) + 1;
-      const unit = r.unit || '未知';
-      unitCount[unit] = (unitCount[unit] || 0) + 1;
-    });
-    const topCats = Object.entries(catCount).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}(${v}次)`);
-    const topUnits = Object.entries(unitCount).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k}(${v}次)`);
-    return { total: records.length, topCats: topCats, topUnits: topUnits, catCount: catCount, unitCount: unitCount };
-  }
-  function enrichRiskPrompt(basePrompt, records) {
-    const agg = preAggregateIssueData(records);
-    if (!agg) return basePrompt;
-    return basePrompt + `\n【数据预聚合统计】\n总记录数：${agg.total}\n问题分布：${agg.topCats.join('、')}\n责任单位分布：${agg.topUnits.join('、')}\n请基于上述统计进行风险研判，不得编造不存在的数据。`;
-  }
-  window.preAggregateIssueData = preAggregateIssueData;
-  window.enrichRiskPrompt = enrichRiskPrompt;
+  // 【v3.74 清理】原 preAggregateIssueData / enrichRiskPrompt 已删除：全仓无调用点，
+  // 且其统计口径与风险研判自身的 _buildRiskDataSummary（doubao.js）重复。
 
   // ---------- 5.x 自然语言站台提取（最长子串匹配，规避"删字抠词"失效） ----------
   function _matchLongest(q, fields) {

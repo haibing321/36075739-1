@@ -445,3 +445,78 @@
     min-width: 56px !important;
   }
 }
+
+/* ---------- 10. 折叠分组（v3.74 数据页整理） ---------- */
+#settings-panel .st-fold {
+  border: 1px solid var(--border);
+  border-radius: var(--ds-radius);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+#settings-panel .st-fold + .st-fold {
+  margin-top: 8px;
+}
+#settings-panel .st-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 10px 14px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+#settings-panel .st-fold-head::-webkit-details-marker {
+  display: none;
+}
+#settings-panel .st-fold-head:hover {
+  background: rgba(77, 107, 254, 0.05);
+}
+#settings-panel .st-fold-note {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+#settings-panel .st-fold-head .st-row-sub {
+  margin-left: auto;
+}
+#settings-panel .st-fold-arrow {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  transition: transform 0.15s ease;
+}
+#settings-panel .st-fold-head .st-row-sub + .st-fold-arrow {
+  margin-left: 0;
+}
+#settings-panel .st-fold-arrow::before {
+  content: '\25BE';
+  display: inline-block;
+}
+#settings-panel .st-fold[open] > .st-fold-head > .st-fold-arrow {
+  transform: rotate(180deg);
+}
+#settings-panel .st-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+#settings-panel .st-fold-body .st-actions {
+  flex-wrap: wrap;
+}
+#settings-panel .st-fold-inner {
+  margin: 0;
+  background: rgba(248, 250, 252, 0.7);
+}
+#settings-panel .st-fold-head-sm {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}

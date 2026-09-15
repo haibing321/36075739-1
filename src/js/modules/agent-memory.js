@@ -123,6 +123,18 @@
         if (s.tool === 'search_rules' && s.params && s.params.keyword) {
           var k = String(s.params.keyword).trim(); if (k) p.keywords[k] = (p.keywords[k] || 0) + 1;
         }
+        // 【v3.74】kb_search 也要沉淀偏好：它正成为主检索入口，此前只记 search_rules/search_issues，
+        // 导致"改用统一检索层后画像学不到东西"。这里从检索式里抽关键词（抽不到就取前 12 字）。
+        if (s.tool === 'kb_search' && s.params && s.params.query) {
+          var q = String(s.params.query).trim();
+          var kws = [];
+          try { if (typeof window.smartExtractKeywords === 'function') kws = window.smartExtractKeywords(q, 3, false) || []; } catch (e) { kws = []; }
+          if (!kws.length && q) kws = [q.replace(/\s+/g, '').slice(0, 8)];   // 抽不出词时取前 8 字，避免把整句检索式当成"常用检索词"
+          kws.forEach(function(kw) {
+            kw = String(kw || '').trim();
+            if (kw) p.keywords[kw] = (p.keywords[kw] || 0) + 1;
+          });
+        }
       });
       p.lastSeen = new Date().toISOString();
       _write(p);

@@ -970,14 +970,22 @@
         function paint(rows, cacheMap, sigMap) {
             cacheMap = cacheMap || {};
             sigMap = sigMap || {};
-            var totalItems = 0, totalChunks = 0, pending = 0;
-            rows.forEach(function (r) { totalItems += r.total; totalChunks += r.chunks; if (!r.loaded) pending++; });
+            // 【2026-09-16 精简】面板文字大幅瘦身（用户："缓存多少条、多少 M 即可，其它说明能少则少，太乱了"）：
+            //   摘要只留「N 条 · 缓存 X MB」，明细行只留「条数 · 缓存 X MB」，长句解释全部删除；
+            //   只在异常态（缓存能力缺失 / 缓存写入失败）保留一句短警告，便于诊断。
+            var totalItems = 0, pending = 0, totalBytes = 0;
+            rows.forEach(function (r) {
+                totalItems += r.total;
+                if (!r.loaded) pending++;
+                if (cacheMap[r.key]) totalBytes += (cacheMap[r.key].bytes || 0);
+            });
             if (sum) {
-                sum.textContent = '共 ' + totalItems + ' 条数据 → ' + totalChunks + ' 块索引'
-                    + (pending ? '（' + pending + ' 个源读取中…）' : '')
-                    + (hint ? '（' + hint + '）' : '')
-                    + (_lastCacheErr ? '｜⚠️ 缓存写入失败：' + _lastCacheErr : '')
-                    + (cacheCapable() ? '' : '｜⚠️ 缺少「索引缓存」能力（页面可能在跑被缓存的旧脚本）→ 请强制刷新 Ctrl+F5 或「设置 → 清除缓存」后重试');
+                sum.textContent = totalItems + ' 条'
+                    + (totalBytes ? ' · 缓存 ' + fmtMB(totalBytes) : '')
+                    + (pending ? ' · 读取中…' : '')
+                    + (hint ? ' · ' + hint : '')
+                    + (_lastCacheErr ? ' · ⚠️缓存写入失败' : '')
+                    + (cacheCapable() ? '' : ' · ⚠️缓存能力缺失，请强刷 Ctrl+F5');
             }
             var scopeEl = document.getElementById('kb-issue-scope');
             if (scopeEl) {
@@ -985,36 +993,17 @@
                 var iss = null;
                 rows.forEach(function (r) { if (r.key === 'issues') iss = r; });
                 scopeEl.textContent = (lim ? '最近 ' + lim + ' 条' : '全部')
-                    + (iss && iss.chunks ? '（当前已索引 ' + iss.indexed + ' 条）' : '');
+                    + (iss && iss.chunks ? '（已索引 ' + iss.indexed + ' 条）' : '');
             }
             host.innerHTML = rows.map(function (r) {
-                if (!r.loaded) return '<div>⏳ ' + r.label + '：读取中…（按' + r.grain + '切）</div>';
-                var dot = r.chunks ? '🟢' : (r.total ? '⚪' : '⚫');
+                if (!r.loaded) return '<div>⏳ ' + r.label + ' 读取中…</div>';
+                if (!r.total) return '<div>⚫ ' + r.label + ' 无数据</div>';
                 var cc = cacheMap[r.key];
-                // 🟡 = 本机已有可用缓存（未载入内存）：重启后不需要重建，首次用到该源时秒级载入
-                if (!r.chunks && cc && cacheCapable() && sigMap[r.key] !== false) dot = '🟡';
-                var head = dot + ' ' + r.label + '：' + r.total + ' 条 / ' + r.chunks + ' 块，按' + r.grain + '切';
-                var tail;
-                if (r.chunks) {
-                    var notes = [];
-                    if (r.restored) notes.push('本机缓存恢复');
-                    if (r.indexed && r.total && r.indexed < r.total) notes.push('已索引最近 ' + r.indexed + ' 条');
-                    if (cc) notes.push('已写入本机缓存 ' + fmtMB(cc.bytes));
-                    tail = notes.length ? '（' + notes.join('；') + '）' : '';
-                } else if (!r.total) {
-                    tail = '（无数据）';
-                } else if (cc) {
-                    var ok = sigMap[r.key];
-                    if (!cacheCapable()) tail = '（未建索引：⚠️ 当前脚本缺少「索引缓存」能力，本机缓存暂时无法恢复 → 请强制刷新 Ctrl+F5）';
-                    else if (ok === true) tail = '（未建索引：本机缓存可用 ' + fmtMB(cc.bytes) + '，首次检索时直接恢复、无需重建）';
-                    else if (ok === false) tail = '（未建索引：本机缓存 ' + fmtMB(cc.bytes) + ' 已过期——数据有变更，首次检索时自动重建）';
-                    else tail = '（未建索引：本机已有缓存 ' + fmtMB(cc.bytes) + '）';
-                } else if (cacheCapable()) {
-                    tail = '（未建索引：首次检索该源时自动建；建好后会写入本机缓存，重启/刷新免重建）';
-                } else {
-                    tail = '（未建索引：首次检索该源时自动建。⚠️ 当前脚本缺少「索引缓存」能力，重建后重启不会保留）';
-                }
-                return '<div>' + head + tail + '</div>';
+                // 🟢 已就绪（在内存中）｜🟡 本机已有可用缓存、未载入｜⚪ 尚无索引（首次检索时自动建）
+                var dot = r.chunks ? '🟢' : (cc && cacheCapable() && sigMap[r.key] !== false ? '🟡' : '⚪');
+                return '<div>' + dot + ' ' + r.label + ' ' + r.total + ' 条'
+                    + (cc ? ' · 缓存 ' + fmtMB(cc.bytes) : '')
+                    + '</div>';
             }).join('');
         }
         var rows = stats();

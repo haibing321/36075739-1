@@ -1720,7 +1720,7 @@
                             <span class="st-row-sub" id="settings-total-storage" style="color:var(--primary);font-weight:600;font-size:0.82rem;opacity:1;">计算中…</span>
                         </div>
                         <div class="st-row">
-                            <span class="st-row-label">📦 全局数据 <span class="st-row-sub">整站打包（含各模块）</span></span>
+                            <span class="st-row-label">📦 全局数据</span>
                             <span class="st-actions">
                                 <button onclick="document.getElementById('global-restore-btn').click();" class="st-mini btn-data-blue">导入</button>
                                 <button onclick="document.getElementById('global-backup-btn').click();" class="st-mini btn-data-green">导出</button>
@@ -1804,7 +1804,7 @@
 
                         <!-- v3.73 知识库（统一检索层）；v3.74 折叠化：摘要行显示实时状态，高级项与说明各自收起 -->
                         <details class="st-fold" data-fold-key="kb" ontoggle="stRememberFold(this)">
-                            <summary class="st-fold-head"><span>🧠 知识库</span><span class="st-fold-note">智能检索索引</span><span class="st-row-sub" id="kb-summary">—</span><span class="st-fold-arrow"></span></summary>
+                            <summary class="st-fold-head"><span>🧠 知识库</span><span class="st-row-sub" id="kb-summary">—</span><span class="st-fold-arrow"></span></summary>
                             <div class="st-fold-body">
                                 <div id="kb-source-list" style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);line-height:1.5;"></div>
                                 <span class="st-actions">
@@ -1814,11 +1814,11 @@
                                 </span>
                                 <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                                     <input type="checkbox" id="kb-autoload-chk" onchange="KB.setAutoLoad(this.checked)" style="cursor:pointer;">
-                                    <span>启动后自动从本机缓存载入索引（后台分批进行；低配手机想省内存可关闭）</span>
+                                    <span>启动后自动载入索引（低配手机可关）</span>
                                 </label>
 
                                 <details class="st-fold st-fold-inner" data-fold-key="kb-adv" ontoggle="stRememberFold(this)">
-                                    <summary class="st-fold-head st-fold-head-sm"><span>⚙️ 高级与自检</span><span class="st-fold-note">索引范围 · 检索自测 · 缓存自检</span><span class="st-fold-arrow"></span></summary>
+                                    <summary class="st-fold-head st-fold-head-sm"><span>⚙️ 高级与自检</span><span class="st-fold-arrow"></span></summary>
                                     <div class="st-fold-body">
                                         <div class="st-row" style="flex-direction:column;align-items:stretch;gap:6px;">
                                             <span class="st-row-label">📊 检查信息索引范围 <span class="st-row-sub" id="kb-issue-scope">—</span></span>
@@ -1827,10 +1827,10 @@
                                                 <button onclick="KB.setIssueLimit(20000)" class="st-mini btn-data-blue">最近 2 万条</button>
                                                 <button onclick="KB.setIssueLimit(0)" class="st-mini btn-data-green">全部</button>
                                             </span>
-                                            <div class="st-hint" style="margin:0;">台账条数多时全量索引会占较多内存与时间（实测 4 万条约 157MB / 3.6 秒）。默认只索引最近 1.2 万条；「全部」会明显变慢，低配手机不建议。</div>
+                                            <div class="st-hint" style="margin:0;">「全部」更占内存、明显变慢，低配手机不建议。</div>
                                         </div>
                                         <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
-                                            <span class="st-row-label">🔎 检索自测 <span class="st-row-sub">直接看会喂给 AI 的内容</span></span>
+                                            <span class="st-row-label">🔎 检索自测</span>
                                             <input id="kb-test-input" type="text" placeholder="输入一句检查问题或关键词…"
                                                 style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;background:#f8fafc;">
                                             <span class="st-actions">
@@ -1848,18 +1848,18 @@
                                             <div id="kb-diag-out" style="display:none;white-space:pre-wrap;font-size:0.74rem;color:var(--text-secondary);background:#f8fafc;border-radius:8px;padding:8px;max-height:200px;overflow:auto;"></div>
                                         </div>
                                         <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
-                                            <span class="st-row-label">🔌 统一检索层开关 <span class="st-row-sub">关闭即回退旧检索逻辑（对照 / 应急用）</span></span>
+                                            <span class="st-row-label">🔌 统一检索层开关 <span class="st-row-sub">关闭即回退旧逻辑</span></span>
                                             <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                                                 <input type="checkbox" id="kb-sw-prompt" onchange="KB.setSwitch('kb_prompt', this.checked)" style="cursor:pointer;">
-                                                <span>智能对话 / 智能写作 使用统一检索层（本地资料带出处注入）</span>
+                                                <span>智能对话 / 智能写作</span>
                                             </label>
                                             <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                                                 <input type="checkbox" id="kb-sw-autocheck" onchange="KB.setSwitch('kb_autocheck', this.checked)" style="cursor:pointer;">
-                                                <span>AI 对规 使用条款级召回（长规章末尾条款也能召回）</span>
+                                                <span>AI 对规（条款级召回）</span>
                                             </label>
                                             <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                                                 <input type="checkbox" id="kb-sw-agent" onchange="KB.setSwitch('kb_agent', this.checked)" style="cursor:pointer;">
-                                                <span>智能体检索工具 / 风险研判 优先用统一检索层（未命中自动回退旧检索）</span>
+                                                <span>智能体检索 / 风险研判</span>
                                             </label>
                                         </div>
                                     </div>
@@ -1868,7 +1868,7 @@
                                 <details class="st-fold st-fold-inner" data-fold-key="kb-note" ontoggle="stRememberFold(this)">
                                     <summary class="st-fold-head st-fold-head-sm"><span>ℹ️ 说明</span><span class="st-fold-arrow"></span></summary>
                                     <div class="st-fold-body">
-                                        <div class="st-hint" style="margin:0;">全部检索都在本机完成：规章按「条」、手册按「项点」、资料按「段」切块，命中片段连同出处一起交给 AI。<br>索引建立后会<strong>缓存到本机</strong>（IndexedDB）：重启或刷新不会丢，不需要重建。<br><strong>状态说明</strong>：🟢 已就绪（在内存中）｜🟡 已缓存、未载入｜⚪ 尚无索引（首次检索该源时建立）｜⚫ 无数据。页面启动后会自动从本机缓存载入索引（后台分批进行，无需手动操作）；数据变更后指纹变化，索引会自动重建；缓存占磁盘空间，需要时可点「清空缓存」（不影响业务数据）。</div>
+                                        <div class="st-hint" style="margin:0;">本机检索，索引缓存到本机（重启免重建）。<br>🟢 已就绪 ｜ 🟡 已缓存 ｜ ⚪ 未建索引 ｜ ⚫ 无数据</div>
                                     </div>
                                 </details>
                             </div>
@@ -1919,7 +1919,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.74</span> · 2026.09.15</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.75</span> · 2026.09.16</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -1928,6 +1928,17 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.75 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.75 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 <strong>设置面板文字精简</strong>：知识库面板只显示「多少条 · 缓存多少 MB」（长解释一律收进「说明」）；「全局数据」后的说明、折叠标题上的副标题、开关旁的括号说明等一并删除，界面更清爽</span></div>
+                </div>
             </div>
 
             <!-- v3.74 近期更新 -->
@@ -1951,23 +1962,9 @@
                 </div>
             </div>
 
-            <!-- v3.73 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.73 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 <strong>统一检索层</strong>：智能对话 · <strong>AI 对规</strong> · 智能写作 · 智能体 改用同一套本地检索，各源按自然粒度分块（规章按「条」、手册按「项点」、资料按「段」、问题库/电话/日志按「条」）；「AI 对规」的候选条款由「整篇前 1000 字」改为<strong>条款级召回</strong>，长规章里的关键条款不再被字数窗口挡住</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <strong>引用精确到出处</strong>：命中片段<strong>完整</strong>送达并带路径（如「规章制度 &gt; 第 12 条」）。旧逻辑只给正文开头 300 字，长规章的关键条款常常根本没送到（实测 2% → 100%）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 <strong>新增「📚 知识库」入口</strong>（设置 → 数据）：各源条目数 / 索引状态 / 一键重建 / <strong>检索自测</strong>（直接看到会喂给 AI 的内容）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 <strong>修复检索索引缺陷</strong>：规章标题、检查信息类别/性质原本被展开覆盖、<strong>从未进入检索语料</strong>，现已修正</span></div>
-                </div>
-            </div>
+            <!-- v3.73 及以下已归档（最近 2 版本为 v3.75 / v3.74） -->
 
-            <!-- v3.72 及以下已归档（最近 2 版本为 v3.74 / v3.73） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.71 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.72 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

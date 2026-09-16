@@ -469,7 +469,45 @@
         return Promise.all(keys.map(function (key) { return ensureOne(key, onProgress, countOnly, force, restoreOnly); }));
     }
 
+    // 【v3.75】并发去重：同一时刻对同一个源只允许一份在途工作。
+    //   典型撞车场景：开机 autoLoadCaches() 正在"恢复索引"（大源要读几十 MB 缓存、解包、importIndex），
+    //   用户此时点发送又调 ensure() → 旧实现会**把同一份活完整干两遍**，首次发送的等待被拉长近一倍。
+    //   复用规则（安全约束，勿简化）：
+    //     ① 新请求是 restoreOnly（开机自动载入）→ 可复用任何在途请求；
+    //     ② 新请求是"恢复 + 按需建立"（检索/发送）→ **只能**复用在途的同样完整请求，
+    //        绝不复用 restoreOnly（否则会拿到"只尝试恢复、可能什么都没建"的结果，检索会静默少一个源）。
+    //   force（一键重建）/countOnly（只统计条数）语义不同，一律不参与复用。
+    var _inflight = {};
     function ensureOne(key, onProgress, countOnly, force, restoreOnly) {
+        var s = SRC_MAP[key];
+        if (!s) return Promise.resolve();
+        var rec = _inflight[key];
+        if (rec && !force && !countOnly) {
+            // ① 弱请求（仅恢复）可复用任何在途请求；② 强请求（确保就绪）可复用同为强请求的在途请求。
+            if (restoreOnly || !rec.restoreOnly) return rec.p;
+            // ③ 在途是"仅恢复"、本次要求"确保就绪" → **先等它结束，再完整跑一遍**：
+            //     既不会重复读几十 MB 缓存（两个请求各读一遍），也不会像"直接复用"那样缺源
+            //     —— 因为结束后若已恢复，第二遍会命中"数据未变、索引已在"而近乎零成本；
+            //     若没恢复（无缓存/数据变了），第二遍才真正建立。
+            return rec.p.then(
+                function () { return _startEnsureOne(key, onProgress, countOnly, force, restoreOnly); },
+                function () { return _startEnsureOne(key, onProgress, countOnly, force, restoreOnly); }
+            );
+        }
+        return _startEnsureOne(key, onProgress, countOnly, force, restoreOnly);
+    }
+    function _startEnsureOne(key, onProgress, countOnly, force, restoreOnly) {
+        var p = _ensureOneInner(key, onProgress, countOnly, force, restoreOnly);
+        if (!countOnly && !force) {
+            var ent = { p: p, restoreOnly: !!restoreOnly };
+            _inflight[key] = ent;
+            var _clear = function () { if (_inflight[key] === ent) delete _inflight[key]; };
+            p.then(_clear, _clear);
+        }
+        return p;
+    }
+
+    function _ensureOneInner(key, onProgress, countOnly, force, restoreOnly) {
         var s = SRC_MAP[key];
         if (!s) return Promise.resolve();
         // —— 1) async 源：先取数（只存原始 list，chunks 交给 ensureSource 建）——
@@ -535,7 +573,10 @@
                     myState.chunks = chunks;
                     myState.bm = _BM.importIndex(rec.bm, bmDocsOf(chunks));
                     myState.restored = true;
-                    if (typeof console !== 'undefined') console.log('[KB] 已从本机缓存恢复索引：' + s.label + '（' + chunks.length + ' 块）');
+                    // ⚠️ startedAt 是 Date.now()（墙钟），这里也必须用 Date.now() 相减，
+                    //    别混用 performance.now()（单调钟，起点是页面导航）→ 会算出负数。
+                    if (typeof console !== 'undefined') console.log('[KB] 已从本机缓存恢复索引：' + s.label + '（' + chunks.length + ' 块，'
+                        + Math.max(0, Date.now() - startedAt) + 'ms）');
                     return true;
                 }).catch(function () { return false; })
                 : Promise.resolve(false);
@@ -583,6 +624,10 @@
                         }
                         return _writeP.then(function () {
                             if (STATE[key] !== myState) return null;      // 写缓存期间被失效 → 不报"就绪"
+                            // 诊断日志（v3.75）：把"恢复了多少/建了多久"写进控制台，排查"每次都要重新准备"时一眼可见
+                            if (typeof console !== 'undefined') console.log('[KB] 本地索引已建立：' + s.label + '（' + chunks.length + ' 块'
+                                + (_cacheable ? '，已写入本机缓存' : '，未缓存') + '，'
+                                + Math.max(0, Date.now() - startedAt) + 'ms）');
                             if (big && typeof window !== 'undefined' && typeof window.finishProgress === 'function') {
                                 window.finishProgress('✅ 本地索引已就绪（' + s.label + '，' + chunks.length + ' 块'
                                     + (_cacheable ? '，已缓存到本机' : '') + '）');
@@ -1152,6 +1197,44 @@
         return step();
     }
 
+    // ==================== 空闲预热（v3.75）====================
+    // 用户诉求：「页面空闲时预热索引，这样点发送时通常已就绪」。
+    // 与 autoLoadCaches 的分工：autoLoad 只做"**仅恢复**"（绝不重建，避免开机白跑 CPU）；
+    // 本函数在它之后接手，对**常用业务源**做"恢复 or 按需建立"，把首次发送要付的代价提前到空闲时段消化。
+    //   调度：requestIdleCallback（不支持则退化为 setTimeout 300ms），**逐源串行**、每源之间再次让出；
+    //   门槛：受同一个「启动后自动载入」（kb_autoload）开关控制 —— 低配手机/想省内存时关掉即可；
+    //   范围：只预热同步业务源（检查信息/规章/手册/电话/日志）。资料库/历史报告是 async 源、
+    //        块数与内存占用大得多，仍保持"首次真正用到时才载入"，不在这里预热。
+    function _idleRun(cb) {
+        if (typeof requestIdleCallback === 'function') {
+            try { requestIdleCallback(cb, { timeout: 4000 }); return; } catch (e) {}
+        }
+        setTimeout(cb, 300);
+    }
+    function warmCommonSources() {
+        if (!autoLoadEnabled() || !cacheCapable()) return;
+        if (typeof document !== 'undefined' && document.hidden) return;    // 页面在后台先不做
+        var keys = ['issues', 'rules', 'handbook', 'phone', 'diary'];
+        var i = 0;
+        function step() {
+            if (i >= keys.length) return;
+            var key = keys[i++];
+            var st = STATE[key];
+            if (st && st.chunks && st.bm) return _idleRun(step);           // 已就绪 → 下一个
+            var t0 = Date.now();
+            ensure([key]).then(function () {
+                var st2 = STATE[key];
+                if (typeof console !== 'undefined' && st2 && st2.chunks) {
+                    console.log('[KB] 空闲预热完成：' + key + '（' + st2.chunks.length + ' 块，'
+                        + (st2.restored ? '缓存恢复' : '本次建立') + '，' + Math.max(0, Date.now() - t0) + 'ms）');
+                }
+                if (typeof document !== 'undefined' && document.getElementById('kb-source-list')) panelRender();
+            }).catch(function () { /* 单源失败不影响其它；也不影响功能（首次检索还会再试） */ })
+              .then(function () { _idleRun(step); });
+        }
+        _idleRun(step);
+    }
+
     // 清空本机索引缓存（设置页按钮）：只删缓存，不动业务数据；下次检索会重新建立
     function clearCache() {
         return cacheClear().then(function () {
@@ -1216,8 +1299,12 @@
         else panelRender();
 
         // 启动后延后 1.2s 自动从本机缓存载入索引（让首屏先渲染完再干这活）
+        // 【v3.75】载入结束后接着进入「空闲预热」：把常用源彻底准备好（有缓存=秒级恢复，
+        //   无缓存=趁空闲把索引建好），用户点发送时通常已是 🟢，不必再等。
         function _autoLoadLater() {
-            setTimeout(function () { autoLoadCaches(); }, 1200);
+            setTimeout(function () {
+                autoLoadCaches().then(function () { warmCommonSources(); });
+            }, 1200);
         }
         if (document.readyState === 'complete') _autoLoadLater();
         else window.addEventListener('load', _autoLoadLater, { once: true });
@@ -1253,6 +1340,7 @@
         panelWarm: panelWarm,
         panelClearCache: panelClearCache,
         autoLoad: autoLoadCaches,
+        warmCommon: warmCommonSources,      // v3.75 空闲预热（诊断/手动触发用）
         setAutoLoad: setAutoLoad,
         getAutoLoad: autoLoadEnabled,
         setSwitch: setSwitch,

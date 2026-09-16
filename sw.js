@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260916192914';
+var CACHE_VERSION = '20260916200057';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -173,7 +173,13 @@ function precache(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
       return Promise.all(CORE_PRECACHE.map(function(u) {
-        return cache.add(u).catch(function(err) {
+        // 【v3.76 修复】必须**带 cache:'no-cache' 重新校验**再入缓存。
+        //   原因：cache.add() 会走浏览器的 HTTP 缓存，而本项目部署在"不发 Cache-Control"的
+        //   http.server 之类环境时，浏览器按"启发式新鲜度"直接返回旧副本 → 新版本 SW 把**旧文件**
+        //   存进新缓存名里，于是"发版了但打开还是旧界面，非得手动清缓存"，而且导航是 CacheFirst，
+        //   旧壳会被一直复用。no-cache = 条件请求：没变就是 304（几乎零流量），变了才真正下载，
+        //   既解决陈旧问题，也不会像 reload 那样无脑重复下载。
+        return cache.add(new Request(u, { cache: 'no-cache' })).catch(function(err) {
           console.warn('[SW] 核心预缓存失败(已跳过):', u, err && err.message);
         });
       }));
@@ -203,10 +209,11 @@ function precacheRest() {
           var batch = todo.slice(i, i + 6);
           i += 6;
           return Promise.all(batch.map(function(u) {
-            // 不指定 cache:'reload'：这些资源刚被页面加载过，HTTP 缓存里就是新鲜的。
-            // 用 reload 会强制绕过 HTTP 缓存重新下载一遍 —— 等于双倍流量、双倍耗时。
-            // 版本化缓存名已保证发版时整体重建，不需要靠 reload 取新。
-            return cache.add(u).catch(function(err) {
+            // 【v3.76 修复】原注释认为"这些资源刚被页面加载过，HTTP 缓存里就是新鲜的，版本化缓存名
+            //   已保证发版整体重建"——在**不发 Cache-Control 的静态服务器**上不成立：浏览器按启发式
+            //   新鲜度复用旧副本，新缓存放进去的全是旧文件（实测踩到：改完 JS 刷新后仍是旧脚本）。
+            //   改用 cache:'no-cache' 条件请求：未变更 → 304（极小开销），变更 → 取到新文件。
+            return cache.add(new Request(u, { cache: 'no-cache' })).catch(function(err) {
               console.warn('[SW] 预缓存失败(已跳过):', u, err && err.message);
             });
           })).then(nextBatch);

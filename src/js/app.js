@@ -852,11 +852,33 @@ window.clearAllCache = function() {
         );
     }
 
+    // 【v3.76 修复】清完 SW 缓存还不够 —— **静态资源仍可能被浏览器的 HTTP 缓存复用**：
+    //   本项目部署在 python http.server 等"不发 Cache-Control"的环境下时，浏览器会按"启发式新鲜度"
+    //   直接用旧副本，而 location.reload(true) 的强制刷新参数在现代 Chrome 已失效（等同普通刷新）。
+    //   表现就是"点了清除缓存、刷新后脚本还是旧的"（本次排查卡滞问题时亲自踩到）。
+    //   所以在刷新前，把当前页面引用到的 js/css（以及 sw.js）用 cache:'reload' **强制从网络重取一遍**
+    //   —— 它绕过缓存读取并**同时刷新该 URL 的缓存条目**，之后 reload 就能拿到真正的最新文件。
+    function _refreshStaticAssets() {
+        try {
+            var urls = [];
+            Array.prototype.forEach.call(document.querySelectorAll('script[src]'), function(s) {
+                if (s.src) urls.push(s.src);
+            });
+            Array.prototype.forEach.call(document.querySelectorAll('link[rel="stylesheet"]'), function(l) {
+                if (l.href) urls.push(l.href);
+            });
+            try { urls.push(new URL('sw.js', location.href).href); } catch (e) {}
+            return Promise.all(urls.map(function(u) {
+                return fetch(u.split('#')[0], { cache: 'reload' }).catch(function() {});
+            }));
+        } catch (e) {
+            return Promise.resolve();
+        }
+    }
+
     // 等所有清理完成再刷新（不再用固定 300ms 强刷，杜绝竞态）
-    Promise.all(pending).then(function() {
-        location.reload(true);
-    }).catch(function() {
-        location.reload(true);
+    Promise.all(pending).then(_refreshStaticAssets).catch(function() {}).then(function() {
+        location.reload();
     });
 };
 

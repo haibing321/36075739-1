@@ -17,6 +17,11 @@
     // 【v3.74】本次对规的召回是否已由统一检索层（KB）提供候选：是则不再在 user 消息里重复
     //   注入"本地匹配摘要"（同一问题库两套口径，会互相干扰）。
     var _acKbRecallUsed = false;
+    // 【v3.74 合并】本轮「智能对规」主链路（KB + AI）的结束状态，供 autoCheckSmart 决定是否走本地保底：
+    //   ''=未跑 / 'ok'=成功 / 'ai-error'=AI 调用或解析失败 / 'aborted'=用户主动停止（不保底）
+    //   'no-candidates'=KB 与关键词召回都没候选 / 'no-cache'=KB 不可用且无本地匹配缓存 / 'recall-error'=召回异常
+    var _acSmartStatus = '';
+    var _acSmartBusy = false;      // 是否由 autoCheckSmart 驱动（避免内部失败分支与外部保底重复触发本地匹配）
             // ========== 自动对规子模块 ==========
             // ========== 结构化术语库（带专业标签） ==========
             let PATCH_TERM_LIBRARY = [];
@@ -769,6 +774,8 @@
                 // 延迟执行，让UI更新
                 setTimeout(() => {
                     acPerformMatching(keywords);
+                    // 【v3.74 合并】本地匹配完成回调：供「智能对规」保底路径在结果渲染后插入提示条
+                    try { if (typeof window._acOnLocalMatchDone === 'function') window._acOnLocalMatchDone(); } catch (e) {}
                 }, 100);
             }
             
@@ -1507,6 +1514,77 @@
                 // ── 相似度达标，继续AI对规流程 ──
                 await window.autoCheckAI_force();
             };
+            // 注：【v3.74 合并】autoCheckAI()（带 35% 相似度门禁的那个入口）已被 autoCheckSmart 取代，
+            //   界面不再直接调用它；保留函数以便需要时恢复"关键词质量门禁"，不要误当作入口。
+
+            // ==========【v3.74 合并】智能对规：一条链路，失败自动本地保底 ==========
+            // 主链路：统一检索层（KB）召回条款/案例 → AI 精排 → 结论卡片
+            // 保底：任一步失败（AI 调用/解析失败、KB 与关键词召回都无候选、KB 不可用且无本地缓存）
+            //   → 自动改用「本地对规」（纯关键词匹配，离线可用、不依赖 AI 与索引）
+            // 触发保底的判定全部来自 autoCheckAI_force 写入的 _acSmartStatus（见文件顶部状态约定）；
+            // 用户主动「停止」为 'aborted'，不算失败、不保底。
+            function acSmartBtnBusy(busy) {
+                var b = document.getElementById('autoCheck-smartBtn');
+                if (!b) return;
+                b.disabled = !!busy;
+                b.style.opacity = busy ? '0.7' : '1';
+                b.textContent = busy ? '⏳ 对规中…' : '🎯 智能对规';
+            }
+            function acShowFallbackNotice(status, keywords) {
+                var container = document.getElementById('autoCheck-results');
+                if (!container || container.style.display === 'none') return;
+                var reason = {
+                    'ai-error': 'AI 服务调用失败（网络 / 接口 / 密钥异常）',
+                    'no-candidates': '知识库索引与关键词召回都没能找到候选条款',
+                    'no-cache': '知识库索引不可用，且本地匹配缓存为空',
+                    'recall-error': '候选条款召回过程异常'
+                }[status] || 'AI 对规未能完成';
+                var html = '<div style="margin-bottom:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:8px;">'
+                    + '<div style="font-weight:700;color:#b45309;font-size:0.9rem;margin-bottom:4px;">🛟 已自动改用「本地对规」保底</div>'
+                    + '<div style="font-size:0.82rem;color:#92400e;line-height:1.5;">原因：' + acEscHtml(reason)
+                    + '。本地对规不依赖 AI 与索引，按关键词直接匹配规章 / 手册 / 历史案例（关键词：'
+                    + (keywords && keywords.length ? keywords.map(function (k) { return acEscHtml(k); }).join('、') : '—')
+                    + '）。修好 AI 或索引后，再点一次「🎯 智能对规」即可回到完整链路。</div>'
+                    + '</div>';
+                var wrap = document.createElement('div');
+                wrap.innerHTML = html;
+                container.insertBefore(wrap.firstChild, container.firstElementChild || null);
+            }
+            window.autoCheckSmart = async function () {
+                if (_acSmartBusy) return;
+                const input = document.getElementById('autoCheck-input');
+                const query = input ? input.value.trim() : '';
+                if (!query) { alert('请输入检查问题描述'); return; }
+                // 关键词（本地匹配与保底共用同一套候选/已选词），并沉淀进词库
+                if (acCandidateKeywords.length === 0) acCandidateKeywords = acExtractKeywords(query, patchInferTrade(query));
+                var keywords = Array.from(acSelectedKeywords);
+                if (!keywords.length) keywords = acCandidateKeywords.slice();
+                if (!keywords.length) { alert('未匹配到词库关键词，请手动添加关键词后再匹配'); return; }
+                acAddKeywordsToLibrary(keywords);
+
+                const container = document.getElementById('autoCheck-results');
+                if (container) container.style.display = 'block';
+                _acSmartBusy = true;
+                acSmartBtnBusy(true);
+                _acSmartStatus = '';
+                try {
+                    await window.autoCheckAI_force();      // 主链路（内部已 KB 优先，KB 失败自动退关键词召回）
+                } catch (e) {
+                    console.warn('[智能对规] 主链路异常：', e && e.message);
+                    _acSmartStatus = _acSmartStatus || 'ai-error';
+                }
+                _acSmartBusy = false;
+                acSmartBtnBusy(false);
+                if (_acSmartStatus === 'ok' || _acSmartStatus === 'aborted') return;   // 成功 / 用户主动停止
+                // ── 保底：本地对规 ──
+                var done = new Promise(function (resolve) {
+                    window._acOnLocalMatchDone = function () { window._acOnLocalMatchDone = null; resolve(); };
+                    setTimeout(resolve, 3000);            // 超时兜底，避免 hook 丢失导致提示不出现
+                });
+                window.autoCheckLocal();
+                await done;
+                acShowFallbackNotice(_acSmartStatus, keywords);
+            };
 
             // ── 对规反馈学习闭环：读取历史反馈，影响候选排序与AI选择 ──
             function acNormKey(title, fileNumber, article) {
@@ -1604,9 +1682,10 @@
             };
 
             window.autoCheckAI_force = async function() {
+                _acSmartStatus = '';        // 【v3.74 合并】每次进入都重置状态，由本次结果决定是否本地保底
                 const input = document.getElementById('autoCheck-input');
                 const query = input.value.trim();
-                if (!query) { alert('请输入检查问题描述'); return; }
+                if (!query) { alert('请输入检查问题描述'); _acSmartStatus = 'no-input'; return; }
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 const apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
                 const model  = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
@@ -1616,24 +1695,27 @@
                 container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>⏳ 正在召回候选条款…</span></div>';
                 container.style.display = 'block';
 
-                // ── 阶段0：检查本地匹配缓存，如果没有则提示用户先执行本地匹配 ──
-                if (!window._lastACIssues || !window._lastACIssues.length) {
-                    console.warn('[AI对规] _lastACIssues 为空，需要先执行本地匹配');
+                // ── 阶段0：本地匹配缓存检查 ──
+                // 【v3.74 合并】这个缓存只对"关键词召回"路径是必需的：**有统一检索层时案例候选来自 KB 召回**
+                //   （KB 无命中才回退本缓存），所以不再要求用户先跑一遍本地匹配。合并后单次点击即可直通 AI。
+                //   KB 不可用（开关关闭/未加载/套件缺失）且缓存为空 → 置状态，交给 autoCheckSmart 走本地对规保底。
+                // ⚠️【降级策略·已与用户确认，勿改成"KB 一失败就本地对规"】KB 失败 ≠ 直接降级本地：
+                //   统一检索层拿不到候选时，先退回**关键词召回**（localBM25Recall*），只要还有候选就**仍然交给 AI 精排**
+                //   （AI 才是选择条款的价值点，KB 只影响"召回质量"）。只有 ① AI 调用/解析失败、
+                //   ② KB 与关键词召回**都**无候选、③ KB 不可用且无本地缓存 —— 这三种情况才落「本地对规」保底。
+                var _kbUsable = false;
+                try {
+                    _kbUsable = (localStorage.getItem('kb_autocheck') !== '0') && !!window.KB && typeof window.KB.search === 'function';
+                } catch (e) { _kbUsable = !!window.KB && typeof window.KB.search === 'function'; }
+                if (!_kbUsable && (!window._lastACIssues || !window._lastACIssues.length)) {
+                    console.warn('[AI对规] KB 不可用且 _lastACIssues 为空 → 走「本地对规」保底');
                     container.innerHTML = '<div style="padding:16px;color:var(--warning);background:#fffbeb;border-radius:10px;border-left:4px solid #f59e0b;">'
-                        + '<div style="font-weight:700;color:#b45309;font-size:0.95rem;margin-bottom:8px;">⚠️ 历史案例缓存为空</div>'
-                        + '<div style="font-size:0.85rem;color:#92400e;margin-bottom:10px;">系统包含3万+历史案例数据，直接扫描会导致时间过长。请先执行以下步骤：</div>'
-                        + '<div style="font-size:0.85rem;color:#92400e;margin-bottom:12px;">'
-                        + '1. 在输入框中填写检查问题描述<br>'
-                        + '2. 点击「🔍 本地匹配」按钮<br>'
-                        + '3. 系统会根据关键词筛选相关案例<br>'
-                        + '4. 成功匹配后，再点击「🤖 AI 对规」按钮'
-                        + '</div>'
-                        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
-                        + '<button class="btn btn-primary btn-small" onclick="window.autoCheckLocal();document.getElementById(\'autoCheck-smartBtn\').dataset.state=\'ai\';">🔍 执行本地匹配</button>'
-                        + '<button class="btn btn-secondary btn-small" onclick="window.clearAutoCheck();">🔄 重置</button>'
-                        + '</div>'
+                        + '<div style="font-weight:700;color:#b45309;font-size:0.95rem;margin-bottom:8px;">⚠️ 知识库索引不可用</div>'
+                        + '<div style="font-size:0.85rem;color:#92400e;">统一检索层未启用或未加载，正在改用「本地对规」（关键词匹配）…</div>'
                         + '</div>';
-                    return; // 直接返回，不再继续执行
+                    _acSmartStatus = 'no-cache';
+                    if (!_acSmartBusy) setTimeout(function () { window.autoCheckLocal(); }, 600);
+                    return; // 交给调用方（autoCheckSmart / 面板自动）走本地保底
                 }
 
                 // ── 阶段1：双路召回 (BM25 + 历史案例) ──
@@ -1752,12 +1834,15 @@
                     console.error('[AI对规] 召回候选条款异常:', e);
                     var _escErr = typeof window.escapeHtml === 'function' ? window.escapeHtml : function(s){return String(s).replace(/</g,'&lt;');};
                     container.innerHTML = '<div style="padding:16px;color:#dc2626;background:#fef2f2;border-radius:8px;border-left:4px solid #ef4444;"><strong>❌ 召回候选条款失败：' + _escErr(e.message) + '</strong><br><span style="font-size:0.82rem;color:#991b1b;">' + _escErr((e.stack||'').slice(0,500)) + '</span></div>';
+                    _acSmartStatus = 'recall-error';
                     return;
                 }
 
                 if (!ruleCandidates.length && !issueCandidates.length) {
+                    // 【v3.74 合并】候选为空 → 由 autoCheckSmart 统一走「本地对规」保底（非它驱动时保持原自动切换）
                     container.innerHTML = '<div style="padding:16px;color:#d97706;background:#fffbeb;border-radius:8px;border-left:4px solid #fcd34d;"><strong>⚠️ 规章库与历史案例均为空</strong><br>请先导入数据，已切换为本地匹配模式。</div>';
-                    setTimeout(() => window.autoCheckLocal(), 800);
+                    _acSmartStatus = 'no-candidates';
+                    if (!_acSmartBusy) setTimeout(() => window.autoCheckLocal(), 800);
                     return;
                 }
 
@@ -2150,6 +2235,7 @@
                         + (reason ? ('\n\n选择理由：' + reason) : '');
                     var _cardEl = document.getElementById('ac-conclusion-card');
                     if (_cardEl) _cardEl.setAttribute('data-conclusion', conclusionPlain);
+                    _acSmartStatus = 'ok';        // 【v3.74 合并】主链路成功 → autoCheckSmart 不再走本地保底
 
                     // X4：对规结论持久化（刷新/切换后可在历史中回溯）
                     try {
@@ -2179,23 +2265,25 @@
                         return { title: c.title, fileNumber: c.fileNumber, article: c.article, snippet: c.clause };
                     });
 
-                    // X7：AI 对规成功渲染后，统一复位两态按钮到本地匹配态
+                    // 【v3.74 合并】成功后把按钮复位为「🎯 智能对规」（不再是"本地匹配 → AI 对规"两态）
                     try {
                         const _sb = document.getElementById('autoCheck-smartBtn');
                         if (_sb) {
-                            _sb.dataset.state = 'local';
+                            _sb.dataset.state = 'smart';
                             _sb.className = 'btn btn-primary';
                             _sb.style.flex = '1';
                             _sb.style.minWidth = '';
                             _sb.style.fontWeight = '600';
-                            _sb.textContent = '🔍 本地匹配';
+                            _sb.disabled = false;
+                            _sb.style.opacity = '1';
+                            _sb.textContent = '🎯 智能对规';
                             _sb.classList.remove('state-ai');
                         }
-                        const _hint = document.getElementById('autoCheck-ai-hint');
-                        if (_hint) _hint.style.display = 'none';
                     } catch (e) {}
 
                 } catch(err) {
+                    // 【v3.74 合并】用户主动停止不算失败（不触发本地保底）；其余失败 → 交给 autoCheckSmart 保底
+                    _acSmartStatus = (err && err.name === 'AbortError') ? 'aborted' : 'ai-error';
                     if (err.name === 'AbortError') {
                         container.innerHTML = '<div style="color:#e53e3e;padding:12px;">⏹️ 已停止AI对规</div>';
                     } else {
@@ -2302,14 +2390,14 @@
                 _acHasLocalResult = false;
                 const smartBtn = document.getElementById('autoCheck-smartBtn');
                 if (smartBtn) {
-                    smartBtn.dataset.state = 'local';
+                    smartBtn.dataset.state = 'smart';       // 【v3.74 合并】单按钮态
                     smartBtn.className = 'btn btn-primary';
                     smartBtn.style.flex = '1';
                     smartBtn.style.minWidth = '';
                     smartBtn.style.fontWeight = '600';
                     smartBtn.disabled = false;
                     smartBtn.style.opacity = '1';
-                    smartBtn.textContent = '🔍 本地匹配';
+                    smartBtn.textContent = '🎯 智能对规';
                     smartBtn.classList.remove('state-ai');
                 }
                 // 隐藏AI对规提示
@@ -2329,46 +2417,11 @@
                     const clearBtn = document.getElementById('autoCheck-clearBtn');
 
                     if (smartBtn) {
-                        // 初始化状态
-                        smartBtn.dataset.state = 'local';
-
-                        smartBtn.onclick = function() {
-                            // 如果本地匹配已完成但还没AI对规，强制引导走AI对规
-                            if (_acHasLocalResult && (smartBtn.dataset.state === 'local')) {
-                                smartBtn.dataset.state = 'ai';
-                                smartBtn.className = 'btn btn-info state-ai';
-                                smartBtn.style.flex = '1';
-                                smartBtn.style.minWidth = '';
-                                smartBtn.style.fontWeight = '600';
-                                smartBtn.textContent = '🤖 AI 对规';
-                                // 显示提示
-                                const hint = document.getElementById('autoCheck-ai-hint');
-                                if (hint) hint.style.display = 'block';
-                                return;
-                            }
-
-                            const state = smartBtn.dataset.state || 'local';
-                            if (state === 'local') {
-                                // 第一次点击：本地匹配
-                                window.autoCheckLocal();
-                                // 切换到AI对规状态
-                                smartBtn.dataset.state = 'ai';
-                                smartBtn.className = 'btn btn-info state-ai';
-                                smartBtn.style.flex = '1';
-                                smartBtn.style.minWidth = '';
-                                smartBtn.style.fontWeight = '600';
-                                smartBtn.textContent = '🤖 AI 对规';
-                                // 显示提示
-                                const hint = document.getElementById('autoCheck-ai-hint');
-                                if (hint) hint.style.display = 'block';
-                            } else {
-                                // 第二次点击：AI 对规（跳过相似度门禁，force 路径，状态由 force 完成后复位）
-                                _acHasLocalResult = false; // 解除锁定
-                                window.autoCheckAI_force();
-                                // 注：按钮状态（回到本地匹配）在 autoCheckAI_force 渲染成功后统一复位，
-                                // 避免在 AI 因相似度不足/异常 return 时状态机与 UI 不一致（X7）
-                            }
-                        };
+                        // 【v3.74 合并】单按钮「🎯 智能对规」：一次点击跑完整链路（KB 召回 + AI 精排），
+                        //   任一步失败自动落到「本地对规」保底 —— 不再有"第一次本地匹配 / 第二次 AI 对规"两态。
+                        smartBtn.dataset.state = 'smart';
+                        smartBtn.textContent = '🎯 智能对规';
+                        smartBtn.onclick = function() { window.autoCheckSmart(); };
                     }
                     if (clearBtn) clearBtn.onclick = function() { window.clearAutoCheck(); };
                 }

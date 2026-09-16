@@ -948,6 +948,21 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
     color: #cbd5e1 !important;
 }
 [data-theme="dark"] .diary-section-title { color: #93c5fd !important; }
+/* 【v3.75】复制范围菜单 + 规章依据输入框：浅色底在暗色下会整块发白，按「统一兜底」惯例补齐 */
+[data-theme="dark"] .diary-copy-menu {
+    background: #1d1d1d !important;
+    border-color: #333333 !important;
+    color: #cbd5e1 !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .diary-copy-menu-title,
+[data-theme="dark"] .diary-copy-menu-desc { color: #94a3b8 !important; }
+[data-theme="dark"] .diary-copy-menu-item:hover { background: #262626 !important; }
+[data-theme="dark"] .diary-regulation-input {
+    background: #1d1d1d !important;
+    border-color: #333333 !important;
+    color: #cbd5e1 !important;
+}
 
 /* 风险研判 · 研判条件框及结果区 · 暗黑 */
 [data-theme="dark"] #risk-config { background: #1d1d1d !important; border-color: #333333 !important; }
@@ -1838,7 +1853,7 @@ html:not([data-theme="dark"]) .nav-toggle span {
 .card-header-lead { padding: 12px 20px !important; }
 .card-subtitle.card-lead {
     margin-left: 0 !important;              /* 去掉为对齐标题图标预留的 46px 缩进 */
-    padding-left: 10px;
+    padding-left: 0 !important;             /* 【2026-09-16 统一】去掉额外 10px 缩进：竖线贴齐内容区左边界 */
     border-left: 3px solid var(--ds-blue);  /* 左侧主色竖线，作为模块导语标识 */
     font-size: 0.9rem;
     line-height: 1.5;
@@ -1866,6 +1881,12 @@ html:not([data-theme="dark"]) .nav-toggle span {
 /* 视图切换：输入/查询复用全站标准按钮（btn btn-secondary btn-small，与「备忘」一致），
    仅保留激活态主蓝实底指示当前视图；需压过 flat.css 的 html.flat-mode .btn-secondary !important 规则 */
 .diary-seg { display: inline-flex; gap: 6px; }
+/* 【v3.75 三改】「输入」按钮旁的 ▾（选择输入方式：文本 / 图片 / 视频）：窄一些，跟「输入」读作一个控件 */
+.diary-seg-caret {
+    padding: 4px 8px !important;
+    margin-left: -3px;
+    line-height: 1;
+}
 .diary-seg-btn.active,
 html.flat-mode .diary-seg-btn.active,
 html.flat-mode:not([data-theme="dark"]) .diary-seg-btn.active,
@@ -1942,6 +1963,51 @@ html[data-theme="dark"] .diary-seg-btn.active:hover {
 .diary-media-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .diary-media-tip { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; }
 .diary-media-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+/* 【v3.75】规章依据输入框：原来靠内联 background:#f8fafc（暗黑下整块发白），
+   改为半透明浅底（与 .diary-media-panel 同一惯例，深浅色自适应） */
+.diary-regulation-input { background: rgba(100, 116, 139, 0.06); }
+/* 【v3.75】标题行带操作按钮（工作内容 / 检查发现问题）：标题与复制按钮同一行 */
+.diary-section-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+/* 【v3.75】「复制哪部分？」浮层菜单：body 级定位，避免被卡片 overflow:hidden 裁切；
+   配色全部走 CSS 变量，暗黑覆盖见本文件下方 [data-theme="dark"] 兜底段 */
+.diary-copy-menu {
+    position: fixed;
+    z-index: 10050;
+    padding: 6px;
+    background: var(--card-bg, #fff);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--ds-radius, 10px);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+}
+.diary-copy-menu-title {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    padding: 4px 8px 6px;
+}
+.diary-copy-menu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 7px 9px;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+}
+.diary-copy-menu-item:hover { background: rgba(77, 107, 254, 0.12); }
+.diary-copy-menu-label { font-size: 0.86rem; font-weight: 600; }
+.diary-copy-menu-desc { font-size: 0.72rem; color: var(--text-secondary); }
 /* 记录列表：补上同名 class 后，modules.css 的间距与 350px 限高滚动才生效 */
 .diary-records-list { margin-bottom: 12px; }
 /* 「+ 添加问题」：原 border-radius:50% 配 width:100% 会被拉成怪异扁椭圆 */
@@ -2060,4 +2126,66 @@ html[data-theme="dark"] .diary-seg-btn.active:hover {
 [data-theme="dark"] .hb-tree-level-1 > .hb-tree-header { color: #2dd4bf !important; }
 [data-theme="dark"] .hb-tree-level-2 > .hb-tree-header { color: var(--text-secondary) !important; }
 [data-theme="dark"] .hb-tree-level-3 > .hb-tree-header { color: var(--text-secondary) !important; }
+
+/* ============================================================
+   模块布局与按钮统一（2026-09-16）
+   ============================================================ */
+
+/* ---------- ① 内容区左右边界与标题栏对齐 ----------
+   现状：常规模式 .card-header 左右 20px，而 .card-body 是 24px（components.css）→ 内容比标题栏多缩 4px；
+   flat 模式两边都是 0，但导语条自带 10px 缩进、日志内容块又有 14px 内边距 → 同一页出现 0/13/14 三种边界。
+   这里把「内容区左右内缩」按各断点**镜像标题栏的取值**，两个主题下都对齐。
+   ⚠️ 2026-09-16 四改·最终：左右内缩**随屏幕宽度分档**（用户要求：大屏两侧宽一点、小窄屏窄一点，
+   小窄屏 4px "刚好"不再动）。flat 模式在 flat.css 里分档（15 / 10 / 20 / 4px）；
+   常规模式这里**镜像 .card-header 的取值**（20 / 18 / 24 / 16 / 14px）＝同样随屏宽变化且保持对齐。 */
+.card-body { padding-left: 20px; padding-right: 20px; }
+@media (min-width: 769px) and (max-width: 1024px) { .card-body { padding-left: 18px; padding-right: 18px; } }
+@media (min-width: 1440px) { .card-body { padding-left: 24px; padding-right: 24px; } }
+@media (max-width: 768px) { .card-body { padding-left: 16px; padding-right: 16px; } }
+@media (max-width: 480px) { .card-body { padding-left: 14px; padding-right: 14px; } }
+
+/* ---------- ② 同排按钮：等宽 + 随宽度自适应占满整行 ----------
+   适用于模块顶部的搜索/操作行（如应急电话的「搜索 / 重置」、检查信息与规章的「智能搜索 / 统计 / 重置」）。
+   同一个容器内的 .btn 一律 flex:1 等分剩余宽度，窄屏自动换行；行内输入框占大头。 */
+.search-actions,
+.phone-search-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: stretch;   /* 覆盖 components.css 的 center，按钮才会真正占满整行 */
+}
+.search-actions > .btn,
+.phone-search-bar > .btn {
+    flex: 1 1 0;
+    min-width: 96px;
+    justify-content: center;
+    margin: 0;
+}
+/* 应急电话：输入框独占整行，搜索/重置 等宽排在下方（用户 2026-09-16 要求） */
+.phone-search-bar > input { flex: 0 0 100%; min-width: 0; }
+
+/* 检查手册「大纲浏览 / 规章制度」：等宽并占满整行（原先按文字宽度各自为政） */
+.hb-view-toggle { width: 100%; }
+.hb-view-toggle button { flex: 1 1 0; min-width: 0; text-align: center; justify-content: center; }
+
+/* 智能对规的「🎯 智能对规 + 🔄 重置」：固定同一行、等宽（窄屏也不拆行） */
+.ac-action-row { flex-wrap: nowrap; }
+.ac-action-row > .btn { flex: 1 1 0 !important; min-width: 0; white-space: nowrap; }
+
+/* 通用工具类：任意一排按钮加 class="btn-row" 即等宽占满整行（新模块/新按钮组统一用它） */
+.btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: stretch;
+}
+.btn-row > .btn,
+.btn-row > button,
+.btn-row > label.btn {
+    flex: 1 1 0;
+    min-width: 88px;
+    justify-content: center;
+}
 

@@ -90,11 +90,10 @@
                 div.innerHTML = `
                     <div style="display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;">
                         <textarea class="diary-issue-input" id="diary-issue-${index}" placeholder="检查发现问题 ${index+1}" oninput="autoResize(this);diaryAutoSave()" style="flex:1; min-width:0; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; resize:vertical; font-family:inherit; min-height:38px; line-height:1.5;">${escapeHtml(value)}</textarea>
-                        <button class="btn btn-small btn-secondary" onclick="copyIssueWithRegulation(${index}, this)" style="white-space:nowrap; padding:4px 10px; flex-shrink:0;" title="复制问题及规章依据">📋 复制</button>
                         ${index > 0 ? '<button class="btn-remove-issue" onclick="removeIssueField(' + index + ')">×</button>' : ''}
                     </div>
                     <div style="display:flex; gap:6px; align-items:flex-start; margin-top:4px;">
-                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="规章依据" rows="2" oninput="autoResize(this);diaryAutoSave()" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit; background:#f8fafc;">${escapeHtml(regulation)}</textarea>
+                        <textarea class="diary-regulation-input" id="diary-regulation-${index}" placeholder="规章依据" rows="2" oninput="autoResize(this);diaryAutoSave()" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:0.85rem; resize:vertical; font-family:inherit;">${escapeHtml(regulation)}</textarea>
                     </div>
                 `;
                 container.appendChild(div);
@@ -362,11 +361,144 @@
                     doFeedback();
                 }
             }
-            // 复制输入框中的工作内容
-            window.copyWorkContent = function() {
-                const work = document.getElementById('diary-work').value.trim();
+            // =====【v3.75】复制按钮统一改造 =====
+            // 约定：内容由"多部分"构成的复制按钮 → 点击弹出选择（复制哪一部分）；单一字段 → 直接复制，不弹菜单。
+            // 菜单是 body 级浮层（避免被卡片 overflow 裁切），配色走 CSS 变量，暗黑模式在 unify.css 有 [data-theme="dark"] 覆盖。
+            var _diaryCopyMenuEl = null;
+            function diaryCloseCopyMenu() {
+                if (_diaryCopyMenuEl && _diaryCopyMenuEl.parentNode) _diaryCopyMenuEl.parentNode.removeChild(_diaryCopyMenuEl);
+                _diaryCopyMenuEl = null;
+                document.removeEventListener('click', _diaryCopyMenuOutside, true);
+                document.removeEventListener('keydown', _diaryCopyMenuEsc, true);
+            }
+            function _diaryCopyMenuOutside(e) {
+                if (_diaryCopyMenuEl && !_diaryCopyMenuEl.contains(e.target)) diaryCloseCopyMenu();
+            }
+            function _diaryCopyMenuEsc(e) { if (e && e.key === 'Escape') diaryCloseCopyMenu(); }
+            function diaryCopyText(text, btnEl, okLabel) {
+                const t = String(text == null ? '' : text).trim();
+                if (!t) { alert('没有可复制的内容'); return; }
+                _doCopy(t, btnEl, okLabel || '已复制 ✓');
+            }
+            // items: [{ label, desc, run(btnEl) }]；只剩一项时直接执行（不多要一次点击）
+            // 通用浮层菜单（复制范围 / 输入方式 都用它）；diaryCopyMenu 为兼容别名
+            window.diaryMenu = function(btnEl, title, items) {
+                diaryCloseCopyMenu();
+                items = (items || []).filter(function(it) { return it && typeof it.run === 'function'; });
+                if (!items.length) { alert('没有可复制的内容'); return; }
+                if (items.length === 1) { items[0].run(btnEl); return; }
+                const box = document.createElement('div');
+                box.className = 'diary-copy-menu';
+                box.innerHTML = '<div class="diary-copy-menu-title">' + escapeHtml(title || '复制哪部分？') + '</div>'
+                    + items.map(function(it, i) {
+                        return '<button type="button" class="diary-copy-menu-item" data-i="' + i + '">'
+                            + '<span class="diary-copy-menu-label">' + escapeHtml(it.label) + '</span>'
+                            + (it.desc ? '<span class="diary-copy-menu-desc">' + escapeHtml(it.desc) + '</span>' : '')
+                            + '</button>';
+                    }).join('');
+                document.body.appendChild(box);
+                const r = (btnEl && btnEl.getBoundingClientRect) ? btnEl.getBoundingClientRect() : null;
+                const w = 246;
+                let left = r ? r.left : 12;
+                let top = r ? (r.bottom + 6) : 80;
+                left = Math.max(8, Math.min(left, (window.innerWidth || 800) - w - 8));
+                top = Math.min(top, Math.max(8, (window.innerHeight || 600) - box.offsetHeight - 8));
+                box.style.width = w + 'px';
+                box.style.left = left + 'px';
+                box.style.top = top + 'px';
+                box.querySelectorAll('.diary-copy-menu-item').forEach(function(b) {
+                    b.onclick = function() {
+                        const it = items[+b.dataset.i];
+                        diaryCloseCopyMenu();
+                        try { it.run(btnEl); } catch (e) { alert('复制失败：' + (e && e.message ? e.message : e)); }
+                    };
+                });
+                _diaryCopyMenuEl = box;
+                setTimeout(function() {
+                    document.addEventListener('click', _diaryCopyMenuOutside, true);
+                    document.addEventListener('keydown', _diaryCopyMenuEsc, true);
+                }, 0);
+            };
+            window.diaryCopyMenu = window.diaryMenu;
+
+            // =====【v3.75 二改】问题复制：两级选择 =====
+            // 第一级：选条数（第 1 条 / 第 2 条 / … / 全部 N 条，**按实际填写内容动态生成**）
+            // 第二级：选该条复制哪部分（问题 / 规章 / 问题+规章）
+            function _diaryPartText(issue, regulation, kind) {
+                const i = String(issue == null ? '' : issue).trim();
+                const r = String(regulation == null ? '' : regulation).trim();
+                if (kind === 'issue') return i;
+                if (kind === 'reg') return r;
+                return i && r ? (i + '\n' + r) : (i || r);
+            }
+            // 第二级菜单：某一（或全部）条 复制哪部分
+            function diaryAskPart(btnEl, no, issue, regulation) {
+                const hasI = !!String(issue || '').trim();
+                const hasR = !!String(regulation || '').trim();
+                const title = no ? ('第 ' + no + ' 条：复制哪部分？') : '全部内容：复制哪部分？';
+                window.diaryMenu(btnEl, title, [
+                    hasI ? { label: '📋 复制问题', desc: '仅问题描述', run: function(b) { diaryCopyText(_diaryPartText(issue, regulation, 'issue'), b, '已复制问题 ✓'); } } : null,
+                    hasR ? { label: '📜 复制规章', desc: '仅规章依据', run: function(b) { diaryCopyText(_diaryPartText(issue, regulation, 'reg'), b, '已复制规章 ✓'); } } : null,
+                    (hasI && hasR) ? { label: '📋📜 复制全部', desc: '问题 + 规章依据', run: function(b) { diaryCopyText(_diaryPartText(issue, regulation, 'both'), b, '已复制全部 ✓'); } } : null
+                ]);
+            }
+            // 第一级菜单：按条选（items: [{ no, issue, regulation }]，no 为显示条号）
+            function diaryCopyIssuesByIndex(btnEl, items) {
+                items = (items || []).filter(function(it) {
+                    return it && (String(it.issue || '').trim() || String(it.regulation || '').trim());
+                });
+                if (!items.length) { alert('没有可复制的内容'); return; }
+                const first = items.map(function(it) {
+                    const i = String(it.issue || '').trim();
+                    const r = String(it.regulation || '').trim();
+                    const brief = i ? (i.slice(0, 14) + (i.length > 14 ? '…' : '')) : '（未填写问题，仅规章）';
+                    const opts = (i && r) ? '问题 + 规章' : (r ? '仅规章' : '仅问题');
+                    return {
+                        label: '第 ' + it.no + ' 条',
+                        desc: brief + ' · ' + opts,
+                        run: function(b) { diaryAskPart(b, it.no, it.issue, it.regulation); }
+                    };
+                });
+                // 【v3.75 四改】不再提供「📄 全部 N 条」汇总项（用户要求）：一级只列逐条，
+                //   需要整段内容时用「工作内容」标题行的「复制全部」。
+                window.diaryMenu(btnEl, '先选择要复制的条数（共 ' + items.length + ' 条有内容）', first);
+            }
+            // 输入视图：从表单收集（条号 = 输入框序号，动态）
+            window.diaryCopyIssueSection = function(btnEl) {
+                const { issues, regulations } = collectIssuesAndRegulations();
+                diaryCopyIssuesByIndex(btnEl, issues.map(function(issue, idx) {
+                    return { no: idx + 1, issue: issue, regulation: regulations[idx] || '' };
+                }));
+            };
+            // 查看视图（卡片）：从该日记录收集
+            window.diaryCopyIssuesCard = function(date, btnEl) {
+                const diary = diaries.find(function(d) { return d.date === date; });
+                if (!diary || !diary.issues || !diary.issues.length) { alert('没有可复制的内容'); return; }
+                diaryCopyIssuesByIndex(btnEl, diary.issues.map(function(issue, idx) {
+                    return { no: idx + 1, issue: issue, regulation: (diary.regulations && diary.regulations[idx]) || '' };
+                }));
+            };
+            // 【v3.75 二改/三改】「✏️ 输入 ▾」：拍照 / 录像 / 文本输入 三选一（现挂在工具栏的「输入」按钮 ▾ 上）
+            //   从查询视图点进来时先把视图切回输入（媒体标签要插到输入框里），已在输入视图则不动（避免重置表单）
+            function _diaryEnsureInputView() {
+                const v = document.getElementById('diary-input-view');
+                if (v && v.style.display === 'none' && typeof showInputView === 'function') {
+                    try { showInputView(); } catch (e) {}
+                }
+            }
+            window.diaryInputMenu = function(btnEl) {
+                window.diaryMenu(btnEl, '选择输入方式', [
+                    { label: '✏️ 文本输入', desc: '光标定位到最近编辑的文本框（图片/视频会插到那里）', run: function() { _diaryEnsureInputView(); const ta = getActiveTextarea(); if (ta) { ta.focus(); } } },
+                    { label: '📷 图片（拍照）', desc: '拍完自动插入到光标处的文本框', run: function() { _diaryEnsureInputView(); const el = document.getElementById('camera-input'); if (el) el.click(); } },
+                    { label: '🎥 视频（录像）', desc: '录完自动插入到光标处的文本框', run: function() { _diaryEnsureInputView(); const el = document.getElementById('video-input'); if (el) el.click(); } }
+                ]);
+            };
+            // 复制输入框中的工作内容（单一字段 → 直接复制，不弹菜单）
+            window.copyWorkContent = function(btnEl) {
+                const workEl = document.getElementById('diary-work');
+                const work = workEl ? workEl.value.trim() : '';
                 if (!work) { alert('没有工作内容可复制'); return; }
-                const btnEl = document.querySelector('.diary-section:first-of-type .diary-copy-work-btn');
+                if (!btnEl) btnEl = document.getElementById('diary-copy-work-btn');
                 _doCopy(work, btnEl, '已复制 ✓');
             };
             // 复制单个问题输入框内容
@@ -379,21 +511,36 @@
                 _doCopy(text, btnEl, '已复制 ✓');
             };
             window.copyIssue = function(text, btnEl) { _doCopy(text, btnEl, '已复制 ✓'); };
-            window.copyAllToday = function(btnEl) {
-                const work = document.getElementById('diary-work').value.trim();
+            // 【v3.75 三改】「工作内容」标题行的复制按钮 = 原「日期行全部复制」与「工作内容复制」合并：
+            //   只在「复制全部（工作写实 + 检查问题 + 规章）」与「仅复制工作写实」之间选择。
+            //   检查发现问题有自己的专用按钮（两级：先选条数再选 问题 / 规章），此处不再重复提供入口。
+            window.copyWorkOrAll = function(btnEl) {
+                const workEl = document.getElementById('diary-work');
+                const work = workEl ? workEl.value.trim() : '';
                 const { issues, regulations } = collectIssuesAndRegulations();
-                const hasContent = work || issues.some(i => i);
-                if (!hasContent) { alert('没有可复制的内容'); return; }
-                let text = '';
-                if (work) text += work;
-                issues.forEach((issue, idx) => {
-                    if (!issue) return;
-                    if (text) text += '\n';
-                    text += issue;
-                    if (regulations[idx]) text += '\n' + regulations[idx];
-                });
-                _doCopy(text, btnEl, '已复制 ✓');
+                const nIssue = issues.filter(Boolean).length;
+                const nReg = regulations.filter(Boolean).length;
+                if (!work && !nIssue && !nReg) { alert('没有可复制的内容'); return; }
+                const allText = function() {
+                    let text = '';
+                    if (work) text += work;
+                    issues.forEach(function(issue, idx) {
+                        if (!issue) return;
+                        if (text) text += '\n';
+                        text += issue;
+                        if (regulations[idx]) text += '\n' + regulations[idx];
+                    });
+                    return text;
+                };
+                window.diaryMenu(btnEl, '复制哪部分？', [
+                    // 「复制全部」只在**除工作内容外还有内容**时出现：否则与「复制工作写实」等价，
+                    //   菜单里两项内容一样会让用户白点一次（当只剩一项时 diaryMenu 会直接执行，不弹菜单）。
+                    (nIssue || nReg) ? { label: '📄 复制全部', desc: (work ? '工作写实 + 检查问题 + 规章' : '检查问题 + 规章'), run: function(b) { diaryCopyText(allText(), b, '已复制全部 ✓'); } } : null,
+                    work ? { label: '✍️ 复制工作写实', desc: '仅「工作内容」一栏', run: function(b) { diaryCopyText(work, b, '已复制写实 ✓'); } } : null
+                ]);
             };
+            // 兼容旧引用（原日期行的「📄 全部复制」按钮已并入「工作内容」标题行）
+            window.copyAllToday = function(btnEl) { return window.copyWorkOrAll(btnEl); };
             window.deleteIssue = function(date, issueIndex) {
                 const diary = diaries.find(d => d.date === date);
                 if (!diary) return;
@@ -423,12 +570,12 @@
 
                 let html = '<div class="diary-card">';
                 html += '<div class="diary-card-header"><div class="diary-card-date">' + dateStr + '</div><div class="diary-card-actions"><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button><button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div></div>';
-                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
+                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">📋 复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
 
                 if (diary.issues && diary.issues.length > 0) {
-                    html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
+                    html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span><button class="btn btn-small btn-secondary" onclick="diaryCopyIssuesCard(\'' + diary.date + '\', this)" title="先选第几条，再选 问题 / 规章">📋 复制▾</button></div>';
                     diary.issues.forEach((issue, idx) => {
-                        html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
+                        html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue) + '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">📋 复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
                     });
                     html += '</div>';
                 }
@@ -673,21 +820,21 @@
             // 初始化考勤弹窗按钮（由 JS 生成，保证与数据源一致）
             buildAttModalButtons();
 
-            // 复制日记中的工作内容
+            // 复制日记中的工作内容（单一字段 → 直接复制）
             window.copyDiaryWork = function(date, btnEl) {
                 const diary = diaries.find(d => d.date === date);
-                if (diary) _doCopy(diary.work, btnEl, '已复制 ✓');
+                const work = (diary && diary.work) ? String(diary.work).trim() : '';
+                if (!work) { alert('没有工作内容可复制'); return; }
+                _doCopy(work, btnEl, '已复制 ✓');
             };
 
-            // 复制日记中的单个问题
+            // 复制日记中的单个问题（含规章 → 弹选择：问题 / 规章 / 全部）
             window.copyDiaryIssue = function(date, index, btnEl) {
                 const diary = diaries.find(d => d.date === date);
-                if (!diary || !diary.issues || !diary.issues[index]) return;
+                if (!diary || !diary.issues || !diary.issues[index]) { alert('没有可复制的内容'); return; }
                 const problem = diary.issues[index];
                 const regulation = (diary.regulations && diary.regulations[index]) ? diary.regulations[index] : '';
-                let copyContent = problem;
-                if (regulation) copyContent += '\n' + regulation;
-                _doCopy(copyContent, btnEl, '已复制 ✓');
+                diaryAskPart(btnEl, index + 1, problem, regulation);   // 第二级：该条 复制哪部分
             };
 
             // 渲染日历
@@ -821,17 +968,17 @@
                 html += '<div><button class="btn btn-info btn-small" onclick="editDiary(\'' + diary.date + '\')">编辑</button> <button class="btn btn-danger btn-small" onclick="deleteDiary(\'' + diary.date + '\')">删除</button></div>';
                 html += '</div>';
 
-                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
+                html += '<div class="diary-work-block"><div class="diary-work-header"><span class="diary-work-title">📋 工作内容</span><button class="btn btn-small btn-secondary" onclick="copyDiaryWork(\'' + diary.date + '\', this)">📋 复制</button></div><div class="diary-work-content">' + escapeHtml(diary.work) + '</div></div>';
 
                 if (diary.issues && diary.issues.length > 0) {
-                    html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span></div>';
+                    html += '<div class="diary-issues-block"><div class="diary-issues-header"><span class="diary-issues-title">⚠️ 发现问题 (' + diary.issues.length + '条)</span><button class="btn btn-small btn-secondary" onclick="diaryCopyIssuesCard(\'' + diary.date + '\', this)" title="先选第几条，再选 问题 / 规章">📋 复制▾</button></div>';
                     diary.issues.forEach((issue, idx) => {
                         const regulation = (diary.regulations && diary.regulations[idx]) ? diary.regulations[idx] : '';
                         html += '<div class="diary-issue-item"><div class="diary-issue-item-num">' + (idx + 1) + '</div><div class="diary-issue-item-content">' + escapeHtml(issue);
                         if (regulation) {
                             html += '<div style="margin-top:6px; font-size:0.8rem; color:var(--primary); border-left:2px solid var(--primary); padding-left:8px;"><strong>📜 完整引用句子：</strong>' + escapeHtml(regulation) + '</div>';
                         }
-                        html += '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
+                        html += '</div><div class="diary-issue-item-actions"><button class="btn btn-small btn-secondary" onclick="copyDiaryIssue(\'' + diary.date + '\', ' + idx + ', this)">📋 复制</button><button class="btn btn-small btn-danger" onclick="deleteIssue(\'' + diary.date + '\', ' + idx + ')">删除</button></div></div>';
                     });
                     html += '</div>';
                 }
@@ -856,6 +1003,7 @@
                 _mediaCaptureTimes = [];
                 _existingMediaIds = [];
                 document.getElementById('media-preview').innerHTML = '';
+                diarySyncMediaPanel();      // 【v3.75】清空后一并隐藏预览区
                 // 初始化焦点追踪（使多媒体按钮能检测到当前聚焦的文本框）
                 initFocusTracking();
                 // 如果当日已有记录，自动加载到输入框（在历史基础上追加）
@@ -955,6 +1103,7 @@
                         previewDiv.appendChild(wrapper);
                     }
                 }
+                diarySyncMediaPanel();      // 【v3.75】编辑已有记录时同样按预览内容决定是否显示
             }
 
             // 初始化焦点追踪（事件委托：捕获 diary-input-view 内的 textarea 焦点）
@@ -981,16 +1130,26 @@
                 return document.getElementById('diary-work');
             }
 
-            // 打开/关闭多媒体面板
+            // 【v3.75】拍照/录像按钮已并入输入行，多媒体面板只作为「预览区」：有媒体才显示，不再需要开关/关闭按钮
+            function diarySyncMediaPanel() {
+                const panel = document.getElementById('multimedia-panel');
+                const prev = document.getElementById('media-preview');
+                if (!panel || !prev) return;
+                panel.style.display = prev.children.length ? 'block' : 'none';
+            }
+            window.diarySyncMediaPanel = diarySyncMediaPanel;
+
+            // 打开/关闭多媒体面板（兼容保留：新界面无开关按钮，元素缺失时安全返回）
             function toggleMultimediaPanel() {
                 const panel = document.getElementById('multimedia-panel');
                 const toggleBtn = document.getElementById('btn-multimedia-toggle');
+                if (!panel) return;
                 if (panel.style.display === 'none' || !panel.style.display) {
                     panel.style.display = 'block';
-                    toggleBtn.textContent = '❌ 关闭多媒体';
+                    if (toggleBtn) toggleBtn.textContent = '❌ 关闭多媒体';
                 } else {
                     panel.style.display = 'none';
-                    toggleBtn.textContent = '📸 多媒体录入';
+                    if (toggleBtn) toggleBtn.textContent = '📸 多媒体录入';
                 }
             }
             window.toggleMultimediaPanel = toggleMultimediaPanel;
@@ -1041,6 +1200,7 @@
                 const tagMap = { photo: '📷照片', video: '🎥录像', audio: '🎤录音' };
                 const tag = '[' + (tagMap[type] || '文件') + idx + ']';
                 insertTextAtCursor(getActiveTextarea(), tag);
+                diarySyncMediaPanel();      // 【v3.75】有媒体了才显示预览区
 
                 // 重置 input value，允许再次选择同一文件
                 input.value = '';
@@ -1103,7 +1263,10 @@
             }
 
             function closeMultimediaPanel() {
-                document.getElementById('multimedia-panel').style.display = 'none';
+                // 兼容保留：新界面已无「关闭」按钮，元素缺失时安全返回
+                const panelEl = document.getElementById('multimedia-panel');
+                if (!panelEl) return;
+                panelEl.style.display = 'none';
                 document.getElementById('btn-multimedia-toggle').textContent = '📸 多媒体录入';
             }
             window.closeMultimediaPanel = closeMultimediaPanel;

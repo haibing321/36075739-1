@@ -660,7 +660,9 @@
                     <!-- 顶部工具栏：左侧视图切换（分段控件）+ 右侧动作 -->
                     <div class="diary-toolbar">
                         <div class="diary-seg" role="group" aria-label="视图切换">
-                            <button type="button" class="btn btn-secondary btn-small diary-seg-btn active" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();">✏️ 输入</button>
+                            <button type="button" class="btn btn-secondary btn-small diary-seg-btn active" id="diary-input-btn" onclick="clearDiaryForm(); showInputView();" title="切到输入视图">✏️ 输入</button>
+                            <!-- 【v3.75 三改】输入方式（文本 / 图片 / 视频）并入「输入」按钮的 ▾ 里，日期行不再放按钮 -->
+                            <button type="button" class="btn btn-secondary btn-small diary-seg-btn diary-seg-caret" id="diary-input-method-btn" onclick="diaryInputMenu(this)" title="选择输入方式：文本输入 / 图片（拍照）/ 视频（录像）">▾</button>
                             <button type="button" class="btn btn-secondary btn-small diary-seg-btn" id="diary-history-btn" onclick="showQuery()">🔍 查询</button>
                         </div>
                         <button type="button" class="btn btn-secondary btn-small" onclick="openMemoModal()">🔔 备忘</button>
@@ -685,36 +687,26 @@
                         <div class="diary-input-bar">
                             <label class="diary-date-label" for="diary-date">📅 日期</label>
                             <input type="date" id="diary-date" class="diary-date-input">
-                            <div class="diary-input-actions">
-                                <button class="btn btn-secondary btn-small" onclick="copyAllToday(this)">📄 全部复制</button>
-                                <button class="btn btn-small" id="btn-multimedia-toggle" onclick="toggleMultimediaPanel()">📸 多媒体</button>
-                            </div>
+                            <!-- 【v3.75 三改】日期行不再放任何按钮：复制移到「工作内容」标题行，输入方式并入上方「✏️ 输入 ▾」 -->
+                            <input type="file" accept="image/*" capture="environment" id="camera-input" onchange="handleMediaCapture(this, 'photo')" hidden>
+                            <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
                         </div>
-                        <!-- 多媒体录入面板 -->
+                        <!-- 多媒体预览区：按钮已并入上方输入行，这里只在插入媒体后显示（diarySyncMediaPanel 控制） -->
                         <div id="multimedia-panel" class="diary-media-panel" style="display:none;">
-                            <div class="diary-media-actions">
-                                <!-- 拍照 -->
-                                <label class="btn btn-secondary btn-small diary-media-btn">
-                                    📷 拍照
-                                    <input type="file" accept="image/*" capture="environment" id="camera-input" onchange="handleMediaCapture(this, 'photo')" hidden>
-                                </label>
-                                <!-- 录像 -->
-                                <label class="btn btn-secondary btn-small diary-media-btn">
-                                    🎥 录像
-                                    <input type="file" accept="video/*" capture="environment" id="video-input" onchange="handleMediaCapture(this, 'video')" hidden>
-                                </label>
-                            </div>
-                            <div class="diary-media-tip">💡 内容插入到光标处（可用输入法语音 🎤）</div>
-                            <!-- 多媒体预览区 -->
                             <div id="media-preview" class="diary-media-preview"></div>
-                            <button class="btn btn-secondary btn-small" onclick="closeMultimediaPanel()">❌ 关闭</button>
                         </div>
                         <div class="diary-section">
-                            <div class="diary-section-title">📋 工作内容</div>
+                            <div class="diary-section-title diary-section-title-row">
+                                <span>📋 工作内容</span>
+                                <button class="btn btn-secondary btn-small" id="diary-copy-work-btn" onclick="copyWorkOrAll(this)" title="复制：全部（工作写实 + 检查问题 + 规章）或 仅工作写实">📋 复制▾</button>
+                            </div>
                             <textarea id="diary-work" class="diary-textarea" placeholder="请输入工作内容..." oninput="autoResize(this);diaryAutoSave()"></textarea>
                         </div>
                         <div class="diary-section">
-                            <div class="diary-section-title">⚠️ 检查发现问题</div>
+                            <div class="diary-section-title diary-section-title-row">
+                                <span>⚠️ 检查发现问题</span>
+                                <button class="btn btn-secondary btn-small" onclick="diaryCopyIssueSection(this)" title="选择复制：问题 / 规章依据 / 全部">📋 复制▾</button>
+                            </div>
                             <div id="diary-issues-container"></div>
                             <button class="btn-add-issue" id="btn-add-issue" onclick="addIssueField()">+ 添加问题</button>
                         </div>
@@ -849,7 +841,7 @@
                     </div>
 
                     <!-- === 智能对规子模块 === -->
-                    <div id="ds-sub-check" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:auto;padding:16px;">
+                    <div id="ds-sub-check" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:auto;">
                         <!-- 自动对规模块 -->
                             <textarea id="autoCheck-input" rows="2" placeholder="输入检查问题，例如：工务作业人员在天窗点外违规上道作业，未设置防护。"
                                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; resize: none; margin-bottom: 10px; box-sizing: border-box; min-height: 40px; max-height: 200px; line-height: 1.5;"
@@ -886,20 +878,20 @@
                                 </div>
                                 
                                 <div style="padding:6px 8px;background:#f8fafc;border-radius:6px;font-size:0.75rem;color:var(--text-secondary);">
-                                    💡 点候选词选中/取消，或用「➕」加自定义词，再点「本地匹配」搜索。
+                                    💡 点候选词选中/取消，或用「➕」加自定义词，再点「🎯 智能对规」开始（关键词用于保底匹配，不影响 AI 选择）。
                                 </div>
                             </div>
                             
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                                <!-- 两态合并按钮：第一次=本地匹配，第二次=AI对规 -->
-                                <button class="btn btn-primary" id="autoCheck-smartBtn" style="flex: 1; font-weight: 600;">🔍 本地匹配</button>
+                            <div class="btn-row ac-action-row">
+                            <!-- 一键「智能对规」+「重置」同一行、等宽（原先靠内联 flex:1 + wrap，窄屏会分成两行） -->
+                            <button class="btn btn-primary" id="autoCheck-smartBtn" style="font-weight: 600;" title="一次点击跑完整链路：先用本地知识库索引召回条款/案例，再由 AI 精排；AI 或索引不可用时自动改用本地对规保底">🎯 智能对规</button>
                                 <button class="btn btn-warning" id="autoCheck-importBtn" style="flex: 1;display:none;" onclick="importRailwayTerms()">📚 导入词库</button>
                                 <button class="btn btn-success" id="autoCheck-exportBtn" style="flex: 1;display:none;" onclick="exportRailwayTerms()">📤 导出词库</button>
                                 <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1;">🔄 重置</button>
                             </div>
                             <!-- 本地匹配后提示必须先AI对规 -->
-                            <div id="autoCheck-ai-hint" style="display:none;margin-top:6px;padding:6px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:0.78rem;color:#1d4ed8;text-align:center;">
-                                ⚠️ 本地匹配已完成，请点击「AI 对规」获取智能分析结果，方可进行下一次匹配
+                            <div id="autoCheck-ai-hint" style="margin-top:6px;padding:6px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:0.78rem;color:#1d4ed8;text-align:center;">
+                                🎯 <strong>智能对规</strong>：先用本地知识库索引按「条款」召回，再由 AI 精排给出结论；<strong>索引不可用时会退回关键词召回，仍交给 AI 精排</strong>；只有 AI 不可用、或索引与关键词召回都拿不到候选时，才改用<strong>本地对规</strong>（纯关键词匹配）保底——保证点一次必有结果
                             </div>
                             <div id="autoCheck-results" style="margin-top: 16px; max-height: 500px; min-height: 200px; overflow-y: auto; display: none;">
                             </div>
@@ -1147,7 +1139,7 @@
                     </div>
 
                     <!-- === 风险研判子模块 === -->
-                    <div id="ds-sub-risk" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;padding:16px;">
+                    <div id="ds-sub-risk" style="display:none;flex-direction:column;flex:1;min-height:0;gap:10px;">
                             <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">基于本地检查信息数据，AI自动分析风险趋势并生成预警措施报告。</p>
                             
                             <!-- 风险研判条件配置 -->
@@ -1953,6 +1945,9 @@
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠️ <strong>风险研判 / 智能体检索接入统一检索层</strong>：风险研判的「事故专业案例」改为条款级检索（带出处），不再全表扫描 + 正则筛选；智能体的 <code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">search_rules / search_handbook / search_material</code> 内部优先走统一检索层（摘要直接给命中的那一条条款），未命中自动回退原搜索；智能体的检索词也会沉淀到长期偏好</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📤 <strong>智能对话「导出」按钮</strong>：原来的「📥 下载」只导 Markdown，现改为<strong>导出 DOCX</strong>，复用历史报告那套公文导出（真·OOXML 引擎 + 公文格式 GB/T 9704-2012，排版偏好与历史报告共用）；文件名自动取回复首行 + 日期</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <strong>检索口径统一（C 批）</strong>：智能对话的本地资料按用途分档（写作资料库/历史报告只取 2 块，业务源 5 块）+ 单轮总量预算 4500 字 —— 实测每轮注入 <strong>6373 → 4352 字（−31%）</strong>；检查信息索引只覆盖最近 12000 条时，<strong>窗口外的老数据会自动全量兜底召回</strong>（实测老记录召回 0/30 → 30/30，每次多 15~45ms），并在提示词里如实标注"索引仅覆盖最近 N 条"，不再沉默查不到</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <strong>「本地对规」「AI 对规」两个按钮合并为一键「智能对规」</strong>：一次点击先用本地知识库索引按「条款」召回、再由 AI 精排给出结论（不再要求先跑一遍本地匹配）；<strong>AI 调用/解析失败、或索引与关键词召回都拿不到候选时，自动改用「本地对规」保底</strong>并标明原因，保证点一次必有结果</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 <strong>全模块布局与按钮统一</strong>：所有模块的内容区左右边界与顶部标题栏<strong>严格对齐</strong>（此前标题栏 20px、内容区 24px，扁平主题里更是 0/13/14 三种缩进并存），留白<strong>随屏宽分档</strong>（大屏两侧 15–20px、平板 10px、小窄屏 4px，小窄屏保持"刚好"的紧凑值）以尽量多显示内容；<strong>智能对规 / 风险研判</strong>子视图去掉多余的 16px 内缩、与标题栏对齐；顶部搜索/操作行按钮<strong>等宽并占满整行</strong>——检查手册「大纲浏览 / 规章制度」、检查信息与规章「智能搜索 / 统计 / 重置」、<strong>应急电话改为输入框独占整行 + 搜索/重置 等宽排在下方</strong>、<strong>智能对规与重置固定同一行</strong>（窄屏也不拆行）</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📋 <strong>工作日志界面精简为「1 个输入按钮 + 2 个复制按钮」</strong>：<strong>✏️ 输入 ▾</strong>（工具栏）＝切视图 + 选择输入方式（文本输入 / 图片（拍照）/ 视频（录像））；<strong>📋 复制▾（工作内容标题行）</strong>＝复制全部（工作写实 + 检查问题 + 规章）或仅复制工作写实（原日期行的「全部复制」已并入此处）；<strong>📋 复制▾（检查发现问题标题行）</strong>＝<strong>先选第几条（条数按实际填写动态生成）、再选 问题 / 规章 / 两者</strong>。日期行不再有任何按钮，问题行内也不再各带一个复制按钮；新增控件与规章输入框均已适配暗黑模式</span></div>
                 </div>
             </div>
 

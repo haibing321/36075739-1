@@ -32,18 +32,34 @@ html.flat-mode .card {
 html.flat-mode .card:hover { box-shadow: none !important; transform: none !important; }
 
 /* 卡片标题作为「分区标题」：保留图标色块，去渐变底，下方细线 */
+/* 【2026-09-16 统一】左右内边距 0 → 14px：原先为 0，而导语条自身还有 10px 缩进、
+   工作日志内容块又有 14px 内边距 → 同一页出现 0/13/14 三种左边界，看起来"没对齐"。
+   现在标题栏与内容区使用同一个 14px 内缩（body 见下方），左右边界一致。 */
 html.flat-mode .card-header {
   background: transparent !important;
-  padding: 2px 0 12px !important;
+  /* 【2026-09-16 四改·最终】左右内缩**随屏幕宽度分档**（用户要求：大屏两侧宽一点、小窄屏窄一点）：
+     ≤768 → 4px（小窄屏"现在刚好"，保持不动）｜769–1024 → 10px｜1280 档（1025–1439）→ 15px｜≥1440 → 20px。
+     标题栏与内容区取值始终一致（见下方 .card-body 与各自的媒体查询）。 */
+  padding: 12px 15px !important;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--border);
   border-top: none !important;
   border-left: none !important;
   border-right: none !important;
 }
+/* 【2026-09-16 四改·最终】内容区左右内缩与标题栏一致（同为 15px，分档见媒体查询），底部保留 10px 收口 */
 html.flat-mode .card-body {
-  padding: 0 !important;
+  padding: 0 15px 10px !important;
   background: transparent !important;  /* 覆盖 dark.css 的 var(--card-bg) */
+}
+/* 分档：平板（769–1024）稍收；大屏（≥1440）再放宽 —— 与小窄屏的 4px 形成梯度 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  html.flat-mode .card-header { padding: 12px 10px !important; }
+  html.flat-mode .card-body { padding: 0 10px 10px !important; }
+}
+@media (min-width: 1440px) {
+  html.flat-mode .card-header { padding: 14px 20px !important; }
+  html.flat-mode .card-body { padding: 0 20px 12px !important; }
 }
 
 /* ---------- 3. 统计栏：去底色框，仅留间距（!important 抵御 unify.css:342 浅灰 / :510 dark #1e293b） ---------- */
@@ -103,7 +119,9 @@ html.flat-mode #about-panel .card { background: transparent; border: none; box-s
 /* ---------- 9. 移动端：卡片间距收紧，进一步放大可用范围 ---------- */
 @media (max-width: 768px) {
   html.flat-mode .card { margin-bottom: 16px; }
-  html.flat-mode .card-body { padding: 0; }
+  /* 【2026-09-16 四改·最终】小窄屏保持 4px（用户："小窄屏现在刚好"，不要再动） */
+  html.flat-mode .card-header { padding: 10px 4px !important; }
+  html.flat-mode .card-body { padding: 0 4px 8px !important; }
   html.flat-mode .result-card { padding: 10px 0 10px 12px !important; margin-bottom: 10px !important; }
 }
 

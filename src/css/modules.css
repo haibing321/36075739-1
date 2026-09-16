@@ -81,8 +81,10 @@
     border-radius: var(--radius-sm);
     font-size: 0.95rem;
 }
+/* 【2026-09-16 统一】原先 14px 内边距与卡片内容区缩进叠加 → 日志内容比标题栏多缩 14px。
+   现由 .card-body 提供统一左右内缩（flat 14px / 常规 20px），此处归零。 */
 .diary-view-panel {
-    padding: 14px;
+    padding: 0;
 }
 .diary-view-header {
     display: flex;
@@ -836,10 +838,11 @@
     #ds-user-input { font-size: 0.88rem !important; }
     /* DeepSeek 风格：手机端附件/发送按钮同为 36px 圆钮 */
     #ds-send-btn, .ds-attach-btn { width: 36px !important; height: 36px !important; padding: 0 !important; flex-shrink: 0; }
-    /* 自动对规按钮行在手机上自适应 */
-    #autoCheck-smartBtn { flex: 1 1 100% !important; min-width: 0 !important; }
+    /* 自动对规按钮行：手机上也保持「智能对规 + 重置」同一行、等宽（用户 2026-09-16 要求；
+       原先是智能对规独占整行、重置半行，窄屏被拆成上下两行） */
+    #autoCheck-smartBtn,
+    #autoCheck-clearBtn { flex: 1 1 0 !important; min-width: 0 !important; }
     #autoCheck-importBtn, #autoCheck-exportBtn { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }
-    #autoCheck-clearBtn { flex: 1 1 calc(50% - 4px) !important; }
     /* 手机端侧边栏全宽覆盖（DeepSeek：贴边全高，无圆角） */
     #ds-sidebar { width: 82vw !important; max-width: 300px !important; border-radius: 0 !important; }
     #ds-sidebar-toggle-text { display: none; }

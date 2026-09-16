@@ -2052,6 +2052,37 @@
                     return;
                 }
 
+                // ════════════════════════════════════════════
+                // 【v3.74 卡滞修复】先把「生成中」反馈渲染出来，再做重活
+                // ════════════════════════════════════════════
+                // 症状（用户反馈）：点发送后 3~8 秒界面毫无反应，之后才按钮变红、气泡出现。
+                // 原因：下面的 dsBuildSystemPrompt() 内部 `await KB.ensure()`（建索引 / 从 IndexedDB 恢复索引，
+                //   大源实测 0.8~7s；浏览器实测冷启动 817ms 中 776ms 花在这里），而"按钮变红 + 助手气泡"
+                //   原先排在它**之后**才执行 → 这段等待完全没有任何界面反馈。
+                // 现在：立即插入空助手气泡（渲染层对空内容显示"思考中…"）+ 发送按钮切成「停止」态，
+                //   再用双 rAF 让浏览器**真的把这一帧画出来**，然后才去做建索引/检索等重活。
+                var _reqHist = dsHistory.slice(-10);   // 请求用历史快照：此刻只含历史 + 本轮 user，不含下面这条空助手气泡
+                dsHistory.push({ role: 'assistant', content: '' });
+                var assistantIdx = dsHistory.length - 1;
+                dsRenderAll();
+                dsScrollBottom();
+                dsStreaming = true;
+                var sendBtn = document.getElementById('ds-send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.classList.add('on', 'stopping');
+                    sendBtn.title = '点击停止生成';
+                    sendBtn.onclick = function() { if (window._dsAbortController) window._dsAbortController.abort(); };
+                    sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>';
+                }
+                window._dsAbortController = new AbortController();
+                // 准备阶段超过 400ms 才把气泡文字换成「正在准备本地资料」——暖态（0.1s 内）不会闪烁
+                var _prepHintTimer = setTimeout(function () {
+                    try { _dsPaintBubble(assistantIdx, '🔍 正在准备本地资料…', true); } catch (e) {}
+                }, 400);
+                // 让出一帧（双 rAF）：只 yield 微任务不够，必须让浏览器完成一次绘制，按钮/气泡才真的可见
+                await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
+
                 // ---- 4.4 角色注入 ----
                 var roleSelect = document.getElementById('expertRole');
                 var selectedRole = roleSelect ? roleSelect.value : 'default';
@@ -2077,9 +2108,18 @@
                 var _tempSrc = window._tempDataSrc || null;
                 var _dataSrc = _tempSrc || _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
                 var hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
-                var baseSystem = hasAnySource
-                    ? await dsBuildSystemPrompt(finalText, _dataSrc)
-                    : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                // 【v3.74 卡滞修复】本地资料准备失败**不再中断对话**：降级为"无资料模式"继续回答。
+                //   这样资料侧的任何异常都不会把 dsStreaming 卡在 true（原先异常会跳过 finally 复位）。
+                var baseSystem;
+                try {
+                    baseSystem = hasAnySource
+                        ? await dsBuildSystemPrompt(finalText, _dataSrc)
+                        : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                } catch (_prepErr) {
+                    console.warn('[dsRunStream] 本地资料准备失败，降级为无资料模式：', _prepErr && _prepErr.message);
+                    baseSystem = '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                }
+                clearTimeout(_prepHintTimer);   // 准备结束：撤掉"正在准备本地资料"的延时提示
                 var systemPrompt = rolePrompt + memoryText + baseSystem;
                 // 通用专业准则与知识更新指引：对所有角色/默认生效，强化专业深度、准确性与时效
                 var proRoleGuidelines = '\n\n【专业回答准则】\n' +
@@ -2109,9 +2149,11 @@
                 if (window.UNIFIED_TAB_CONTEXT) systemPrompt += '\n\n' + window.UNIFIED_TAB_CONTEXT;
                 if (_tempSrc) { window._tempDataSrc = null; }
 
+                // 【v3.74 卡滞修复】历史改用插入空助手气泡**之前**的快照（_reqHist）：
+                //   否则会把那条空的 assistant 也发给模型（原实现靠"先建 messages、再 push 气泡"的顺序规避）。
                 var messages = [
                     { role: 'system', content: systemPrompt },
-                    ...dsHistory.slice(-10)
+                    ..._reqHist
                 ];
                 // 多模态：若本次发送含图片块，将最后一条 user 消息的 content 替换为 image_url 数组
                 if (visionUserContent && messages.length) {
@@ -2124,24 +2166,9 @@
                 }
 
                 // ---- 4.7 流式对话 ----
-                dsHistory.push({ role: 'assistant', content: '' });
-                var assistantIdx = dsHistory.length - 1;
-                dsRenderAll();
-                dsScrollBottom();
-
+                // 注：【v3.74 卡滞修复】空助手气泡、按钮「停止」态、AbortController 已在进入本节**之前**
+                //   （即 dsBuildSystemPrompt 这些重活之前）设置完毕，这里不再重复；状态复位仍由下方 finally 统一负责。
                 try {
-                    // 生成中：发送按钮变「停止」（DeepSeek 同款：深色圆钮 + 方块停止图标）
-                    // 置于 try 内 + 守卫，确保设置阶段任何异常都能被 finally 复位，避免 dsStreaming 永久为 true 冻结聊天
-                    dsStreaming = true;
-                    var sendBtn = document.getElementById('ds-send-btn');
-                    if (sendBtn) {
-                        sendBtn.disabled = false;
-                        sendBtn.classList.add('on', 'stopping');
-                        sendBtn.title = '点击停止生成';
-                        sendBtn.onclick = function() { if (window._dsAbortController) window._dsAbortController.abort(); };
-                        sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>';
-                    }
-                    window._dsAbortController = new AbortController();
                     // P8 修复：整体请求超时（默认 120s），超时主动 abort 并提示，避免无限挂起
                     var _reqTimeoutMs = 120000;
                     var _reqTimer = setTimeout(function() {

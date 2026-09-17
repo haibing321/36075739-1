@@ -964,6 +964,30 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
     color: #cbd5e1 !important;
 }
 
+/* 【v3.76】智能写作「模板 / 参考资料」两路输入相关弹层（选择菜单 / 资料库选择层 / 资料分类选择 / 已选芯片）
+   —— 这些元素的内联浅色底在暗色下会整块发白，按「统一兜底」惯例补齐暗黑样式。
+   ⚠️ 项目约定（用户 2026-09-17 明确）：**以后所有新增界面都必须同时做暗黑适配**，不要只写浅色。 */
+[data-theme="dark"] .wr-step-panel { background: #1d1d1d !important; border: 1px solid #333333 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] .wr-step-line { background: rgba(148, 163, 184, 0.08) !important; border-color: #333333 !important; }
+[data-theme="dark"] .wr-step-menu {
+    background: #1d1d1d !important;
+    border-color: #333333 !important;
+    color: #cbd5e1 !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .wr-step-menu-item:hover { background: #262626 !important; }
+[data-theme="dark"] .wr-step-chip.is-tpl { background: #1e293b !important; border-color: #334155 !important; color: #93c5fd !important; }
+[data-theme="dark"] .wr-step-chip.is-lib { background: #1e293b !important; border-color: #334155 !important; color: #93c5fd !important; }
+[data-theme="dark"] .wr-step-chip.is-local { background: #1f2937 !important; border-color: #334155 !important; color: #a5b4fc !important; }
+[data-theme="dark"] .wr-step-chip button { color: #94a3b8 !important; }
+[data-theme="dark"] .wr-step-src,
+[data-theme="dark"] .wr-step-empty { color: #94a3b8 !important; }
+[data-theme="dark"] .wr-step-lib-row { background: #1d1d1d !important; border-color: #333333 !important; color: #cbd5e1 !important; }
+[data-theme="dark"] .wr-step-lib-row:hover { background: #262626 !important; }
+/* 注：弹层里的按钮（「选择模板 ▾」「＋ 添加 ▾」「取消」、资料分类按钮）无需单独写暗黑 ——
+   项目已有全局「暗色按钮」兜底规则覆盖它们（实测暗色下取 #333333 底 + #e2e8f0 字），
+   这里刻意不重复声明，避免留下被覆盖的死规则。 */
+
 /* 风险研判 · 研判条件框及结果区 · 暗黑 */
 [data-theme="dark"] #risk-config { background: #1d1d1d !important; border-color: #333333 !important; }
 [data-theme="dark"] #risk-config input[type="date"],

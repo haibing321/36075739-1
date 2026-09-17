@@ -912,22 +912,27 @@
 
                 // 展示对话框（无论DB是否可用）
                 var showDialog = function(templates, otherMats) {
-                    var modalHtml = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(560px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
+                    // 【v3.76 二改·只走两路菜单】用户反馈：原先"资料库内容常显 + 菜单里又有📚资料库"= 重复。
+                    //   现在弹窗里**不再常显资料库下拉/清单**，只显示"已选结果"；想看资料库就点按钮 →
+                    //   菜单(💻 本地文件 / 📚 资料库) → 资料库才弹出选择层（不重复、不占版面）。
+                    //   模板区直接显示当前选中项（本地模板也在这里可见）。
+                    var _addBtnCss = 'padding:5px 10px;border:1px solid var(--primary);background:#fff;color:var(--primary);border-radius:16px;font-size:0.78rem;cursor:pointer;white-space:nowrap;';
+                    var modalHtml = '<div class="wr-step-panel" style="background:#fff;border-radius:14px;padding:20px;width:min(560px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
                         + '<div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:700;font-size:0.97rem;color:var(--primary);">✍️ 选择模板和参考资料</span><button onclick="this.closest(\'.wr-step-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;">✕</button></div>'
-                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">模板为可选，资料可多选（故障报告、检查信息等）</div>'
-                        + '<div><label style="font-weight:600;">📄 写作模板</label><select id="wr-step-template" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">'
-                        + '<option value="">-- 不使用模板 --</option>'
-                        + (templates||[]).map(function(t){ return '<option value="'+t.id+'">'+wrEsc(t.title)+'</option>'; }).join('')
-                        + '</select></div>'
-                        + '<div><label style="font-weight:600;">📚 参考资料（多选）</label><div style="max-height:40vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;">'
-                        + ((otherMats||[]).length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>' : (otherMats||[]).map(function(m){ return '<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="'+m.id+'"> '+wrEsc(m.title||m.fileName)+' <span style="font-size:0.7rem;color:gray;">('+((WR_MAT_TYPES[m.matType]&&WR_MAT_TYPES[m.matType].label)||m.matType)+')</span></label>'; }).join(''))
-                        + '</div></div>'
+                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">两个来源任选：<b>💻 本地文件</b>（本机直选，<b>会保存进资料库</b>，与「资料中心 → 导入」同一套解析）或 <b>📚 资料库</b>（点按钮才弹出，不占版面）</div>'
+                        + '<div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><label style="font-weight:600;">📄 写作模板（可选）</label>'
+                        + '<button type="button" class="wr-step-addbtn" onclick="wrStepAddMenu(\'template\', this)" style="' + _addBtnCss + '">选择模板 ▾</button></div>'
+                        + '<div id="wr-step-tpl-line" class="wr-step-line" style="margin-top:6px;padding:8px 10px;border:1px dashed var(--border);border-radius:8px;background:#f8fafc;min-height:38px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;"></div></div>'
+                        + '<div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><label style="font-weight:600;">📚 参考资料（可多选）</label>'
+                        + '<button type="button" class="wr-step-addbtn" onclick="wrStepAddMenu(\'reference\', this)" style="' + _addBtnCss + '">＋ 添加 ▾</button></div>'
+                        + '<div id="wr-step-ref-line" class="wr-step-line" style="margin-top:6px;padding:8px 10px;border:1px dashed var(--border);border-radius:8px;background:#f8fafc;min-height:38px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;"></div></div>'
                         + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="wrConfirmSelection()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;">确认并生成</button><button onclick="this.closest(\'.wr-step-modal\').remove()" style="padding:8px 16px;">取消</button></div></div>';
                     var modal = document.createElement('div');
                     modal.className = 'wr-step-modal';
                     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;display:flex;align-items:center;justify-content:center;';
                     modal.innerHTML = modalHtml;
                     document.body.appendChild(modal);
+                    wrStepRenderChips();   // 【v3.76】打开即回填本地来源的已选项
                 };
 
                 // 先立即显示对话框，再异步加载数据更新
@@ -936,30 +941,14 @@
                 .then(function(res) {
                     var allTpls = res[0] || [];
                     var mats = res[1] || [];
-                    window._wrAllMats = mats;   // 缓存供 wrConfirmSelection 查找参考资料
-                    window._wrAllTpls = allTpls; // 缓存供 wrConfirmSelection 查找模板（含 WR_TPL_STORE + WR_MAT_STORE 模板）
-                    var otherMats = mats.filter(function(m) { return m.matType !== 'template'; });
-                    // 更新已显示的对话框（仅更新select和列表内容）
-                    var tplSelect = document.getElementById('wr-step-template');
-                    if (tplSelect) {
-                        tplSelect.innerHTML = '<option value="">-- 不使用模板 --</option>'
-                            + allTpls.map(function(t){ return '<option value="tpl:'+t._src+':'+t.id+'">'+wrEsc(t.title)+'</option>'; }).join('');
-                    }
-                    var matDiv = document.querySelector('.wr-step-modal > div > div:nth-child(4) > div');
-                    if (matDiv) {
-                        matDiv.innerHTML = otherMats.length === 0 ? '<div style="text-align:center;color:gray;padding:16px;">暂无可用资料</div>'
-                            : otherMats.map(function(m){ return '<label style="display:block;margin-bottom:5px;"><input type="checkbox" class="wr-step-mat" value="'+m.id+'"> '+wrEsc(m.title||m.fileName)+'</label>'; }).join('');
-                    }
-                    // 修复C：预填上次选择的模板与资料
-                    if (window._wrSelectedTemplate && tplSelect) {
+                    window._wrAllMats = mats;    // 缓存：资料库参考资料（+模板），资料库选择层与确认都从这里取
+                    window._wrAllTpls = allTpls; // 缓存：资料库模板（含 WR_TPL_STORE + WR_MAT_STORE 里的模板）
+                    // 修复C：预填上次选择的模板（本地模板也有 _src='local'，同一套状态即可）
+                    if (!window._wrStepTplSel && window._wrSelectedTemplate) {
                         var _st = window._wrSelectedTemplate;
-                        tplSelect.value = 'tpl:' + _st._src + ':' + _st.id;
+                        window._wrStepTplSel = { src: (_st._src === 'local' ? 'local' : 'lib'), id: _st.id, title: _st.title };
                     }
-                    if ((window._wrSelectedMaterialIds || []).length) {
-                        document.querySelectorAll('.wr-step-mat').forEach(function(cb) {
-                            if (window._wrSelectedMaterialIds.indexOf(parseInt(cb.value)) !== -1) cb.checked = true;
-                        });
-                    }
+                    wrStepRenderChips();   // 渲染"当前模板 + 已选参考资料"（两个来源合并显示）
                 }).catch(function(e) {
                     console.warn('资料库异步加载失败:', e);
                     window._wrAllMats = [];
@@ -967,23 +956,280 @@
                 });
             };
 
-            window.wrConfirmSelection = function() {
-                var templateSelect = document.getElementById('wr-step-template');
-                var selectedVal = templateSelect ? templateSelect.value : '';
-                var selectedMatIds = Array.from(document.querySelectorAll('.wr-step-mat:checked')).map(function(cb){ return parseInt(cb.value); });
+            // ==================== 【v3.76】模板 / 参考资料「两路输入」====================
+            // 设计（二改后定稿）：
+            //   · 弹窗里**只显示"已选结果"**（当前模板一行 + 已选参考资料芯片），不再常显资料库下拉/清单
+            //     —— 避免"资料库内容既常显、菜单里又能点进去"的重复（用户反馈）。
+            //   · 想看资料库 → 点按钮 → 两路菜单（💻 本地文件 / 📚 资料库） → 点「📚 资料库」才弹出选择层。
+            //   · 落点（与既有生成链路天然对齐，无需改生成逻辑）：
+            //       当前模板   → `window._wrStepTplSel`（{src:'lib'|'local', id, title}）→ 确认时写进 `_wrSelectedTemplate`
+            //       资料库资料 → `window._wrSelectedMaterialIds`（原有）
+            //       本地文件   → 本地模板进 `_wrLocalTpls`；本地参考资料进 `_wrUploadedFiles`（生成时拼进「上传的文件内容」块）
+            window._wrLocalTpls = window._wrLocalTpls || [];
+            window._wrStepTplSel = window._wrStepTplSel || null;
 
-                // 使用缓存的数据，不再重复读DB（模板来自 _wrAllTpls，参考资料来自 _wrAllMats）
-                var mats = window._wrAllMats || [];
-                var tpls = window._wrAllTpls || [];
+            // 两路来源菜单（点「选择模板 ▾」/「＋ 添加 ▾」弹出）
+            window.wrStepAddMenu = function(kind, anchor) {
+                var old = document.getElementById('wr-step-add-menu');
+                if (old) old.remove();
+                var menu = document.createElement('div');
+                menu.id = 'wr-step-add-menu';
+                menu.className = 'wr-step-menu';
+                menu.style.cssText = 'position:fixed;z-index:10200;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.14);padding:4px;min-width:152px;font-size:0.84rem;';
+                var r = (anchor && anchor.getBoundingClientRect) ? anchor.getBoundingClientRect() : null;
+                menu.style.top = (r ? r.bottom + 6 : 120) + 'px';
+                menu.style.left = Math.max(8, (r ? r.right : 300) - 152) + 'px';
+                var itemCss = 'padding:8px 10px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px;';
+                menu.innerHTML = '<div class="wr-step-menu-item" data-src="local" style="' + itemCss + '">💻 本地文件</div>'
+                    + '<div class="wr-step-menu-item" data-src="lib" style="' + itemCss + '">📚 资料库</div>';
+                Array.prototype.forEach.call(menu.children, function(el) {
+                    el.onmouseover = function() { el.style.background = '#eff6ff'; };
+                    el.onmouseout = function() { el.style.background = ''; };
+                    el.onclick = function() {
+                        menu.remove();
+                        if (el.getAttribute('data-src') === 'local') wrStepPickLocal(kind);
+                        else wrStepOpenLibrary(kind);      // 【二改】不再"聚焦常显控件"，改为弹出资料库选择层
+                    };
+                });
+                document.body.appendChild(menu);
+                setTimeout(function() {
+                    document.addEventListener('click', function _close(ev) {
+                        if (!menu.contains(ev.target) && ev.target !== anchor) { menu.remove(); document.removeEventListener('click', _close); }
+                    });
+                }, 0);
+            };
+
+            // 「📚 资料库」选择层：只有点进来才展开资料库内容（模板=单选；参考资料=多选）
+            function wrStepOpenLibrary(kind) {
+                var old = document.getElementById('wr-step-lib');
+                if (old) old.remove();
+                var libTpls = window._wrAllTpls || [];
+                var localTpls = window._wrLocalTpls || [];
+                var libMats = (window._wrAllMats || []).filter(function(m) { return m.matType !== 'template'; });
+                var selIds = window._wrSelectedMaterialIds || [];
+                var cur = window._wrStepTplSel;
+                var rowCss = 'display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;font-size:0.85rem;';
+                var rowCls = 'wr-step-lib-row';
+                var body = '';
+                if (kind === 'template') {
+                    body += '<label class="' + rowCls + '" style="' + rowCss + '"><input type="radio" name="wr-step-lib-tpl" value=""' + (!cur ? ' checked' : '') + '> <span>不使用模板</span></label>';
+                    libTpls.forEach(function(t) {
+                        var on = (cur && cur.src !== 'local' && String(cur.id) === String(t.id));
+                        body += '<label class="' + rowCls + '" style="' + rowCss + '"><input type="radio" name="wr-step-lib-tpl" value="lib:' + wrEsc(String(t.id)) + '"' + (on ? ' checked' : '') + '> <span>📄 ' + wrEsc(t.title) + '</span></label>';
+                    });
+                    localTpls.forEach(function(t) {
+                        var on = (cur && cur.src === 'local' && String(cur.id) === String(t.id));
+                        body += '<label class="' + rowCls + '" style="' + rowCss + '"><input type="radio" name="wr-step-lib-tpl" value="local:' + wrEsc(String(t.id)) + '"' + (on ? ' checked' : '') + '> <span>💻 ' + wrEsc(t.title) + '（本地）</span></label>';
+                    });
+                    if (!libTpls.length && !localTpls.length) body += '<div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:0.85rem;">资料库里还没有模板</div>';
+                } else {
+                    if (!libMats.length) body += '<div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:0.85rem;">资料库里还没有参考资料</div>';
+                    libMats.forEach(function(m) {
+                        var on = selIds.indexOf(m.id) !== -1;
+                        var t = (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它';
+                        body += '<label class="' + rowCls + '" style="' + rowCss + '"><input type="checkbox" class="wr-step-lib-mat" value="' + m.id + '"' + (on ? ' checked' : '') + '> <span style="flex:1;">' + wrEsc(m.title || m.fileName) + '</span><span style="font-size:0.72rem;color:var(--text-secondary);">' + wrEsc(t) + '</span></label>';
+                    });
+                }
+                var overlay = document.createElement('div');
+                overlay.id = 'wr-step-lib';
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10250;display:flex;align-items:center;justify-content:center;';
+                overlay.innerHTML = '<div class="wr-step-panel" style="background:#fff;border-radius:14px;padding:18px;width:min(520px,94vw);max-height:80vh;display:flex;flex-direction:column;gap:10px;">'
+                    + '<div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:700;font-size:0.94rem;color:var(--primary);">📚 资料库中选' + (kind === 'template' ? '模板' : '参考资料') + '</span><button onclick="document.getElementById(\'wr-step-lib\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.15rem;">✕</button></div>'
+                    + '<div style="font-size:0.78rem;color:var(--text-secondary);">' + (kind === 'template' ? '单选；本地模板与资料库模板都在这里，可随时切换。' : '可多选；与「💻 本地文件」添加的参考资料会一起交给 AI。') + '</div>'
+                    + '<div style="display:flex;flex-direction:column;gap:5px;overflow-y:auto;max-height:52vh;">' + body + '</div>'
+                    + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="wrStepLibConfirm(\'' + kind + '\')" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:0.88rem;font-weight:600;cursor:pointer;">确定</button>'
+                    + '<button class="wr-step-btn-plain" onclick="document.getElementById(\'wr-step-lib\').remove()" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:#f8fafc;font-size:0.88rem;cursor:pointer;">取消</button></div></div>';
+                document.body.appendChild(overlay);
+            }
+
+            // 资料库选择层：确定
+            window.wrStepLibConfirm = function(kind) {
+                var box = document.getElementById('wr-step-lib');
+                if (kind === 'template') {
+                    var picked = null;
+                    Array.prototype.forEach.call(box.querySelectorAll('input[name="wr-step-lib-tpl"]:checked'), function(r) { picked = r; });
+                    var v = picked ? picked.value : '';
+                    if (!v) {
+                        window._wrStepTplSel = null;                       // 不使用模板
+                    } else {
+                        var parts = v.split(':');
+                        var src = parts[0], tid = parts.slice(1).join(':');
+                        var list = src === 'local' ? (window._wrLocalTpls || []) : (window._wrAllTpls || []);
+                        var hit = list.filter(function(t) { return String(t.id) === tid; })[0];
+                        window._wrStepTplSel = hit ? { src: src, id: hit.id, title: hit.title } : null;
+                    }
+                } else {
+                    var ids = [];
+                    Array.prototype.forEach.call(box.querySelectorAll('input.wr-step-lib-mat:checked'), function(cb) { ids.push(parseInt(cb.value, 10)); });
+                    window._wrSelectedMaterialIds = ids;
+                }
+                box.remove();
+                wrStepRenderChips();
+            };
+
+            // 注：【v3.76】原先这里有一份"本地文件专用"的解析实现，已删除 ——
+            //   本地选择现在与「资料中心导入」共用 `wrImportFiles` + `wrParseIntoItem`（同一套解析、同一张表），
+            //   保留第二份解析正是"同一文件两处解析结果不一致"的来源。
+
+            // 「💻 本地文件」这条路：**导入资料库**（与资料中心导入同一套解析/同一张表），导入后自动选中
+            //   · 模板：直接以 matType='template' 入库 → 自动选中（"本地模板"随即变成资料库模板）
+            //   · 参考资料：先让用户选资料类型（与资料中心一致）→ 入库 → 自动加入已选
+            function wrStepPickLocal(kind) {
+                if (kind !== 'template') { wrStepAskMatType(function(matType) { wrStepLocalFileInput(kind, matType); }); return; }
+                wrStepLocalFileInput(kind, 'template');
+            }
+
+            // 资料类型选择（与「资料中心 → 导入」的分类保持一致：模板/报告/检查信息/故障/文电/其它）
+            function wrStepAskMatType(cb) {
+                var old = document.getElementById('wr-step-mattype');
+                if (old) old.remove();
+                var keys = ['template', 'history', 'inspect', 'fault', 'dispatch', 'other'];
+                var iconOf = { template: '📄', history: '📊', inspect: '🧾', fault: '🛠️', dispatch: '📢', other: '📁' };
+                var btnCss = 'padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:0.85rem;cursor:pointer;text-align:left;';
+                var body = keys.map(function(k) {
+                    var t = WR_MAT_TYPES[k] || { label: k };
+                    return '<button type="button" class="wr-step-type-btn" data-k="' + k + '" style="' + btnCss + '">' + (iconOf[k] || '📄') + ' ' + wrEsc(t.label || k) + '</button>';
+                }).join('');
+                var ov = document.createElement('div');
+                ov.id = 'wr-step-mattype';
+                ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10250;display:flex;align-items:center;justify-content:center;';
+                ov.innerHTML = '<div class="wr-step-panel" style="background:#fff;border-radius:14px;padding:18px;width:min(460px,94vw);display:flex;flex-direction:column;gap:10px;">'
+                    + '<div style="font-weight:700;font-size:0.94rem;color:var(--primary);">📚 存到资料库的哪个分类？</div>'
+                    + '<div style="font-size:0.78rem;color:var(--text-secondary);">与「资料中心 → 导入」一致：文件会保存进资料库，之后也能在资料库里复用。</div>'
+                    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' + body + '</div>'
+                    + '<div style="display:flex;justify-content:flex-end;"><button type="button" class="wr-step-btn-plain" data-k="__cancel" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:#f8fafc;font-size:0.88rem;cursor:pointer;">取消</button></div></div>';
+                document.body.appendChild(ov);
+                Array.prototype.forEach.call(ov.querySelectorAll('button[data-k]'), function(b) {
+                    b.onclick = function() {
+                        var k = b.getAttribute('data-k');
+                        ov.remove();
+                        if (k === '__cancel') return;
+                        cb(k);
+                    };
+                });
+            }
+
+            // 选文件 → 走统一导入 → 入库并自动选中
+            function wrStepLocalFileInput(kind, matType) {
+                var inp = document.createElement('input');
+                inp.type = 'file';
+                inp.accept = '.txt,.md,.docx,.pdf,.xlsx,.xls,.csv,.json';
+                inp.multiple = (kind !== 'template');     // 模板用一个；参考资料可多选
+                inp.style.display = 'none';
+                inp.onchange = async function() {
+                    var files = Array.from(inp.files || []);
+                    inp.remove();
+                    if (!files.length) return;
+                    if (kind === 'template') files = files.slice(0, 1);
+                    var toast = document.createElement('div');
+                    toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:white;padding:18px 26px;border-radius:10px;z-index:11000;font-size:14px;';
+                    toast.textContent = '⏳ 正在导入到资料库…';
+                    document.body.appendChild(toast);
+                    try {
+                        var res = await window.wrImportFiles(files, matType);
+                        if (res.libFail) { alert('导入失败：\n· ' + (res.errors || []).join('\n· ')); return; }
+                        // 刷新弹窗用的缓存（资料库列表/模板列表），保证新导入的立刻可选、可见
+                        try { window._wrAllMats = await wrDbGetAll(WR_MAT_STORE); } catch (e) {}
+                        try { window._wrAllTpls = await wrGetAllTemplates(); } catch (e) {}
+                        if (kind === 'template' && res.saved.length) {
+                            var it = res.saved[0];
+                            window._wrLocalTpls = [];                 // 已入资料库 → 不再作为"本地临时模板"
+                            window._wrStepTplSel = { src: 'lib', id: it.id, title: it.title };
+                        } else if (res.saved.length) {
+                            var ids = (window._wrSelectedMaterialIds || []).filter(Boolean);
+                            res.saved.forEach(function(it) { if (ids.indexOf(it.id) === -1) ids.push(it.id); });
+                            window._wrSelectedMaterialIds = ids;
+                        }
+                        wrStepRenderChips();
+                        var okN = res.saved.length, failN = (res.errors || []).length;
+                        if (window.showToast) window.showToast('已保存到资料库并选中 ' + okN + ' 份' + (failN ? '（' + failN + ' 份失败）' : ''), false, 3000);
+                        if (failN) alert('以下文件未能导入：\n· ' + res.errors.join('\n· '));
+                    } catch (e) {
+                        alert('导入失败：' + (e && e.message ? e.message : e));
+                    } finally {
+                        toast.remove();
+                    }
+                };
+                document.body.appendChild(inp);
+                inp.click();
+            }
+
+            // 画"已选结果"：模板一行（本地模板也在这一行可见）+ 参考资料芯片（资料库与本地合并显示），× 可移除
+            function wrStepRenderChips() {
+                var chipCss = 'display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:16px;font-size:0.78rem;background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;';
+                var libChipCss = 'display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:16px;font-size:0.78rem;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;';
+                var tplChipCss = 'display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:16px;font-size:0.82rem;background:#dbeafe;border:1px solid #93c5fd;color:#1e40af;font-weight:600;';
+                var xCss = 'background:none;border:none;cursor:pointer;color:#818cf8;font-size:0.95rem;padding:0;line-height:1;';
+                var emptyCss = 'color:#94a3b8;font-size:0.8rem;';
+
+                // ① 写作模板：显示当前选中的模板（💻 本地 / 📄 资料库），未选则提示"可选"
+                var tplHost = document.getElementById('wr-step-tpl-line');
+                if (tplHost) {
+                    var cur = window._wrStepTplSel;
+                    if (!cur) {
+                        tplHost.innerHTML = '<span class="wr-step-empty" style="' + emptyCss + '">暂未选择（可不使用模板，直接按规范结构生成）</span>';
+                    } else {
+                        var localTpl = (cur.src === 'local');
+                        var tplObj = ((localTpl ? (window._wrLocalTpls || []) : (window._wrAllTpls || [])).filter(function(t) { return String(t.id) === String(cur.id); })[0]);
+                        tplHost.innerHTML = '<span class="wr-step-chip is-tpl" style="' + tplChipCss + '">' + (localTpl ? '💻' : '📄') + ' ' + wrEsc(cur.title || (tplObj && tplObj.title) || '模板')
+                            + '<button type="button" style="' + xCss + '" data-k="tpl-clear">×</button></span>'
+                            + '<span class="wr-step-src" style="font-size:0.72rem;color:#64748b;">' + (localTpl ? '本地文件' : '资料库') + '</span>';
+                    }
+                }
+
+                // ② 参考资料：资料库勾选的 + 本地文件，合并成一行芯片
+                var refHost = document.getElementById('wr-step-ref-line');
+                if (refHost) {
+                    var libIds = (window._wrSelectedMaterialIds || []).filter(Boolean);
+                    var libMats = (window._wrAllMats || []);
+                    var html = libIds.map(function(id) {
+                        var m = libMats.filter(function(x) { return x.id === id; })[0];
+                        var title = m ? (m.title || m.fileName) : ('资料 #' + id);
+                        return '<span class="wr-step-chip is-lib" style="' + libChipCss + '">📁 ' + wrEsc(title)
+                            + '<button type="button" style="' + xCss + '" data-k="lib-ref" data-i="' + id + '">×</button></span>';
+                    }).join('');
+                    var up = window._wrUploadedFiles || [];
+                    html += up.map(function(f, i) {
+                        if (!f) return '';
+                        return '<span class="wr-step-chip is-local" style="' + chipCss + '">💻 ' + wrEsc(f.name)
+                            + '<button type="button" style="' + xCss + '" data-k="local-ref" data-i="' + i + '">×</button></span>';
+                    }).join('');
+                    refHost.innerHTML = html || '<span class="wr-step-empty" style="' + emptyCss + '">暂未选择（生成时会自动检索台账与历史报告）</span>';
+                }
+
+                // 绑定 × 移除
+                ['wr-step-tpl-line', 'wr-step-ref-line'].forEach(function(hostId) {
+                    var host = document.getElementById(hostId);
+                    if (!host) return;
+                    Array.prototype.forEach.call(host.querySelectorAll('button[data-k]'), function(btn) {
+                        btn.onclick = function() {
+                            var k = btn.getAttribute('data-k'), i = btn.getAttribute('data-i');
+                            if (k === 'tpl-clear') {
+                                window._wrStepTplSel = null;
+                            } else if (k === 'lib-ref') {
+                                window._wrSelectedMaterialIds = (window._wrSelectedMaterialIds || []).filter(function(x) { return String(x) !== String(i); });
+                            } else if (k === 'local-ref') {
+                                var idx = parseInt(i, 10);
+                                if (window._wrUploadedFiles && window._wrUploadedFiles[idx]) window._wrUploadedFiles[idx] = null;   // 置空：生成时会 filter(Boolean)
+                            }
+                            wrStepRenderChips();
+                        };
+                    });
+                });
+            }
+            window.wrStepRenderChips = wrStepRenderChips;
+
+            window.wrConfirmSelection = function() {
+                // 【二改】不再从下拉读值：模板来源＝弹窗里的"当前模板"状态（📄 资料库 or 💻 本地），
+                //   参考资料＝状态里的资料库勾选（本地参考资料另存 _wrUploadedFiles，生成时走"上传文件"块）。
+                var cur = window._wrStepTplSel;
                 var selTpl = null;
-                if (selectedVal) {
-                    // value 形如 tpl:mat:123 / tpl:tpl:5，解析来源与原始 id
-                    var parts = selectedVal.split(':');
-                    var src = parts[1]; var tid = parseInt(parts[2], 10);
-                    selTpl = tpls.find(function(t){ return t._src === src && t.id == tid; }) || null;
+                if (cur) {
+                    var pool = (cur.src === 'local') ? (window._wrLocalTpls || []) : (window._wrAllTpls || []);
+                    selTpl = pool.filter(function(t){ return String(t.id) === String(cur.id); })[0] || null;
                 }
                 window._wrSelectedTemplate = selTpl;
-                window._wrSelectedMaterialIds = selectedMatIds;
+                window._wrSelectedMaterialIds = (window._wrSelectedMaterialIds || []).filter(Boolean);
                 // 修复：确认选择后立即刷新预览区，使已选模板/资料即时显示，不再残留"尚未选择"
                 var _q = (document.getElementById('wr-query-input') || {}).value || '';
                 try { wrUpdateMaterialPreview(_q); } catch (e) { console.warn('刷新资料预览失败', e); }
@@ -1001,6 +1247,227 @@
                 const modal = document.getElementById('wr-import-type-modal');
                 if (modal) modal.style.display = 'flex';
             };
+
+            // ---- 【v3.76】统一导入实现：资料中心导入 与 智能写作「本地文件」共用同一套解析 + 入库逻辑 ----
+            //   为什么抽出来：用户要求"本地上传的资料要和资料中心导入的一样能存进资料库，文本解析要一致"。
+            //   两条路若各写一份解析，日后必然出现"同一个文件两处解析结果不同"。此函数是唯一实现。
+            //   files: File[]；matType: WR_MAT_TYPES 的 key（template/history/inspect/fault/dispatch/other）
+            //   返回 { saved:[已入库记录(含 id)], errors:['文件名：原因'], processed, libFail }
+            //   ⚠️ 解析分支与原「资料中心导入」逐字一致：JSON 备份拆分（materials/reports 分流）、
+            //      docx→mammoth(htmlToTextPreserveTables)、xlsx→XLSX、pdf→pdf.js、.doc 提示、其它按文本兜底。
+            window.wrImportFiles = async function(files, matType) {
+                var saved = [], errors = [];
+                files = Array.from(files || []);
+                if (!files.length) return { saved: saved, errors: errors, processed: 0, libFail: false };
+                // 确保数据库已打开（失败时用 libFail 让调用方统一按"中止 + 提示"处理，不留半成品/不吞异常）
+                try {
+                    await wrOpenDB();
+                    console.log('[导入] 数据库已打开');
+                } catch (dbErr) {
+                    console.error('[导入] 数据库打开失败:', dbErr);
+                    return { saved: saved, errors: ['数据库打开失败：' + (dbErr && dbErr.message ? dbErr.message : '未知错误')], processed: 0, libFail: true };
+                }
+                // 按需加载解析库（只在这批文件真的需要时才联网加载，失败则明确报错，不留半成品）
+                var needXlsx = files.some(function(f) { return /\.(xlsx|xls)$/i.test(f.name); });
+                var needDocx = files.some(function(f) { return /\.docx$/i.test(f.name); });
+                if (needXlsx && !(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', { feature: '资料导入', silent: true }))) {
+                    return { saved: saved, errors: ['解析组件（Excel）未能联网加载，请联网后重试'], processed: 0, libFail: true };
+                }
+                if (needDocx && !(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js', { feature: '资料导入', silent: true }))) {
+                    return { saved: saved, errors: ['解析组件（Word）未能联网加载，请联网后重试'], processed: 0, libFail: true };
+                }
+                for (const file of files) {
+                    console.log('[导入] 开始处理文件:', file.name, '类型:', matType);
+                    try {
+                        const item = {
+                            matType: matType,
+                            fileName: file.name,
+                            title: file.name.replace(/\.[^.]+$/, ''), // 去掉扩展名作为标题
+                            fileSize: file.size,
+                            importAt: Date.now(),
+                            content: '',
+                            rawText: ''
+                        };
+                        await wrParseIntoItem(item, file, matType);   // ← 解析（与资料中心完全同一套）
+                        if (item.__jsonSplit) continue;   // JSON 备份：内容已按记录拆分入库，不再存"文件级"记录
+                        console.log('[导入] 准备保存到数据库:', item.title);
+                        const savedId = await wrDbPut(WR_MAT_STORE, item);
+                        console.log('[导入] 保存成功, ID:', savedId);
+                        item.id = savedId;
+                        saved.push(item);
+                    } catch (err) {
+                        console.error('导入失败：' + file.name, err);
+                        errors.push(file.name + ': ' + (err.message || '未知错误'));
+                    }
+                }
+                return { saved: saved, errors: errors, processed: files.length, libFail: false };
+            };
+
+            // 单文件解析 → 填充 item（原「资料中心导入」的解析主体，逐字搬移，勿改语义）
+            async function wrParseIntoItem(item, file, matType) {
+                {
+                    // 根据文件类型解析内容
+                    if (file.name.endsWith('.json')) {
+                        const text = await file.text();
+                        try {
+                            const data = JSON.parse(text);
+                            // 检测是否为导出备份格式（含 materials / reports 数组）
+                            let jsonItems = null;
+                            let jsonReports = null;
+                            if (data.materials && Array.isArray(data.materials)) jsonItems = data.materials;
+                            if (data.reports && Array.isArray(data.reports)) jsonReports = data.reports;
+                            if (!jsonItems && Array.isArray(data)) jsonItems = data;
+                            if (jsonItems && jsonItems.length > 0) {
+                                console.log('[导入] JSON检测到' + jsonItems.length + '条资料记录，拆分存储');
+                                for (const ji of jsonItems) {
+                                    const jiTitle = ji.title || ji.name || ji.fileName || file.name + '_' + jsonItems.indexOf(ji);
+                                    const jiContent = ji.content || '';
+                                    const jiMatType = ji.matType || ji.type || matType; // 优先用自带分类，否则用用户选的
+                                    await wrDbPut(WR_MAT_STORE, {
+                                        matType:   jiMatType,
+                                        fileName:  ji.fileName || file.name,
+                                        title:     String(jiTitle).slice(0, 200),
+                                        fileSize:  ji.fileSize || file.size,
+                                        importAt:  ji.importAt || Date.now(),
+                                        content:   String(jiContent).slice(0, 20000),
+                                        sheets:    ji.sheets || null,
+                                        rowCount:  ji.rowCount || null,
+                                        rawText:   String(jiContent).slice(0, 5000)
+                                    });
+                                }
+                            }
+                            // 同时导入历史报告
+                            if (jsonReports && jsonReports.length > 0) {
+                                console.log('[导入] JSON检测到' + jsonReports.length + '篇历史报告，写入数据库');
+                                // ⚠️ 字段名必须与 wrSaveReport 的 schema 对齐（query/date/category/source/templateId）；
+                                //    也不能沿用备份里的 id（本机自增 id 命中即静默覆盖本地报告）。
+                                let rptImported = 0;
+                                for (const r of jsonReports) {
+                                    if (!r || typeof r !== 'object') continue;
+                                    await wrDbPut(WR_RPT_STORE, {
+                                        title:     r.title || '导入的报告',
+                                        content:   r.content || '',
+                                        query:     r.query || r.prompt || '',
+                                        category:  r.category || 'other',
+                                        date:      r.date || r.createdAt || Date.now(),
+                                        templateId: r.templateId != null ? r.templateId : null,
+                                        source:    r.source || 'import',
+                                        materialCount: r.materialCount || { issues: 0, rules: 0, reports: 0 }
+                                    });
+                                    rptImported++;
+                                }
+                                console.log('[导入] 历史报告已写入 ' + rptImported + ' 篇（不沿用备份 id，避免覆盖本机同 id 报告）');
+                            }
+                            if (jsonItems || jsonReports) {
+                                // 备份文件：内容已按记录拆分入库，本条"文件级"记录不再单独存
+                                item.__jsonSplit = true;
+                                return;
+                            }
+                            // 非数组格式（单条JSON对象），作为整体存储
+                            item.content = JSON.stringify(data);
+                            item.rawText = typeof data === 'object' ? JSON.stringify(data, null, 2).slice(0, 5000) : String(data);
+                        } catch (err) {
+                            item.rawText = text.slice(0, 5000);
+                            item.content = text;
+                        }
+                    } else if (file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+                        const text = await file.text();
+                        item.rawText = text.slice(0, 10000);
+                        item.content = text;
+                    } else if (file.name.endsWith('.docx')) {
+                        // 使用mammoth解析DOCX
+                        if (typeof mammoth === 'undefined') {
+                            console.warn('[导入] mammoth 库未加载，尝试直接读取文件信息');
+                            item.rawText = '[DOCX文件 - 需要mammoth库解析内容]';
+                            item.content = '[DOCX文件内容暂无法解析]';
+                        } else {
+                            try {
+                                const arrayBuffer = await file.arrayBuffer();
+                                const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                                const text = window._htmlToTextPreserveTables(result.value || '');
+                                item.content = text;
+                                item.rawText = text.slice(0, 10000);
+                                // 如果是模板类型，保存原始 ArrayBuffer 用于后续 DOCX 导出
+                                if (matType === 'template') item.templateBuffer = arrayBuffer;
+                            } catch (err) {
+                                console.error('[导入] DOCX解析失败:', err);
+                                item.rawText = '[DOCX解析失败: ' + (err.message || '未知错误') + ']';
+                                item.content = item.rawText;
+                            }
+                        }
+                    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                        // 使用xlsx解析Excel
+                        if (typeof XLSX === 'undefined') {
+                            console.warn('[导入] XLSX 库未加载，尝试直接读取文件信息');
+                            item.rawText = '[Excel文件 - 需要XLSX库解析内容]';
+                            item.content = '[Excel文件内容暂无法解析]';
+                        } else {
+                            try {
+                                const arrayBuffer = await file.arrayBuffer();
+                                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                                let allText = '';
+                                const sheets = [];
+                                workbook.SheetNames.forEach(sheetName => {
+                                    const worksheet = workbook.Sheets[sheetName];
+                                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                                    sheets.push({ name: sheetName, rows: jsonData.length });
+                                    allText += '【' + sheetName + '】\n';
+                                    jsonData.slice(0, 50).forEach(row => {
+                                        allText += row.join('\t') + '\n';
+                                    });
+                                    allText += '\n';
+                                });
+                                item.content = allText.slice(0, 20000);
+                                item.rawText = allText.slice(0, 10000);
+                                item.sheets = JSON.stringify(sheets);
+                                item.rowCount = sheets.reduce((sum, s) => sum + s.rows, 0);
+                            } catch (err) {
+                                console.error('[导入] Excel解析失败:', err);
+                                item.rawText = '[Excel解析失败: ' + (err.message || '未知错误') + ']';
+                                item.content = item.rawText;
+                            }
+                        }
+                    } else if (file.name.endsWith('.pdf')) {
+                        // 使用 pdf.js 提取 PDF 文字内容
+                        if (typeof pdfjsLib === 'undefined') {
+                            console.warn('[导入] pdf.js 库未加载');
+                            item.rawText = '[PDF文件 - 需要 pdf.js 库解析内容]';
+                            item.content = '[PDF文件内容暂无法解析]';
+                        } else {
+                            try {
+                                const arrayBuffer = await file.arrayBuffer();
+                                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                                let fullText = '';
+                                const maxPages = Math.min(pdf.numPages, 50);
+                                for (let p = 1; p <= maxPages; p++) {
+                                    const page = await pdf.getPage(p);
+                                    const tc = await page.getTextContent();
+                                    fullText += tc.items.map(it => it.str).join(' ') + '\n';
+                                }
+                                item.content = fullText.trim();
+                                item.rawText = fullText.trim().slice(0, 10000);
+                            } catch (err) {
+                                console.error('[导入] PDF解析失败:', err);
+                                item.rawText = '[PDF解析失败]';
+                                item.content = item.rawText;
+                            }
+                        }
+                    } else if (file.name.endsWith('.doc') && !file.name.endsWith('.docx')) {
+                        item.content = '[暂不支持 .doc 格式（旧版Word二进制格式）。请将文件另存为 .docx 格式后重新导入。]';
+                        item.rawText = '[不支持的文档格式: .doc，请转换为 .docx]';
+                    } else {
+                        // 其他类型，尝试读取为文本
+                        try {
+                            const text = await file.text();
+                            item.rawText = text.slice(0, 5000);
+                            item.content = text;
+                        } catch (err) {
+                            item.rawText = '[' + file.name + '] 文件内容无法读取';
+                            item.content = item.rawText;
+                        }
+                    }
+                }
+            }
 
             // ---- 按类型导入文件 ----
             window.wrImportWithType = async function(matType) {
@@ -1029,235 +1496,17 @@
                     loadingToast.innerHTML = '<div style="text-align:center;"><div style="margin-bottom:10px;">⏳ 正在导入文件...</div><div style="font-size:12px;opacity:0.8;">请稍候</div></div>';
                     document.body.appendChild(loadingToast);
                     
-                    let processed = 0;
-                    let successCount = 0;
-                    let errorMessages = [];
-                    
-                    // 确保数据库已打开
-                    try {
-                        await wrOpenDB();
-                        console.log('[导入] 数据库已打开');
-                    } catch(dbErr) {
-                        console.error('[导入] 数据库打开失败:', dbErr);
-                        loadingToast.remove();
-                        alert('数据库打开失败: ' + (dbErr.message || '未知错误'));
-                        fileInput.remove();
-                        return;
-                    }
-                    
-                    // 按需加载解析库：失败时 loadingToast 会永久残留、fileInput 也不移除，
-                    // 用户只能刷新页面。这里显式处理失败路径。
-                    if (!(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', { feature: '资料导入', silent: true })) ||
-                        !(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js', { feature: '资料导入', silent: true }))) {
+                    // 【v3.76 统一导入】与「智能写作 · 本地文件」共用同一条链路：
+                    //   同一套解析（wrParseIntoItem） + 同一张 writing_materials 表，两条路结果必然一致。
+                    const _imp = await window.wrImportFiles(files, matType);
+                    const successCount = _imp.saved.length;
+                    const errorMessages = _imp.errors.slice();
+                    if (_imp.libFail) {
                         loadingToast.remove();
                         fileInput.remove();
-                        window.showToast('资料导入所需的解析组件未能联网加载，请联网后重试（成功加载一次后会自动缓存）', true, 8000);
+                        window.showToast(errorMessages[0] || '解析组件加载失败', true, 8000);
                         return;
                     }
-                    
-                    for (const file of files) {
-                        console.log('[导入] 开始处理文件:', file.name, '类型:', matType);
-                        try {
-                            const item = {
-                                matType: matType,
-                                fileName: file.name,
-                                title: file.name.replace(/\.[^.]+$/, ''), // 去掉扩展名作为标题
-                                fileSize: file.size,
-                                importAt: Date.now(),
-                                content: '',
-                                rawText: ''
-                            };
-                            
-                            // 根据文件类型解析内容
-                            if (file.name.endsWith('.json')) {
-                                const text = await file.text();
-                                try {
-                                    const data = JSON.parse(text);
-                                    
-                                    // 检测是否为导出备份格式（含 materials / reports 数组）
-                                    let jsonItems = null;
-                                    let jsonReports = null;
-                                    if (data.materials && Array.isArray(data.materials)) {
-                                        jsonItems = data.materials; // 导出备份格式，拆分存储
-                                    }
-                                    if (data.reports && Array.isArray(data.reports)) {
-                                        jsonReports = data.reports;
-                                    }
-                                    if (!jsonItems && Array.isArray(data)) {
-                                        jsonItems = data; // 纯数组格式，拆分存储
-                                    }
-
-                                    if (jsonItems && jsonItems.length > 0) {
-                                        // 拆分存储：每条记录独立存入数据库
-                                        console.log('[导入] JSON检测到' + jsonItems.length + '条资料记录，拆分存储');
-                                        for (const ji of jsonItems) {
-                                            const jiTitle = ji.title || ji.name || ji.fileName || file.name + '_' + jsonItems.indexOf(ji);
-                                            const jiContent = ji.content || '';
-                                            const jiMatType = ji.matType || ji.type || matType; // 优先用自带分类，否则用用户选的
-                                            
-                                            await wrDbPut(WR_MAT_STORE, {
-                                                matType:   jiMatType,
-                                                fileName:  ji.fileName || file.name,
-                                                title:     String(jiTitle).slice(0, 200),
-                                                fileSize:  ji.fileSize || file.size,
-                                                importAt:  ji.importAt || Date.now(),
-                                                content:   String(jiContent).slice(0, 20000),
-                                                sheets:    ji.sheets || null,
-                                                rowCount:  ji.rowCount || null,
-                                                rawText:   String(jiContent).slice(0, 5000)
-                                            });
-                                        }
-                                    }
-
-                                    // 同时导入历史报告
-                                    if (jsonReports && jsonReports.length > 0) {
-                                        console.log('[导入] JSON检测到' + jsonReports.length + '篇历史报告，写入数据库');
-                                        // ⚠️ 字段名必须与 wrSaveReport 的 schema 对齐（query/date/category/source/templateId）。
-                                        // 原先读的是 prompt/createdAt：导入后分类全变"未分类"，日期被 wrMigrateReportDates
-                                        // 用导入时刻回填 → 所有历史报告日期都变成导入当天，原始 query 也丢失。
-                                        // ⚠️ 也不能沿用备份里的 id：本机报告 id 同样是自增 1..N，命中即**静默覆盖**本地不同内容的报告。
-                                        let rptImported = 0;
-                                        for (const r of jsonReports) {
-                                            if (!r || typeof r !== 'object') continue;
-                                            await wrDbPut(WR_RPT_STORE, {
-                                                title:     r.title || '导入的报告',
-                                                content:   r.content || '',
-                                                query:     r.query || r.prompt || '',
-                                                category:  r.category || 'other',
-                                                date:      r.date || r.createdAt || Date.now(),
-                                                templateId: r.templateId != null ? r.templateId : null,
-                                                source:    r.source || 'import',
-                                                materialCount: r.materialCount || { issues: 0, rules: 0, reports: 0 }
-                                            });
-                                            rptImported++;
-                                        }
-                                        console.log('[导入] 历史报告已写入 ' + rptImported + ' 篇（不沿用备份 id，避免覆盖本机同 id 报告）');
-                                    }
-
-                                    if (jsonItems || jsonReports) {
-                                        processed++;
-                                        // 文件级成功计数（与分母 files.length 一致）：仅当确有记录/报告写入才计 1
-                                        if ((jsonItems && jsonItems.length > 0) || (jsonReports && jsonReports.length > 0)) successCount++;
-                                        continue;
-                                    }
-                                    
-                                    // 非数组格式（单条JSON对象），作为整体存储
-                                    item.content = JSON.stringify(data);
-                                    item.rawText = typeof data === 'object' ? JSON.stringify(data, null, 2).slice(0, 5000) : String(data);
-                                } catch(err) {
-                                    item.rawText = text.slice(0, 5000);
-                                    item.content = text;
-                                }
-                            } else if (file.name.endsWith('.txt')) {
-                                const text = await file.text();
-                                item.rawText = text.slice(0, 10000);
-                                item.content = text;
-                            } else if (file.name.endsWith('.docx')) {
-                                // 使用mammoth解析DOCX
-                                if (typeof mammoth === 'undefined') {
-                                    console.warn('[导入] mammoth 库未加载，尝试直接读取文件信息');
-                                    item.rawText = '[DOCX文件 - 需要mammoth库解析内容]';
-                                    item.content = '[DOCX文件内容暂无法解析]';
-                                } else {
-                                    try {
-                                        const arrayBuffer = await file.arrayBuffer();
-                                        const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
-                                        const text = window._htmlToTextPreserveTables(result.value || '');
-                                        item.content = text;
-                                        item.rawText = text.slice(0, 10000);
-                                        // 如果是模板类型，保存原始 ArrayBuffer 用于后续 DOCX 导出
-                                        if (matType === 'template') {
-                                            item.templateBuffer = arrayBuffer;
-                                        }
-                                    } catch(err) {
-                                        console.error('[导入] DOCX解析失败:', err);
-                                        item.rawText = '[DOCX解析失败: ' + (err.message || '未知错误') + ']';
-                                        item.content = item.rawText;
-                                    }
-                                }
-                            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                                // 使用xlsx解析Excel
-                                if (typeof XLSX === 'undefined') {
-                                    console.warn('[导入] XLSX 库未加载，尝试直接读取文件信息');
-                                    item.rawText = '[Excel文件 - 需要XLSX库解析内容]';
-                                    item.content = '[Excel文件内容暂无法解析]';
-                                } else {
-                                    try {
-                                        const arrayBuffer = await file.arrayBuffer();
-                                        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-                                        let allText = '';
-                                        const sheets = [];
-                                        workbook.SheetNames.forEach(sheetName => {
-                                            const worksheet = workbook.Sheets[sheetName];
-                                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                                            sheets.push({ name: sheetName, rows: jsonData.length });
-                                            allText += '【' + sheetName + '】\n';
-                                            jsonData.slice(0, 50).forEach(row => {
-                                                allText += row.join('\t') + '\n';
-                                            });
-                                            allText += '\n';
-                                        });
-                                        item.content = allText.slice(0, 20000);
-                                        item.rawText = allText.slice(0, 10000);
-                                        item.sheets = JSON.stringify(sheets);
-                                        item.rowCount = sheets.reduce((sum, s) => sum + s.rows, 0);
-                                    } catch(err) {
-                                        console.error('[导入] Excel解析失败:', err);
-                                        item.rawText = '[Excel解析失败: ' + (err.message || '未知错误') + ']';
-                                        item.content = item.rawText;
-                                    }
-                                }
-                            } else if (file.name.endsWith('.pdf')) {
-                                // 使用 pdf.js 提取 PDF 文字内容
-                                if (typeof pdfjsLib === 'undefined') {
-                                    console.warn('[导入] pdf.js 库未加载');
-                                    item.rawText = '[PDF文件 - 需要 pdf.js 库解析内容]';
-                                    item.content = '[PDF文件内容暂无法解析]';
-                                } else {
-                                    try {
-                                        const arrayBuffer = await file.arrayBuffer();
-                                        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                                        let fullText = '';
-                                        const maxPages = Math.min(pdf.numPages, 50);
-                                        for (let p = 1; p <= maxPages; p++) {
-                                            const page = await pdf.getPage(p);
-                                            const tc = await page.getTextContent();
-                                            fullText += tc.items.map(it => it.str).join(' ') + '\n';
-                                        }
-                                        item.content = fullText.trim();
-                                        item.rawText = fullText.trim().slice(0, 10000);
-                                    } catch(err) {
-                                        console.error('[导入] PDF解析失败:', err);
-                                        item.rawText = '[PDF解析失败]';
-                                        item.content = item.rawText;
-                                    }
-                                }
-                            } else if (file.name.endsWith('.doc') && !file.name.endsWith('.docx')) {
-                                item.content = '[暂不支持 .doc 格式（旧版Word二进制格式）。请将文件另存为 .docx 格式后重新导入。]';
-                                item.rawText = '[不支持的文档格式: .doc，请转换为 .docx]';
-                            } else {
-                                // 其他类型，尝试读取为文本
-                                try {
-                                    const text = await file.text();
-                                    item.rawText = text.slice(0, 5000);
-                                    item.content = text;
-                                } catch(err) {
-                                    item.rawText = '[' + file.name + '] 文件内容无法读取';
-                                    item.content = item.rawText;
-                                }
-                            }
-                            
-                            console.log('[导入] 准备保存到数据库:', item.title);
-                            const savedId = await wrDbPut(WR_MAT_STORE, item);
-                            console.log('[导入] 保存成功, ID:', savedId);
-                            successCount++;
-                        } catch(err) {
-                            console.error('导入失败：' + file.name, err);
-                            errorMessages.push(file.name + ': ' + (err.message || '未知错误'));
-                        }
-                        processed++;
-                    }
-                    
                     // 移除加载提示
                     loadingToast.remove();
                     
@@ -1645,23 +1894,39 @@
                 const issues = typeof window.getIssueData === 'function' ? window.getIssueData() : [];
                 if (!issues.length || !parsedQuery.dateRange) return null;
                 const { start, end } = parsedQuery.dateRange;
-                const filtered = issues.filter(iss => {
-                    if (!iss.datetime) return false;
-                    const d = new Date(iss.datetime);
-                    return d >= new Date(start) && d <= new Date(end);
-                });
+                // 【v3.76 口径统一】筛选/统计改用 utils.js 的共用实现（与风险研判同一口径，避免两处数字打架）：
+                //   · 性质仍按 A/B/C/红线/其他 归类，且归一优先级与本文原实现完全一致 → 写作侧数字不变；
+                //   · 日期边界改为本地日：原 `new Date('YYYY-MM-DD')` 是 UTC 零点（= 本地 08:00），
+                //     会把起始日 00:00–08:00 的记录漏掉、又把结束日次日 00:00–08:00 的多算进来（本次修掉）；
+                //   · 共用实现缺失（浏览器还跑着旧缓存脚本）时退回原实现，功能不受影响。
+                const _shared = (typeof window.dsIssueFilter === 'function' && typeof window.dsIssueAggregate === 'function');
+                let filtered, agg = null;
+                if (_shared) {
+                    filtered = window.dsIssueFilter(issues, { start: start, end: end });
+                    agg = window.dsIssueAggregate(filtered, { topN: 5 });
+                } else {
+                    filtered = issues.filter(iss => {
+                        if (!iss.datetime) return false;
+                        const d = new Date(iss.datetime);
+                        return d >= new Date(start) && d <= new Date(end);
+                    });
+                }
                 if (filtered.length === 0) return null;
                 const total = filtered.length;
                 const catMap = { 'A': 0, 'B': 0, 'C': 0, '红线': 0, '其他': 0 };
-                filtered.forEach(iss => {
-                    const xz = (iss['性质'] || '').trim();
-                    if (xz.includes('A')) catMap['A']++;
-                    else if (xz.includes('B')) catMap['B']++;
-                    else if (xz.includes('C')) catMap['C']++;
-                    else if (xz.includes('红线')) catMap['红线']++;
-                    else catMap['其他']++;
-                });
-                const typicals = filtered.slice(0, 5).map((iss, idx) =>
+                if (agg) {
+                    Object.keys(catMap).forEach(k => { catMap[k] = agg.quality[k] || 0; });
+                } else {
+                    filtered.forEach(iss => {
+                        const xz = (iss['性质'] || '').trim();
+                        if (xz.includes('A')) catMap['A']++;
+                        else if (xz.includes('B')) catMap['B']++;
+                        else if (xz.includes('C')) catMap['C']++;
+                        else if (xz.includes('红线')) catMap['红线']++;
+                        else catMap['其他']++;
+                    });
+                }
+                const typicals = agg ? agg.typicals.join('\n') : filtered.slice(0, 5).map((iss, idx) =>
                     (idx + 1) + '. [' + (iss['性质'] || '') + '][' + (iss.category || '') + '] ' + String(iss.content || '').slice(0, 100)
                 ).join('\n');
                 return { total, catMap, typicals, dateLabel: parsedQuery.dateLabel || '' };
@@ -1840,13 +2105,19 @@
 
             async function wrUpdateMaterialPreview(query) {
                 const tags = [];
+                // 【v3.76】本地来源也要在预览里可见（本地模板 / 本地参考资料）
+                const _localRefs = (window._wrUploadedFiles || []).filter(Boolean);
                 if (window._wrSelectedTemplate) {
-                    tags.push('<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📄 ' + wrEsc(window._wrSelectedTemplate.title) + '</span>');
+                    var _isLocalTpl = window._wrSelectedTemplate._src === 'local';
+                    tags.push('<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.78rem;">' + (_isLocalTpl ? '💻' : '📄') + ' ' + wrEsc(window._wrSelectedTemplate.title) + '</span>');
                 }
                 if (window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0) {
                     tags.push('<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;border-radius:20px;font-size:0.78rem;">📁 已选' + window._wrSelectedMaterialIds.length + '份资料</span>');
                 }
-                if (!window._wrSelectedTemplate && (!window._wrSelectedMaterialIds || window._wrSelectedMaterialIds.length === 0)) {
+                if (_localRefs.length > 0) {
+                    tags.push('<span style="background:#eef2ff;color:#4338ca;padding:3px 10px;border-radius:20px;font-size:0.78rem;">💻 本地文件 ' + _localRefs.length + ' 份</span>');
+                }
+                if (!window._wrSelectedTemplate && (!window._wrSelectedMaterialIds || window._wrSelectedMaterialIds.length === 0) && _localRefs.length === 0) {
                     tags.push('<span style="color:#d97706;font-size:0.78rem;">⚠️ 尚未选择模板和资料，请点击「开始写作」选择</span>');
                 }
 

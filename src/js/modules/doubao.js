@@ -1231,8 +1231,11 @@
             var _sessionDataSource = (function(){
                 try { var s = localStorage.getItem('ds_datasource_v1'); return s ? JSON.parse(s) : null; } catch(e){ return null; }
             })();
+            // 【v3.76】数据源默认值的**唯一**定义。此前 loadDsCfg()、_dsRunStream()、dsBuildSystemPrompt()
+            //   各写一份，且 remember 默认值不一致（面板默认 true、会话兜底默认 false）—— 三处漂移的典型隐患。
+            var DS_DEFAULT_CFG = { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: true };
             (function initDataSourceDropdown() {
-                var btn = document.getElementById('ds-reset-datasource-btn');
+                var btn = document.getElementById('ds-datasource-btn');
                 var menu = document.getElementById('ds-datasource-menu');
                 if (!btn || !menu) return;
 
@@ -1254,7 +1257,13 @@
                     });
                 }
                 function loadDsCfg() {
-                    var def = _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: true };
+                    var def = _sessionDataSource || DS_DEFAULT_CFG;
+                    // 【v3.76】确认按钮文案随场景：输入框有内容 → 点它会「应用并发送」，如实标注，避免"只想保存却被发出去"的误解
+                    var _cf = document.querySelector('.ds-ds-btn--confirm');
+                    if (_cf) {
+                        var _iv = (document.getElementById('ds-user-input') || {}).value || '';
+                        _cf.textContent = _iv.trim() ? '应用并发送' : '应用';
+                    }
                     // ⚠️ DOM 后缀是 wr-all，而持久化字段名是 wrAll：
                     // 原先 def['wr-all'] 恒为 undefined，等于每次打开「关联数据」面板都把这一项强制取消勾选，
                     // 用户勾选并「记住此次选择」后刷新即静默失效（会话内因 _sessionDataSource 仍带 wrAll 而看不出来）。
@@ -1279,7 +1288,7 @@
                     var menu = document.getElementById('ds-datasource-menu');
                     if (!menu) return;
                     // 点击关联数据按钮：toggle 菜单（v3.25 互斥：点开一个关闭其它所有弹出）
-                    if (t.closest('#ds-reset-datasource-btn')) {
+                    if (t.closest('#ds-datasource-btn')) {
                         e.stopPropagation();
                         var willOpen = !menu.classList.contains('open');
                         if (typeof window.dsCloseAllChatPopups === 'function') window.dsCloseAllChatPopups(menu);
@@ -1292,7 +1301,7 @@
                     if (t.closest('.ds-ds-btn--cancel')) {
                         e.stopPropagation(); menu.classList.remove('open'); return;
                     }
-                    // 确认使用：应用选择 + 有输入则发送
+                    // 应用：保存选择 + 若输入框有内容则立即按新数据源发送（按钮文案会随场景显示"应用 / 应用并发送"）
                     if (t.closest('.ds-ds-btn--confirm')) {
                         e.stopPropagation();
                         var cfg = getDsCfg();
@@ -1335,7 +1344,7 @@
 
             // ---- 构建系统提示词（含业务数据） ----
             async function dsBuildSystemPrompt(userQuery, dataSource) {
-                if (!dataSource) dataSource = { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false };
+                if (!dataSource) dataSource = DS_DEFAULT_CFG;   // v3.76：默认值统一（原处与面板/会话兜底各写一份）
                 var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
                 var useWrAll = dataSource.wrAll, usePhone = dataSource.phone, useDiary = dataSource.diary;
 
@@ -1930,6 +1939,45 @@
                     if (focusInput) { focusInput.value = query; setTimeout(function() { if (typeof window.runRiskAnalysis === 'function') window.runRiskAnalysis(); }, 300); }
                     input.value = ''; return;
                 }
+                // 【v3.76 智能体并入对话】/agent <任务>：就地执行任务（规划 + 多步工具调用），
+                //   执行过程以卡片形式留在本轮回答上方，不再需要切到独立「智能体」标签页。
+                //   与独立入口共用同一个 agent-core（同一批工具、同一套 Key/模型），因此能力完全一致。
+                if (rawUserText === '/agent' || rawUserText.startsWith('/agent ') || rawUserText.startsWith('/agent　')) {
+                    const task = rawUserText.replace(/^\/agent[ \u3000]*/, '').trim();
+                    if (!task) { alert('用法：/agent <任务>\n例如：/agent 统计上月供电专业 A 类问题并生成简报'); return; }
+                    if (typeof window._agentRun !== 'function') { alert('智能体内核未加载，无法执行任务。'); return; }
+                    input.value = '';
+                    if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+                    dsHistory.push({ role: 'user', content: rawUserText });
+                    dsHistory.push({ role: 'assistant', content: '', agentSteps: [] });
+                    var _agentMsgIdx = dsHistory.length - 1;
+                    dsRenderAll(); dsScrollBottom();
+                    _dsPaintBubble(_agentMsgIdx, '<div style="color:#64748b;font-size:0.85rem;">🚀 正在执行任务（可多步调用本地数据）…</div>', false);
+                    (function () {
+                        var _t0 = Date.now();
+                        Promise.resolve()
+                            .then(function () { return window._agentRun(task); })
+                            .then(function (res) {
+                                var msgs = (res && res.messages) || [];
+                                var steps = msgs.filter(function (m) { return m && (m.role === 'agent-plan' || m.role === 'agent-tool'); });
+                                var finalTxt = '';
+                                msgs.forEach(function (m) { if (m && m.role === 'assistant') finalTxt = m.content || ''; });
+                                var cur = dsHistory[_agentMsgIdx];
+                                if (cur) {
+                                    cur.agentSteps = steps;
+                                    cur.content = (finalTxt || '（任务已执行，未返回文本内容）')
+                                        + '\n\n<small style="color:#94a3b8;">任务耗时 ' + Math.round((Date.now() - _t0) / 1000) + 's · 工具调用 ' + steps.filter(function (s) { return s.role === 'agent-tool'; }).length + ' 次</small>';
+                                }
+                                dsRenderAll(); dsScrollBottom();
+                            })
+                            .catch(function (e) {
+                                var cur2 = dsHistory[_agentMsgIdx];
+                                if (cur2) cur2.content = '❌ 任务执行失败：' + ((e && e.message) ? e.message : String(e));
+                                dsRenderAll(); dsScrollBottom();
+                            });
+                    })();
+                    return;
+                }
 
                 // ════════════════════════════════════════════
                 // 2. 当前激活子模块锁定（次高优先级）
@@ -2086,9 +2134,17 @@
                 // ---- 4.4 角色注入 ----
                 var roleSelect = document.getElementById('expertRole');
                 var selectedRole = roleSelect ? roleSelect.value : 'default';
+                // 【v3.76】代码角色标记：下面凡是"铁路业务规范"类的注入都对它跳过 ——
+                //   它是写代码用的角色，注入"以本地铁路数据为权威""人机环管""问题性质 A/B/C/红线"
+                //   既浪费 token，也会让模型把业务框架套进代码回答里。
+                var _isCodeRole = (selectedRole === 'frontend');
                 var rolePrompt = '';
                 if (window.ROLE_PROMPTS && window.ROLE_PROMPTS[selectedRole]) {
                     rolePrompt = window.ROLE_PROMPTS[selectedRole] + '\n\n';
+                    // 专业角色统一追加「输出规范」（结构 / 引用格式 / 数据口径 / 建议可执行 / 跨专业 / 篇幅）
+                    if (!_isCodeRole && window.ROLE_OUTPUT_NORMS) {
+                        rolePrompt += window.ROLE_OUTPUT_NORMS + '\n\n';
+                    }
                 }
 
                 // ---- 4.5 长期记忆 ----
@@ -2106,8 +2162,11 @@
 
                 // ---- 4.6 系统提示 ----
                 var _tempSrc = window._tempDataSrc || null;
-                var _dataSrc = _tempSrc || _sessionDataSource || { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: false };
-                var hasAnySource = _dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary;
+                var _dataSrc = _tempSrc || _sessionDataSource || DS_DEFAULT_CFG;   // v3.76：默认值统一到 DS_DEFAULT_CFG
+                // 【v3.76】代码角色（frontend）**不再注入铁路本地资料**：写代码时把规章/台账塞进提示词
+                //   既无用又费 token（此前只排除了准则，资料仍会进 —— 本次审计发现的遗留）。
+                //   等价于该角色下"关联数据全不选"，不影响其它角色。
+                var hasAnySource = (_dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary) && !_isCodeRole;
                 // 【v3.74 卡滞修复】本地资料准备失败**不再中断对话**：降级为"无资料模式"继续回答。
                 //   这样资料侧的任何异常都不会把 dsStreaming 卡在 true（原先异常会跳过 finally 复位）。
                 var baseSystem;
@@ -2126,7 +2185,8 @@
                   '1. 知识分层：①铁路业务规章/检查信息/手册以本地数据库为权威源，必须优先检索并引用真实条款与案例；②涉及最新政策、标准修订、外部新闻、天气行情等时效信息，联网时直接引用检索结果并标注日期与来源；③本地未覆盖且未联网时，明确告知“需联网核实”，严禁臆造。\n' +
                   '2. 准确性：区分【已确认·基于本地数据】【推断】【待核实】；引用规章须注明名称与条款出处，禁止编造编号、数据或案例。\n' +
                   '3. 专业性：使用铁路行业规范术语；多专业问题从“人、机、环、管”与风险分级（高/中/低）视角结构化作答。';
-                systemPrompt += proRoleGuidelines;
+                // 【v3.76】代码角色（frontend）不追加铁路业务准则（同上：避免业务框架污染代码任务）
+                if (!_isCodeRole) systemPrompt += proRoleGuidelines;
                 // 媒体输出规范：用户问图片/视频/音乐时，引导模型给出可内嵌显示的直链（而非仅给网页地址）
                 try {
                     if (/图片|照片|配图|插图|图库|海报|视频|MV|音乐|歌曲|音频|听歌|铃声|封面|素材/i.test(finalText)) {
@@ -2323,6 +2383,14 @@
                     var _toolsReady = (typeof window._agentToolsParam === 'function') && (typeof window._agentExecuteTool === 'function');
                     var _useTools = _isV4 && _toolsReady;
                     var _toolsParamArr = _useTools ? window._agentToolsParam() : null;
+                    // 【v3.76 审计】联网与「本地检索工具」目前**互斥**：联网走 Responses/Anthropic 通道，
+                    //   请求体里 tools 只放服务端 web_search；工具需要"模型调用→前端执行→回灌"的闭环，
+                    //   而联网通道的流解析器只处理 server_tool_use/web_search 结果，不处理本地工具调用。
+                    //   → 因此联网时本地工具不参与（本地资料仍通过 system/instructions 注入，能力不丢）。
+                    //   这里打印一条诊断日志，避免"静默降级"难以排查；界面上也有对应说明（联网菜单）。
+                    if (useWebSearch && _useTools && typeof console !== 'undefined') {
+                        console.warn('[ds] 联网已开启：本轮只带服务端 web_search，本地检索工具（search_issues/search_rules 等）不参与；需要精确查台账明细请先关闭联网。');
+                    }
                     var _toolExec = (typeof window._agentExecuteTool === 'function') ? window._agentExecuteTool : null;
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
                     if (thinkingOn) maxTokens = (isFrontendRole || isCodeRequest) ? 24576 : 16384;
@@ -3272,7 +3340,30 @@
                 if (m.reasoning) {
                     reasoningHtml = '<details class="ds-reasoning" open><summary>💭 思考过程</summary><div class="ds-reasoning-body">' + dsEsc(m.reasoning) + '</div></details>';
                 }
-                return reasoningHtml + dsWebChip(m) + dsMarkdown(m.content || '');
+                return reasoningHtml + dsAgentStepsHtml(m.agentSteps) + dsWebChip(m) + dsMarkdown(m.content || '');
+            }
+
+            // 【v3.76 智能体并入对话】把「计划 / 工具调用」渲染成卡片，跟着助手气泡一起显示。
+            //   为什么存在消息对象上（m.agentSteps）而不是直接写 DOM：`dsRenderAll()` 每次都会重建聊天区，
+            //   直接写 DOM 的卡片会在下一次重渲染时消失；挂在消息上则永远跟着这条回答。
+            //   卡片样式与「智能体」原模块保持一致（黄=计划、绿=工具+用途/证据），用户视觉无需重新学习。
+            function dsAgentStepsHtml(steps) {
+                if (!steps || !steps.length) return '';
+                var out = '';
+                for (var i = 0; i < steps.length; i++) {
+                    var s = steps[i] || {};
+                    if (s.role === 'agent-plan') {
+                        out += '<div class="ds-agent-plan" style="margin:6px 0;background:#fffbeb;border-left:3px solid #f59e0b;color:#b45309;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(s.content || '') + '</div>';
+                    } else if (s.role === 'agent-tool') {
+                        var meta = s.toolMeta || {};
+                        var purpose = meta.purpose ? '<div style="color:#065f46;margin-top:2px;">用途：' + dsEsc(meta.purpose) + '</div>' : '';
+                        var evidence = meta.evidence ? '<div style="color:#047857;margin-top:2px;white-space:pre-wrap;">证据：' + dsEsc(meta.evidence) + '</div>' : '';
+                        out += '<div class="ds-agent-tool" style="margin:6px 0;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:6px 10px;font-size:0.82rem;line-height:1.5;">'
+                            + '<div style="font-weight:600;">' + dsEsc(String(s.content || '').replace(/^🔧\s*/, '🔧 ')) + '</div>'
+                            + purpose + evidence + '</div>';
+                    }
+                }
+                return out ? '<div class="ds-agent-steps">' + out + '</div>' : '';
             }
 
             // ============ 媒体/链接渲染（图片 · 视频 · 音频 · 外链） ============
@@ -4061,6 +4152,9 @@
         window.dsMarkdown             = typeof dsMarkdown !== 'undefined' ? dsMarkdown : function(t){ return t||''; };
         // 全域统一升级：暴露内部渲染/历史函数，供 unified-enhancements.js 安全钩接（不破坏现有逻辑）
         window.dsRenderAll            = typeof dsRenderAll !== 'undefined' ? dsRenderAll : function(){};
+        // 【v3.76】智能体执行步骤卡片：暴露给 unified-enhancements.js（它按 entry.content 重渲染气泡，
+        //   凡 dsBubbleInner 会渲染的字段都必须在那边一并还原，否则卡片会被覆盖 —— 与 dsWebChip 同一套路）
+        window.dsAgentStepsHtml       = typeof dsAgentStepsHtml !== 'undefined' ? dsAgentStepsHtml : function(){ return ''; };
         window.dsAppendMsg            = typeof dsAppendMsg !== 'undefined' ? dsAppendMsg : function(){};
         window.getDsHistory           = (typeof dsHistory !== 'undefined') ? function(){ return dsHistory; } : function(){ return []; };
         // 联网检索证据条：供 unified-enhancements.js 卡片化重渲染时一并重建（否则会被覆盖掉）
@@ -4160,9 +4254,14 @@
         'tongyong':
           '你是铁路综合安全监察专家，擅长跨专业综合分析、体系化安全管理和风险研判。\n' +
           '【职责】统筹工务、电务、供电、车务、机务、车辆、通信、房建、客运、货运等全专业安全问题；运用双重预防机制（风险分级管控+隐患排查治理）、安全红线、标准化管理开展研判。\n' +
-          '【方法】识别系统性风险，按"人、机、环、管"与"高/中/低"风险分级结构化输出，给出可执行的预警与整改措施，引用本地检查信息与规章数据支撑结论。',
+          '【应熟悉规章】《安全生产法》《铁路安全管理条例》《铁路技术管理规程》（综合及各专业分册）《铁路营业线施工安全管理办法》《铁路交通事故应急救援和调查处理条例》，以及双重预防机制、安全红线与标准化管理的相关文件。\n' +
+          '【方法】识别系统性风险，按"人、机、环、管"与"高/中/低"风险分级结构化输出，给出可执行的预警与整改措施，引用本地检查信息与规章数据支撑结论。\n' +
+          '【多专业协同】同一问题涉及多个专业时，指出主责专业与协同专业，并分别给出各自的管控要点，避免只从一个专业角度下结论。',
         'frontend':
-          '你是一位资深前端工程师。请根据用户需求编写干净的 HTML/CSS/JS 代码。要求：代码自包含，可直接运行；使用现代浏览器特性；输出完整 HTML 代码块。',
+          '你是一位资深前端工程师（Web/小程序方向）。\n' +
+          '【交付标准】① 代码自包含、可直接运行：单文件 HTML 时把 CSS/JS 内联，除非用户要求拆分；② 优先零依赖（不引外部 CDN），确需库时说明用途与替代方案；③ 使用现代浏览器特性（ES2020+、Flex/Grid、CSS 变量），并保证移动端可用。\n' +
+          '【输出格式】给完整代码块（标注语言），关键实现点用简短注释说明；最后附 3 行以内的使用说明或注意事项。\n' +
+          '【质量底线】不留 TODO 占位；不臆造不存在的 API；用户给的现有代码要保留其结构与命名风格，只改必要部分。',
         'riskanalyst':
           '你是铁路安全风险分析专家。你的任务是：\n' +
           '1. 基于本地检查信息和规章制度（优先引用真实数据），识别当前最突出的安全风险领域\n' +
@@ -4171,6 +4270,20 @@
           '4. 输出格式要求：先概述总体情况，再分点列出风险等级（高/中/低），最后给出3-5条可执行的预警措施\n' +
           '5. 引用数据时标注来源和时间范围，建议要具体可操作；若本地数据不足，说明需补充或联网核实的方向。',
       };
+
+      // 【v3.76】角色「输出规范」（所有**专业角色**统一追加；frontend 代码角色除外）
+      //   为什么需要：13 个角色写清了「专业领域 / 应熟悉规章 / 典型风险 / 分析框架」，
+      //   但**输出侧没有统一契约** —— 没规定结构、引用要细到什么程度、统计口径、建议要可执行、篇幅。
+      //   而通用「专业回答准则」只覆盖了"知识分层 / 准确性分级 / 术语与风险分级"，
+      //   所以这里只补它没覆盖的部分，不重复（避免提示词互相稀释）。
+      const ROLE_OUTPUT_NORMS =
+        '【输出规范】\n' +
+        '1. 结构：先给结论与判断 → 再列依据（条款 / 台账 / 案例）→ 最后给可执行的整改或管控建议；条目多时用分点或表格，避免长段落堆砌。\n' +
+        '2. 引用格式：「名称 + 条款号」的总要求见后文【专业回答准则】；本条补充格式细节 —— 检查信息与案例要带单位、日期（或时段）与问题性质，每条尽量标出来源（如「规章制度：XX办法 第N条」「检查信息：某供电段 2026-03」）。\n' +
+        '3. 数据口径：问题性质按 A / B / C / 红线 四类；统计数字必须与本地台账一致，不得改变口径，也不得把估算值写成台账值。\n' +
+        '4. 建议要可执行：写清「谁、在什么时机、做什么、达到什么标准」，避免「加强管理、提高认识」这类空话；一条建议只解决一个问题。\n' +
+        '5. 跨专业问题：先答本职专业，再点明需协同的专业与协同要点（如供电作业涉及车务登销记、电务联锁试验）。\n' +
+        '6. 篇幅：默认紧凑、先给关键结论；用户要求「详细 / 展开」时再逐条深入。';
 
       // ---------- 3. 长期记忆管理 ----------
       const MEMORY_KEY = 'assistant_memory_v1';
@@ -5158,8 +5271,17 @@
         var startDate = dateStart ? new Date(dateStart + 'T00:00:00') : null;
         var endDate = dateEnd ? new Date(dateEnd + 'T23:59:59') : null;
         var all = [];
+        // 【v3.76 口径统一 · 取数同源】优先用内存缓存：issue.js 的 dataCache 本身就是整库 getAll 的结果，
+        //   与「智能写作」取数完全同源（避免"刚导入未刷新 / 两边读的不是同一份"造成数字不一致），并且省掉一次全表读。
+        //   内存为空（极早调用、刚清空数据）时才退回直读 IndexedDB。
+        try {
+          var _memIssues = (typeof window.getIssueData === 'function') ? window.getIssueData() : [];
+          if (_memIssues && _memIssues.length) all = _memIssues;
+        } catch (e) {}
         var _ownConn = false; // 是否由本函数自己打开的连接（自己开的才关，共享连接不能关）
         try {
+          // 内存里已有整库数据就跳过直读（下方 if 块内的代码保持原缩进，便于对照历史 diff）
+          if (!all.length) {
           // 优先用 dbManager，失败则直接打开
           var db;
           try {
@@ -5184,31 +5306,39 @@
           if (_ownConn) {
             try { db.close(); } catch(e) {}
           }
+          }   // ← 结束"内存无数据才直读 IndexedDB"分支（见函数开头 _memIssues）
           if (all.length) {
-            var filtered = all;
-            if (startDate) {
-              filtered = filtered.filter(function(d) {
-                try { return new Date(d.datetime||'') >= startDate; } catch(e) { return false; }
-              });
-            }
-            if (endDate) {
-              filtered = filtered.filter(function(d) {
-                try { return new Date(d.datetime||'') <= endDate; } catch(e) { return false; }
-              });
-            }
-            if (unitFilter) {
-              filtered = filtered.filter(function(d) {
-                return (d.unit||'').indexOf(unitFilter) !== -1 || (d.department||'').indexOf(unitFilter) !== -1;
-              });
-            }
+            // 【v3.76 口径统一】筛选/统计改用 utils.js 的共用实现（与「智能写作」同一口径）：
+            //   · 性质按 A/B/C/红线/其他 归类 —— 原来按原始字符串分桶，'A' 与 'A类' 会各占一项，
+            //     于是同一段时间出现"研判：A(3)、A类(2)"而"报告：A 类 5 条"两套数字；现已收敛为一套；
+            //   · 日期边界统一为本地日、单位过滤语义不变（与原实现一致）；
+            //   · 共用实现缺失（浏览器还跑着旧缓存脚本）时退回原实现，功能不受影响。
+            var _sharedStat = (typeof window.dsIssueFilter === 'function' && typeof window.dsIssueAggregate === 'function');
+            var filtered = _sharedStat
+              ? window.dsIssueFilter(all, { start: dateStart, end: dateEnd, unit: unitFilter })
+              : (function () {
+                  var f = all;
+                  if (startDate) f = f.filter(function(d) { try { return new Date(d.datetime||'') >= startDate; } catch(e) { return false; } });
+                  if (endDate) f = f.filter(function(d) { try { return new Date(d.datetime||'') <= endDate; } catch(e) { return false; } });
+                  if (unitFilter) f = f.filter(function(d) { return (d.unit||'').indexOf(unitFilter) !== -1 || (d.department||'').indexOf(unitFilter) !== -1; });
+                  return f;
+                })();
             var dateLabel = [dateStart ? '从'+dateStart : '', dateEnd ? '至'+dateEnd : ''].filter(Boolean).join(' ') || '全部时间';
-            var cats = {}; filtered.forEach(function(d){ cats[d.category]=(cats[d.category]||0)+1; });
-            var nats = {}; filtered.forEach(function(d){ nats[d['性质']]=(nats[d['性质']]||0)+1; });
-            var units = {}; filtered.forEach(function(d){ if(d.unit) units[d.unit]=(units[d.unit]||0)+1; });
+            var _agg = _sharedStat ? window.dsIssueAggregate(filtered) : null;
+            var cats = _agg ? _agg.category : (function(){ var m={}; filtered.forEach(function(d){ m[d.category]=(m[d.category]||0)+1; }); return m; })();
+            var nats = _agg ? _agg.quality : (function(){ var m={}; filtered.forEach(function(d){ m[d['性质']]=(m[d['性质']]||0)+1; }); return m; })();
+            var units = _agg ? _agg.unit : (function(){ var m={}; filtered.forEach(function(d){ if(d.unit) m[d.unit]=(m[d.unit]||0)+1; }); return m; })();
+            // 仅控制台诊断：发生了"异体写法归类"（A / A类 / A级…）时提示一次，不进入界面与提示词文字
+            if (_agg && typeof window.dsQualityMerged === 'function') {
+              var _mergedQ = window.dsQualityMerged(_agg.qualityRaw);
+              if (_mergedQ && typeof console !== 'undefined') console.log('[研判] 性质异体写法已按 A/B/C/红线/其他 归类：', _mergedQ);
+            }
+            var _topN = (typeof window.dsTopEntries === 'function') ? window.dsTopEntries : function(m, n) { return Object.entries(m||{}).sort(function(a,b){return b[1]-a[1];}).slice(0, n||5); };
+            var _fmtTop = function(e) { return e[0] + '(' + e[1] + ')'; };
             parts.push('【检查信息】总计'+all.length+'条, 本次筛选'+filtered.length+'条('+dateLabel+(unitFilter?'/单位:'+unitFilter:'')+')');
-            parts.push('类别TOP5: '+Object.entries(cats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
-            parts.push('性质分布: '+Object.entries(nats).sort(function(a,b){return b[1]-a[1]}).slice(0,5).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
-            if (Object.keys(units).length > 0) parts.push('涉及单位: '+Object.entries(units).sort(function(a,b){return b[1]-a[1]}).slice(0,10).map(function(e){return e[0]+'('+e[1]+')'}).join(', '));
+            parts.push('类别TOP5: '+_topN(cats,5).map(_fmtTop).join(', '));
+            parts.push('性质分布: '+_topN(nats,5).map(_fmtTop).join(', '));
+            if (Object.keys(units).length > 0) parts.push('涉及单位: '+_topN(units,10).map(_fmtTop).join(', '));
             // 按类别归类问题，每个类别列举几方面典型问题
             var categoryGroups = {};
             filtered.forEach(function(d) {
@@ -5350,6 +5480,7 @@
 
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
       window.ROLE_PROMPTS = ROLE_PROMPTS;
+      window.ROLE_OUTPUT_NORMS = ROLE_OUTPUT_NORMS;   // v3.76：专业角色统一输出规范（frontend 不追加）
       window._originalSendMsg = window.dsSendMsg;
 
       // 角色注入和长期记忆已内置到 dsSendMsg 中，此处保留暴露 ROLE_PROMPTS

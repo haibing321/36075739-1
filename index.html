@@ -968,7 +968,7 @@
                                 <div class="ds-input-tools-left">
                                     <!-- 角色：圆形图标按钮 + 下拉（与附件/发送同款风格） -->
                                     <div class="ds-dropdown">
-                                        <button class="ds-ico-btn" id="ds-role-btn" type="button" title="选择对话角色">
+                                        <button class="ds-ico-btn" id="ds-role-btn" type="button" title="选择对话角色（仅作用于智能对话）">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
                                         </button>
                                         <div class="ds-dropdown-menu" id="ds-role-menu"></div>
@@ -999,11 +999,12 @@
                                     </div>
                                     <!-- 关联数据：与角色/模型/联网一致的下拉面板（点击展开、再次点击收起） -->
                                     <div class="ds-dropdown">
-                                        <button id="ds-reset-datasource-btn" class="ds-ico-btn" type="button" title="关联数据">
+                                        <button id="ds-datasource-btn" class="ds-ico-btn" type="button" title="关联数据（仅作用于智能对话 · 本次使用哪些本地资料）">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6"/><path d="M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3"/></svg>
                                         </button>
                                         <div class="ds-dropdown-menu ds-datasource-menu" id="ds-datasource-menu">
-                                            <div class="ds-datasource-head">🔗 本次使用的数据源</div>
+                                            <div class="ds-datasource-head">🔗 关联数据（本次使用的本地资料）</div>
+                                            <div class="ds-datasource-head" style="font-weight:400;font-size:0.72rem;opacity:0.75;margin-top:-2px;">仅控制本地资料注入；联网请用 🌐 地球按钮</div>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-all"> ☑️ 全选 / 全不选</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-rules" value="rules" checked> 📋 规章制度</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-issue" value="issue" checked> 📊 检查台账</label>
@@ -1015,19 +1016,20 @@
                                             <label class="ds-datasource-row ds-datasource-remember"><input type="checkbox" id="ds-dialog-remember" checked> ✅ 记住此次选择</label>
                                             <div class="ds-datasource-actions">
                                                 <button type="button" class="ds-ds-btn ds-ds-btn--cancel">取消</button>
-                                                <button type="button" class="ds-ds-btn ds-ds-btn--confirm">确认使用</button>
+                                                <button type="button" class="ds-ds-btn ds-ds-btn--confirm">应用</button>
                                             </div>
                                         </div>
                                     </div>
                                     <!-- 联网搜索：与角色/模型一致的图标按钮，点击展开说明菜单（开启后高亮；关闭时遇实时类问题仍会自动联网） -->
                                     <div class="ds-dropdown">
-                                        <button id="ds-websearch-btn" class="ds-ico-btn" type="button" title="联网搜索">
+                                        <button id="ds-websearch-btn" class="ds-ico-btn" type="button" title="联网搜索（仅作用于智能对话）">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>
                                         </button>
                                         <div class="ds-dropdown-menu ds-ws-menu" id="ds-websearch-menu">
                                             <div class="ds-ws-menu-head">
                                                 <div class="ds-ws-menu-title">🌐 联网搜索</div>
                                                 <div class="ds-ws-menu-desc">开启后每次提问都会联网检索最新信息；关闭时遇到新闻、天气、行情等实时问题仍会自动联网。</div>
+                                            <div class="ds-ws-menu-desc" style="opacity:0.8;">⚠️ 联网时本轮不带「本地检索工具」（精确查台账明细请先关闭联网）；已注入的本地资料不受影响。</div>
                                             </div>
                                             <div class="ds-dropdown-item" data-ws="1">✅ 开启（每次提问都联网）</div>
                                             <div class="ds-dropdown-item" data-ws="0">关闭（仅实时问题自动联网）</div>
@@ -1071,7 +1073,7 @@
                                 <span style="font-weight:600;color:var(--primary);">🧠 智能体</span>
                                 <button onclick="dsAgentShowHistory()" style="font-size:0.74rem;padding:4px 10px;border:none;background:#dbeafe;color:#1d4ed8;border-radius:8px;cursor:pointer;">📜 历史</button>
                             </div>
-                            AI 可调用本地数据（检查信息、规章、日志、手册），自动规划并执行多步骤任务。
+                            AI 可调用本地数据（检查信息、规章、日志、手册），自动规划并执行多步骤任务。也可在智能对话直接输入 <strong>/agent 任务</strong>。
                         </div>
                         <!-- 历史记录面板（默认隐藏，点「📜 历史」toggle 显示，独立于下方实时输出区） -->
                         <div id="ds-agent-history-panel" style="display:none;flex:1 1 auto;overflow-y:auto;min-height:160px;border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;max-height:50vh;"></div>
@@ -1937,6 +1939,14 @@
                     <span>v3.75 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 <strong>智能写作「模板 / 参考资料」改为两路输入</strong>：弹窗里不再堆资料库内容，只显示"已选结果"；点「选择模板 ▾」/「＋ 添加 ▾」弹出两路菜单 —— <strong>💻 本地文件</strong>（本机直接选 txt/md/docx/pdf/xlsx/csv/json，与「上传附件」同款）或 <strong>📚 资料库</strong>（<strong>点进去才展开</strong>，不重复占版面）。本地模板与库模板在同一个选择层里可随时切换，本地模板会直接显示在「写作模板」一行；资料库资料与本地文件可混选、逐个 × 移除</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 <strong>台账统计口径统一</strong>：风险研判与智能写作此前各算一套，同一段时间会出现两种数字（研判按原始写法分桶 →「A(3)、A类(1)、A级(1)」；写作按 A/B/C/红线 归类，但日期按 UTC 零点算 → 会漏掉起始日 08:00 前的记录、多算结束日次日凌晨）。现改为<strong>同一套归一 + 筛选</strong>：性质统一归入 A/B/C/红线/其他，日期按<strong>本地日</strong>（起止都含当天）。实测同一时间段两处结果完全一致</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚀 <strong>智能体并入智能对话</strong>：在智能对话直接输入 <strong>/agent 任务</strong> 即可就地执行（规划 + 多步调用本地数据），执行过程的「计划 / 工具 / 用途 / 证据」以卡片形式留在本轮回答上方，<strong>不用再切到独立标签页</strong>；原「智能体」页保留可用（同一内核、同一批工具，能力完全一致）。另：角色/关联数据/联网三个按钮的提示已标明"仅作用于智能对话"</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 <strong>五个控件交互审计</strong>：联网开启时<strong>不再静默丢弃本地检索工具</strong>（菜单里明确标注"联网时本轮不带本地检索工具"、发送时控制台给出提示；已注入的本地资料不受影响）；<strong>代码角色（💻前端）不再注入铁路本地资料</strong>（也不再触发索引准备，提示词 1442→520 字）；角色/模型/关联数据/联网/补全之间无其它冲突，与知识库索引是"选源 vs 选路径"的分层关系</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔗 <strong>「关联数据」面板理顺</strong>：确认按钮现在只在有输入时显示「应用并发送」（避免"只想保存却被发出去"）、面板标明"仅控制本地资料，联网请用 🌐"、统一命名为「关联数据」、默认值收敛为一处定义。<strong>功能保留不删除</strong>——实测"全不选"会完全跳过本地索引准备（冷启动 436ms → 6ms），是唯一的按次数据源控制</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧑‍💼 <strong>智能对话角色提示词优化</strong>：13 个专业角色统一追加「输出规范」（结论先行→依据→可执行建议、引用要带单位/日期/性质、统计按 A·B·C·红线 口径、跨专业要写协同要点、篇幅默认紧凑）；「🗂️综合」补规章清单与多专业协同条；<strong>代码角色（💻前端）不再被灌铁路业务准则</strong>（提示词 1000+ → 720 字，不再把"人机环管"套进代码回答）</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🌙 <strong>暗黑模式补齐（含新界面规矩）</strong>：智能写作两路输入的选择菜单、资料库选择层、资料分类选择、已选芯片全部适配暗黑（原先浅色底在暗色下整块发白）。<strong>以后所有新增界面都同时适配暗黑</strong>，这是硬性要求</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂️ <strong>本地选的模板/资料会保存进资料库</strong>：与「资料中心 → 导入」<strong>共用同一套解析与入库逻辑</strong>（同一份代码、同一张表），本地导入后可随时在资料库里复用；参考资料需先选分类（与资料中心一致），模板直接归入「写作模版」</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ <strong>智能对话发送不再卡滞</strong>：原先点发送后要先等"建/恢复本地索引"（大源 0.8~7 秒）才出现反馈，现在<strong>按钮立即变红 + 气泡立即出现（实测 817ms → 5ms）</strong>，准备超过 0.4 秒会提示「🔍 正在准备本地资料…」；本地资料准备失败也<strong>不再中断对话</strong>（自动降级为无资料模式继续回答）</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔥 <strong>索引空闲预热 + 缓存修正</strong>：页面加载后趁空闲把常用源索引<strong>提前备好</strong>（有缓存秒级恢复，无缓存提前建；实测预热后发送的准备耗时 0ms）；同一源<strong>不再被重复准备</strong>（开机自动载入与首次检索撞车时复用同一份工作）；「清除缓存」现在<strong>连静态资源也强制重取</strong>（原先 sw.js 会把 HTTP 缓存的旧文件存进新缓存，导致"发版了还是旧界面，非得清缓存"）</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 <strong>设置面板文字精简</strong>：知识库面板只显示「多少条 · 缓存多少 MB」（长解释一律收进「说明」）；「全局数据」后的说明、折叠标题上的副标题、开关旁的括号说明等一并删除，界面更清爽</span></div>

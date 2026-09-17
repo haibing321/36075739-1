@@ -241,8 +241,9 @@
       const idx = parseInt(bubble.getAttribute('data-ds-idx'), 10);
       const entry = (idx >= 0 && hist[idx]) ? hist[idx] : null;
       if (!entry || !entry.content) return;
-      // 跳过判定必须把「联网检索证据」也算进去：否则同一段正文在检索状态变化时不会重绘
-      const _enhKey = entry.content + '||' + (entry.web ? JSON.stringify(entry.web) : '');
+      // 跳过判定必须把「联网检索证据」和「智能体执行步骤」也算进去：
+      //   否则同一段正文在检索状态/步骤变化时不会重绘（v3.76 新增 agentSteps）
+      const _enhKey = entry.content + '||' + (entry.web ? JSON.stringify(entry.web) : '') + '||' + ((entry.agentSteps && entry.agentSteps.length) || 0);
       if (bubble._enhContent === _enhKey) return; // 内容未变，跳过（防循环）
       _enhancing = true;
       try {
@@ -257,11 +258,16 @@
         // 否则本函数会把 dsBubbleInner 刚渲染好的证据条覆盖掉。
         var webHtml = '';
         try { if (typeof window.dsWebChip === 'function') webHtml = window.dsWebChip(entry) || ''; } catch (e) {}
+        // 【v3.76】智能体执行步骤（计划/工具卡片）：与 reasoning、webHtml 同理 —— 本函数是从
+        //   entry.content 重新建 HTML 的，凡 dsBubbleInner 会渲染的字段这里都必须一并还原，
+        //   否则 /agent 的执行过程卡片会被这里覆盖掉（本函数正是"卡片存消息对象上"之外的第二道关）。
+        var agentHtml = '';
+        try { if (typeof window.dsAgentStepsHtml === 'function') agentHtml = window.dsAgentStepsHtml(entry.agentSteps) || ''; } catch (e) {}
         // 关键：写入用媒体块复用（doubao.js 的 dsSetHtmlKeepMedia）—— 否则此处的 innerHTML
         // 覆盖会把流式渲染好的播放器/图片销毁，导致浏览器重新发起请求（同 URL 重复下载）。
         // 老 PWA 里没有媒体时直接 innerHTML 即可，性能也最快；这里只在有媒体时多走一次遍历。
         var _dsSet = (typeof window.dsSetHtmlKeepMedia === 'function') ? window.dsSetHtmlKeepMedia : null;
-        var _nextHtml = reasoningHtml + webHtml + renderCard(md(entry.content));
+        var _nextHtml = reasoningHtml + agentHtml + webHtml + renderCard(md(entry.content));
         if (_dsSet) _dsSet(bubble, _nextHtml);
         else bubble.innerHTML = _nextHtml;
         bubble._enhContent = _enhKey;

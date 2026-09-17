@@ -1015,4 +1015,126 @@ window.finishProgress = function(label) {
         warn:    function(msg) { return window.showToast(msg, true); },
         error:   function(msg) { return window.showToast(msg, true); }
     };
-})();
+    })();
+
+    // ======================================================================
+    // 台账统计统一口径（v3.76）
+    // ======================================================================
+    // 为什么要有这一段：
+    //   同一份「检查信息」被两个模块各自统计，口径却不同 ——
+    //     · 风险研判 _buildRiskDataSummary：性质按**原始字符串**分桶（库里同时有 'A' 与 'A类' 时会算成两项）
+    //     · 智能写作 wrExtractStatsFromIssues：性质按**前缀归类**到 A/B/C/红线/其他
+    //   叠加 issue.js 导入时对「性质」只做 trim、不标准化（见 issue.js:392），两处就可能报出不同数字：
+    //   同一段时间，报告写「A 类 5 条」、研判写「A(3)、A类(2)」——最伤数据可信度。
+    //   故把「归一 + 筛选 + 统计」收敛到这里，两处共用。
+    // 兼容性承诺（改造时的取舍，勿随意改）：
+    //   1) 归一优先级刻意**与「智能写作」原实现完全一致**（A → B → C → 红线 → 其他，且只认大写 A/B/C）
+    //      → 改造后写作侧数字不变；研判侧从"异体写法各占一项"收敛为归类后的数字。
+    //      若日后确实出现小写写法（a级），只改 dsNormQuality 一处即可。
+    //   2) 日期边界统一为**本地日**：start 当天 00:00:00 起、end 当天 23:59:59 止。
+    //      原写作侧用 new Date('2026-03-01')（= UTC 零点 = 本地 08:00），会把起始日 00:00–08:00 的记录漏掉、
+    //      又把结束日次日 00:00–08:00 的多算进来 —— 这个 bug 一并修掉（这是本次唯一会改变写作侧数字的地方）。
+    //   3) 单位过滤语义与研判原实现一致：unit / department 任一含关键词即命中。
+    // 本段只做纯计算：不读写 DOM、不发起请求、不依赖加载顺序（两处调用都发生在运行时）。
+    (function () {
+        // 归一「性质」：'A' / 'A类' / 'A级' → 'A'；'红线问题' → '红线'；空值或异常写法 → '其他'
+        function dsNormQuality(raw) {
+            var v = String(raw == null ? '' : raw).trim();
+            if (!v) return '其他';
+            if (v.indexOf('A') !== -1) return 'A';
+            if (v.indexOf('B') !== -1) return 'B';
+            if (v.indexOf('C') !== -1) return 'C';
+            if (v.indexOf('红线') !== -1) return '红线';
+            return '其他';
+        }
+
+        // 日期边界：兼容三种入参写法（**三种都必须支持，否则日期条件会被静默忽略**）：
+        //   · 'YYYY-MM-DD'  → 按本地日边界补全：start 补 T00:00:00、end 补 T23:59:59
+        //   · 毫秒时间戳 / 纯数字串 → 原样使用（智能写作的 parseQuery 传的就是这种：1772294400000）
+        //   · Date 对象 / 其它可解析字符串（含完整时间串）→ 原样解析
+        //   解析失败返回 null（= 该侧不做限制）。
+        function _dsDayEdge(edge, s) {
+            if (s == null || s === '') return null;
+            var d;
+            if (typeof s === 'number') {
+                d = new Date(s);
+            } else if (typeof s === 'object' && typeof s.getTime === 'function') {
+                d = new Date(s.getTime());
+            } else {
+                var str = String(s).trim();
+                if (!str) return null;
+                if (/^\d{10,}$/.test(str)) d = new Date(Number(str));                     // 纯数字串按毫秒时间戳
+                else if (/^\d{4}-\d{2}-\d{2}$/.test(str)) d = new Date(str + (edge === 'end' ? 'T23:59:59' : 'T00:00:00'));
+                else d = new Date(str);
+            }
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        // 筛选：起止都含当天；无日期/非法日期的记录在"有日期条件时"排除（与研判原实现一致）
+        function dsIssueFilter(issues, opt) {
+            opt = opt || {};
+            var start = _dsDayEdge('start', opt.start);
+            var end = _dsDayEdge('end', opt.end);
+            var unit = opt.unit ? String(opt.unit).trim() : '';
+            var out = [];
+            var list = issues || [];
+            for (var i = 0; i < list.length; i++) {
+                var d = list[i] || {};
+                if (start || end) {
+                    var t = d.datetime ? new Date(d.datetime) : null;
+                    if (!t || isNaN(t.getTime())) continue;
+                    if (start && t < start) continue;
+                    if (end && t > end) continue;
+                }
+                if (unit) {
+                    var hit = String(d.unit || '').indexOf(unit) !== -1 || String(d.department || '').indexOf(unit) !== -1;
+                    if (!hit) continue;
+                }
+                out.push(d);
+            }
+            return out;
+        }
+
+        // 统计：total / 性质（归一后，键齐五类，全 0 也在）/ 性质原始写法 / 类别 / 单位 / 典型前 N 条
+        function dsIssueAggregate(list, opt) {
+            opt = opt || {};
+            var arr = list || [];
+            var quality = { 'A': 0, 'B': 0, 'C': 0, '红线': 0, '其他': 0 };   // 键齐五类：调用方做占位符替换时不会拿到 undefined
+            var qualityRaw = {}, category = {}, unit = {};
+            for (var i = 0; i < arr.length; i++) {
+                var d = arr[i] || {};
+                quality[dsNormQuality(d['性质'])]++;
+                var qr = String(d['性质'] == null ? '' : d['性质']).trim() || '（空）';
+                qualityRaw[qr] = (qualityRaw[qr] || 0) + 1;
+                var c = d.category || '其他';
+                category[c] = (category[c] || 0) + 1;
+                if (d.unit) unit[d.unit] = (unit[d.unit] || 0) + 1;
+            }
+            var topN = opt.topN || 5;
+            var typicals = arr.slice(0, topN).map(function (iss, idx) {
+                return (idx + 1) + '. [' + (iss['性质'] || '') + '][' + (iss.category || '') + '] ' + String(iss.content || '').slice(0, 100);
+            });
+            return { total: arr.length, quality: quality, qualityRaw: qualityRaw, category: category, unit: unit, typicals: typicals };
+        }
+
+        // 按计数降序取前 N（[键, 次数] 数组）——两处共用，避免各写一份排序
+        function dsTopEntries(map, n) {
+            return Object.keys(map || {}).map(function (k) { return [k, map[k]]; })
+                .sort(function (a, b) { return b[1] - a[1]; })
+                .slice(0, n || 5);
+        }
+
+        // 归一是否真的合并了异体写法（用于控制台诊断：只有发生合并时才提示，不产生界面噪音）
+        function dsQualityMerged(qualityRaw) {
+            var keys = Object.keys(qualityRaw || {});
+            var norm = {};
+            keys.forEach(function (k) { norm[dsNormQuality(k === '（空）' ? '' : k)] = 1; });
+            return keys.length > Object.keys(norm).length ? qualityRaw : null;
+        }
+
+        window.dsNormQuality = dsNormQuality;
+        window.dsIssueFilter = dsIssueFilter;
+        window.dsIssueAggregate = dsIssueAggregate;
+        window.dsTopEntries = dsTopEntries;
+        window.dsQualityMerged = dsQualityMerged;
+    })();

@@ -343,8 +343,20 @@
             backup.modules.dsMemory = getLocal('assistant_memory_v1', []);
             backup.modules.dsDataSource = getLocal('ds_datasource_v1', null);
             backup.modules.memoryEnabled = getLocal('memory_enabled', null);
-            // 多模型（多 API Key）配置：换浏览器/重装不丢
-            backup.modules.dsProviders = getLocal('ds_providers_v1', null);
+            // 多模型配置（模型管理）：只导出「名称 / 地址 / 模型」等非敏感字段。
+            // ⚠️ 安全约定：API Key 属敏感凭据，绝不随备份文件导出 —— 备份会被转发到网盘/微信/群聊。
+            // 恢复端会与「本机已有配置」按 id 合并，把本机原来的 Key 补回去（见 oneClickRestore）。
+            backup.modules.dsProviders = (function() {
+                var arr = getLocal('ds_providers_v1', null);
+                if (!Array.isArray(arr)) return arr;
+                return arr.map(function(p) {
+                    var c = {};
+                    for (var k in p) {
+                        if (Object.prototype.hasOwnProperty.call(p, k) && k !== 'apiKey') c[k] = p[k];
+                    }
+                    return c;
+                });
+            })();
             backup.modules.dsActiveProvider = getLocal('ds_active_provider_v1', null);
             window.showProgress(55, '正在收集术语库…');
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
@@ -658,12 +670,29 @@
                 if (bm.dsDataSource) localStorage.setItem('ds_datasource_v1', JSON.stringify(bm.dsDataSource));
                 if (bm.memoryEnabled != null) localStorage.setItem('memory_enabled', bm.memoryEnabled);
                 // 多模型配置恢复，并同步回旧版单配置键（供各模块读取点生效）
+                var _bkNeedKey = 0; // 恢复后仍缺 API Key 的模型数（用于提示）
                 if (bm.dsProviders != null) {
                     var provs = bm.dsProviders;
+                    // 备份默认【不含 API Key】（见导出段：避免明文密钥随文件外流）。
+                    // 这里按 id 与「本机已有配置」合并：备份里没带 Key 的模型，用本机同 id 的 Key 补回，
+                    // 于是「本机重装/换浏览器」仍免重填；从未配过 Key 的设备则留空，需自行重新填写。
+                    // ⚠️ 不要退化成「用 ds_api_key_v1 兜底」—— 那会把本机 A 供应商的 Key 发到备份里 B 供应商的地址上。
+                    var _localProvs = getLocal('ds_providers_v1', []);
+                    var _keyById = {};
+                    if (Array.isArray(_localProvs)) {
+                        _localProvs.forEach(function(lp) { if (lp && lp.id) _keyById[lp.id] = lp.apiKey || ''; });
+                    }
+                    if (Array.isArray(provs)) {
+                        provs.forEach(function(p) {
+                            if (!p) return;
+                            if (!p.apiKey && _keyById[p.id]) p.apiKey = _keyById[p.id];
+                            if (!p.apiKey) _bkNeedKey++;
+                        });
+                    }
                     localStorage.setItem('ds_providers_v1', JSON.stringify(provs));
                     var aid = bm.dsActiveProvider != null ? bm.dsActiveProvider : (provs[0] && provs[0].id);
                     if (aid != null) localStorage.setItem('ds_active_provider_v1', aid);
-                    var active = (provs.filter(function(p){ return p.id === aid; })[0]) || provs[0];
+                    var active = (Array.isArray(provs) ? provs.filter(function(p){ return p && p.id === aid; })[0] : null) || (provs && provs[0]);
                     if (active) {
                         localStorage.setItem('ds_api_key_v1', active.apiKey || '');
                         // 备份文件可能来自配置有误的设备：地址入库前归一化（缺 https:// 的地址会被
@@ -706,7 +735,8 @@
                     await writeIndexedDB('DiaryMediaDB', 'media', 1, bm.diaryMedia);
                 }
 
-                _setRestoreProgress(100, '✅ 恢复完成，即将刷新…');
+                _setRestoreProgress(100, '✅ 恢复完成，即将刷新…' +
+                    (_bkNeedKey > 0 ? '（备份不含 API 密钥，' + _bkNeedKey + ' 个模型需重新填写）' : ''));
                 setTimeout(function() {
                     setTimeout(function(){ location.reload(); }, 2000);
                 }, 1000);

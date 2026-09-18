@@ -718,5 +718,80 @@
         return base;
     };
 
+    // ============ 跨模块共享：非流式「一次性」AI 调用（2026-09-18） ============
+    // 为什么要有它：写作模块的 wrCallOnce 是最好的一次性调用实现（超时 + 降级 + 关思考），
+    // 但它藏在 IIFE 里没挂 window，别的模块（如智能对规）只能各自裸 fetch（且没有超时）。
+    // 现在统一到这里：所有"短任务"（改写/纠错/挑条款/归类表）共用同一套 Key/模型/超时/错误文案。
+    // 约定：**不抛异常**，失败返回 { ok:false, error }，由调用方降级；不要再在别处读 ds_api_key_v1。
+    //   opts.temperature 默认 0.2 | opts.maxTokens 默认 2000 | opts.timeoutMs 默认 90000
+    //   opts.thinking=true → 走设置页思考档位（默认关闭思考：短任务开思维链只会白烧预算、拖慢响应）
+    window.dsCallOnce = async function (sysPrompt, userPrompt, opts) {
+        opts = opts || {};
+        var apiKey = '';
+        try { apiKey = localStorage.getItem('ds_api_key_v1') || ''; } catch (e) {}
+        if (!apiKey) return { ok: false, error: 'no-key' };
+        var apiUrl = window.dsGetApiUrl ? window.dsGetApiUrl() : '';
+        var model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
+        var body = {
+            model: model,
+            messages: [
+                { role: 'system', content: String(sysPrompt == null ? '' : sysPrompt) },
+                { role: 'user', content: String(userPrompt == null ? '' : userPrompt) }
+            ],
+            stream: false,
+            temperature: (opts.temperature != null ? opts.temperature : 0.2),
+            max_tokens: opts.maxTokens || 2000
+        };
+        // 思考模式：默认关闭；opts.thinking=true 时按设置页档位（auto 档可传 opts.text 自动分级）。
+        // 非 DeepSeek 端点由 dsThinkingParam 返回 {} —— 绝不硬塞未知参数（会被 400 拒绝）。
+        Object.assign(body, opts.thinking
+            ? window.dsThinkingParam({ apiUrl: apiUrl, model: model, mode: opts.thinkingMode || 'auto', text: opts.text })
+            : window.dsThinkingParam({ apiUrl: apiUrl, model: model, mode: 'off' }));
+        // 支持调用方传入 opts.signal（如写实"一键修改"的整批停止按钮）：外部 abort 会传导到本次请求
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var ext = opts.signal || null;
+        if (ext && ext.aborted) return { ok: false, error: 'aborted' };
+        if (ext && ctrl && typeof ext.addEventListener === 'function') {
+            try { ext.addEventListener('abort', function () { try { ctrl.abort(); } catch (e) {} }); } catch (e) {}
+        }
+        var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, opts.timeoutMs || 90000) : null;
+        try {
+            var resp = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                body: JSON.stringify(body),
+                signal: ctrl ? ctrl.signal : (ext || undefined)
+            });
+            if (!resp.ok) {
+                var detail = '';
+                try { detail = await resp.text(); } catch (e) {}
+                return { ok: false, status: resp.status, error: (window.dsAiHttpError ? window.dsAiHttpError(resp.status, detail) : ('HTTP ' + resp.status)) };
+            }
+            var j = await resp.json();
+            var c = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+            if (!c) return { ok: false, error: 'empty' };
+            return { ok: true, text: String(c) };
+        } catch (e) {
+            var msg = (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) || 'network');
+            return { ok: false, error: msg };
+        } finally { if (to) clearTimeout(to); }
+    };
+
+    // 宽松 JSON 解析（模型常见毛病：```json 包裹 / 前后带解释 / 尾逗号 / 只给了片段）
+    // 与智能对规的容错思路一致，供"要求模型输出 JSON 结构"的模块共用；解析不出来返回 null。
+    window.dsParseJsonLoose = function (text) {
+        var s = String(text == null ? '' : text).trim();
+        if (!s) return null;
+        s = s.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '').trim();
+        try { return JSON.parse(s); } catch (e) {}
+        var a = s.indexOf('{'), b = s.lastIndexOf('}');
+        if (a >= 0 && b > a) {
+            var core = s.slice(a, b + 1);
+            try { return JSON.parse(core); } catch (e) {}
+            try { return JSON.parse(core.replace(/,\s*([}\]])/g, '$1')); } catch (e) {}   // 尾逗号
+        }
+        return null;
+    };
+
     console.log('✅ doubao-common.js 已加载');
 })();

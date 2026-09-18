@@ -602,16 +602,12 @@
             }
 
             // 关键词搜索：检索工作内容 / 问题 / 规章依据全文
+            // ⚠️ 过滤规则统一在 diaryFilterByKeyword（"一键 AI 修改"的"当前查询命中"也用同一套，避免两处漂移）
             window.diarySearch = function(keyword) {
                 const container = document.getElementById('diary-records-list');
                 const kw = (keyword || '').trim().toLowerCase();
                 if (!kw) { document.getElementById('diary-records-list').innerHTML = ''; return; }
-                const matched = diaries.filter(function(d) {
-                    if ((d.work || '').toLowerCase().indexOf(kw) !== -1) return true;
-                    if (d.issues && d.issues.some(function(x) { return (x || '').toLowerCase().indexOf(kw) !== -1; })) return true;
-                    if (d.regulations && d.regulations.some(function(x) { return (x || '').toLowerCase().indexOf(kw) !== -1; })) return true;
-                    return false;
-                });
+                const matched = diaryFilterByKeyword(kw);
                 if (matched.length === 0) {
                     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>未找到与「' + escapeHtml(keyword) + '」相关的记录</p></div>';
                     return;
@@ -1608,6 +1604,899 @@
             });
             // 暴露数据获取接口（供联动数据使用）
             window.getDiaryData = function() { return diaries; };
+
+            // ================================================================
+            // ── ✨ 一键 AI 修改（工作写实 + 检查问题 + 规章依据）2026-09-18 ──
+            // 用户口径：
+            //   · work / issues → 通顺、逻辑合理、书面化、不啰嗦 + 纠正错别字/多字少字/标点，**不得改事实**；
+            //   · regulations   → **只纠错、不改写**（能回库定位到同一条款时，以库内原文为校对参照）；
+            //   · 问题有、规章空的 → 用知识库索引（KB.searchRules）召回候选条款，AI 精排后**只给候选**，点「采纳」才写入。
+            // 保存：每条改完立即 saveDiaries() 落 localStorage（即"自动保存写实"）；整批先备份，可一键撤销。
+            // 安全：三道防线 —— 提示词硬约束 + 本地字段级守卫（数字/日期/书名号/相似度）+ 整批备份与撤销。
+            // ================================================================
+            var DIARY_AI_BK_K = 'diary_ai_fix_backup_v1';
+            var DIARY_AI_LIMIT_K = 'diary_ai_fix_limit_v1';
+            var _diaryAiBusy = false;
+            var _diaryAiStop = false;
+            var _diaryAiSuggests = {};     // 候选条款暂存：key → 文本（避免把长文本塞进 onclick 属性）
+            var _diaryAiLastReport = null; // 上次回执的入参：采纳候选后原地重渲染（把该组标成"已采纳"）
+
+            function diaryByDateDesc(a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); }
+            function diaryAiKeyword() {
+                var el = document.getElementById('diary-search-input');
+                return el ? String(el.value || '').trim() : '';
+            }
+            // 关键词过滤（与 diarySearch 共用同一套规则，避免两处逻辑漂移）
+            function diaryFilterByKeyword(kw) {
+                var k = String(kw || '').trim().toLowerCase();
+                if (!k) return diaries.slice();
+                return diaries.filter(function (d) {
+                    if ((d.work || '').toLowerCase().indexOf(k) !== -1) return true;
+                    if (d.issues && d.issues.some(function (x) { return (x || '').toLowerCase().indexOf(k) !== -1; })) return true;
+                    if (d.regulations && d.regulations.some(function (x) { return (x || '').toLowerCase().indexOf(k) !== -1; })) return true;
+                    return false;
+                });
+            }
+            function diaryAiEligible(days) {
+                var min = '';
+                if (days > 0) { var d = new Date(); d.setDate(d.getDate() - days + 1); min = getLocalDateStr(d); }
+                return diaries.filter(function (d) {
+                    if (min && !(d.date >= min)) return false;
+                    return !!(String(d.work || '').trim() || (d.issues || []).some(function (x) { return String(x || '').trim(); }));
+                }).slice().sort(diaryByDateDesc);
+            }
+            function diaryAiPick(kind) {
+                if (kind === 'match') return diaryFilterByKeyword(diaryAiKeyword()).slice().sort(diaryByDateDesc);
+                if (kind.indexOf('day:') === 0) {
+                    var d = kind.slice(4);
+                    return diaryAiEligible(0).filter(function (x) { return x.date === d; });
+                }
+                return diaryAiEligible(kind === '7' ? 7 : (kind === '30' ? 30 : 0));
+            }
+            function diaryAiScopeLabel(kind) {
+                if (kind === 'match') return '当前查询命中「' + diaryAiKeyword() + '」';
+                if (kind.indexOf('day:') === 0) return '当天（' + kind.slice(4) + '）';
+                if (kind === '7') return '近 7 天';
+                if (kind === '30') return '近 30 天';
+                return '全部';
+            }
+            /**
+             * 默认范围（用户口径 2026-09-18）：优先"当前界面正在编辑/查看的那一天"，否则"当日"。
+             * 大范围（全部/近30天/近7天）降级为扩展选项，避免顺手一点就烧掉几十次请求。
+             */
+            function diaryAiDefaultScope() {
+                var inputView = document.getElementById('diary-input-view');
+                var dateEl = document.getElementById('diary-date');
+                var inputVisible = !!(inputView && inputView.style.display !== 'none');
+                if (inputVisible && dateEl && dateEl.value) return { date: dateEl.value, label: '正在编辑 ' + dateEl.value };
+                if (_selectedDate) return { date: _selectedDate, label: '当前查看 ' + _selectedDate };
+                var t = getLocalDateStr(new Date());
+                return { date: t, label: '当日（' + t + '）' };
+            }
+            function diaryAiLimit() {
+                var v = parseInt(localStorage.getItem(DIARY_AI_LIMIT_K) || '20', 10);
+                if (!v || v < 1) v = 20;
+                return Math.min(v, 50);
+            }
+            // 数字/日期指纹：用于"不得改事实"的守卫。归一化去前导零（03 → 3），
+            // 且按**去重集合**比较 —— 只合并重复表述不算改事实，改了数字才是。
+            function diaryAiNums(s) {
+                var t = String(s || '')
+                    // ⚠️ 条号单独比对（diaryAiArticleNo），这里先把条号剔除：
+                    //   「第十二条 → 第12条」属于**合规的格式规范化**，不该被当成"改了数字"拦下；
+                    //   剔除后剩下的数字才是"事实数字"（数量/长度/日期），必须完全一致。
+                    .replace(/第\s*[〇零一二三四五六七八九十百0-9.]{1,8}\s*条/g, ' ')
+                    .replace(/》\s*[0-9]+(?:\.[0-9]+)*\s*[:：]/g, '》');
+                var set = {};
+                var norm = function (n) { return String(n).replace(/^0+(\d)/, '$1'); };
+                (t.match(/\d+(?:\.\d+)?%?/g) || []).forEach(function (n) { set[norm(n)] = 1; });
+                (t.match(/\d{4}\s*[-/年.]\s*\d{1,2}\s*[-/月.]\s*\d{1,2}\s*日?/g) || []).forEach(function (d) {
+                    set['D' + d.replace(/\s/g, '').replace(/[年月日]/g, '-').replace(/^0+(\d)/, '$1')] = 1;
+                });
+                return Object.keys(set).sort().join('|');
+            }
+            function diaryAiTitles(s) { return (String(s || '').match(/《[^》]{1,40}》/g) || []).sort().join(','); }
+            /** 中文数字 → 阿拉伯数字（条号比对用；支持 〇零一二三四五六七八九十百） */
+            function diaryAiCn2Num(s) {
+                s = String(s || '').trim();
+                if (/^[0-9.]+$/.test(s)) return s.replace(/^0+(\d)/, '$1');
+                var D = { '〇': 0, '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+                var total = 0, num = 0;
+                for (var i = 0; i < s.length; i++) {
+                    var ch = s[i];
+                    if (D[ch] != null) num = D[ch];
+                    else if (ch === '十') { total += (num || 1) * 10; num = 0; }
+                    else if (ch === '百') { total = (total + (num || 1)) * 100; num = 0; }
+                }
+                return String(total + num);
+            }
+            /** 条号提取：兼容「第十二条 / 第12条 / 第4.3.4条」与「《X》4.3.4：」两种写法，统一归一为阿拉伯数字 */
+            function diaryAiArticleNo(text) {
+                var t = String(text || '');
+                var m = t.match(/第\s*([0-9]+(?:\.[0-9]+)*|[〇零一二三四五六七八九十百]{1,8})\s*条/);
+                if (m) return diaryAiCn2Num(m[1]);
+                var m2 = t.match(/》\s*([0-9]+(?:\.[0-9]+)*)\s*[:：]/);
+                if (m2) return diaryAiCn2Num(m2[1]);
+                return '';
+            }
+            /**
+             * 字符级相似度（Levenshtein 归一化，1 - 距离/较长串长）。
+             * 为什么不用 bigram Dice 判引文正文：短条款（20 字左右）里改**一个错别字**就会让
+             * Dice 掉到 0.85 以下（两个 bigram 全变），把合规的纠错误判成"改写"（实测踩过）。
+             * 编辑距离对"个别字替换"不敏感、对"整句换写"很敏感，正合这个判断。
+             */
+            function diaryAiSimEdit(a, b) {
+                var norm = function (s) { return String(s || '').replace(/[\s，。、；：？！“”‘’"'（）()【】\[\]《》〈〉,.;:?!<>~—-]/g, ''); };
+                var x = norm(a), y = norm(b);
+                if (!x && !y) return 1;
+                if (x === y) return 1;
+                var n = x.length, m = y.length;
+                if (!n || !m) return 0;
+                var prev = new Array(m + 1), cur = new Array(m + 1), i, j;
+                for (j = 0; j <= m; j++) prev[j] = j;
+                for (i = 1; i <= n; i++) {
+                    cur[0] = i;
+                    for (j = 1; j <= m; j++) {
+                        var cost = (x[i - 1] === y[j - 1]) ? 0 : 1;
+                        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+                    }
+                    for (j = 0; j <= m; j++) prev[j] = cur[j];
+                }
+                return 1 - prev[m] / Math.max(n, m);
+            }
+            /**
+             * 取"引文正文"：优先中文引号内的内容（新格式），否则剥掉书名号前缀/条号/结尾"的规定。"后的剩余部分。
+             * 判定依据是它 —— 外壳（不符合…第X条"…"的规定。）允许规范化改写，正文必须逐字保留。
+             */
+            function diaryAiRegBody(text) {
+                var t = String(text || '').trim();
+                var q = t.match(/[“"]([^”"]{4,})[”"]/);
+                if (q) return q[1];
+                return t
+                    .replace(/^[^《]*《[^》]*》/, '')
+                    .replace(/^\s*第?\s*[〇零一二三四五六七八九十百0-9.]{1,8}\s*条?\s*[:：、]?\s*/, '')
+                    .replace(/[，,。；;]?\s*的?\s*规定\s*[。.]?\s*$/, '')
+                    .trim();
+            }
+            // 字符 bigram Dice 相似度（去标点空白）：用于"规章是否被改写""润色是否过头"的量化判断
+            function diaryAiSim(a, b) {
+                var norm = function (s) { return String(s || '').replace(/[\s，。、；：？！“”‘’"'（）()【】\[\]《》〈〉,.;:?!<>~—-]/g, ''); };
+                var x = norm(a), y = norm(b);
+                if (!x || !y) return 1;
+                if (x === y) return 1;
+                var big = function (s) { var m = {}, out = 0; for (var i = 0; i < s.length - 1; i++) { var g = s.substr(i, 2); m[g] = (m[g] || 0) + 1; out++; } return { m: m, n: out }; };
+                var bx = big(x), by = big(y), inter = 0;
+                Object.keys(bx.m).forEach(function (k) { if (by.m[k]) inter += Math.min(bx.m[k], by.m[k]); });
+                return (2 * inter) / ((bx.n + by.n) || 1);
+            }
+            /**
+             * 字段级守卫：AI 改完的文本先过这里，越界就**回退原值**（宁可少改，不可改错）。
+             * kind='reg' 走更严的规章规则：书名号、条款编号不得变，相似度 <0.88 视为改写。
+             */
+            function diaryAiGuardField(kind, before, after) {
+                var b = String(before == null ? '' : before), a = String(after == null ? '' : after);
+                if (!a.trim()) return { ok: false, warn: '改成了空内容' };
+                if (kind === 'reg') {
+                    if (diaryAiTitles(b) !== diaryAiTitles(a)) return { ok: false, warn: '书名号/标题被改动' };
+                    if (diaryAiArticleNo(b) !== diaryAiArticleNo(a)) return { ok: false, warn: '条款编号被改动（第' + (diaryAiArticleNo(b) || '?') + ' vs 第' + (diaryAiArticleNo(a) || '?') + '）' };
+                    if (diaryAiNums(b) !== diaryAiNums(a)) return { ok: false, warn: '条款里的数字被改动' };
+                    // 允许"违反《X》4.3.4：正文。" → "不符合《X》第4.3.4条“正文”的规定。"（外壳规范化），
+                    // 但**引文正文**必须基本一致（≥0.9）—— 正文被改写才是必须拦下的情况
+                    var bodyB = diaryAiRegBody(b), bodyA = diaryAiRegBody(a);
+                    if (bodyB && bodyA) {
+                        var sBody = diaryAiSimEdit(bodyB, bodyA);
+                        if (sBody < 0.85) return { ok: false, warn: '引文正文被改写（相似度 ' + sBody.toFixed(2) + '<0.85）' };
+                        return { ok: true, text: a };
+                    }
+                    var s1 = diaryAiSimEdit(b, a);
+                    if (s1 < 0.85) return { ok: false, warn: '规章内容被改写（相似度 ' + s1.toFixed(2) + '<0.85）' };
+                    return { ok: true, text: a };
+                }
+                if (diaryAiNums(b) !== diaryAiNums(a)) return { ok: false, warn: '数字/日期被改动' };
+                var s2 = diaryAiSim(b, a);
+                if (s2 < 0.5) return { ok: true, soft: true, text: a, warn: '改动较大（相似度 ' + s2.toFixed(2) + '）' };
+                return { ok: true, text: a };
+            }
+            /** 规章回库校对照：在规章库里按《标题》+第X条定位同一条款原文 */
+            function diaryAiLibLookup(regText) {
+                try {
+                    var rules = (typeof window.getRulesData === 'function') ? (window.getRulesData() || []) : [];
+                    if (!rules.length) return null;
+                    var t = String(regText || '');
+                    var tm = t.match(/《([^》]+)》/);
+                    var title = tm ? tm[1] : '';
+                    var am = t.match(/第\s*([一二三四五六七八九十百零〇\d]{1,6})\s*条/);
+                    var want = am ? am[1] : '';
+                    var cands = title ? rules.filter(function (r) {
+                        var rt = String(r.title || '');
+                        if (diaryAiIsHandbook(rt)) return false;              // 手册不能当规章引用
+                        return rt && (rt.indexOf(title) !== -1 || title.indexOf(rt) !== -1);
+                    }) : [];
+                    if (!cands.length) cands = rules.filter(function (r) { return !diaryAiIsHandbook(r.title); });
+                    if (want) {
+                        for (var i = 0; i < cands.length; i++) {
+                            var body = String(cands[i].content || '');
+                            var idx = body.indexOf('第' + want + '条');
+                            if (idx < 0) idx = body.indexOf('第 ' + want + '条');
+                            if (idx >= 0) {
+                                var seg = body.slice(idx, idx + 400);
+                                var nx = seg.slice(1).search(/第\s*[一二三四五六七八九十百零〇\d]+\s*条/);
+                                if (nx > 0) seg = seg.slice(0, nx + 1);
+                                return { title: cands[i].title || '', ref: '第' + want + '条', text: seg.trim(), sim: diaryAiSim(t, seg) };
+                            }
+                        }
+                    }
+                    var best = null;
+                    cands.slice(0, 30).forEach(function (r) {
+                        var s = diaryAiSim(t, r.content || '');
+                        if (!best || s > best.sim) best = { title: r.title || '', ref: '', text: String(r.content || '').slice(0, 400), sim: s };
+                    });
+                    return best;
+                } catch (e) { return null; }
+            }
+            // ── 台账（检查信息）引用优先 ────────────────────────────────────────
+            // 用户口径（2026-09-18）：对规**优先用"检查信息"里已经引用过的规章** —— 同一条问题在台账里
+            //   往往已经有 regulation（写实里的问题经常就是从台账「📝 记入日志」带过来的），相似就直接搬用，
+            //   保证写实与台账口径一致；台账里没有，才去规章库找。
+            //   另外：**《安全检查手册》不能当规章引用**（手册是检查项点，不是依据）。
+            function diaryAiIsHandbook(s) { return /手册/.test(String(s || '')); }
+            function diaryAiNormForMatch(s) {
+                return String(s || '').replace(/[\s，。、；：？！“”‘’"'（）()【】\[\]《》〈〉,.;:?!<>~—-]/g, '').trim();
+            }
+            function diaryAiSampleGrams(s, n) {
+                var t = diaryAiNormForMatch(s), out = [], seen = {};
+                var step = Math.max(2, Math.floor(t.length / (n || 6)));
+                for (var i = 0; i + 4 <= t.length; i += step) {
+                    var g = t.substr(i, 4);
+                    if (!seen[g]) { seen[g] = 1; out.push(g); }
+                    if (out.length >= (n || 6)) break;
+                }
+                if (!out.length && t.length >= 2) out.push(t.slice(0, Math.min(4, t.length)));
+                return out;
+            }
+            /**
+             * 在检查信息台账里找"相似问题"，把它已引用的规章搬过来。
+             *   sim = 1（归一化后完全一致）→ 可直接照搬（diaryAiAutoFillFromLedger 自动写入）
+             *   0.62 ≤ sim < 0.8 → 作为候选给用户挑（排在最前）
+             *   台账里没引用过规章 / 引用的是手册 → 返回 null（转规章库）
+             * 性能：先 4 字滑窗预筛再算相似度，4 万条台账实测几十毫秒级；同一次运行内按问题文本缓存。
+             */
+            var _diaryAiLedgerCache = {};
+            function diaryAiLedgerRegSuggest(issueText) {
+                var key = String(issueText || '').trim();
+                if (!key) return null;
+                if (_diaryAiLedgerCache[key] !== undefined) return _diaryAiLedgerCache[key];
+                var ALL = (typeof window.getIssueData === 'function') ? (window.getIssueData() || []) : [];
+                var q0 = key, q = diaryAiNormForMatch(q0);
+                if (!q || !ALL.length) { _diaryAiLedgerCache[key] = null; return null; }
+                var grams = diaryAiSampleGrams(q, 6);
+                var scanned = 0, exact = null, best = null;
+                for (var i = ALL.length - 1; i >= 0 && scanned < 40000; i--) {
+                    var r = ALL[i];
+                    if (!r) continue;
+                    var reg = String(r.regulation || '').trim();
+                    if (!reg) continue;
+                    if (diaryAiIsHandbook(reg)) continue;               // 手册不算规章依据
+                    var c = String(r.content || '');
+                    if (!c) continue;
+                    scanned++;
+                    var hay = c.length > 400 ? c.slice(0, 400) : c;
+                    var hit = false;
+                    for (var k = 0; k < grams.length; k++) { if (hay.indexOf(grams[k]) !== -1) { hit = true; break; } }
+                    if (!hit) continue;
+                    if (diaryAiNormForMatch(c) === q) {                 // 同一条问题 → 直接照搬
+                        exact = { text: reg, sim: 1, date: r.datetime || '', content: c };
+                        break;
+                    }
+                    var s = diaryAiSim(q0, c);
+                    if (!best || s > best.sim || (s === best.sim && String(r.datetime || '') > String(best.date || ''))) {
+                        best = { text: reg, sim: s, date: r.datetime || '', content: c };
+                    }
+                }
+                var picked = exact || best;
+                if (picked && !exact && picked.sim < 0.62) picked = null;
+                _diaryAiLedgerCache[key] = picked;
+                return picked;
+            }
+            // ⚠️ 用户口径（2026-09-18 纠正）：台账里已引用的规章**只"搬到采纳选项里"**，
+            //   **绝不自动写入** —— 由用户在回执里点「采纳」确认（与规章库候选同一套确认流程）。
+            function diaryAiSyncRegDom(date, idx, text) {
+                var dateEl = document.getElementById('diary-date');
+                if (!dateEl || dateEl.value !== date) return;
+                var el = document.getElementById('diary-regulation-' + idx);
+                if (el && el.value !== text) { el.value = text; if (typeof autoResize === 'function') autoResize(el); }
+            }
+            /** 知识库索引召回候选条款（无规章依据时用；与「智能对规」同一套 KB 索引；**排除手册**） */
+            async function diaryAiRecallRules(text, topK) {
+                if (!window.KB || typeof window.KB.searchRules !== 'function') return [];
+                try {
+                    if (typeof window.KB.ensure === 'function') {
+                        // ⚠️ 最多等 4 秒：规章索引首次建立/恢复可能耗时，但绝不能因此让"一键修改"长时间无响应
+                        //    （超时就用现有索引 / 无候选继续，模型仍可正常改文字）
+                        await Promise.race([
+                            window.KB.ensure(['rules']),
+                            new Promise(function (r) { setTimeout(r, 4000); })
+                        ]);
+                    }
+                    var hits = window.KB.searchRules(String(text || '').slice(0, 400), topK || 4) || [];
+                    return hits
+                        // ⚠️ 手册（如《安全检查手册3》）写在规章库里也不能当规章引用 —— 用户明确口径
+                        .filter(function (h) { return !diaryAiIsHandbook((h.title || '') + ' ' + (h.path || '')); })
+                        .map(function (h) {
+                            return { ref: h.ref || '', title: h.title || '', trade: h.trade || '', path: h.path || '', text: String(h.text || '').slice(0, 300), from: 'rules' };
+                        });
+                } catch (e) { console.warn('[diary][ai] 规章召回失败：', e && e.message); return []; }
+            }
+            function diaryAiSys() {
+                return [
+                    '你是铁路安全监察领域的文字校订专家。请对"工作写实"与"检查发现问题"做校订：只改文字，不改事实。',
+                    '',
+                    '【可以改】',
+                    '1. 语句通顺：消除生硬拼接、重复、"的"字叠加，必要时调整语序；',
+                    '2. 逻辑合理：按"做了什么 → 发现什么 → 如何处置"理顺前后关系，不改变原意；',
+                    '3. 语言书面化、简洁：去口语（"弄了/搞了/看了一下"）、去空话套话，同一事实只说一次；',
+                    '4. 纠正错别字、多字、少字、标点符号（统一中文标点），同一事实的重复表述可合并。',
+                    '',
+                    '【绝对不能改】',
+                    '5. 事实：日期、时间、地点、单位/部门、人名、设备名称与编号、数量、计量单位、专业术语 —— 原样保留；',
+                    '6. 不得新增原文没有的信息（不得编造检查发现、不得补写整改措施、不得加评价性结论）；',
+                    '7. 不得删除原文已有的信息（重复表述只做合并表达，不丢信息）；',
+                    '8. 不动小标题、序号与层级（"一、""（一）""1."），不动【】（）中的标注。',
+                    '',
+                    '【规章依据 regulations —— 外壳按"对规结论"规范改写，引文正文一句都不许改】',
+                    '9. 统一写成结论式：**不符合《法规名称》第X条“条款原文”的规定。**',
+                    '   示例：原「违反《高速铁路信号维护规则技术标准》4.3.4：轨道电路送、受端电缆应按照调整表要求补偿到规定长度，实际电缆长度通过电缆环阻测试计算：L=环阻/45 (km)。」',
+                    '   → 改「不符合《高速铁路信号维护规则技术标准》第4.3.4条“轨道电路送、受端电缆应按照调整表要求补偿到规定长度，实际电缆长度通过电缆环阻测试计算：L=环阻/45 (km)”的规定。」',
+                    '   · 前缀统一用"不符合"（原文写"违反""不符合…规定"等一律归一到这一句式）；',
+                    '   · 条号统一写成「第X条」（4.3.4 → 第4.3.4条；第十二条 → 第12条；第12条 → 第12条）；',
+                    '   · 条款原文用中文引号“ ”包起来；结尾统一加"的规定。"；书名号《》必须保留。',
+                    '10. **引号内的条款原文必须逐字保留**：只允许纠正错别字、多字少字与标点符号，不得改动用词、语序、句式，不得增删内容、不得改引其它条款；',
+                    '    若给了"规章库原文"，以库内原文为准逐字校对；原文没有书名号或定位不到条款时，保持原样、不要编造。',
+                    '',
+                    '【缺规章依据时 —— 先搬台账、再查规章库；给 1~3 个候选供用户挑选】',
+                    '11. 数据来源优先级（用户口径，必须遵守）：① 标着 [检查信息台账已引用·优先] 的候选，是**同一条问题在"检查信息"里已经引用过的规章** —— 优先采用（**列为候选第 1 条**，保持写实与台账一致）；',
+                    '    ② 台账候选不适用、或没有台账候选时，才从标着 [规章库] 的候选里挑；③ **《…手册…》不是规章依据，一律不得引用**（候选里若出现手册类内容，直接忽略）。',
+                    '12. 输出候选：某条问题"规章依据"为空且给了【候选条款】时，从中挑**最多 3 条**（按贴合度从高到低；台账候选排最前），每条一个 ruleSuggest 项（i 相同）：',
+                    '    · rule：按第 9 条的结论式写，如「不符合《X》第Y条“条款原文”的规定。」；台账候选原样搬也要整理成结论式；',
+                    '    · ref / title：照抄候选的条号与标题，不得改写；cid：把该候选编号（如 c0）一并返回；',
+                    '    · why：≤15 字说明"为什么这条最贴切"（如"直接对应确认信号"），供用户判断；',
+                    '    · 贴合度不足就少给（只给 1~2 条也正常），候选都不相关返回空数组；**严禁自行编造条款**。',
+                    '',
+                    '【输出】只输出一个合法 JSON 对象（禁止代码块、禁止任何解释），结构如下：',
+                    '{"work":{"text":"…","changes":[{"type":"错别字","from":"已径","to":"已经"}]},',
+                    ' "issues":[{"i":0,"text":"…","changes":[]}],',
+                    ' "regulations":[{"i":0,"text":"…","changes":[{"type":"标点","from":"，。","to":"。"}]}],',
+                    ' "ruleSuggest":[{"i":1,"rule":"不符合《X》第Y条“条款原文”的规定。","ref":"第Y条","title":"X","why":"同一专业条款","cid":"c0"}]}',
+                    '要求：issues/regulations 的 i 与输入编号严格对应、条数不得增减；changes 只列真正改过的地方（原→改），没改就给空数组；没有可改之处时 text 原样返回。'
+                ].join('\n');
+            }
+            function diaryAiBuildUser(rec, ctx) {
+                var L = [];
+                L.push('【日期】' + rec.date);
+                L.push('【工作写实】');
+                L.push(String(rec.work || '').slice(0, 3000) || '（无）');
+                L.push('');
+                L.push('【检查发现问题（i 即编号，必须逐条对应返回）】');
+                (rec.issues || []).forEach(function (x, i) {
+                    var reg = String(((rec.regulations || [])[i]) || '').trim();
+                    L.push(i + '. ' + (String(x || '').slice(0, 400) || '（空）'));
+                    L.push('   ↳ 规章依据：' + (reg || '（无 → 请从下方候选条款中挑 1 条填入 ruleSuggest）'));
+                    var lib = reg ? ctx.libMap[i] : null;
+                    if (lib && lib.text) L.push('   ↳ 规章库原文（仅作校对参照）：' + (lib.title ? '《' + lib.title + '》' : '') + (lib.ref || '') + ' ' + String(lib.text).slice(0, 400));
+                });
+                if (ctx.cands.length) {
+                    L.push('');
+                    L.push('【候选条款（只能从这里选，不得编造；请把选中的候选编号 cid 一并返回）】');
+                    ctx.cands.forEach(function (c, i) {
+                        var label = (c.from === 'ledger') ? '[检查信息台账已引用·优先]' : '[规章库]';
+                        L.push('[c' + i + ']' + label + ' '
+                            + (c.from === 'ledger'
+                                ? String(c.text || '').slice(0, 240)
+                                : ((c.title ? '《' + c.title + '》' : '') + (c.ref ? c.ref + '：' : '') + String(c.text || '').slice(0, 200)))
+                            + (c.path ? '（' + c.path + '）' : ''));
+                    });
+                }
+                return L.join('\n');
+            }
+            async function diaryAiBuildCtx(rec) {
+                var ctx = { libMap: {}, cands: [], candMeta: [], signal: null };
+                (rec.regulations || []).forEach(function (x, i) {
+                    if (!String(x || '').trim()) return;
+                    var lib = diaryAiLibLookup(x);
+                    if (lib && lib.text) ctx.libMap[i] = lib;
+                });
+                var missing = (rec.issues || []).map(function (x, i) {
+                    return (String(x || '').trim() && !String(((rec.regulations || [])[i]) || '').trim()) ? i : -1;
+                }).filter(function (i) { return i >= 0; });
+                if (missing.length) {
+                    _diaryAiNote = '正在从检查信息台账/知识库匹配规章条款…';
+                    var seen = {};
+                    var pushCand = function (c) {
+                        var key = (c.from || '') + '|' + (c.title || '') + '|' + (c.ref || '') + '|' + String(c.text || '').slice(0, 30);
+                        if (seen[key] || ctx.cands.length >= 10) return;
+                        seen[key] = 1;
+                        ctx.cands.push(c);
+                    };
+                    for (var k = 0; k < missing.length && ctx.cands.length < 10; k++) {
+                        var it = String((rec.issues || [])[missing[k]] || '');
+                        // ① 检查信息台账里相似问题已引用的规章 —— **优先**（照搬，保持与台账一致）
+                        var led = diaryAiLedgerRegSuggest(it);
+                        if (led) {
+                            pushCand({
+                                from: 'ledger', title: '检查信息台账已引用', ref: '',
+                                text: String(led.text).slice(0, 400),
+                                path: (led.date ? (String(led.date).slice(0, 10) + ' 台账') : '台账'),
+                                sim: led.sim
+                            });
+                        }
+                        // ② 规章库（KB 条款召回，已排除手册）
+                        var hits = await diaryAiRecallRules(it, 5);
+                        hits.forEach(pushCand);
+                    }
+                    ctx.cands.forEach(function (c, i) {
+                        c.cid = 'c' + i;
+                        ctx.candMeta[i] = { from: c.from || '', title: c.title || '', sim: (c.sim != null ? c.sim : null) };
+                    });
+                }
+                return ctx;
+            }
+            /** 结果归一 + 字段守卫（越界回退原值并计入 warns） */
+            function diaryAiNormalizeRecord(rec, j, ctx) {
+                var out = { work: null, issues: null, regulations: null, changes: [], warns: [], notes: [], ruleSuggest: [] };
+                if (!j || typeof j !== 'object') return null;
+                var pushChanges = function (field, list) {
+                    (list || []).forEach(function (c) {
+                        var from = String((c && c.from) || '').trim(), to = String((c && c.to) || '').trim();
+                        if (!from && !to) return;
+                        out.changes.push({ field: field, type: String((c && c.type) || '修改'), from: from, to: to });
+                    });
+                };
+                if (j.work && typeof j.work.text === 'string' && String(rec.work || '').trim()) {
+                    var g = diaryAiGuardField('text', rec.work, j.work.text);
+                    if (g.ok) { out.work = g.text; pushChanges('工作写实', j.work.changes); }
+                    else out.warns.push('工作写实：' + g.warn + ' → 已保留原文');
+                    if (g.ok && g.warn) (g.soft ? out.notes : out.warns).push('工作写实：' + g.warn);
+                }
+                var arr = (rec.issues || []).slice();
+                if (Array.isArray(j.issues)) {
+                    j.issues.forEach(function (it) {
+                        var i = parseInt(it && it.i, 10);
+                        if (!(i >= 0 && i < arr.length)) return;
+                        if (typeof it.text !== 'string' || !String(arr[i] || '').trim()) return;
+                        var g2 = diaryAiGuardField('text', arr[i], it.text);
+                        if (g2.ok) { arr[i] = g2.text; pushChanges('问题' + (i + 1), it.changes); }
+                        else out.warns.push('问题' + (i + 1) + '：' + g2.warn + ' → 已保留原文');
+                        if (g2.ok && g2.warn) (g2.soft ? out.notes : out.warns).push('问题' + (i + 1) + '：' + g2.warn);
+                    });
+                    out.issues = arr;
+                }
+                var regs = (rec.regulations || []).slice();
+                while (regs.length < arr.length) regs.push('');
+                if (Array.isArray(j.regulations)) {
+                    j.regulations.forEach(function (it) {
+                        var i = parseInt(it && it.i, 10);
+                        if (!(i >= 0 && i < regs.length)) return;
+                        if (typeof it.text !== 'string' || !String(regs[i] || '').trim()) return;   // 原本为空 → 走候选
+                        var g3 = diaryAiGuardField('reg', regs[i], it.text);
+                        if (g3.ok) { regs[i] = g3.text; pushChanges('规章' + (i + 1), it.changes); }
+                        else out.warns.push('规章依据' + (i + 1) + '：' + g3.warn + ' → 已保留原文');
+                    });
+                }
+                out.regulations = regs;
+                if (Array.isArray(j.ruleSuggest)) {
+                    // 每条问题最多 3 个候选（用户口径：给 1~3 条更准），并去重、丢弃越界 i
+                    var perIssue = {}, seenSug = {};
+                    j.ruleSuggest.forEach(function (s) {
+                        var i = parseInt(s && s.i, 10);
+                        var txt = String((s && (s.rule || s.text)) || '').trim();
+                        if (!(i >= 0 && i < regs.length) || !txt) return;
+                        if (String(regs[i] || '').trim()) return;               // 已有规章的不覆盖
+                        if (seenSug[i + '|' + txt]) return;                     // 去重
+                        if ((perIssue[i] || 0) >= 3) return;                    // 超量截断
+                        seenSug[i + '|' + txt] = 1;
+                        perIssue[i] = (perIssue[i] || 0) + 1;
+                        // 用模型回传的候选编号(cid)反查来源（台账优先 / 规章库），回执里如实标注
+                        var cidM = String((s && s.cid) || '').match(/^c?(\d+)$/);
+                        var meta = (ctx && ctx.candMeta && cidM) ? ctx.candMeta[parseInt(cidM[1], 10)] : null;
+                        out.ruleSuggest.push({
+                            i: i, text: txt,
+                            ref: String((s && s.ref) || ''), title: String((s && s.title) || ''),
+                            why: String((s && s.why) || '').slice(0, 30),
+                            src: (meta && meta.from) || '', cid: String((s && s.cid) || ''),
+                            note: (meta && meta.from === 'ledger' && meta.sim != null)
+                                ? ('台账相似度 ' + (meta.sim >= 0.999 ? '完全一致' : meta.sim.toFixed(2))) : ''
+                        });
+                    });
+                    // 台账来源的排前面（用户口径：优先台账）
+                    out.ruleSuggest.sort(function (a, b) { return (b.src === 'ledger' ? 1 : 0) - (a.src === 'ledger' ? 1 : 0); });
+                }
+                return out;
+            }
+            async function diaryAiFixOne(rec, ctx) {
+                var user = diaryAiBuildUser(rec, ctx);
+                var r = await window.dsCallOnce(diaryAiSys(), user, {
+                    temperature: 0.1,
+                    maxTokens: Math.min(8000, Math.round(user.length * 1.6) + 600),
+                    timeoutMs: 60000,
+                    signal: ctx.signal
+                });
+                if (!r || !r.ok) throw new Error(String((r && r.error) || '调用失败'));
+                var j = window.dsParseJsonLoose ? window.dsParseJsonLoose(r.text) : null;
+                if (!j) throw new Error('返回内容不是合法 JSON');
+                return diaryAiNormalizeRecord(rec, j, ctx);
+            }
+            /** 写回内存 + 落盘 + （若正在编辑同一天）同步输入框 */
+            function diaryAiApplyResult(date, res) {
+                var i = diaries.findIndex(function (d) { return d.date === date; });
+                if (i === -1) return { changed: 0 };
+                var d = diaries[i], changed = 0;
+                if (res.work != null && res.work !== d.work) { d.work = res.work; changed++; }
+                if (Array.isArray(res.issues)) {
+                    var nextIssues = [];
+                    for (var k = 0; k < d.issues.length; k++) {
+                        var nv = res.issues[k];
+                        if (nv != null && nv !== d.issues[k]) { nextIssues.push(nv); changed++; } else nextIssues.push(d.issues[k]);
+                    }
+                    d.issues = nextIssues;
+                }
+                if (Array.isArray(res.regulations)) {
+                    var regs = (d.regulations || []).slice();
+                    while (regs.length < d.issues.length) regs.push('');
+                    var nextRegs = [];
+                    for (var m = 0; m < regs.length; m++) {
+                        var rv = res.regulations[m];
+                        if (rv != null && rv !== regs[m]) { nextRegs.push(rv); changed++; } else nextRegs.push(regs[m]);
+                    }
+                    d.regulations = nextRegs;
+                }
+                diaries[i] = d;
+                saveDiaries();
+                updateDiaryCount();
+                diaryAiSyncDom(date);
+                return { changed: changed };
+            }
+            /** 记录指纹：用于判断"请求期间这条写实是否被改过"（含自动保存落盘） */
+            function diaryAiRecSig(rec) {
+                return JSON.stringify([String(rec.work || ''), rec.issues || [], rec.regulations || []]);
+            }
+            function diaryAiDomSnapshot(date) {
+                var inputView = document.getElementById('diary-input-view');
+                var dateEl = document.getElementById('diary-date');
+                if (!dateEl || !inputView || inputView.style.display === 'none' || dateEl.value !== date) return null;
+                var c = collectIssuesAndRegulations();
+                return JSON.stringify({ w: (document.getElementById('diary-work') || {}).value || '', i: c.issues, r: c.regulations });
+            }
+            function diaryAiSyncDom(date) {
+                var inputView = document.getElementById('diary-input-view');
+                var dateEl = document.getElementById('diary-date');
+                if (!dateEl || !inputView || inputView.style.display === 'none' || dateEl.value !== date) return;
+                var rec = diaries.filter(function (d) { return d.date === date; })[0];
+                if (!rec) return;
+                var workEl = document.getElementById('diary-work');
+                if (workEl && workEl.value !== (rec.work || '')) { workEl.value = rec.work || ''; if (typeof autoResize === 'function') autoResize(workEl); }
+                renderIssueFields(rec.issues || [], rec.regulations || []);
+            }
+            function diaryAiRefreshViews() {
+                try {
+                    if (document.getElementById('diary-calendar')) renderCalendar();
+                    if (diaryFilterMode === 'history') {
+                        var kw = diaryAiKeyword();
+                        if (kw) window.diarySearch(kw); else document.getElementById('diary-records-list').innerHTML = '';
+                        if (_selectedDate) renderDateDetail(_selectedDate);
+                    }
+                } catch (e) { console.warn('[diary][ai] 刷新视图失败：', e && e.message); }
+                // 知识库：写实源按天分块，就地改内容可能不触发重建 → 主动失效，保证之后检索到的是新文本
+                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('diary'); } catch (e) {}
+            }
+            function diaryAiPanel(html) {
+                var el = document.getElementById('diary-ai-fix-panel');
+                if (!el) return;
+                el.innerHTML = html;
+                el.style.display = 'block';
+            }
+            // ---- 悬浮气泡（点击后的"有反应"反馈）：固定右下角，不受滚动位置影响 ----
+            //   为什么必须有它：回执面板在卡片顶部，用户在下方编辑区点按钮时它在屏幕外；
+            //   而模型单条要 10~40 秒，界面若一动不动就会被当成"点坏了"（用户实测反馈）。
+            var _diaryAiToastTimer = null, _diaryAiTick = null, _diaryAiNote = '';
+            var DIARY_AI_VER = '2026-09-18d';       // 版本号：回执页脚会显示，用来确认是不是新版本（旧缓存排查用）
+            // 按钮旁的进度文字（点击后立刻出现，最不会错过的反馈位置）
+            function diaryAiInline(text) {
+                var el = document.getElementById('diary-ai-fix-inline');
+                if (el) el.textContent = text || '';
+            }
+            function diaryAiToast(html, opts) {
+                opts = opts || {};
+                var el = document.getElementById('diary-ai-toast');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'diary-ai-toast';
+                    // 放在**屏幕顶部居中**：底部右下角容易被手机底部栏/悬浮按钮挡住（实测"气泡没出现"的可能原因之一）
+                    Object.assign(el.style, {
+                        position: 'fixed', top: '12px', left: '50%', transform: 'translateX(-50%)',
+                        maxWidth: 'min(94vw, 460px)',
+                        background: '#1e293b', color: '#fff', padding: '10px 14px', borderRadius: '14px',
+                        fontSize: '0.84rem', lineHeight: '1.5', fontWeight: '600',
+                        boxShadow: '0 4px 14px rgba(0,0,0,.3)', zIndex: '10150',
+                        opacity: '0', transition: 'opacity .25s ease', cursor: 'default'
+                    });
+                    document.body.appendChild(el);
+                }
+                el.innerHTML = html;
+                el.style.opacity = '1';
+                el.style.cursor = opts.onClick ? 'pointer' : 'default';
+                el.onclick = opts.onClick || null;
+                if (_diaryAiToastTimer) { clearTimeout(_diaryAiToastTimer); _diaryAiToastTimer = null; }
+                if (opts.sticky !== true) {
+                    _diaryAiToastTimer = setTimeout(function () { el.style.opacity = '0'; }, opts.ms || 4000);
+                }
+                return el;
+            }
+            function diaryAiTickStart(stats) {
+                diaryAiTickStop();
+                var render = function () {
+                    var sec = Math.round((Date.now() - stats.t0) / 1000);
+                    var head = '✨ AI 修改中…' + (stats.total > 1 ? ('（' + Math.max(1, stats.done + 1) + '/' + stats.total + '）') : '')
+                        + ' 已用 ' + sec + 's';
+                    diaryAiToast(head + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">'
+                        + escapeHtml(_diaryAiNote || '正在调用模型（单条通常 10~40 秒）') + '<br>点此停止</div>',
+                        { sticky: true, onClick: function () { window.diaryAiStop(); } });
+                    diaryAiInline('✨ 修改中 ' + sec + 's…');      // 按钮旁：最不会错过的反馈
+                    if (_diaryAiBusy) diaryAiProgress(stats, _diaryAiNote);
+                };
+                render();                              // 【关键】立即渲染：点击瞬间就有反馈，不等第一个 500ms 周期
+                _diaryAiTick = setInterval(render, 500);
+            }
+            function diaryAiTickStop() {
+                if (_diaryAiTick) { clearInterval(_diaryAiTick); _diaryAiTick = null; }
+                diaryAiInline('');
+            }
+            /** 回执面板若在屏幕外（用户正在下方编辑区），滚到可见处 —— 免得"点了没动静" */
+            function diaryAiPanelEnsureVisible() {
+                var el = document.getElementById('diary-ai-fix-panel');
+                if (!el || el.style.display === 'none') return;
+                try {
+                    var r = el.getBoundingClientRect();
+                    if (r.top < 0 || r.bottom > (window.innerHeight || 0)) el.scrollIntoView({ block: 'nearest' });
+                } catch (e) {}
+            }
+            function diaryAiElapsed(stats) { return stats && stats.t0 ? Math.round((Date.now() - stats.t0) / 1000) : 0; }
+            function diaryAiProgress(stats, note) {
+                diaryAiPanel([
+                    '<div style="font-weight:600;">✨ 一键 AI 修改 ' + (stats.done + '/' + stats.total) + ' · ✏️ 已改 ' + stats.changed + ' 处 · 📜 候选 ' + stats.suggestions + ' · ⚠️ 拦下 ' + stats.warns + ' · 🔎 待复核 ' + stats.notes + ' · ⏭️ 跳过 ' + stats.skipped + ' · ❌ 失败 ' + stats.failed + ' · ⏱ ' + diaryAiElapsed(stats) + 's</div>',
+                    '<div style="color:var(--text-secondary);margin-top:4px;">' + escapeHtml(note || '') + '</div>',
+                    '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" onclick="diaryAiStop()">⏹ 停止（已完成的不回退）</button></div>'
+                ].join(''));
+            }
+            function diaryAiBackup(list) {
+                try {
+                    // 整条深拷贝（不挑字段）：撤销才能做到字节级还原，也保留 mediaIds 等既有字段
+                    var items = list.map(function (d) { return JSON.parse(JSON.stringify(d)); });
+                    localStorage.setItem(DIARY_AI_BK_K, JSON.stringify({ ts: Date.now(), items: items }));
+                } catch (e) { console.warn('[diary][ai] 备份失败：', e && e.message); }
+            }
+            window.diaryAiStop = function () { _diaryAiStop = true; };
+            // 诊断钩子（排查"为什么这条没被改/被拦下"时看它，取证脚本也用它做定点断言；不参与业务逻辑）
+            window.__diaryAiDiag = {
+                guard: diaryAiGuardField,
+                simEdit: diaryAiSimEdit,
+                articleNo: diaryAiArticleNo,
+                regBody: diaryAiRegBody,
+                nums: diaryAiNums
+            };
+            // 入口（用户口径 2026-09-18，最终版）：
+            //   「✨ 一键修改」= **只改当前编辑页面这一天**的写实与检查问题（输入界面正在编辑的那天 / 日历选中那天 / 当日）。
+            //   没有范围选择面板、没有 ▾ 菜单、不弹任何确认 —— 点一下就对这一天开跑（≤上限条数），改完自动保存、可撤销。
+            //   ⚠️ 回执面板必须放在 index.html 的两个视图**之外**，否则在编辑界面点按钮时回执渲染在隐藏的
+            //      查询视图里，表现为"点击无反应"（实测就是这个原因）。
+            window.diaryAiFix = function () {
+                if (typeof console !== 'undefined') console.log('[diary][ai] 引擎 v' + DIARY_AI_VER);
+                if (_diaryAiBusy) { alert('AI 修改正在进行中，请等它跑完。'); return; }
+                if (!window.dsCallOnce) { alert('底层 AI 调用未就绪（doubao-common.js 未加载）。'); return; }
+                if (!(localStorage.getItem('ds_api_key_v1') || '')) { alert('请先在「设置 → API 配置」里填写 API Key。'); return; }
+                var def = diaryAiDefaultScope();
+                var kind = 'day:' + def.date;
+                var n = diaryAiPick(kind).length;
+                if (!n) {
+                    diaryAiPanel('<div style="font-weight:600;">✨ 一键 AI 修改</div>'
+                        + '<div style="color:var(--text-secondary);margin-top:4px;">' + escapeHtml(def.label) + ' 还没有可修改的内容。'
+                        + '先在「📋 工作内容 / ⚠️ 检查发现问题」里写点什么，再点「✨ 一键修改」。</div>'
+                        + '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" onclick="document.getElementById(\'diary-ai-fix-panel\').style.display=\'none\'">关闭</button></div>');
+                    diaryAiInline('');
+                    diaryAiToast('ℹ️ ' + escapeHtml(def.label) + ' 还没有可修改的内容', { ms: 4000 });
+                    return;
+                }
+                window.diaryAiRun(kind);
+            };
+            window.diaryAiRun = async function (kind) {
+                if (_diaryAiBusy) return;
+                var list = diaryAiPick(kind).slice(0, diaryAiLimit());
+                if (!list.length) return;
+                _diaryAiBusy = true; _diaryAiStop = false;
+                var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                diaryAiBackup(list);
+                var stats = { total: list.length, done: 0, changed: 0, skipped: 0, failed: 0, warns: 0, notes: 0, suggestions: 0, t0: Date.now() };
+                var details = [];
+                _diaryAiLedgerCache = {};    // 台账相似检索缓存（按问题文本），每次运行重置
+                var needKb = list.some(function (d) {
+                    return (d.issues || []).some(function (x, i) { return String(x || '').trim() && !String(((d.regulations || [])[i]) || '').trim(); });
+                });
+                _diaryAiNote = '准备中…' + (needKb ? '（含规章索引恢复/建立，最多等 4 秒）' : '');
+                diaryAiProgress(stats, _diaryAiNote);
+                diaryAiPanelEnsureVisible();
+                diaryAiTickStart(stats);      // 按钮旁文字 + 顶部气泡：点击后立刻有反馈 + 秒表 + 可点停止
+                try {
+                    for (var idx = 0; idx < list.length; idx++) {
+                        if (_diaryAiStop) break;
+                        var target = list[idx].date;
+                        var live = diaries.filter(function (d) { return d.date === target; })[0];
+                        if (!live) { stats.skipped++; continue; }                    // 已被删除
+                        // 请求前记录两条指纹，返回时比对，任一变化就跳过（绝不覆盖用户的新内容）：
+                        //   ① snap：当前正在编辑的那一天，输入框内容（用户在等待期间又敲了字）
+                        //   ② recSig：记录本身（自动保存 2 秒防抖会在请求期间把输入框内容落盘，记录因此变了）
+                        var snap = diaryAiDomSnapshot(target);
+                        var recSig = diaryAiRecSig(live);
+                        _diaryAiNote = '正在修改 ' + target + '（' + (idx + 1) + '/' + list.length + '）…';
+                        diaryAiProgress(stats, _diaryAiNote);
+                        try {
+                            var ctx = await diaryAiBuildCtx(live);
+                            ctx.signal = ctrl ? ctrl.signal : null;
+                            var res = await diaryAiFixOne(live, ctx);
+                            if (!res) throw new Error('返回结构异常');
+                            if (_diaryAiStop) { break; }
+                            // 等待期间该日内容变了（输入框被敲字 / 自动保存已落盘）→ 跳过，绝不覆盖
+                            var nowRec = diaries.filter(function (d) { return d.date === target; })[0];
+                            var domChanged = (snap !== null && diaryAiDomSnapshot(target) !== snap);
+                            var recChanged = (!nowRec || diaryAiRecSig(nowRec) !== recSig);
+                            if (domChanged || recChanged) {
+                                stats.skipped++;
+                                details.push({ date: target, changes: [], warns: ['⏭️ 等待期间该日内容已更新（' + (domChanged ? '输入框有新输入' : '自动保存刚落盘') + '），本条跳过以免覆盖；稍后再点一次即可'], notes: [], suggests: [] });
+                                continue;
+                            }
+                            var ap = diaryAiApplyResult(target, res);
+                            stats.changed += ap.changed;
+                            stats.warns += res.warns.length;
+                            stats.notes += (res.notes || []).length;
+                            stats.suggestions += res.ruleSuggest.length;
+                            details.push({ date: target, changes: res.changes, warns: res.warns, notes: res.notes || [], suggests: res.ruleSuggest });
+                        } catch (e) {
+                            stats.failed++;
+                            details.push({ date: target, changes: [], warns: ['❌ 失败：' + ((e && e.message) || e)], notes: [], suggests: [] });
+                        }
+                        stats.done++;
+                    }
+                } finally {
+                    _diaryAiBusy = false;
+                    diaryAiTickStop();
+                    diaryAiRefreshViews();
+                    diaryAiReport(kind, stats, details, Date.now() - stats.t0);
+                    diaryAiToast('✅ AI 修改完成：改动 ' + stats.changed + ' 处 · 拦下 ' + stats.warns + ' · 待复核 ' + stats.notes
+                        + (stats.suggestions ? ' · 候选条款 ' + stats.suggestions : '')
+                        + (stats.failed ? ' · ❌ 失败 ' + stats.failed : '')
+                        + (stats.skipped ? ' · ⏭️ 跳过 ' + stats.skipped : '')
+                        + ' ｜ 已用 ' + diaryAiElapsed(stats) + 's'
+                        + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">点此查看改动明细与「↩️ 撤销」</div>',
+                        { ms: 8000, onClick: function () { var p = document.getElementById('diary-ai-fix-panel'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
+                }
+            };
+            function diaryAiReport(kind, stats, details, ms) {
+                _diaryAiSuggests = {};
+                _diaryAiLastReport = { kind: kind, stats: stats, details: details, ms: ms };   // 采纳后重渲染用
+                var sugRows = [], chgRows = [], warnRows = [], noteRows = [];
+                var ledCandN = 0;   // 其中来自"检查信息台账已引用"的候选数（只是计数，均需用户点采纳）
+                details.forEach(function (d) {
+                    (d.notes || []).forEach(function (n) { noteRows.push('<div style="margin:2px 0;">' + escapeHtml(d.date) + ' · ' + escapeHtml(n) + '</div>'); });
+                    (d.suggests || []).forEach(function (s) { if (s.src === 'ledger') ledCandN++; });
+                    // 建议补的规章依据：**按"问题"分组**，每条问题给 1~3 个候选（用户口径：给几条让他挑才准）
+                    (function () {
+                        var byIssue = {};
+                        (d.suggests || []).forEach(function (s) { (byIssue[s.i] = byIssue[s.i] || []).push(s); });
+                        Object.keys(byIssue).forEach(function (iStr) {
+                            var i = parseInt(iStr, 10);
+                            var list = byIssue[iStr];
+                            var adopted = list.filter(function (x) { return x.adopted; })[0];
+                            if (adopted) {
+                                var chosen = list.filter(function (x) { return x.chosen; })[0] || adopted;
+                                sugRows.push('<div style="margin:6px 0 2px;"><b>' + escapeHtml(d.date) + ' · 问题' + (i + 1) + '</b>'
+                                    + '<span style="color:#047857;margin-left:6px;">✅ 已采纳：' + escapeHtml(chosen.text) + '</span></div>');
+                                return;
+                            }
+                            var rows = list.map(function (s, k) {
+                                var key = d.date + '#' + i + '#' + k;
+                                _diaryAiSuggests[key] = s.text;
+                                return '<div style="margin:3px 0;display:flex;gap:6px;align-items:flex-start;">'
+                                    + '<span style="opacity:.6;flex-shrink:0;">' + '①②③'.charAt(k) + '</span>'
+                                    + '<span style="flex:1;min-width:0;">'
+                                    + (s.src === 'ledger'
+                                        ? '<span style="background:#ecfdf5;color:#047857;border-radius:5px;padding:0 4px;margin-right:4px;font-size:0.74rem;">台账已引用·优先</span>'
+                                        : (s.src === 'rules' ? '<span style="background:#eff6ff;color:#1d4ed8;border-radius:5px;padding:0 4px;margin-right:4px;font-size:0.74rem;">规章库</span>' : ''))
+                                    + escapeHtml(s.text)
+                                    + (s.note ? ' <span style="color:#047857;font-size:0.74rem;">（' + escapeHtml(s.note) + '）</span>' : '')
+                                    + (s.why ? ' <span style="color:var(--text-secondary);font-size:0.76rem;">（' + escapeHtml(s.why) + '）</span>' : '')
+                                    + '</span>'
+                                    + '<button class="btn btn-secondary btn-small" style="flex-shrink:0;" onclick="diaryAiAdoptRule(\'' + d.date + '\',' + i + ',\'' + key + '\')">采纳</button></div>';
+                            }).join('');
+                            sugRows.push('<div style="margin:6px 0 2px;"><b>' + escapeHtml(d.date) + ' · 问题' + (i + 1) + '</b>'
+                                + (list.length > 1 ? '<span style="color:var(--text-secondary);font-size:0.78rem;margin-left:6px;">共 ' + list.length + ' 个候选，选最贴切的一条</span>' : '')
+                                + rows + '</div>');
+                        });
+                    })();
+                    (d.changes || []).slice(0, 12).forEach(function (c) {
+                        chgRows.push('<div style="margin:2px 0;">' + escapeHtml(d.date) + ' · ' + escapeHtml(c.field) + ' · ' + escapeHtml(c.type) + '：'
+                            + '<span style="color:#b91c1c;text-decoration:line-through;">' + escapeHtml(c.from || '（新增）') + '</span> → '
+                            + '<span style="color:#047857;">' + escapeHtml(c.to || '（删除）') + '</span></div>');
+                    });
+                    (d.warns || []).forEach(function (w) { warnRows.push('<div style="margin:2px 0;">' + escapeHtml(d.date) + ' · ' + escapeHtml(w) + '</div>'); });
+                });
+                var html = [
+                    '<div style="font-weight:600;">✨ 一键修改完成：共 ' + stats.total + ' 条 · ✏️ 改动 ' + stats.changed + ' 处 · 📥 台账候选 ' + ledCandN + ' 条 · 📜 候选条款 ' + stats.suggestions + ' 条 · ⚠️ 拦下 ' + stats.warns + ' 处 · 🔎 待复核 ' + stats.notes + ' 处 · ⏭️ 跳过 ' + stats.skipped + ' 条 · ❌ 失败 ' + stats.failed + ' 条 ｜ 用时 ' + (ms / 1000).toFixed(1) + 's</div>',
+                    '<div style="color:var(--text-secondary);margin-top:4px;">已自动保存（' + escapeHtml(diaryAiScopeLabel(kind)) + '）。数字/日期/书名号被改动的字段已自动回退为原文；规章依据只做纠错与规范化，检查手册不作为规章依据。<b>所有候选（含台账已引用的）都需要你点「采纳」才会写入。</b> ｜ 引擎 v' + DIARY_AI_VER + '</div>'
+                ];
+                if (sugRows.length) html.push('<div style="margin-top:8px;"><b>📜 建议补的规章依据（点「采纳」写入该条问题；台账已引用的排在最前）</b>' + sugRows.join('') + '</div>');
+                if (chgRows.length) html.push('<div style="margin-top:8px;"><b>✏️ 改动明细（前 ' + Math.min(chgRows.length, 60) + ' 条）</b>' + chgRows.slice(0, 60).join('') + '</div>');
+                if (warnRows.length) html.push('<div style="margin-top:8px;color:#b45309;"><b>⚠️ 已被拦下的越界改动（字段已回退为原文）</b>' + warnRows.slice(0, 30).join('') + '</div>');
+                if (noteRows.length) html.push('<div style="margin-top:8px;color:#0369a1;"><b>🔎 改动较大，建议过一眼</b>' + noteRows.slice(0, 30).join('') + '</div>');
+                html.push('<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">'
+                    + '<button class="btn btn-secondary btn-small" onclick="diaryAiUndoAiFix()">↩️ 撤销本次修改</button>'
+                    + '<button class="btn btn-secondary btn-small" onclick="document.getElementById(\'diary-ai-fix-panel\').style.display=\'none\'">关闭</button>'
+                    + '</div>');
+                diaryAiPanel(html.join(''));
+                var undoBtn = document.getElementById('diary-ai-undo-btn');
+                if (undoBtn && (stats.changed || stats.skipped || stats.suggestions)) undoBtn.style.display = '';
+            }
+            window.diaryAiAdoptRule = function (date, issueIdx, key) {
+                var txt = _diaryAiSuggests[key];
+                if (!txt) { alert('候选内容已过期，请重新运行一次。'); return; }
+                var i = diaries.findIndex(function (d) { return d.date === date; });
+                if (i === -1) return;
+                var d = diaries[i];
+                var regs = (d.regulations || []).slice();
+                while (regs.length < (d.issues || []).length) regs.push('');
+                if (String(regs[issueIdx] || '').trim()) { alert('该条问题已有规章依据，未覆盖。'); return; }
+                regs[issueIdx] = txt;
+                d.regulations = regs;
+                diaries[i] = d;
+                saveDiaries();
+                // 正在编辑同一天 → 同步对应输入框
+                var regEl = document.getElementById('diary-regulation-' + issueIdx);
+                if (regEl && document.getElementById('diary-date') && document.getElementById('diary-date').value === date) {
+                    regEl.value = txt;
+                    if (typeof autoResize === 'function') autoResize(regEl);
+                }
+                // 回执里把该条问题的整组候选标成"已采纳"（并记住用户选的是哪一条），再原地重渲染
+                if (_diaryAiLastReport) {
+                    (_diaryAiLastReport.details || []).forEach(function (dd) {
+                        if (dd.date !== date) return;
+                        (dd.suggests || []).forEach(function (s) {
+                            if (s.i !== issueIdx) return;
+                            s.adopted = true;
+                            if (s.text === txt) s.chosen = true;
+                        });
+                    });
+                    diaryAiReport(_diaryAiLastReport.kind, _diaryAiLastReport.stats, _diaryAiLastReport.details, _diaryAiLastReport.ms);
+                }
+                diaryAiRefreshViews();
+                diaryAiToast('✅ 已写入规章依据：' + escapeHtml(String(txt).slice(0, 42)) + (String(txt).length > 42 ? '…' : ''), { ms: 3000 });
+            };
+            window.diaryAiUndoAiFix = function () {
+                var bk = null;
+                try { bk = JSON.parse(localStorage.getItem(DIARY_AI_BK_K) || 'null'); } catch (e) { bk = null; }
+                if (!bk || !Array.isArray(bk.items) || !bk.items.length) { alert('没有可撤销的 AI 修改记录。'); return; }
+                if (!confirm('撤销上一次 AI 修改（' + bk.items.length + ' 条，' + new Date(bk.ts).toLocaleString() + '）？')) return;
+                bk.items.forEach(function (it) {
+                    var i = diaries.findIndex(function (d) { return d.date === it.date; });
+                    var clone = JSON.parse(JSON.stringify(it));
+                    if (i === -1) { diaries.push(clone); return; }     // 期间被删掉的记录也一并恢复
+                    diaries[i] = clone;
+                });
+                saveDiaries();
+                updateDiaryCount();
+                try { localStorage.removeItem(DIARY_AI_BK_K); } catch (e) {}
+                var undoBtn = document.getElementById('diary-ai-undo-btn');
+                if (undoBtn) undoBtn.style.display = 'none';
+                diaryAiRefreshViews();
+                diaryAiPanel('<div>↩️ 已撤销上一次 AI 修改，恢复 ' + bk.items.length + ' 条原文。</div>');
+            };
+
             window.clearAllDiaries = function() {
                 if (!confirm('⚠️ 确定清空所有工作日志吗？此操作不可恢复！')) return;
                 diaries = [];

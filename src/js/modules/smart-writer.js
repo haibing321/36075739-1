@@ -460,6 +460,7 @@
             window.wrInit = function() {
                 if (_wrInited) return;
                 _wrInited = true;
+                try { wrSyncTwoStepChk(); } catch (e) {}   // 两步生成开关：与 localStorage 同步（P1-7）
                 wrOpenDB().then(() => {
                     wrSwitchTab('gen');
                     wrRenderMaterials();
@@ -1606,11 +1607,53 @@
                 }
 
                 // 提取关键词（去停用词）
-                const stops = new Set(['的','了','和','与','帮','我','写','一份','一个','关于','针对','请','生成','制作']);
-                result.keywords = query.replace(/[，。、！？（）""''《》\s]+/g,' ').split(' ')
-                    .map(w => w.trim()).filter(w => w.length >= 2 && !stops.has(w)).slice(0, 10);
+                // 【P1-5 匹配修复 2026-09-18】原先只按空格/标点切分：用户连着写
+                //   「写一份2026年3月安全检查月度报告」时整句成了**一个关键词**，于是
+                //   模板 includes 匹配必然落空（兜底成"最近更新的一条"）、规章候选与台账候选被清零。
+                //   现在改为「日期 → 业务词典（长词优先）→ 残余片段」三级抽取。
+                result.keywords = wrExtractKeywords(query);
 
                 return result;
+            }
+
+            // ---- 关键词抽取（P1-5）：日期 + 业务词典长词优先 + 残余片段兜底 ----
+            var WR_KW_DICT = [
+                // 长词在前：命中即整体保留并从待处理串中剔除，避免被拆成"安全"+"检查"这类碎片
+                '安全检查报告','月度安全报告','月度报告','事故分析报告','事故调查报告','整改通知书','隐患整改',
+                '年度总结','隐患排查','安全隐患排查','安全隐患','安全检查','安全问题','检查信息','检查台账',
+                '典型问题','问题统计','问题分析','原因分析','整改要求','整改措施','防范措施','管控措施','设备故障',
+                '作业标准','劳动安全','风险研判','规章制度','专业管理','应急','消防','调车','信号','施工','防洪','防断','防寒',
+                '春运','暑运','接发列车','一线作业','现场检查'
+            ];
+            var WR_KW_STOP = /^(写|请|帮|我|要|做|生成|制作|一份|一个|关于|针对|包括|包含|以及|同时|和|与|的|给|把|按|根据|进行|一个|要求|内容|报告|文档)+$/;
+            function wrExtractKeywords(query) {
+                var q = String(query || '');
+                var out = [], seen = {};
+                function push(w) {
+                    w = String(w || '').trim();
+                    if (w.length < 2 || seen[w]) return;
+                    seen[w] = 1; out.push(w);
+                }
+                // 1) 日期：2026年3月 → 同时给「2026年3月」「2026年」「3月」，让日期类关键词也能命中正文
+                var ym = q.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+                if (ym) { push(ym[1] + '年' + ym[2] + '月'); push(ym[1] + '年'); push(ym[2] + '月'); }
+                else {
+                    var y = q.match(/(\d{4})\s*年/); if (y) push(y[1] + '年');
+                    var mo = q.match(/(\d{1,2})\s*月/); if (mo) push(mo[1] + '月');
+                }
+                // 2) 业务词典（长词优先，命中即从残余串中剔除）
+                var rest = q;
+                WR_KW_DICT.forEach(function (w) {
+                    if (rest.indexOf(w) !== -1) { push(w); rest = rest.split(w).join(' '); }
+                });
+                // 3) 残余片段（去停用词与纯日期残渣）
+                rest.replace(/[，。、！？；：（）""''《》【】\s]+/g, ' ').split(' ').forEach(function (seg) {
+                    seg = seg.trim();
+                    if (!seg || WR_KW_STOP.test(seg)) return;
+                    if (/^\d{2,4}\s*年?(\s*\d{1,2}\s*月?)?$/.test(seg)) return;
+                    if (seg.length >= 2 && seg.length <= 14) push(seg);
+                });
+                return out.slice(0, 14);
             }
 
             /**
@@ -1667,9 +1710,15 @@
                 let filtered = issues;
 
                 // 日期过滤（检查issue有date字段或可从content中推断）
+                // 【P0-1 修复 2026-09-18】原实现：日期筛完**又用关键词筛一遍**，而关键词是
+                //   「安全检查」「月度报告」这类整串词，台账正文（"3月第5号：调车作业发现问题"）根本不含，
+                //   于是 filtered 被清零 → stats=null → 提示词写「暂无匹配台账数据」，
+                //   而同一份提示词里模板占位符却已被另一条路径填上真实数字（自相矛盾，实测 5/5 场景复现）。
+                //   现在：**日期命中即以日期为准**，关键词只用于"排序/优先后取"，绝不把结果清零。
+                var dateHit = false;
                 if (parsedQuery.dateRange) {
                     const { start, end } = parsedQuery.dateRange;
-                    filtered = filtered.filter(iss => {
+                    const byDate = filtered.filter(iss => {
                         if (iss.datetime || iss.date) {
                             const ts = new Date(iss.datetime || iss.date).getTime();
                             if (!isNaN(ts)) return ts >= start && ts <= end;
@@ -1682,20 +1731,32 @@
                         }
                         return false;
                     });
+                    if (byDate.length) { filtered = byDate; dateHit = true; }
                 }
 
-                // 关键词过滤（如果日期过滤后还有内容，就用关键词再过滤；否则直接用关键词）
-                if (filtered.length === 0 && parsedQuery.dateRange) filtered = issues;
-                if (parsedQuery.keywords.length > 0) {
+                // 关键词只用于排序（相关度高的排前面，供"典型问题"取前 N 条），不再做过滤
+                if (parsedQuery.keywords.length > 0 && filtered.length > 1) {
+                    const kws = parsedQuery.keywords.map(k => k.toLowerCase());
                     const scored = filtered.map(iss => {
-                        const text = ((iss.content||'')+(iss.category||'')+(iss['性质']||'')).toLowerCase();
-                        const score = parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
-                        return { iss, score };
-                    }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
+                        const text = ((iss.content||'')+(iss.category||'')+(iss['性质']||'')+(iss.unit||'')).toLowerCase();
+                        let score = 0;
+                        for (var i = 0; i < kws.length; i++) { if (text.indexOf(kws[i]) !== -1) score++; }
+                        return { iss: iss, score: score, ts: Date.parse(iss.datetime || iss.date || '') || 0 };
+                    });
+                    // 有相关度命中 → 相关度优先、同分按时间倒序；零命中且非日期命中 → 按时间倒序
+                    scored.sort(function (a, b) { return (b.score - a.score) || (b.ts - a.ts); });
                     filtered = scored.map(x => x.iss);
+                    if (!dateHit && parsedQuery.keywords.length) {
+                        // 既无日期也无相关度 → 仍返回（调用方按总量判断），仅在日志里留痕便于排查
+                        if (typeof console !== 'undefined' && !scored.some(x => x.score > 0)) {
+                            console.log('[writer] 台账按关键词零命中，已回退为全量/日期结果（不再清零）');
+                        }
+                    }
                 }
 
-                return filtered.slice(0, 50); // 最多50条
+                // ⚠️ 不再 slice(0,50)：统计口径必须是**全量**（典型问题由调用方取前 5 条）。
+                //    原先截 50 会让提示词里的"问题总数"与模板占位符数字不一致。
+                return filtered;
             }
 
             /**
@@ -1722,17 +1783,27 @@
             async function wrGetTemplate(parsedQuery) {
                 const templates = await wrGetAllTemplates();
                 if (!templates.length) return null;
-                // 关键词匹配
-                if (parsedQuery.keywords.length > 0) {
+                const rt = parsedQuery.reportType;
+                // 关键词匹配 + 报告类型加权（【P1-6】类型一致比"碰巧含某个词"更能代表同一类文种）
+                if (parsedQuery.keywords.length > 0 || (rt && rt !== 'custom')) {
                     const scored = templates.map(t => {
-                        const text = ((t.title||'')+(t.content||'')).toLowerCase();
-                        const score = parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
-                        return { t, score };
+                        const text = ((t.title||'') + (t.content||'').slice(0, 2000)).toLowerCase();
+                        let score = parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
+                        if (rt && rt !== 'custom') {
+                            if (t.category === rt) score += 5;
+                            else if (t.category && t.category !== rt) score -= 2;   // 别的文种（如事故调查）不该抢月度报告
+                        }
+                        return { t: t, score: score };
                     }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
                     if (scored.length) return scored[0].t;
                 }
-                // 兜底：最近更新/导入的一条
-                return templates.sort((a,b) => (b.importAt || b.updatedAt || b.createdAt || 0) - (a.importAt || a.updatedAt || a.createdAt || 0))[0];
+                // 兜底：优先同文种（类型一致）里最近更新的一条；再无则最近更新的一条
+                const sorted = templates.slice().sort((a,b) => (b.importAt || b.updatedAt || b.createdAt || 0) - (a.importAt || a.updatedAt || a.createdAt || 0));
+                if (rt && rt !== 'custom') {
+                    const sameType = sorted.filter(t => t.category === rt);
+                    if (sameType.length) return sameType[0];
+                }
+                return sorted[0];
             }
 
             /**
@@ -1745,7 +1816,7 @@
                 // 按类型+关键词打分
                 const scored = reports.map(r => {
                     let score = (r.category === parsedQuery.reportType) ? 3 : 0;
-                    const text = ((r.title||'')+(r.content||'').slice(0,500)).toLowerCase();
+                    const text = ((r.title||'')+(r.content||'').slice(0, 4000)).toLowerCase();   // P1-9：原 500 字太窄
                     score += parsedQuery.keywords.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
                     return { r, score };
                 }).sort((a,b) => b.score - a.score || b.r.date - a.r.date);
@@ -1766,11 +1837,37 @@
                 const kws = parsedQuery.keywords;
                 if (!kws.length) return rules.slice(0, 5);
                 const scored = rules.map(r => {
-                    const text = ((r.title||'')+(r.content||'').slice(0,300)).toLowerCase();
+                    const text = ((r.title||'')+(r.content||'').slice(0, 1200)).toLowerCase();   // P1-9：原 300 字太窄
                     const score = kws.reduce((s,k) => s + (text.includes(k.toLowerCase()) ? 1 : 0), 0);
                     return { r, score };
                 }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
-                return scored.slice(0, 8).map(x => x.r);
+                if (scored.length) return scored.slice(0, 8).map(x => x.r);
+                // 【P0-3 修复 2026-09-18】关键词零命中时不再直接返回空 —— 否则报告永远没有"规章依据"
+                //   （实测 5/5 场景【参考规章条款】块为空）。改为两级兜底：
+                //   ① 2 字滑窗弱相关（处理"安全检查"这类整串词与条款正文用词不完全一致的情况）；
+                //   ② 仍无命中则取前 5 条，作为"可引用范围"交给模型（提示词已声明"如需引用只用这些"）。
+                const grams = wrBigrams(parsedQuery.rawQuery || '');
+                if (grams.length) {
+                    const weak = rules.map(r => {
+                        const text = ((r.title||'')+(r.content||'').slice(0, 1200)).toLowerCase();
+                        let s = 0;
+                        for (let i = 0; i < grams.length; i++) { if (text.indexOf(grams[i]) !== -1) s++; }
+                        return { r: r, s: s };
+                    }).filter(x => x.s > 0).sort((a,b) => b.s - a.s);
+                    if (weak.length) return weak.slice(0, 5).map(x => x.r);
+                }
+                return rules.slice(0, 5);
+            }
+
+            // 2 字滑窗（用于关键词全部落空时的"弱相关"兜底打分）
+            function wrBigrams(text) {
+                const s = String(text || '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]+/g, '');
+                const out = [], seen = {};
+                for (let i = 0; i + 2 <= s.length && out.length < 80; i++) {
+                    const g = s.slice(i, i + 2);
+                    if (!seen[g]) { seen[g] = 1; out.push(g); }
+                }
+                return out;
             }
 
             /**
@@ -1780,16 +1877,42 @@
                 if (!issues.length) return null;
                 const total = issues.length;
                 const natCount = {};
+                const catMap = { 'A': 0, 'B': 0, 'C': 0, '红线': 0, '其他': 0 };
                 issues.forEach(iss => {
                     const n = iss['性质'] || iss.nature || '其他';
                     natCount[n] = (natCount[n] || 0) + 1;
+                    // 归一桶（与 wrExtractStatsFromIssues / 风险研判同一套 includes 规则）
+                    const xz = String(n).trim();
+                    if (xz.includes('A')) catMap['A']++;
+                    else if (xz.includes('B')) catMap['B']++;
+                    else if (xz.includes('C')) catMap['C']++;
+                    else if (xz.includes('红线')) catMap['红线']++;
+                    else catMap['其他']++;
                 });
                 const natSummary = Object.entries(natCount).map(([k,v]) => k + v + '条').join('、');
                 // 提取典型问题（取前5条）
                 const typicals = issues.slice(0, 5).map((iss, i) =>
                     (i+1) + '. [' + (iss['性质']||'') + '][' + (iss.category||'') + '] ' + (iss.content||'').slice(0, 100)
                 ).join('\n');
-                return { total, natSummary, typicals };
+                return { total, natSummary, typicals, catMap };
+            }
+
+            /**
+             * 统一统计口径（P0-4）：提示词里只允许出现**一套数字**。
+             *   · 全量口径：wrSummarizeIssues（wrGetIssueData 已不再截断）
+             *   · 与风险研判同口径：wrExtractStatsFromIssues（日期范围 + dsIssueFilter/dsIssueAggregate）
+             *   两者日期边界一致，正常情况下 total 相同；不一致时以"与研判同口径"的值为准。
+             */
+            function wrUnifiedStats(parsed, issues) {
+                const full = wrSummarizeIssues(issues || []);
+                const real = wrExtractStatsFromIssues(parsed);
+                if (!full && !real) return null;
+                const total = real ? real.total : full.total;
+                const catMap = (real && real.catMap) ? real.catMap : (full ? full.catMap : null);
+                const typicals = (real && real.typicals) ? real.typicals : (full ? full.typicals : '');
+                let natSummary = full ? full.natSummary : '';
+                if (!natSummary && catMap) natSummary = 'A类' + catMap['A'] + '条、B类' + catMap['B'] + '条、C类' + catMap['C'] + '条、红线' + catMap['红线'] + '条';
+                return { total: total, catMap: catMap, typicals: typicals, natSummary: natSummary, dateLabel: (parsed && parsed.dateLabel) || '' };
             }
 
             /**
@@ -1804,7 +1927,7 @@
                     wrGetIssueData(parsed),
                     wrGetRuleCandidates(parsed)
                 ]);
-                const stats = wrSummarizeIssues(issues);
+                const stats = wrUnifiedStats(parsed, issues);   // P0-4：提示词里只允许一套数字
                 return { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials };
             }
 
@@ -1818,7 +1941,10 @@
 
                 // 打分：关键词命中 + 日期范围匹配 + 类型优先级
                 const scored = all.map(m => {
-                    const text = ((m.title||'') + ' ' + String(m.content||'').slice(0, 800)).toLowerCase();
+                    // 【P1-9】原实现只扫正文前 800 字 → 长资料后半段的关键词永远匹配不到
+                    //   （"库里明明有、却检索不到/不入选"的隐性来源）。资料已在内存、数量有限，
+                    //   这里放宽到 12000 字（覆盖绝大多数公文），扫描成本可忽略。
+                    const text = ((m.title||'') + ' ' + String(m.content||'').slice(0, 12000)).toLowerCase();
                     let score = 0;
                     // 关键词命中（每个命中词+3分，提高权重）
                     if (kws.length > 0) {
@@ -1932,24 +2058,362 @@
                 return { total, catMap, typicals, dateLabel: parsedQuery.dateLabel || '' };
             }
 
+            // ================================================================
+            // ── P1-6 / P1-7：模板章节结构 · 资料归类 · 产出校验（2026-09-18） ──
+            // ================================================================
+            /**
+             * 「骨架类」章节判定（2026-09-18 用户口径）：
+             *   用户明确：**以资料为主**，模板的"问题类型清单"不能硬套——
+             *   资料归纳出 6 类问题、模板只列 4 类（且类型不同）时，必须按资料的 6 类写，否则就成了"硬板、脱离实际"。
+             *   因此把模板章节分两层：
+             *     · 骨架层（总体情况/主要问题/原因分析/整改要求/下步工作…）：文种架构，顺序与标题沿用模板；
+             *     · 枚举层（问题类型、具体子项，如「（一）信号方面」「1. 调车问题」）：**以资料归纳的类型为准**，
+             *       模板里的枚举项只作"层次与写法"的参照，数量/名称允许不同。
+             *   这里的正则只认"通用文种骨架词"，认不出的（如「信号设备问题」）就归入枚举层，不做硬性校验。
+             */
+            var WR_SKELETON_RE = /(总体情况|基本情况|概况|主要问题|存在问题|问题分析|原因分析|原因|整改要求|整改措施|整改|措施|下步工作|下一步|工作安排|工作打算|总结|建议|防范措施|责任认定|事故经过|事故概况|概述|结语|附录|附件|情况报告|工作要点)/;
+            function wrIsSkeletonLabel(label) {
+                return WR_SKELETON_RE.test(String(label || ''));
+            }
+            /** 标签规范化：消除空白与顿号/点号差异，用于"章节标题是否一致"的比较 */
+            function wrNormLabel(s) {
+                return String(s || '')
+                    .replace(/[\s、.．，,；;：:]/g, '')
+                    .replace(/[（(]/g, '(').replace(/[）)]/g, ')')
+                    .replace(/^#+/, '');
+            }
+            /** 去掉标题前的编号（一、／（一）／1.／##），得到"标题核心" */
+            function wrLabelCore(label) {
+                return wrNormLabel(String(label || '')
+                    .replace(/^[#\s]*((?:[一二三四五六七八九十]+|[（(][一二三四五六七八九十\d]+[)）]|\d+)\s*[、.．)）]?)\s*/, ''));
+            }
+            /** 识别一行是否为章节标题 */
+            function wrMatchHeading(t) {
+                if (!t || t.length > 42) return null;
+                if (/^#{1,6}\s*\S/.test(t)) return { level: (t.match(/^#+/) || ['#'])[0].length, label: t };
+                if (/^[一二三四五六七八九十]+\s*[、.．]/.test(t)) return { level: 1, label: t.replace(/\s+/g, '') };
+                if (/^第\s*[一二三四五六七八九十\d]+\s*[章节部]\s*[、.．:：]?\s*\S/.test(t)) return { level: 1, label: t.replace(/\s+/g, '') };
+                if (/^[（(][一二三四五六七八九十]+[)）]/.test(t)) return { level: 2, label: t.replace(/\s+/g, '') };
+                if (/^\d{1,2}\s*[、.．]/.test(t)) return { level: 3, label: t.replace(/\s+/g, '') };
+                if (/^[（(]\d{1,2}[)）]/.test(t)) return { level: 4, label: t.replace(/\s+/g, '') };
+                return null;
+            }
+            /**
+             * 把模板正文解析成「章节树」：[{level,label,hint}]
+             *   label = 该章节标题（编号+标题，原样保留）
+             *   hint  = 该标题到下一个标题之间的模板正文（截 300 字），作为"这一节该写什么"的提示
+             */
+            function wrParseTemplateSections(text) {
+                const out = [];
+                const lines = String(text || '').split(/\r?\n/);
+                let cur = null;
+                for (let i = 0; i < lines.length; i++) {
+                    const t = lines[i].trim();
+                    const h = wrMatchHeading(t);
+                    if (h) {
+                        if (cur) out.push(cur);
+                        cur = { level: h.level, label: h.label, hint: '' };
+                    } else if (cur && t) {
+                        if (cur.hint.length < 300) cur.hint += (cur.hint ? ' ' : '') + t;
+                    }
+                }
+                if (cur) out.push(cur);
+                return out;
+            }
+            /**
+             * 产出校验（**只校验骨架层**）：
+             *   用户口径："以资料为主"——资料归纳出的问题类型与模板枚举项不一致时**必须按资料走**，
+             *   所以「（一）信号方面」这类枚举项不参与"齐全性"判定（否则 6 类 vs 4 类会被误判为缺章、
+             *   触发无意义的补写，反而把资料内容硬塞进模板的旧分类里）。
+             *   只校验骨架章节（总体情况/主要问题/原因分析/整改要求…）是否齐、顺序是否照旧。
+             */
+            function wrValidateSections(outputText, sections) {
+                const normOut = wrNormLabel(outputText);
+                const skel = (sections || []).filter(function (s) {
+                    // 骨架层 = 一级标题且命中骨架词；二级子项一律视为"枚举项"，不校验
+                    return s.level <= 1 && wrIsSkeletonLabel(s.label);
+                });
+                const missing = [];
+                skel.forEach(function (s) {
+                    const key = wrNormLabel(s.label);
+                    const core = wrLabelCore(s.label);
+                    const hit = (key && normOut.indexOf(key) !== -1) || (core && core.length >= 2 && normOut.indexOf(core) !== -1);
+                    if (!hit) missing.push(s.label);
+                });
+                const enumerated = (sections || []).filter(function (s) { return !(s.level <= 1 && wrIsSkeletonLabel(s.label)); });
+                return {
+                    missing: missing,
+                    total: skel.length,
+                    found: skel.length - missing.length,
+                    skelTotal: skel.length,
+                    enumTotal: enumerated.length,      // 枚举层数量（仅供回执展示，不作硬校验）
+                    scope: 'skeleton'
+                };
+            }
+            /**
+             * 数字溯源校验（P2，2026-09-18 用户确认）：报告里的数字逐个回到"本次实际提供的材料"里找出处。
+             *   为什么需要：materials-first（有资料以资料为准）时不再用台账真值覆盖占位符，
+             *   数字改由模型依据资料填写 —— 必须让"编造数字"可见（实测模型曾伪造"问题总数 9999"）。
+             *   找不到出处 ≠ 一定错（也可能是合理的概括/换算），所以**只提示、不阻断保存**，写进产出回执。
+             *   降噪规则：剔除引用标注与内部标记；先剥离日期/时间/条款号/序号（这些本来就不是统计数字）；
+             *   只判定 ≥2 位的数字（1 位数在中文里处处可见，没有判别力）。
+             */
+            function wrCheckNumberProvenance(text, sources) {
+                var t = String(text || '')
+                    .replace(/【资料\s*\d+[^】]*】/g, ' ')
+                    .replace(/【数据:[^】]*】/g, ' ')
+                    .replace(/\d{4}\s*[-/年.]\s*\d{1,2}\s*[-/月.]\s*\d{1,2}\s*日?/g, ' ')   // 2026-03-05 / 2026年3月5日
+                    .replace(/\d{4}\s*年\s*\d{1,2}\s*月/g, ' ')                              // 2026年3月
+                    .replace(/\d{1,2}\s*[:：]\s*\d{1,2}/g, ' ')                              // 12:30
+                    .replace(/第\s*\d+\s*[条章节号款项次]/g, ' ')                             // 第12条
+                    .replace(/[（(]\s*\d+\s*[)）]/g, ' ')                                     // （1）
+                    .replace(/^[ \t>*#-]*\d+\s*[、.．)）]/gm, ' ');                           // 行首 1. / - 1.
+                var src = String(sources || '');
+                var seen = {}, untraced = [], checked = 0;
+                var re = /\d+(?:\.\d+)?/g, m;
+                while ((m = re.exec(t)) !== null) {
+                    var v = m[0];
+                    if (v.replace(/[^\d]/g, '').length < 2) continue;                         // 1 位数不做判定
+                    checked++;
+                    if (src.indexOf(v) !== -1) continue;                                      // 材料里出现过 → 有出处
+                    if (v.indexOf('.') !== -1 && src.indexOf(v.replace(/0+$/, '')) !== -1) continue;  // 3.50 → 3.5
+                    if (!seen[v]) {
+                        seen[v] = {
+                            value: v, count: 0,
+                            sample: t.slice(Math.max(0, m.index - 10), m.index + v.length + 6).replace(/\s+/g, ' ').trim()
+                        };
+                        untraced.push(seen[v]);
+                    }
+                    seen[v].count++;
+                }
+                untraced.sort(function (a, b) { return parseFloat(b.value) - parseFloat(a.value); });   // 大数优先看
+                return { checked: checked, untraced: untraced };
+            }
+            /** 资料总预算（P1-8）：原来是"每份固定截 5000 字、份数不限"——少份时浪费、多份时爆炸，
+             *  且长报告尾部（整改要求/结论）常被静默截掉。改为总额 ≈2.4 万字按份数分配（单份 2500–9000）。 */
+            var WR_MAT_TOTAL_BUDGET = 24000;
+            function wrMatPerBudget(n) {
+                n = Math.max(1, n || 1);
+                return Math.max(2500, Math.min(9000, Math.round(WR_MAT_TOTAL_BUDGET / n)));
+            }
+            // 两步生成开关（P1-7）：默认开（先出资料归类表 → 再按模板章节成文）。
+            // 关掉即回到单步生成（少一次请求，适合网络差/资料少时）。
+            function wrTwoStepEnabled() {
+                try { return localStorage.getItem('wr_two_step') !== '0'; } catch (e) { return true; }
+            }
+            window.wrSetTwoStep = function (on) {
+                try { localStorage.setItem('wr_two_step', on ? '1' : '0'); } catch (e) {}
+            };
+            function wrSyncTwoStepChk() {
+                var chk = document.getElementById('wr-two-step-chk');
+                if (chk) chk.checked = wrTwoStepEnabled();
+            }
+            window.wrSyncTwoStepChk = wrSyncTwoStepChk;
+            if (typeof document !== 'undefined') {
+                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wrSyncTwoStepChk);
+                else setTimeout(wrSyncTwoStepChk, 0);
+            }
+            /**
+             * 归类表提示词（两步生成的第一步）：只做"资料 → 模板章节"的归类与要点提炼，不写正文。
+             */
+            function wrBuildPlanPrompt(query, sections, localMaterials, stats, opts) {
+                opts = opts || {};
+                const sys = [
+                    '你是铁路安全监察领域的资料归纳与归类助手。任务分两步，只输出 JSON：',
+                    '第一步【归纳】读完所有资料，把它们反映的问题归纳成若干类型。**这是报告正文的问题分类依据，务必以资料为准**：资料里有几类就归纳几类，不要受模板里已列类型的限制，也不要为了对齐模板而合并或拆分。',
+                    '第二步【归类】把资料与归纳出的类型归到模板的**骨架章节**（如"总体情况/主要问题/原因分析/整改要求"）。模板里"（一）（二）"这类具体问题子项只作写法参照，不作为分类依据。',
+                    '要求：',
+                    '1. 只做归纳与归类，不写正文；要点必须来自资料或台账数据，不得编造。',
+                    '2. sections 的 label 必须取自「模板骨架章节」清单；模板原有的问题分类不要出现在 sections 里。',
+                    '3. 每份资料都要落到某个问题类型或骨架章节；确实无关的放进 unused。',
+                    '4. 输出 JSON（不要代码块、不要解释）：{"problemTypes":[{"name":"信号设备类","section":"二、主要问题","materials":[1,3],"points":["3月信号机断丝故障2起","平均处理时长35分钟"]}],"sections":[{"label":"一、总体情况","uses":[1,2],"points":["要点"]}],"unused":[4]}'
+                ].join('\n');
+                const u = [];
+                const skel = (sections || []).filter(function (s) { return s.level <= 1 && wrIsSkeletonLabel(s.label); });
+                const enumS = (sections || []).filter(function (s) { return !(s.level <= 1 && wrIsSkeletonLabel(s.label)); });
+                u.push('【模板骨架章节（sections.label 只能用这些）】');
+                (skel.length ? skel : (sections || [])).forEach(function (s) {
+                    u.push(s.label + (s.hint ? '：' + String(s.hint).slice(0, 100) : ''));
+                });
+                if (enumS.length) {
+                    u.push('');
+                    u.push('【模板中原有的问题分类（仅作写法与层次参照，**不是**分类依据）】');
+                    u.push(enumS.map(function (s) { return s.label; }).join('、'));
+                }
+                u.push('');
+                u.push('【用户需求】' + (query || ''));
+                if (stats && stats.total && opts.ledgerAllowed !== false) {
+                    u.push('');
+                    u.push('【台账概况（仅供理解背景，不要写进归类结果）】共 ' + stats.total + ' 条' + (stats.dateLabel ? '（' + stats.dateLabel + '）' : ''));
+                }
+                u.push('');
+                u.push('【资料清单（编号即引用号，正文将用【资料N】标注出处）】');
+                (localMaterials || []).forEach(function (m, i) {
+                    const label = (typeof WR_MAT_TYPES !== 'undefined' && WR_MAT_TYPES[m.matType]) ? WR_MAT_TYPES[m.matType].label : (m.matType || '资料');
+                    const c = String(m.content || '');
+                    u.push('资料' + (i + 1) + '【' + label + '】《' + (m.title || m.fileName) + '》');
+                    u.push(c.slice(0, 900) + (c.length > 900 ? '…' : ''));
+                    u.push('');
+                });
+                u.push('请输出 JSON：');
+                return { sysPrompt: sys, userPrompt: u.join('\n') };
+            }
+            /** 解析归类表（容忍代码块/尾注；字段名做了兼容） */
+            function wrParsePlan(text) {
+                if (!text) return null;
+                let obj = null;
+                try { obj = wrParseMapping(text); } catch (e) {}
+                if (!obj) { try { obj = _wrExtractJson(text); } catch (e) {} }
+                if (!obj || !Array.isArray(obj.sections)) return null;
+                const out = { sections: [], unused: [] };
+                obj.sections.forEach(function (s) {
+                    if (!s) return;
+                    const label = String(s.label || s.title || '').trim();
+                    if (!label) return;
+                    const rawUses = Array.isArray(s.uses) ? s.uses : (Array.isArray(s.materials) ? s.materials : []);
+                    const rawPts = Array.isArray(s.points) ? s.points : (Array.isArray(s.notes) ? s.notes : []);
+                    out.sections.push({
+                        label: label,
+                        uses: rawUses.map(function (n) { return parseInt(n, 10); }).filter(function (n) { return n > 0; }),
+                        points: rawPts.map(function (p) { return String(p == null ? '' : p); }).filter(Boolean)
+                    });
+                });
+                const rawUnused = Array.isArray(obj.unused) ? obj.unused : [];
+                out.unused = rawUnused.map(function (n) { return parseInt(n, 10); }).filter(function (n) { return n > 0; });
+                // 资料归纳出的问题类型（"以资料为主"的分类依据）
+                const rawTypes = Array.isArray(obj.problemTypes) ? obj.problemTypes : (Array.isArray(obj.types) ? obj.types : []);
+                out.problemTypes = rawTypes.map(function (p) {
+                    if (!p) return null;
+                    const name = String(p.name || p.title || p.label || '').trim();
+                    if (!name) return null;
+                    const rawM = Array.isArray(p.materials) ? p.materials : (Array.isArray(p.uses) ? p.uses : []);
+                    const rawP = Array.isArray(p.points) ? p.points : [];
+                    return {
+                        name: name,
+                        section: String(p.section || '').trim(),
+                        materials: rawM.map(function (n) { return parseInt(n, 10); }).filter(function (n) { return n > 0; }),
+                        points: rawP.map(function (x) { return String(x == null ? '' : x); }).filter(Boolean)
+                    };
+                }).filter(Boolean);
+                return (out.sections.length || out.problemTypes.length) ? out : null;
+            }
+            /**
+             * 非流式一次性调用（归类表 / 补写章节共用）。失败返回 null，由调用方降级。
+             */
+            async function wrCallOnce(sysPrompt, userPrompt, opts) {
+                // 【2026-09-18】实现上移为共享 `window.dsCallOnce`（写实"一键 AI 修改"等模块复用同一套
+                //   Key/模型/超时/关思考逻辑，避免各处裸 fetch）。此处保留原签名与"失败返回 null"语义，
+                //   调用方（归类表/补写章节）无需改动。
+                if (typeof window.dsCallOnce !== 'function') {
+                    console.warn('[writer] dsCallOnce 未加载（doubao-common.js），本次调用按失败处理');
+                    return null;
+                }
+                const r = await window.dsCallOnce(sysPrompt, userPrompt, opts);
+                if (!r || !r.ok) { console.warn('[writer] 一次性调用失败：', (r && r.error) || 'unknown'); return null; }
+                return r.text || null;
+            }
+            /**
+             * 补写缺失章节（P1-6）：只请求缺失的那几节，避免整篇重生成。
+             */
+            async function wrContinueMissingSections(missing, sections, ctx) {
+                const miss = (sections || []).filter(function (s) { return missing.indexOf(s.label) !== -1; });
+                if (!miss.length) return null;
+                const sys = [
+                    '你是铁路安全监察领域的专业智能写作。用户此前生成的一份报告缺失了模板中的若干章节，请只补写这些章节。',
+                    '要求：',
+                    '1. 只输出缺失章节的正文，每节以「编号+标题」开头（标题逐字照抄给定标题）；不要重复其它章节，不要写总结或说明。',
+                    (window._wrModifyMode
+                        ? '2. 数字与事实只能来自给定资料（底稿中已有的数字保留），新增资料在句末标注【补充资料N】。'
+                        : '2. 数字只能使用给定的台账统计数据；资料事实必须来自给定资料，并在句末标注【资料N】。'),
+                    '3. 资料原文要"再加工"：按本节该写的层次位置融入，转写为通顺、具体、逻辑合理、书面、不啰嗦的报告文体，不得整段照抄原文。',
+                    '4. 体例、语气、详略与已生成正文保持一致，直接续写即可。'
+                ].join('\n');
+                const u = [];
+                u.push('【用户需求】' + (ctx.query || ''));
+                u.push('');
+                if (ctx.statsLine) { u.push('【台账统计数据（必须照搬）】'); u.push(ctx.statsLine); u.push(''); }
+                if (ctx.materialLines && ctx.materialLines.length) {
+                    u.push('【本地资料（编号即引用号）】');
+                    ctx.materialLines.forEach(function (l) { u.push(l); });
+                    u.push('');
+                }
+                if (ctx.problemTypes && ctx.problemTypes.length) {
+                    u.push('【问题分类（以资料为准，不要套用模板旧分类）】');
+                    ctx.problemTypes.forEach(function (t, i) {
+                        const ms = (t.materials || []);
+                        u.push((i + 1) + '. ' + t.name + (ms.length ? '（资料' + ms.join('、') + '）' : ''));
+                    });
+                    u.push('');
+                }
+                u.push('【需补写的章节（按此顺序输出）】');
+                miss.forEach(function (s) { u.push(s.label + (s.hint ? '：' + String(s.hint).slice(0, 150) : '')); });
+                u.push('');
+                u.push('【已生成正文（仅作上下文，勿重复输出）】');
+                u.push(String(ctx.tailText || '').slice(-2500));
+                u.push('');
+                u.push('请开始补写：');
+                const out = await wrCallOnce(sys, u.join('\n'), { maxTokens: 4000, temperature: 0.25, timeoutMs: 120000 });
+                const txt = String(out || '').trim();
+                if (!txt) return null;
+                return txt.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '');
+            }
+
             function wrBuildPrompt(query, materials, uploadedContent) {
                 const { parsed, template, issues, stats, similarReports, ruleCandidates, localMaterials } = materials;
                 const today = new Date();
                 const todayStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
+                // P1-6：把模板解析成章节树（结构硬约束 + 每节提示），P1-7：归类表（两步生成第一步产物）
+                const tplSections = template ? wrParseTemplateSections(template.content || '') : [];
+                const plan = materials.plan || null;
 
-                // 从台账提取真实统计（防止 AI 编造数字）
-                const realStats = wrExtractStatsFromIssues(parsed);
+                // 【数据来源优先级（2026-09-18 用户口径）】
+                //   有资料 → **完全从资料走**：不注入「台账统计数据/典型问题」，报告事实与数量一律取自资料；
+                //   没有资料（或资料与需求不相关）→ 才用台账，按写作要求的范围梳理总结；
+                //   需求里明确提到"台账/检查信息/统计/条数"等 → 视为特殊说明，照常提供台账数据。
+                const ledgerOff = (materials.ledgerAllowed === false);
+                const dataSourceRule = (materials.ledgerReason === 'modify')
+                    // 【补充/修改轮】用户口径（2026-09-18）：继续修改 = 补充；原模板/原资料都不需要，
+                    //   只带「当前报告底稿 + 本轮新增资料 + 补充/修改要求」，把新内容按底稿对应位置再加工融入。
+                    ? '0. 【任务性质：在既有报告上"补充/修改"，不是重写一篇】输入只有三样：①【当前报告（底稿）】②【新增资料】③【补充/修改要求】。'
+                      + '要求：① 输出**完整报告全文**（不是只输出改动片段，也不要写"以下为修改部分""其余不变"这类说明）；'
+                      + '② 骨架章节的编号、标题、顺序沿用底稿，已稳妥的段落保持原样，只做必要的增补与调整，不整篇重写、不改变体裁；'
+                      + '③ 新增资料按【写作规范】4 的"归位 + 再加工"处理（按底稿对应章节/段落的层次位置融入，转写为报告文体：通顺/具体/逻辑合理/书面化/不啰嗦，**不得整段照抄原文，也不得另起一节堆砌**）—— 与"直接写"同一要求；'
+                      + '④ 底稿中原有的【资料N】标注保留原样，本轮新增资料的引用标注用【补充资料N】。'
+                    : (materials.ledgerReason === 'no-materials')
+                    ? '0. 【数据来源】本次没有与需求相关的本地资料，请基于「台账统计数据」按写作要求的范围（时间/单位/专业）**梳理总结**后成文：先归纳问题类型与集中领域，再按模板骨架逐节展开；数量与占比必须与台账统计一致；下方若附有资料，仅作背景参考。'
+                    : (ledgerOff
+                        ? '0. 【数据来源】本次**以「本地资料」为唯一依据**（事实、案例、数量都取自资料）；不要引用台账统计口径，资料未给出的数字写（待补充），不得编造。'
+                        : '0. 【数据来源】用户已明确要求使用台账数据：报告以资料为主体，台账统计数字可用于总体情况/数量表述（必须照搬台账数字），两者不得互相矛盾。');
 
                 const sysLines = [
-                    '你是铁路安全监察领域的专业智能写作。请根据用户提供的模板、台账数据、历史报告，生成符合规范的铁路安监文档。',
+                    '你是铁路安全监察领域的专业智能写作。请根据用户提供的模板、台账数据、本地资料与历史报告，生成符合规范的铁路安监文档。',
                     '',
                     '【写作规范】',
-                    '1. 严格遵守模板中的章节结构，将占位符（如{{问题总数}}）替换为台账统计数据中的实际数值。',
-                    '2. 台账数据必须真实引用，不得虚构数字或案例；如台账数据不足以支撑某章节，用[待补充]标记。',
-                    '3. 涉及规章时，只能引用"参考规章条款"中的规章，不得编造。',
-                    '4. 【重要】本地资料（故障报告、文电、通报、检查信息等）中的事实和数据必须充分引用，不得忽略。具体案例、问题描述、整改要求等细节应从资料中提取并融入报告正文。',
-                    '5. 语言风格：严谨、规范、简洁，使用铁路安监专业术语。',
-                    '6. 今天日期：' + todayStr + '。',
+                    dataSourceRule,
+                    // 结构规则按轮次给（补充轮没有模板，结构以底稿为准，否则规则 1 会与之矛盾）
+                    window._wrModifyMode
+                        ? '1. 【结构分两层】① **骨架章节**沿用【当前报告（底稿）】：编号与标题照抄、顺序不变；② 章节内部的问题类型/子项以资料为准（资料几类就几类，不为凑数而合并、拆分或改名）。'
+                        : '1. 【结构分两层】① **骨架章节**（总体情况/主要问题/原因分析/整改要求/下步工作 这类）沿用模板：编号与标题照抄、顺序不变；② 骨架章节**内部的问题类型/子项以资料为准** —— 资料归纳出几类就写几类，模板里原有的问题分类**只作写法与层次参照**，不得为了对齐模板而合并、拆分或改名（资料 6 类就写 6 类，不必凑模板的 4 类）。',
+                    window._wrModifyMode
+                        ? '2. 不得虚构数字或案例：底稿中已有的数字保留（用户在要求里明确要改的除外），新增资料中的数字照实引用，两者不得互相矛盾。'
+                        // ⚠️ 必须随数据来源口径自适应：ledgerOff（有资料→完全从资料走）时**不能**再说"只能用台账统计数字"，
+                        //    否则与规则 0「资料未给出的写（待补充）」直接打架，会把模型推回台账数字（用户明确反对）。
+                        : (ledgerOff
+                            ? '2. 数字只能来自「本地资料」：不得虚构数字或案例；凡涉及数量/占比/趋势，一律用资料中的原始数字；资料没给出的数量写（待补充），不要改用台账统计口径。'
+                            : '2. 台账数据必须真实引用，不得虚构数字或案例；凡涉及数量/占比/趋势，只能用「台账统计数据」中的数字；如台账不足以支撑某章节，用[待补充]标记。'),
+                    '3. 涉及规章时，只能引用"参考规章条款"中的规章，不得编造，引用时写明条款序号。',
+                    // 【2026-09-18 用户口径】"再加工"是**直接写与继续写共同**的要求，故写在通用规范里（不在补充轮分支里）
+                    '4. 【引用资料：先"归位"、再"再加工"（直接写与继续写要求完全相同）】资料中的事实与数据必须充分引用，不得忽略：'
+                    + '① **归位**：常规生成按「模板章节结构」（有「资料归类表」就按表）、补充/修改按【当前报告（底稿）】的对应章节位置写入 —— 不得把资料堆到无关章节，也不得把资料另起一节堆砌；'
+                    + '② **再加工**：资料原文多为口语、电报式短句或公文流水句，必须转写为报告文体 —— 语句更通顺（消灭生硬拼接、"的"字叠加与重复）、'
+                    + '描述更具体（保留时间/地点/设备/数量/单位/责任主体等细节，不要泛化成"存在一些问题"）、'
+                    + '逻辑更合理（按"现象→原因→隐患→整改要求/依据"展开，前后因果对得上）、'
+                    + '语言更书面化、不啰嗦（同一事实只说一次，删除空话套话与"进一步/切实/狠抓"式无信息量堆叠）；'
+                    + '③ **不得整段照抄资料原文**：连续 20 字以上与原文相同的片段必须改写（确需引用公文原话时加引号并注明出处）；'
+                    + '④ 资料之间互相矛盾时以最新日期的为准并在正文中体现；资料没给出的数量不要猜，写（待补充）。',
+                    '5. 引用资料事实时在句末标注来源编号：常规生成写【资料1】（同一句引用多份写【资料1、资料3】）；补充/修改轮的新增资料写【补充资料1】（底稿原有的【资料N】保持原样）。',
+                    '6. 语言风格：严谨、规范、简洁、书面化，使用铁路安监专业术语；不用口语与网络语，不重复表述，删除没有信息量的套话（"高度重视""进一步加强"这类必须有具体措施才写）。',
+                    '7. 今天日期：' + todayStr + '。',
                     '',
                 ];
 
@@ -1963,25 +2427,42 @@
                         sysLines.push('输出格式示例：{"问题总数":"12","A类数量":"3","典型问题列表":"1. 信号机故障\\n2. 轨道电路异常"}');
                         sysLines.push('重要：JSON 中的多行文本值必须使用 \\\\n 表示换行，不能包含实际换行符。整个 JSON 必须在一行或严格符合 JSON 语法。');
                         sysLines.push('只输出 JSON 对象，不要输出任何其他内容。');
-                        sysLines.push('【重要】若用户需求中包含【上传的文件内容】或本地资料，请在映射值（尤其问题描述、典型案例、整改要求类字段）中充分引用其中的具体事实与数据，不得忽略或编造。');
+                        sysLines.push('【重要】若用户需求中包含【上传的文件内容】或本地资料，请在映射值（尤其问题描述、典型案例、整改要求类字段）中充分引用其中的具体事实与数据，不得忽略或编造；并按【写作规范】4 再加工（转写为通顺、具体、书面、不啰嗦的报告文体，不得照抄原文）。');
                     } else {
                         sysLines.push('【输出要求】');
                         sysLines.push('- 直接输出最终文档内容，无需解释说明。');
-                        sysLines.push('- 按模板章节结构输出，不随意增减章节。');
-                        sysLines.push('- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。');
-                        sysLines.push('- 统计数字、日期等关键信息必须与台账数据一致。');
-                        sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料与【上传的文件内容】，不得编造。');
+                        sysLines.push('- 【硬约束】骨架章节必须齐全、顺序与标题沿用模板；其内部的问题类型按「资料归纳出的问题类型」写（模板原有分类只作写法参照）。');
+                        sysLines.push('- 【关键】必须输出全部骨架章节，不得在中途停止或只输出部分内容。');
+                        sysLines.push('- 若提供了「资料归类表」，必须按表把资料要点写入对应章节，不得把资料堆到无关章节；资料原文按【写作规范】4 再加工（不得整段照抄）。');
+                        sysLines.push(ledgerOff ? '- 统计数字、日期等关键信息必须与资料一致；资料没给出的数量写（待补充）。' : '- 统计数字、日期等关键信息必须与台账数据一致。');
+                        sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造。');
                     }
+                } else if (window._wrModifyMode) {
+                    // 【补充/修改轮】结构沿用"底稿"（既不是"自行拟定"，也不是"模板骨架"）
+                    sysLines.push('【输出要求】');
+                    sysLines.push('- 输出**修改后的完整报告全文**（从第一行标题写到最后一节），不得只输出改动片段、不得输出"其余不变"之类说明。');
+                    sysLines.push('- 章节编号、标题、顺序沿用底稿；已稳妥的段落保持原样，只做必要的增补与调整。');
+                    sysLines.push('- 【关键】必须输出全部章节，不得在中途停止或只输出部分内容。');
+                    sysLines.push('- 底稿中原有的【资料N】标注保留原样；本轮新增资料的引用标注用【补充资料N】。');
                 } else {
                     sysLines.push('【输出要求】');
                     sysLines.push('- 直接输出最终文档内容，无需解释说明。');
-                    sysLines.push('- 按模板章节结构输出，不随意增减章节。');
-                    sysLines.push('- 【关键】必须输出模板中所有章节，不得在中途停止或只输出部分内容，直到全部章节完成为止。');
-                    sysLines.push('- 统计数字、日期等关键信息必须与台账数据一致。');
-                    sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料与【上传的文件内容】，不得编造。');
+                    sysLines.push('- 自行拟定合理的章节结构并一次性输出全部章节，不得中途停止。');
+                    sysLines.push(ledgerOff ? '- 统计数字、日期等关键信息必须与资料一致；资料没给出的数量写（待补充）。' : '- 统计数字、日期等关键信息必须与台账数据一致。');
+                    sysLines.push('- 【重要】报告中的问题描述、案例分析必须基于提供的本地资料，不得编造；引用资料处标注【资料N】；并按【写作规范】4 再加工（不得整段照抄原文）。');
                 }
 
-                const userLines = ['【用户需求】', query, ''];
+                // 【补充/修改轮（2026-09-18 用户口径）】"继续修改 = 补充"：
+                //   系统只带三样 —— ① 当前报告底稿（结构与被采纳的内容都在里面，故**不再需要原模板/原资料**）；
+                //   ② 用户本轮写下的补充/修改要求；③ 用户新勾选的资料（作为【新增资料】）。
+                const userLines = window._wrModifyMode
+                    ? ['【当前报告（底稿）—— 在此基础上补充/修改，输出时须完整带出全部章节】',
+                       String(window._wrModifyBaseContent || ''),
+                       '',
+                       '【补充/修改要求】',
+                       (query || '（未写文字要求：请仅把新增资料按底稿对应章节位置有机补充进去）'),
+                       '']
+                    : ['【用户需求】', query, ''];
 
                 // 【修复 A2】上传文件内容独立成段，明确为"待引用素材"，提升 AI 引用率
                 if (uploadedContent && uploadedContent.trim()) {
@@ -1990,56 +2471,84 @@
                     userLines.push('');
                 }
 
-                // 模板（从资料库中获取的模板使用 matType 字段）
+                // 模板：① 章节结构（硬约束，来自解析，**不截断**）② 模板正文样例（仅供文风，可截断）
                 if (template) {
                     const tplType = template.matType || template.category || 'template';
-                    userLines.push('【写作模板（' + wrCatName(tplType) + '）】');
                     let tplContent = template.content || '';
-                    // 用真实统计数据替换模板占位符（防止 AI 编造数字）
-                    if (realStats) {
+                    // 占位符预填真实数字（防止 AI 编造）——统一取 stats（全量口径，与「台账统计数据」块同一套数字）
+                    // ⚠️ 有资料时（ledgerOff）**不预填**：本次以资料为准，占位符交由模型依据资料填写，
+                    //    资料没给出的写（待补充），避免报告里出现"资料 + 台账"两套来源的数字。
+                    if (stats && !ledgerOff) {
+                        const cm = stats.catMap || {};
+                        const _n = function (v) { return (v === 0 || v) ? v : '—'; };
                         tplContent = tplContent
-                            .replace(/{{问题总数}}/g, '【数据:' + realStats.total + '】')
-                            .replace(/{{A类数量}}/g,  '【数据:' + realStats.catMap['A'] + '】')
-                            .replace(/{{B类数量}}/g,  '【数据:' + realStats.catMap['B'] + '】')
-                            .replace(/{{C类数量}}/g,  '【数据:' + realStats.catMap['C'] + '】')
-                            .replace(/{{红线数量}}/g, '【数据:' + realStats.catMap['红线'] + '】')
-                            .replace(/{{典型问题列表}}/g, '【数据:典型问题\n' + realStats.typicals + '\n】')
-                            .replace(/{{日期}}/g, '【数据:' + realStats.dateLabel + '】');
+                            .replace(/{{问题总数}}/g, '【数据:' + _n(stats.total) + '】')
+                            .replace(/{{A类数量}}/g,  '【数据:' + _n(cm['A']) + '】')
+                            .replace(/{{B类数量}}/g,  '【数据:' + _n(cm['B']) + '】')
+                            .replace(/{{C类数量}}/g,  '【数据:' + _n(cm['C']) + '】')
+                            .replace(/{{红线数量}}/g, '【数据:' + _n(cm['红线']) + '】')
+                            .replace(/{{典型问题列表}}/g, '【数据:典型问题\n' + (stats.typicals || '') + '\n】')
+                            .replace(/{{日期}}/g, '【数据:' + (stats.dateLabel || parsed.dateLabel || '') + '】');
                     }
-                    userLines.push(tplContent.slice(0, 6000) + (tplContent.length > 6000 ? '\n（模板内容过长，已截取前6000字，请严格按模板章节结构输出全部内容）' : ''));
-                    // 【修复 A1】长模板截断会丢失后半段章节，导致 AI 看不到完整结构却被告知"必须输出全部章节"。
-                    // 始终额外注入「章节标题骨架」，确保 AI 能看到全部章节标题，按骨架补全被截断的正文。
-                    if (tplContent.length > 6000) {
-                        const skeleton = tplContent
-                            .split('\n')
-                            .filter(l => /^#{1,6}\s|^\s*[一二三四五六七八九十]+[、.．]|^\s*[（(][一二三四五六七八九十]+[)）]|^\s*\d+[、.．]/.test(l))
-                            .map(l => l.trim())
-                            .filter(Boolean)
-                            .join('\n');
-                        if (skeleton) {
-                            userLines.push('【模板章节标题骨架（务必按以下全部章节标题补全，不得遗漏）】');
-                            userLines.push(skeleton);
-                        }
+                    if (tplSections.length >= 2) {
+                        // 【P1-6】章节结构单独成块、逐行列出（含缩进与"本节要点"），
+                        //   让"模板架构不能变"从"整段文字里的软要求"变成可逐条比对的硬清单；
+                        //   长模板也不再因为 6000 字截断而丢掉后半段章节。
+                        userLines.push('【模板章节结构｜模板：' + wrCatName(tplType) + '】');
+                        userLines.push('用法：【骨架】章节编号与标题照抄、顺序不变；【枚举/参照】条目是模板原有的问题分类，**仅作写法与层次参照**，其类型与数量一律以资料归纳为准（资料几类就几类，不必与模板一致）。');
+                        tplSections.forEach(function (s) {
+                            const indent = s.level >= 3 ? '　　' : (s.level === 2 ? '　' : '');
+                            const isSkel = (s.level <= 1 && wrIsSkeletonLabel(s.label));
+                            userLines.push(indent + (isSkel ? '【骨架】' : '【枚举/参照】') + s.label + (s.hint ? '　← 写法参照：' + String(s.hint).slice(0, 160) : ''));
+                        });
                         userLines.push('');
+                        userLines.push('【模板正文样例（仅参考语气、详略与专业表述；结构以上面章节结构为准）】');
+                        userLines.push(tplContent.slice(0, 4000) + (tplContent.length > 4000 ? '\n（样例已截断）' : ''));
+                    } else {
+                        userLines.push('【写作模板（' + wrCatName(tplType) + '）】');
+                        userLines.push(tplContent.slice(0, 6000) + (tplContent.length > 6000 ? '\n（模板内容过长，已截取前6000字，请严格按模板章节结构输出全部内容）' : ''));
+                        if (tplContent.length > 6000) {
+                            const skeleton = tplContent
+                                .split('\n')
+                                .filter(l => /^#{1,6}\s|^\s*[一二三四五六七八九十]+[、.．]|^\s*[（(][一二三四五六七八九十]+[)）]|^\s*\d+[、.．]/.test(l))
+                                .map(l => l.trim())
+                                .filter(Boolean)
+                                .join('\n');
+                            if (skeleton) {
+                                userLines.push('【模板章节标题骨架（务必按以下全部章节标题补全，不得遗漏）】');
+                                userLines.push(skeleton);
+                            }
+                            userLines.push('');
+                        }
                     }
                     userLines.push('');
-                } else {
+                } else if (!window._wrModifyMode) {
                     userLines.push('【写作模板】');
                     userLines.push('（无指定模板，请按照铁路安监文档规范自行拟定章节结构）');
                     userLines.push('');
                 }
+                // 补充/修改轮不注入"模板"（结构以底稿为准），也不参与台账：
 
-                // 台账统计
-                if (stats && issues.length > 0) {
-                    userLines.push('【台账统计数据（' + parsed.dateLabel + '，共' + stats.total + '条）—— 这些数字已由系统统计，报告中必须完全照搬，不得修改】');
+                // 台账统计（P0-4：统一口径，只给一套数字；典型问题给 5 条供"主要问题"章节引用）
+                // 【数据来源优先级】有资料时**整块不注入**（用户口径："不要其它台账统计典型问题，完全从资料中走"）
+                if (window._wrModifyMode) {
+                    userLines.push('【数据来源说明】本轮为**补充/修改**：底稿中已有的数字与结论**保留不变**（除非用户在要求里明确要改）；新增资料中的数字按【补充资料N】标注；两者不得互相矛盾；不要引用台账统计口径。');
+                    userLines.push('');
+                } else if (ledgerOff) {
+                    userLines.push('【数据来源说明】本次报告**仅以「本地资料」为准**（见下）：事实、案例、数量一律取自资料；不要引用台账统计口径，资料未给出的数量写（待补充）。');
+                    if (template && /\{\{[^}]+\}\}/.test(template.content || '')) {
+                        userLines.push('（模板中的占位符请依据本地资料填写；资料未给出的写"（待补充）"，不得编造。）');
+                    }
+                    userLines.push('');
+                } else if (stats && stats.total > 0) {
+                    userLines.push('【台账统计数据（' + (stats.dateLabel || parsed.dateLabel || '') + '，共' + stats.total + '条）—— 这些数字已由系统统计，报告中必须完全照搬，不得修改】');
                     userLines.push('- 问题总数：' + stats.total + '条');
-                    userLines.push('- 问题性质分布：' + stats.natSummary);
-                    if (realStats) {
-                        userLines.push('- A类：' + realStats.catMap['A'] + '条，B类：' + realStats.catMap['B'] + '条，C类：' + realStats.catMap['C'] + '条，红线：' + realStats.catMap['红线'] + '条');
-                        userLines.push('- 典型问题（前5条，必须完整引用）：');
-                        userLines.push(realStats.typicals);
-                    } else {
-                        userLines.push('- 典型问题（前5条）：');
+                    if (stats.natSummary) userLines.push('- 问题性质分布：' + stats.natSummary);
+                    if (stats.catMap) {
+                        userLines.push('- A类：' + stats.catMap['A'] + '条，B类：' + stats.catMap['B'] + '条，C类：' + stats.catMap['C'] + '条，红线：' + stats.catMap['红线'] + '条');
+                    }
+                    if (stats.typicals) {
+                        userLines.push('- 典型问题（前5条，必须完整引用，并写入"主要问题/典型问题"类章节）：');
                         userLines.push(stats.typicals);
                     }
                     userLines.push('');
@@ -2049,17 +2558,60 @@
                     userLines.push('');
                 }
 
-                // 本地资料库（故障报告、文电、通报等）
+                // 本地资料库（故障报告、文电、通报等）：编号即引用号；预算按份数分配（P1-8）
+                const matLinesForReuse = [];
                 if (localMaterials && localMaterials.length > 0) {
-                    userLines.push('【本地资料（共' + localMaterials.length + '份，必须充分引用其中的具体案例和数据）】');
+                    const perBudget = wrMatPerBudget(localMaterials.length);
+                    // 补充轮：这批是"新增资料"，编号用【补充资料N】以区别底稿里已存在的【资料N】
+                    const _isSupp = !!window._wrModifyMode;
+                    userLines.push(_isSupp
+                        ? '【新增资料（共' + localMaterials.length + '份）—— 按底稿中对应章节/段落的层次位置有机融入；融入前必须再加工：语句通顺、描述具体、逻辑合理、书面化、不啰嗦；**不得整段照抄原文，也不得另起一节堆砌**；引用时标注【补充资料N】】'
+                        : '【本地资料（共' + localMaterials.length + '份，必须充分引用其中的具体案例和数据；引用时标注【资料N】）—— 按【写作规范】4"归位 + 再加工"处理，不得整段照抄原文】');
                     localMaterials.forEach((m, i) => {
                         const typeInfo = (typeof WR_MAT_TYPES !== 'undefined' ? WR_MAT_TYPES : {})[m.matType] || { label: m.matType };
-                        userLines.push('── 资料' + (i+1) + '【' + typeInfo.label + '】《' + (m.title||m.fileName) + '》');
-                        // 内容长度扩展到5000字，让AI能看到更多细节
                         const content = String(m.content || '');
-                        userLines.push(content.slice(0, 5000) + (content.length > 5000 ? '…（共' + content.length + '字，已截断）' : ''));
+                        const head = '── ' + (_isSupp ? '补充资料' : '资料') + (i+1) + '【' + typeInfo.label + '】《' + (m.title||m.fileName) + '》';
+                        const body = content.slice(0, perBudget) + (content.length > perBudget ? '…（共' + content.length + '字，已截断）' : '');
+                        userLines.push(head);
+                        userLines.push(body);
                         userLines.push('');
+                        matLinesForReuse.push(head, body);
                     });
+                }
+
+                // 【以资料为主】资料归纳出的问题类型 —— 问题分类的唯一依据（模板原有分类只作写法参照）
+                const pTypes = (plan && plan.problemTypes) ? plan.problemTypes : [];
+                if (pTypes.length && localMaterials && localMaterials.length) {
+                    userLines.push('【资料归纳出的问题类型（共 ' + pTypes.length + ' 类）—— 问题分类的**唯一依据**（模板原有分类只作写法参照，不得硬套）】');
+                    pTypes.forEach(function (t, i) {
+                        const uses = (t.materials || []).filter(function (n) { return n >= 1 && n <= localMaterials.length; });
+                        userLines.push((i + 1) + '. ' + t.name + (t.section ? '（写入：' + t.section + '）' : '')
+                            + (uses.length ? '　← ' + uses.map(function (n) { return '资料' + n; }).join('、') : ''));
+                        (t.points || []).slice(0, 5).forEach(function (p) { userLines.push('    - ' + String(p).slice(0, 120)); });
+                    });
+                    userLines.push('写法要求：每一类按模板同一位置的**句段逻辑**展开（先概括现象 → 再列举具体表现/案例 → 再写依据或整改要求）；'
+                        + '并按【写作规范】4 对资料原文做"再加工"（通顺/具体/逻辑合理/书面化/不啰嗦，不得整段照抄）；分类的数量与名称以本表为准。');
+                    userLines.push('');
+                }
+
+                // 【P1-7】资料归类表：两步生成第一步的产物，明确"哪份资料进哪一节"
+                if (plan && plan.sections && plan.sections.length && localMaterials && localMaterials.length) {
+                    const byNorm = {};
+                    tplSections.forEach(function (s) { byNorm[wrNormLabel(s.label)] = s.label; });
+                    userLines.push('【资料归类表（已把资料分配到各章节；正文必须按此表成文，不得把资料堆到无关章节）】');
+                    plan.sections.forEach(function (ps) {
+                        const label = byNorm[wrNormLabel(ps.label || '')] || String(ps.label || '');
+                        const uses = (ps.uses || []).filter(function (n) { return n >= 1 && n <= localMaterials.length; });
+                        userLines.push('· ' + label + '　← ' + (uses.length ? uses.map(function (n) { return '资料' + n; }).join('、') : '（无对应资料：依据台账数据与常规要求撰写）'));
+                        (ps.points || []).slice(0, 4).forEach(function (p) { userLines.push('    - ' + String(p).slice(0, 120)); });
+                    });
+                    const unused = (plan.unused || []).filter(function (n) { return n >= 1 && n <= localMaterials.length; });
+                    if (unused.length) {
+                        userLines.push('· 未归类资料：' + unused.map(function (n) { return '资料' + n; }).join('、') + '（若其内容确实相关，可并入最接近的章节并标注引用号）');
+                    }
+                    userLines.push('');
+                    userLines.push('【引用规范】正文中引用资料事实时必须在句末标注【资料N】（N 为上面的引用号）；同一句引用多份写【资料1、资料3】。');
+                    userLines.push('');
                 }
 
                 // 历史报告参考
@@ -2152,8 +2704,15 @@
                 html += '<div style="margin-bottom:8px;"><strong>📄 匹配模板：</strong>'
                     + (template ? '<span style="color:#059669;">《' + wrEsc(template.title) + '》</span>' : '<span style="color:#d97706;">无，将使用默认结构</span>') + '</div>';
 
-                html += '<div style="margin-bottom:8px;"><strong>📊 台账数据：</strong>'
-                    + '<span style="color:#059669;">生成时将自动检索检查信息台账（确保数字真实）</span></div>';
+                // 数据来源提示：有资料 → 以资料为准（不注入台账统计）；无资料 → 用台账按需求范围梳理总结
+                if (localMaterials && localMaterials.length > 0) {
+                    html += '<div style="margin-bottom:8px;"><strong>📊 数据来源：</strong>'
+                        + '<span style="color:#059669;">以资料为准（不使用台账统计/典型问题）</span>'
+                        + '<span style="color:#94a3b8;"> — 如需台账数据，请在本行需求中写明「按台账统计…」</span></div>';
+                } else {
+                    html += '<div style="margin-bottom:8px;"><strong>📊 数据来源：</strong>'
+                        + '<span style="color:#059669;">无资料 → 按需求范围从检查信息台账梳理总结（数字真实）</span></div>';
+                }
 
                 // 本地资料库
                 if (localMaterials && localMaterials.length > 0) {
@@ -2181,7 +2740,8 @@
 
             window.wrGenerate = async function(isRegenerate) {
                 const q = (document.getElementById('wr-query-input') || {}).value || '';
-                if (!q.trim()) { alert('请输入写作需求'); return; }
+                // 补充/修改轮允许"不写文字要求、只勾新增资料"（2026-09-18 用户口径），故该轮不做空校验
+                if (!q.trim() && !window._wrModifyMode) { alert('请输入写作需求'); return; }
                 var apiKey = localStorage.getItem('ds_api_key_v1') || '';
                 const apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
                 const model  = localStorage.getItem(WR_MODEL_K) || 'deepseek-flash';
@@ -2202,10 +2762,17 @@
                     uploadedContent = uploadedBlock;
                 }
 
-                    if (!isRegenerate && !window._wrSkipLocalSearch) {
+                    if (!isRegenerate && !window._wrModifyMode) {
                         wrAppendChatBubble('user', q);
                         _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
                         document.getElementById('wr-query-input').value = '';
+                    } else if (!isRegenerate && window._wrModifyMode) {
+                        // 补充/修改轮：把"用户要求 + 新增资料份数"记进会话，便于回看这轮改了什么
+                        const _supN = (Array.isArray(window._wrModifySuppMats) ? window._wrModifySuppMats.length : 0);
+                        const _modifyLabel = '【补充/修改】' + (q ? q : '（未写文字要求，仅补充新增资料）') + (_supN ? '（新增资料 ' + _supN + ' 份）' : '');
+                        wrAppendChatBubble('user', _modifyLabel);
+                        // 只入栈"真实要求"（与 enhancedQuery 相同会被拼消息时的过滤条件挡掉，避免同一段要求发两次）
+                        if (enhancedQuery) _wrConvHistory.push({ role: 'user', content: enhancedQuery, timestamp: Date.now() });
                     }
                 wrUpdateConvBtn();
 
@@ -2220,42 +2787,106 @@
                     // 显示检索加载态
                     if (resultEl) { resultEl.style.display = 'block'; resultEl.innerHTML = '<div style="padding:14px;color:#64748b;font-size:0.85rem;">🔍 正在检索本地资料与台账数据…</div>'; }
 
-                    // 自动检索 vs 手动选择逻辑：
-                    // 未手动选择资料库资料 → 全自动检索（台账/模板/本地资料/历史报告/规则）
-                    // 已手动选择资料库资料 → 用手选资料，仍自动检索台账/规则/相似报告（保证数字真实、不编造）
-                    //
-                    // ⚠️ 关键修正：_wrSkipLocalSearch 仅表示「跳过台账/规则自动检索」（修改模式或包装层为性能考虑设置），
-                    //    绝不能因此丢弃用户手选的模板与资料。模板与手选资料始终按用户选择保留。
+                    // 自动检索 vs 手动选择逻辑（P0-2 修复 2026-09-18）：
+                    //   旧实现：只要"选了资料"就置 _wrSkipLocalSearch，把台账/规章/历史报告**全部置空**
+                    //   —— 用户选了资料反而拿不到真实数字与规章依据（实测 materialCount={issues:0,rules:0,reports:0}）。
+                    //   现在：手选资料只"替换资料来源"，台账统计/规章候选/历史报告**照常检索**；
+                    //   只有「修改报告」流程（窗口级 _wrModifyMode）才跳过检索（原报告已含全部内容）。
                     const manualMatIds = (window._wrSelectedMaterialIds || []).filter(Boolean);
                     const useManual = manualMatIds.length > 0;
-                    const skipAuto = !!window._wrSkipLocalSearch; // 仅跳过台账/规则/相似报告的自动检索
+                    const modifyMode = !!window._wrModifyMode;
                     let materials;
-                    if (useManual) {
-                        // 手选资料：合并所选资料；是否跳过台账自动检索由 skipAuto 决定（性能），但模板与资料始终保留
-                        const allMats = await wrDbGetAll(WR_MAT_STORE);
-                        const chosenLocal = allMats.filter(m => manualMatIds.includes(m.id) && m.matType !== 'template');
-                        let auto = null;
-                        if (!skipAuto) { try { auto = await wrRetrieveMaterials(q); } catch (e) { auto = null; } }
+                    if (modifyMode) {
+                        // 【补充/修改轮（2026-09-18 用户口径）】"继续修改 = 补充"：只注入**本轮新增资料**，
+                        //   不再重新检索原模板/原资料/台账 —— 那些内容已经在底稿（当前报告）里了。
+                        const _supp = Array.isArray(window._wrModifySuppMats) ? window._wrModifySuppMats : [];
                         materials = {
-                            parsed: (auto && auto.parsed) || wrParseQuery(q),
-                            template: window._wrSelectedTemplate || (auto && auto.template) || null,
-                            issues: (auto && auto.issues) || [],
-                            stats: (auto && auto.stats) || null,
-                            similarReports: (auto && auto.similarReports) || [],
-                            ruleCandidates: (auto && auto.ruleCandidates) || [],
-                            localMaterials: chosenLocal
+                            parsed: wrParseQuery(q) || { dateLabel: '' },
+                            template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [],
+                            localMaterials: _supp.map(function (x, i) {
+                                return {
+                                    id: 'supp' + i,
+                                    title: x.title || ('新增资料' + (i + 1)),
+                                    content: x.content || '',
+                                    matType: x.matType || 'report',
+                                    fileName: x.fileName || ''
+                                };
+                            })
                         };
-                    } else if (skipAuto) {
-                        // 修改模式（未手选资料）：原报告已含全部内容，跳过本地检索，避免无关资料噪声
-                        materials = { parsed: wrParseQuery(q) || { dateLabel: '' }, template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] };
                     } else {
                         try { materials = await wrRetrieveMaterials(q); }
-                        catch (e) { console.warn('自动检索失败，回退空资料', e); materials = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] }; }
-                        // 修复A：弹窗中手选模板优先于自动匹配（只选模板未勾资料时仍应生效）
-                        if (window._wrSelectedTemplate) materials.template = window._wrSelectedTemplate;
+                        catch (e) {
+                            console.warn('自动检索失败，回退空资料', e);
+                            materials = { parsed: wrParseQuery(q), template: null, issues: [], stats: null, similarReports: [], ruleCandidates: [], localMaterials: [] };
+                        }
                     }
+                    // 手选资料：只替换"资料"这一路（不动台账/规章/历史报告）—— 补充轮的资料来源已在上面单独装配
+                    if (useManual && !modifyMode) {
+                        try {
+                            const allMats = await wrDbGetAll(WR_MAT_STORE);
+                            materials.localMaterials = allMats.filter(m => manualMatIds.includes(m.id) && m.matType !== 'template');
+                        } catch (e) { console.warn('[writer] 读取手选资料失败：', e && e.message); }
+                    }
+                    // 手选模板优先于自动匹配（只选模板未勾资料时同样生效）；补充轮不用模板（结构以底稿为准）
+                    if (!modifyMode && window._wrSelectedTemplate) materials.template = window._wrSelectedTemplate;
                     const parsed = materials.parsed;
                     const template = materials.template;
+
+                    // ---- 数据来源优先级（2026-09-18 用户口径）----
+                    //   有模板 + 有资料 → **完全从资料走**（不注入台账统计/典型问题）；
+                    //   没有资料（或自动检索到的资料与需求完全不相关）→ 才用台账，按写作要求范围梳理总结；
+                    //   需求里明确要求（"按台账统计/检查信息/条数…"）→ 视为特殊说明，照常给台账数据。
+                    const _matList = materials.localMaterials || [];
+                    // ⚠️ 纯日期类关键词（"3月""2026年"）几乎能命中一切，不能用来判定"资料是否与需求相关"，
+                    //    判相关性时必须排除，否则随便一份带"3月"的旧资料就会把台账数据挤掉。
+                    const _kws = (((parsed && parsed.keywords) || [])).filter(function (k) {
+                        return !/^\d{4}年\d{1,2}月$/.test(String(k).trim())
+                            && !/^\d{4}年$/.test(String(k).trim())
+                            && !/^\d{1,2}月$/.test(String(k).trim());
+                    });
+                    const _strongCount = _matList.filter(function (m) {
+                        const t = ((m.title || '') + (m.fileName || '') + ' ' + String(m.content || '').slice(0, 4000)).toLowerCase();
+                        return _kws.some(function (k) { return t.indexOf(String(k).toLowerCase()) !== -1; });
+                    }).length;
+                    const hasReliableMaterials = useManual || _strongCount > 0;
+                    const _explicitLedger = /台账|检查信息|问题总数|问题数|问题条数|条数|统计口径|按统计|数据统计|汇总数据|总量/.test(q);
+                    materials.ledgerAllowed = (!hasReliableMaterials) || _explicitLedger;
+                    materials.ledgerReason = !hasReliableMaterials ? 'no-materials' : (_explicitLedger ? 'user-asked' : 'materials-first');
+                    // 补充轮不参与台账（底稿已定稿，本轮只把新资料补进去）
+                    if (modifyMode) { materials.ledgerAllowed = false; materials.ledgerReason = 'modify'; }
+                    if (typeof console !== 'undefined') {
+                        console.log('[writer] 数据来源：' + (materials.ledgerAllowed ? '台账可用（' + materials.ledgerReason + '）' : '以资料为准（不注入台账统计）')
+                            + '；手选=' + useManual + '，相关资料=' + _strongCount + '/' + _matList.length);
+                    }
+                    // 诊断钩子（排查"为什么这次没用台账/没用资料"时看它）
+                    window.__wrLedger = {
+                        allowed: materials.ledgerAllowed, reason: materials.ledgerReason,
+                        manual: useManual, strong: _strongCount, matTotal: _matList.length,
+                        strongKeywords: _kws, explicitLedger: _explicitLedger
+                    };
+
+                    // ---- P1-7：两步生成第一步「资料归类表」----
+                    // 仅在有模板 + 有资料的场景做：把资料归类到模板章节，产出"哪份资料进哪一节"的映射，
+                    // 再把它作为硬约束写进正文提示词（避免模型把资料堆到无关章节、或整段照抄）。
+                    const tplSectionsForPlan = template ? wrParseTemplateSections(template.content || '') : [];
+                    const _twoStepOn = wrTwoStepEnabled();
+                    if (_twoStepOn && tplSectionsForPlan.length >= 2 && (materials.localMaterials || []).length > 0) {
+                        if (streamBubbleContent) streamBubbleContent.innerHTML = '<div style="color:#64748b;font-size:0.85rem;">🧭 正在归类资料到模板章节…</div>';
+                        try {
+                            const planReq = wrBuildPlanPrompt(q, tplSectionsForPlan, materials.localMaterials, materials.stats, { ledgerAllowed: materials.ledgerAllowed });
+                            const planText = await wrCallOnce(planReq.sysPrompt, planReq.userPrompt, { maxTokens: 1500, temperature: 0.2, noThinking: true, timeoutMs: 60000 });
+                            const plan = wrParsePlan(planText);
+                            if (plan) {
+                                materials.plan = plan;
+                                const usedN = {}; plan.sections.forEach(function (s) { (s.uses || []).forEach(function (n) { usedN[n] = 1; }); });
+                                const covered = Object.keys(usedN).length;
+                                console.log('[writer] 资料归类表已生成：' + plan.sections.length + ' 节，覆盖资料 ' + covered + '/' + materials.localMaterials.length);
+                                if (streamBubbleContent) streamBubbleContent.innerHTML = '<div style="color:#64748b;font-size:0.85rem;">🧭 已归类 ' + covered + '/' + materials.localMaterials.length + ' 份资料，正在按模板章节成文…</div>';
+                            } else {
+                                console.warn('[writer] 归类表解析失败，转为单步生成');
+                            }
+                        } catch (e) { console.warn('[writer] 归类步骤失败（转单步生成）：', e && e.message); }
+                    }
 
                     // 隐藏检索加载态，开始流式生成
                     if (resultEl) { resultEl.innerHTML = ''; resultEl.style.display = 'none'; }
@@ -2363,12 +2994,41 @@
                     fullText = fullText.replace(/【数据:([^\】]*?)】/g, '$1');
 
                     // ★ 模板应用：占位符模板优先用 AI 返回的映射填充；解析失败则保留 AI 正文并清理残留占位符
+                    let _wrMappingApplied = false;
                     if (template && template.content) {
                         // 尝试从模型输出提取映射（模型被要求输出 JSON 映射，可能夹带尾注/解释）
                         let mapping = wrParseMapping(fullText);
                         if (!mapping) { try { mapping = _wrExtractJson(fullText); } catch (e) {} }
                         if (mapping && typeof mapping === 'object' && Object.keys(mapping).length) {
+                            // 【数字兜底】系统本来就掌握真值的占位符，一律用真实统计覆盖模型返回值：
+                            //   实测模型伪造「问题总数=9999」照样被原样回填 —— 这些键没有理由交给模型定。
+                            // ⚠️ 但**必须跟着数据来源开关走**：materials-first（有资料以资料为准）时不得用台账数字
+                            //    覆盖模型依据资料填出的值，否则又变成"台账混进资料报告"，且溯源会把台账数字判成无出处。
+                            if (materials.stats && materials.ledgerAllowed !== false) {
+                                const phs = extractPlaceholders(template.content || '').map(function (s) { return String(s).trim(); });
+                                const cm = materials.stats.catMap || {};
+                                const known = {};
+                                const setIf = function (k, v) {
+                                    if (phs.indexOf(k) !== -1 && v !== undefined && v !== null && v !== '') known[k] = String(v);
+                                };
+                                setIf('问题总数', materials.stats.total);
+                                setIf('A类数量', cm['A']);
+                                setIf('B类数量', cm['B']);
+                                setIf('C类数量', cm['C']);
+                                setIf('红线数量', cm['红线']);
+                                setIf('日期', materials.stats.dateLabel || parsed.dateLabel);
+                                if (phs.indexOf('典型问题列表') !== -1 && materials.stats.typicals) known['典型问题列表'] = materials.stats.typicals;
+                                // 归一化模型返回的键（可能带空格），再整体覆盖，避免 "" 与 " " 两套键共存
+                                const merged = {};
+                                Object.keys(mapping).forEach(function (k) { merged[String(k).trim()] = mapping[k]; });
+                                const overridden = Object.keys(known).filter(function (k) { return String(merged[k] || '') !== known[k]; });
+                                if (overridden.length && typeof console !== 'undefined') {
+                                    console.warn('[writer] 占位符数字已用台账真值覆盖模型返回值：' + overridden.join('、'));
+                                }
+                                mapping = Object.assign(merged, known);
+                            }
                             fullText = applyTemplatePlaceholders(template.content, mapping);
+                            _wrMappingApplied = true;
                         } else if (/\{\{[^}]+\}\}/.test(fullText)) {
                             // 模型已直接撰写正文但残留占位符：保留正文，仅把残留占位符标记待补充（绝不丢弃模板/正文）
                             fullText = fullText.replace(/\{\{([^}]+)\}\}/g, '（待补充：$1）');
@@ -2382,6 +3042,132 @@
                         if (histEl) histEl.scrollTop = histEl.scrollHeight;
                     }
 
+                    // ---- P1-6：产出后校验「模板章节是否齐全」，缺失则自动补写一次 ----
+                    //   占位符映射路径不回填正文（结构本身来自模板原文）→ 无需校验；
+                    //   其余路径做一次逐章比对：缺失章节自动补写（一次），仍缺则在文末明确标注。
+                    let _wrSectionCheck = null;
+                    let _wrQc = null;
+                    let _wrNumCheck = null;
+                    // 校验用骨架来源：常规轮 = 模板原文；**补充/修改轮 = 当前报告底稿**
+                    //   —— "补充"同样不许丢章节（模型被要求输出全文，实测有整节丢失的风险）。
+                    const _secSrc = (template && template.content && !_wrMappingApplied)
+                        ? String(template.content)
+                        : (window._wrModifyMode ? String(window._wrModifyBaseContent || '') : '');
+                    if (_secSrc) {
+                        const secs = wrParseTemplateSections(_secSrc);
+                        if (secs.length >= 2) {   // 只要模板有 2 个以上章节就校验（"架构不能变"是硬要求）
+                            _wrSectionCheck = wrValidateSections(fullText, secs);
+                            if (_wrSectionCheck.missing.length) {
+                                console.warn('[writer] 章节校验：缺失 ' + _wrSectionCheck.missing.length + ' 节 → ' + _wrSectionCheck.missing.join('、'));
+                                const statLine = (materials.stats && materials.stats.total)
+                                    ? ('共 ' + materials.stats.total + ' 条（' + (materials.stats.dateLabel || parsed.dateLabel || '') + '）'
+                                       + (materials.stats.catMap ? '；A类' + materials.stats.catMap['A'] + '、B类' + materials.stats.catMap['B'] + '、C类' + materials.stats.catMap['C'] + '、红线' + materials.stats.catMap['红线'] : '')
+                                       + (materials.stats.typicals ? '\n典型问题：\n' + materials.stats.typicals : ''))
+                                    : '';
+                                const matLines = [];
+                                (materials.localMaterials || []).forEach(function (m, i) {
+                                    const c = String(m.content || '');
+                                    matLines.push('资料' + (i + 1) + '《' + (m.title || m.fileName) + '》' + c.slice(0, 1200) + (c.length > 1200 ? '…' : ''));
+                                });
+                                if (streamBubbleContent) {
+                                    streamBubbleContent.innerHTML = wrSafeBubbleHtml(fullText)
+                                        + '<div style="margin-top:6px;font-size:0.78rem;color:#d97706;">🧩 检测到' + (window._wrModifyMode ? '底稿' : '模板') + '章节缺失（' + _wrSectionCheck.missing.join('、') + '），正在自动补写…</div>';
+                                }
+                                try {
+                                    const more = await wrContinueMissingSections(_wrSectionCheck.missing, secs, {
+                                        query: q, statsLine: statLine, materialLines: matLines, tailText: fullText,
+                                        problemTypes: (materials.plan && materials.plan.problemTypes) ? materials.plan.problemTypes : null
+                                    });
+                                    if (more) {
+                                        fullText = fullText.replace(/\s*$/, '') + '\n\n' + more;
+                                        const recheck = wrValidateSections(fullText, secs);
+                                        _wrSectionCheck = { missing: recheck.missing, total: recheck.total, found: recheck.found, continued: true };
+                                        if (typeof console !== 'undefined') console.log('[writer] 自动补写完成，仍缺：' + (recheck.missing.join('、') || '无'));
+                                    }
+                                } catch (e) { console.warn('[writer] 自动补写失败：', e && e.message); }
+                            }
+                            // 仍缺失 → 文末如实标注（生成"看似成功"的残篇比失败更危险）
+                            if (_wrSectionCheck && _wrSectionCheck.missing.length) {
+                                fullText += '\n\n> ⚠️ ' + (window._wrModifyMode ? '原报告（底稿）' : '模板骨架') + '中的以下章节未能生成，请手动补充或重新生成：' + _wrSectionCheck.missing.join('、');
+                            }
+                        }
+                        // ---- 产出回执（P2）：资料与台账是否真的被写进报告（否则"漏用"永远不可观测）----
+                        const _matCount = (materials.localMaterials || []).length;
+                        const _cited = (fullText.match(/【(?:补充)?资料\s*\d+/g) || []).length;
+                        let _issuesCited = null;
+                        if (materials.ledgerAllowed !== false && materials.stats && materials.stats.typicals) {
+                            const firstTyp = String(materials.stats.typicals).split('\n')[0].replace(/^\d+\.\s*/, '').slice(0, 12);
+                            if (firstTyp) _issuesCited = fullText.indexOf(firstTyp) !== -1;
+                        }
+                        _wrQc = { matCount: _matCount, cited: _cited, issuesCited: _issuesCited };
+                        const _qcWarn = [];
+                        if (_matCount > 0 && _cited === 0) _qcWarn.push('未检测到资料引用标注（期望形如【资料1】/【补充资料1】）');
+                        if (_issuesCited === false) _qcWarn.push('未检测到台账典型问题被写入正文');
+                        // ⚠️ 回执只在界面与报告元数据里体现，**不写进正文**（正文会被导出成 DOCX，塞提示语不合适）
+                        if (typeof console !== 'undefined') {
+                            console.log('[writer] 产出回执：资料引用标注 ' + _cited + ' 处 / 提供 ' + _matCount + ' 份；台账典型问题引用=' + _issuesCited);
+                        }
+                        if (streamBubbleContent) {
+                            const _enumTxt = (materials.plan && materials.plan.problemTypes && materials.plan.problemTypes.length)
+                                ? '；问题分类按资料归纳为 ' + materials.plan.problemTypes.length + ' 类'
+                                : '';
+                            const secLine = !_wrSectionCheck ? '' : (_wrSectionCheck.missing.length
+                                ? '<div style="margin-top:6px;font-size:0.76rem;color:#d97706;">⚠️ 架构校验：骨架章节 ' + _wrSectionCheck.found + '/' + _wrSectionCheck.total + ' 已生成，缺失已标注在文末' + wrEsc(_enumTxt) + '</div>'
+                                : '<div style="margin-top:6px;font-size:0.76rem;color:#059669;">✅ 架构校验：骨架章节 ' + _wrSectionCheck.total + '/' + _wrSectionCheck.total + ' 齐全' + (_wrSectionCheck.continued ? '（含自动补写）' : '') + wrEsc(_enumTxt) + '</div>');
+                            const qcLine = (_qcWarn.length)
+                                ? '<div style="margin-top:4px;font-size:0.76rem;color:#d97706;">⚠️ 产出回执：' + wrEsc(_qcWarn.join('；')) + '</div>'
+                                : '<div style="margin-top:4px;font-size:0.76rem;color:#64748b;">🧾 产出回执：资料引用标注 ' + _cited + ' 处 / ' + (window._wrModifyMode ? '新增资料 ' : '提供 ') + _matCount + ' 份</div>';
+                            streamBubbleContent.innerHTML = wrSafeBubbleHtml(fullText) + secLine + qcLine;
+                        }
+                    }
+
+                    // ---- 数字溯源校验（对"有无模板/是否占位符模式"的所有生成都适用）----
+                    // 背景：materials-first 时不再用台账真值覆盖占位符，数字改由模型依据资料填写 →
+                    //   必须让"编造数字"可见。做法：把本次**实际提供的全部材料**拼成可溯源文本，
+                    //   报告里出现的数字逐个回查；查不到出处的列进产出回执（只提示、不阻断保存）。
+                    {
+                        const _numSources = [
+                            (materials.localMaterials || []).map(function (m) { return (m.title || '') + ' ' + String(m.content || ''); }).join('\n'),
+                            uploadedContent || '',
+                            q,
+                            // 补充轮：底稿里沿用下来的数字本来就有出处（上一轮已校验过），否则会把整篇旧报告的数字全报一遍
+                            (window._wrModifyMode ? String(window._wrModifyBaseContent || '') : ''),
+                            (materials.ruleCandidates || []).map(function (r) { return (r.title || '') + ' ' + String(r.content || ''); }).join('\n'),
+                            // ⚠️ **历史报告不作为出处**：提示词已声明它"仅供文风参考、勿直接抄用数据"，
+                            //    若把它算作出处，前一篇编造的数字会被后一篇"继承"后判为合规（互相洗白）——实测踩过。
+                            template ? String(template.content || '') : '',
+                            (materials.ledgerAllowed !== false && materials.stats)
+                                ? (String(materials.stats.total == null ? '' : materials.stats.total) + ' '
+                                   + String(materials.stats.typicals || '') + ' ' + String(materials.stats.natSummary || '')
+                                   // ⚠️ A/B/C/红线 分项数字也要算出处（占位符替换与"典型问题"里都会用到它们）
+                                   + (materials.stats.catMap
+                                        ? ' ' + ['A', 'B', 'C', '红线', '其他'].map(function (k) { return materials.stats.catMap[k]; }).join(' ')
+                                        : ''))
+                                : ''
+                        ].join('\n');
+                        _wrNumCheck = wrCheckNumberProvenance(fullText, _numSources);
+                        _wrQc = _wrQc || {};
+                        _wrQc.matCount = (materials.localMaterials || []).length;
+                        _wrQc.cited = (fullText.match(/【(?:补充)?资料\s*\d+/g) || []).length;
+                        _wrQc.numbers = { checked: _wrNumCheck.checked, untraced: _wrNumCheck.untraced.slice(0, 20) };
+                        if (typeof console !== 'undefined') {
+                            console.log('[writer] 数字溯源：检查 ' + _wrNumCheck.checked + ' 个数字，无出处 ' + _wrNumCheck.untraced.length + ' 个'
+                                + (_wrNumCheck.untraced.length ? '：' + _wrNumCheck.untraced.slice(0, 8).map(function (x) { return x.value + '×' + x.count; }).join('、') : ''));
+                        }
+                        if (streamBubbleContent) {
+                            const numLine = _wrNumCheck.untraced.length
+                                ? '<div style="margin-top:4px;font-size:0.76rem;color:#d97706;">🔍 数字溯源：'
+                                    + _wrNumCheck.untraced.length + ' 个数字未在本次材料中找到出处（'
+                                    + wrEsc(_wrNumCheck.untraced.slice(0, 5).map(function (x) { return x.value + (x.count > 1 ? '×' + x.count : ''); }).join('、'))
+                                    + '）— 请核对是否编造</div>'
+                                : '<div style="margin-top:4px;font-size:0.76rem;color:#059669;">🔍 数字溯源：'
+                                    + (_wrNumCheck.checked >= 2
+                                        ? '全文 ' + _wrNumCheck.checked + ' 个数字均可在本次材料中找到出处'
+                                        : '未发现无出处的数字') + '</div>';
+                            streamBubbleContent.innerHTML = streamBubbleContent.innerHTML + numLine;
+                        }
+                    }
+
                     // 记录到对话历史
                     _wrConvHistory.push({ role: 'assistant', content: fullText, timestamp: Date.now() });
 
@@ -2392,7 +3178,7 @@
                     window._wrCurrentReportParsed  = parsed;
 
                     // 保存到历史
-                    const isModify = !!window._wrSkipLocalSearch;
+                    const isModify = !!window._wrModifyMode;
                     let savedId = null;
                     try {
                         savedId = await wrSaveReport({
@@ -2403,10 +3189,24 @@
                             materialCount: {
                                 issues:  (materials.issues || []).length,
                                 rules:   (materials.ruleCandidates || []).length,
-                                reports: (materials.similarReports || []).length
+                                reports: (materials.similarReports || []).length,
+                                // 【质量回执】把"用户手选的资料份数 / 归类表覆盖情况 / 章节校验结果"一并落库，
+                                // 否则漏用与缺章永远不可观测（用户只能人工比对）
+                                local:   (materials.localMaterials || []).length,
+                                planCovered: (materials.plan && materials.plan.sections)
+                                    ? (function () { var s = {}; materials.plan.sections.forEach(function (x) { (x.uses || []).forEach(function (n) { s[n] = 1; }); }); return Object.keys(s).length; })()
+                                    : 0,
+                                sections: _wrSectionCheck ? (_wrSectionCheck.found + '/' + _wrSectionCheck.total) : ''
                             },
                             date: Date.now(),
                             templateId: template ? template.id : null,
+                            sectionCheck: _wrSectionCheck ? {
+                                scope: _wrSectionCheck.scope || 'skeleton',
+                                missing: _wrSectionCheck.missing, found: _wrSectionCheck.found, total: _wrSectionCheck.total,
+                                enumTotal: _wrSectionCheck.enumTotal || 0,
+                                problemTypes: (materials.plan && materials.plan.problemTypes) ? materials.plan.problemTypes.map(function (t) { return t.name; }) : null
+                            } : null,
+                            qc: _wrQc || null,
                             source: 'smart-writer'
                         });
                     } catch (saveErr) {
@@ -2578,10 +3378,10 @@
                     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10100;display:flex;align-items:center;justify-content:center;';
                     modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:12px;">'
                         + '<div style="display:flex;align-items:center;justify-content:space-between;">'
-                        + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">📝 修改报告 - 增加资料</span>'
+                        + '<span style="font-weight:700;font-size:0.97rem;color:var(--primary);">📝 补充 / 修改报告 - 增加资料</span>'
                         + '<button onclick="this.closest(\'[style*=position\\:fixed]\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#888;">✕</button>'
                         + '</div>'
-                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">勾选需要补充的资料（可多选），然后点击确认完成报告</div>'
+                        + '<div style="font-size:0.8rem;color:var(--text-secondary);">① 勾选要补充的资料（可多选）；② 补充/修改要求写在下方的写作需求输入框。<br>两者至少填一项 —— 确认后 AI 会在当前报告上按对应章节位置补充完善（不需要原模板/原资料）。</div>'
                         + matHtml
                         + '<div style="display:flex;gap:10px;margin-top:8px;">'
                         + '<button onclick="wrConfirmModify()" style="flex:1;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">✅ 确认完成报告</button>'
@@ -2592,34 +3392,52 @@
                 });
             };
 
-            // 确认修改报告
+            // 确认修改报告（"继续修改 = 补充"，2026-09-18 用户口径）
+            //   ① 不再重新检索，也不带入原模板/原资料/台账（底稿里已含结构与被采纳内容）；
+            //   ② 输入框只留"补充/修改要求"，整篇底稿由系统注入（不再拼进输入框让用户编辑）；
+            //   ③ 只勾资料、或只写要求，都能继续（原来不勾资料直接 return）。
             window.wrConfirmModify = async function() {
                 const checkboxes = document.querySelectorAll('#wr-modify-modal .wr-modify-mat-checkbox:checked');
                 const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
                 window._wrSelectedMaterialIds = selectedIds;
                 document.getElementById('wr-modify-modal')?.remove();
 
-                if (!selectedIds.length) {
-                    alert('未选择新增资料，报告保持不变。');
-                    return;
-                }
-
-                // 获取上一轮报告内容
+                // 上一轮报告作为底稿
                 const previousReport = window._wrCurrentReportContent;
-                if (!previousReport) {
-                    alert('没有可修改的报告');
+                if (!previousReport) { alert('没有可修改的报告'); return; }
+
+                const input = document.getElementById('wr-query-input');
+                const ask = input ? String(input.value || '').trim() : '';
+                if (!selectedIds.length && !ask) {
+                    alert('请勾选要补充的资料，或在输入框写下补充/修改要求（二者至少填一项）。');
                     return;
                 }
 
-                const modifyInstruction = `请基于以下【当前报告】内容，并根据新增资料进行补充和完善。不要从头生成，尽量保持原有结构和大部分文字，仅在必要时修改或增加段落。\n\n【当前报告】\n${previousReport}\n\n`;
-                const originalInput = document.getElementById('wr-query-input');
-                const originalVal = originalInput ? originalInput.value : '';
-                if (originalInput) originalInput.value = modifyInstruction + (originalVal || '用户要求：根据新增资料完善报告');
-                
-                // 复用生成流程
-                await wrGenerate();
-                
-                if (originalInput) originalInput.value = originalVal;
+                // 取勾选资料的正文，作为本轮【新增资料】
+                let suppMats = [];
+                if (selectedIds.length) {
+                    try {
+                        const allMats = await wrDbGetAll(WR_MAT_STORE);
+                        suppMats = allMats
+                            .filter(m => selectedIds.includes(m.id) && m.matType !== 'template')
+                            .map(m => ({ title: m.title || m.fileName || '资料', content: m.content || '', matType: m.matType, fileName: m.fileName }));
+                    } catch (e) { console.warn('[writer] 读取新增资料失败：', e && e.message); }
+                }
+
+                window._wrModifyMode = true;
+                window._wrModifyBaseContent = previousReport;
+                window._wrModifyBaseTitle = String(window._wrCurrentReportQuery || '报告').slice(0, 30);
+                window._wrModifyCategory = 'other';
+                window._wrModifySuppMats = suppMats;
+                try {
+                    await wrGenerate();
+                } finally {
+                    window._wrModifyMode = false;
+                    window._wrModifyBaseContent = null;
+                    window._wrModifyBaseTitle = null;
+                    window._wrModifyCategory = null;
+                    window._wrModifySuppMats = null;
+                }
             };
 
             window.wrClearResult = function() {
@@ -3336,35 +4154,38 @@
                 document.body.appendChild(modal);
                 document.getElementById('wr-modify-confirm-btn').onclick = async function() {
                     var instruction = document.getElementById('wr-modify-instruction').value.trim();
-                    // 收集勾选的补充资料
+                    // 收集勾选的补充来源（资料/其它历史报告）→ 作为本轮【新增资料】（直接用对象，不拼字符串）
                     var cbs = Array.prototype.slice.call(document.querySelectorAll('#wr-modify-history-modal .wr-modify-hist-mat:checked'));
-                    var suppText = '';
-                    if (cbs.length) {
-                        suppText = cbs.map(function(cb){
-                            var s = suppList[parseInt(cb.value, 10)];
-                            if (!s) return '';
-                            return '【' + s.label + '】' + wrEsc(s.title) + '\n' + (s.content || '').slice(0, 4000);
-                        }).filter(Boolean).join('\n\n');
-                    }
-                    if (!instruction && !suppText) { alert('请输入修改要求或勾选补充资料'); return; }
+                    var suppMats = cbs.map(function (cb) {
+                        var s = suppList[parseInt(cb.value, 10)];
+                        if (!s) return null;
+                        return { title: s.title, content: s.content || '', matType: (s.kind === 'report' ? 'report' : 'other') };
+                    }).filter(Boolean);
+                    if (!instruction && !suppMats.length) { alert('请输入修改要求或勾选补充资料'); return; }
                     modal.remove();
-                    // 将原报告内容、修改要求与补充资料写入输入框
+                    // 【2026-09-18 用户口径】"继续修改 = 补充"：① 底稿由系统注入，**输入框只放修改/补充要求**
+                    //   （旧实现把整篇原报告拼进输入框，用户得在巨长文本里编辑）；② 不再重新检索原模板/原资料；
+                    //   ③ 旧实现这里用 wrEsc 转义正文，喂给模型会出现 &quot;/&amp; 之类的 HTML 实体，一并修掉。
                     var input = document.getElementById('wr-query-input');
                     var oldVal = input ? input.value : '';
-                    var fullPrompt = '【原报告】\n' + (r.content || '') + '\n\n【修改要求】\n' + (instruction || '（无文字要求，请依据补充资料完善报告）')
-                        + (suppText ? ('\n\n【补充资料】\n' + suppText) : '')
-                        + '\n\n请基于原报告内容，按上述修改要求进行补充和完善。对于【补充资料】，仅摘录与修改要求相关的片段有机融入原报告，保持原报告的整体结构、格式与文风，不要整体照搬或替换原报告内容。';
                     window._wrModifyBaseTitle = r.title || '未命名报告';
                     window._wrModifyCategory = r.category || 'other';
-                    if (input) input.value = fullPrompt;
-                    window._wrSkipLocalSearch = true; // 修改模式跳过自动检索，避免无关噪声（补充资料已显式注入）
+                    window._wrModifyBaseContent = r.content || '';
+                    window._wrModifySuppMats = suppMats;
+                    if (input) input.value = instruction || '';
+                    // 修改模式：跳过本地检索（底稿已含全部内容，新增资料另行注入）。
+                    // ⚠️ 用独立开关 _wrModifyMode —— 原先借用 _wrSkipLocalSearch，导致"选了资料直接生成"
+                    //    也被当成修改模式（落库标题变成"报告（修改版）"），这是实测发现的副作用。
+                    window._wrModifyMode = true;
                     try {
                         await wrGenerate();
                     } finally {
                         if (input) input.value = oldVal;
-                        window._wrSkipLocalSearch = false;
+                        window._wrModifyMode = false;
                         window._wrModifyBaseTitle = null;
                         window._wrModifyCategory = null;
+                        window._wrModifyBaseContent = null;
+                        window._wrModifySuppMats = null;
                     }
                 };
             };

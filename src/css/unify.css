@@ -1997,6 +1997,10 @@ html[data-theme="dark"] .diary-seg-btn.active:hover {
     justify-content: space-between;
     gap: 8px;
 }
+/* 【2026-09-18】工作内容标题行新增「✨ 一键修改 / ▾」两个按钮 → 窄屏允许换行、
+   按钮不压缩（否则按钮内文字被挤成两行）。检查发现问题行只有 1 个按钮，行为不变 */
+.diary-section-title-row { flex-wrap: wrap; }
+.diary-section-title-row > button { flex-shrink: 0; }
 /* 【v3.75】「复制哪部分？」浮层菜单：body 级定位，避免被卡片 overflow:hidden 裁切；
    配色全部走 CSS 变量，暗黑覆盖见本文件下方 [data-theme="dark"] 兜底段 */
 .diary-copy-menu {

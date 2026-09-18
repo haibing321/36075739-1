@@ -668,12 +668,18 @@
                         <button type="button" class="btn btn-secondary btn-small" onclick="openMemoModal()">🔔 备忘</button>
                     </div>
 
+                    <!-- AI 一键修改：进度 / 回执（放在两个视图之外，输入界面与查询界面都能看到 ——
+                         否则在输入界面点按钮时回执渲染在隐藏的查询视图里，表现为"点了没反应"） -->
+                    <div id="diary-ai-fix-panel" style="display:none;margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg,#fff);font-size:0.83rem;line-height:1.6;color:var(--text,#0f172a);"></div>
+
                     <!-- 查询视图：搜索 + 记录列表 + 日历 + 日期详情 -->
                     <div id="diary-history-view" class="diary-view-panel" style="display:none;">
                         <!-- 关键词搜索 -->
-                        <div class="diary-search-bar">
+                        <div class="diary-search-bar" style="flex-wrap:wrap;">
                             <input type="text" id="diary-search-input" class="diary-search-input" placeholder="🔍 搜索工作内容 / 问题描述…" oninput="diarySearch(this.value)">
                             <button class="btn btn-secondary btn-small" onclick="document.getElementById('diary-search-input').value='';diarySearch('')">清空</button>
+                            <button type="button" class="btn btn-secondary btn-small" id="diary-ai-undo-btn" onclick="diaryAiUndoAiFix()"
+                                style="display:none;" title="还原上一次 AI 修改前的原文">↩️ 撤销</button>
                         </div>
                         <!-- 搜索结果 / 记录列表 -->
                         <div id="diary-records-list" class="diary-records-list"></div>
@@ -698,6 +704,12 @@
                         <div class="diary-section">
                             <div class="diary-section-title diary-section-title-row">
                                 <span>📋 工作内容</span>
+                                <!-- 【2026-09-18】一键 AI 修改放在编辑界面：只改「当前这一天」的写实与检查问题（不改事实）；
+                                     规章依据只纠错、可回库校对；缺规章依据时给候选条款。改完自动保存，回执里可一键撤销 -->
+                                <button type="button" class="btn btn-secondary btn-small" id="diary-ai-fix-btn" onclick="diaryAiFix()"
+                                    title="用 AI 把这一天的写实与检查问题改得更通顺、纠正错别字/多字少字/标点（不改事实）；规章依据按「不符合《X》第X条“原文”的规定」规范改写且引文正文逐字保留；缺规章依据时从知识库索引给候选条款。改完自动保存，可一键撤销">✨ 一键修改</button>
+                                <!-- 进度直接显示在按钮旁边（点击后立即出现，秒表刷新；不受横幅/滚动影响） -->
+                                <span id="diary-ai-fix-inline" style="font-size:0.78rem;color:#2563eb;font-weight:600;white-space:nowrap;"></span>
                                 <button class="btn btn-secondary btn-small" id="diary-copy-work-btn" onclick="copyWorkOrAll(this)" title="复制：全部（工作写实 + 检查问题 + 规章）或 仅工作写实">📋 复制▾</button>
                             </div>
                             <textarea id="diary-work" class="diary-textarea" placeholder="请输入工作内容..." oninput="autoResize(this);diaryAutoSave()"></textarea>
@@ -1113,6 +1125,12 @@
                                 <div style="font-weight:700;margin-bottom:4px;">📦 已检索到的资料：</div>
                                 <div id="wr-material-tags" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
                             </div>
+
+                            <!-- 两步生成开关：先出「资料归类表」（资料→章节），再按模板章节成文 -->
+                            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.76rem;color:var(--text-secondary);cursor:pointer;">
+                                <input type="checkbox" id="wr-two-step-chk" onchange="wrSetTwoStep(this.checked)" style="cursor:pointer;">
+                                <span>两步生成：先按资料归纳问题类型并归入模板骨架章节 → 再按章节成文（问题分类以资料为准，模板只给骨架与写法）</span>
+                            </label>
 
                             <!-- 操作按钮行 -->
                             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -1940,18 +1958,18 @@
                     <span>v3.75 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 <strong>智能写作「模板 / 参考资料」改为两路输入</strong>：弹窗里不再堆资料库内容，只显示"已选结果"；点「选择模板 ▾」/「＋ 添加 ▾」弹出两路菜单 —— <strong>💻 本地文件</strong>（本机直接选 txt/md/docx/pdf/xlsx/csv/json，与「上传附件」同款）或 <strong>📚 资料库</strong>（<strong>点进去才展开</strong>，不重复占版面）。本地模板与库模板在同一个选择层里可随时切换，本地模板会直接显示在「写作模板」一行；资料库资料与本地文件可混选、逐个 × 移除</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 <strong>台账统计口径统一</strong>：风险研判与智能写作此前各算一套，同一段时间会出现两种数字（研判按原始写法分桶 →「A(3)、A类(1)、A级(1)」；写作按 A/B/C/红线 归类，但日期按 UTC 零点算 → 会漏掉起始日 08:00 前的记录、多算结束日次日凌晨）。现改为<strong>同一套归一 + 筛选</strong>：性质统一归入 A/B/C/红线/其他，日期按<strong>本地日</strong>（起止都含当天）。实测同一时间段两处结果完全一致</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚀 <strong>智能体并入智能对话</strong>：在智能对话直接输入 <strong>/agent 任务</strong> 即可就地执行（规划 + 多步调用本地数据），执行过程的「计划 / 工具 / 用途 / 证据」以卡片形式留在本轮回答上方，<strong>不用再切到独立标签页</strong>；原「智能体」页保留可用（同一内核、同一批工具，能力完全一致）。另：角色/关联数据/联网三个按钮的提示已标明"仅作用于智能对话"</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 <strong>五个控件交互审计</strong>：联网开启时<strong>不再静默丢弃本地检索工具</strong>（菜单里明确标注"联网时本轮不带本地检索工具"、发送时控制台给出提示；已注入的本地资料不受影响）；<strong>代码角色（💻前端）不再注入铁路本地资料</strong>（也不再触发索引准备，提示词 1442→520 字）；角色/模型/关联数据/联网/补全之间无其它冲突，与知识库索引是"选源 vs 选路径"的分层关系</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔗 <strong>「关联数据」面板理顺</strong>：确认按钮现在只在有输入时显示「应用并发送」（避免"只想保存却被发出去"）、面板标明"仅控制本地资料，联网请用 🌐"、统一命名为「关联数据」、默认值收敛为一处定义。<strong>功能保留不删除</strong>——实测"全不选"会完全跳过本地索引准备（冷启动 436ms → 6ms），是唯一的按次数据源控制</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧑‍💼 <strong>智能对话角色提示词优化</strong>：13 个专业角色统一追加「输出规范」（结论先行→依据→可执行建议、引用要带单位/日期/性质、统计按 A·B·C·红线 口径、跨专业要写协同要点、篇幅默认紧凑）；「🗂️综合」补规章清单与多专业协同条；<strong>代码角色（💻前端）不再被灌铁路业务准则</strong>（提示词 1000+ → 720 字，不再把"人机环管"套进代码回答）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🌙 <strong>暗黑模式补齐（含新界面规矩）</strong>：智能写作两路输入的选择菜单、资料库选择层、资料分类选择、已选芯片全部适配暗黑（原先浅色底在暗色下整块发白）。<strong>以后所有新增界面都同时适配暗黑</strong>，这是硬性要求</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂️ <strong>本地选的模板/资料会保存进资料库</strong>：与「资料中心 → 导入」<strong>共用同一套解析与入库逻辑</strong>（同一份代码、同一张表），本地导入后可随时在资料库里复用；参考资料需先选分类（与资料中心一致），模板直接归入「写作模版」</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ <strong>智能对话发送不再卡滞</strong>：原先点发送后要先等"建/恢复本地索引"（大源 0.8~7 秒）才出现反馈，现在<strong>按钮立即变红 + 气泡立即出现（实测 817ms → 5ms）</strong>，准备超过 0.4 秒会提示「🔍 正在准备本地资料…」；本地资料准备失败也<strong>不再中断对话</strong>（自动降级为无资料模式继续回答）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔥 <strong>索引空闲预热 + 缓存修正</strong>：页面加载后趁空闲把常用源索引<strong>提前备好</strong>（有缓存秒级恢复，无缓存提前建；实测预热后发送的准备耗时 0ms）；同一源<strong>不再被重复准备</strong>（开机自动载入与首次检索撞车时复用同一份工作）；「清除缓存」现在<strong>连静态资源也强制重取</strong>（原先 sw.js 会把 HTTP 缓存的旧文件存进新缓存，导致"发版了还是旧界面，非得清缓存"）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 <strong>设置面板文字精简</strong>：知识库面板只显示「多少条 · 缓存多少 MB」（长解释一律收进「说明」）；「全局数据」后的说明、折叠标题上的副标题、开关旁的括号说明等一并删除，界面更清爽</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <strong>启动与运行性能优化</strong>：消除多处启动 / 流式主线程长任务 —— kimi 清理改为无命中快速短路 + 防抖（不再每次逐字插入都全文档扫描）；智能对话首屏仅在面板可见时渲染（不可见推迟到切入时）；词库仅在变化时回写、智能体迁移成功即跳过且改空闲执行；知识库日期排序改为一次解析（4 万条省百万次 Date 解析）、缓存恢复轻源在前重源（检查信息）殿后、面板「看得见才渲染」、索引载入改 requestIdleCallback 并等检查信息就绪 —— 首屏更快、AI 流式对话不再卡顿</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 智能写作的模板与参考资料改为「本地文件 / 资料库」两路选择，弹窗更清爽。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 风险研判与智能写作统计口径统一为 A/B/C/红线，按本地日计，两处数字一致。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚀 智能体并入智能对话，输入「/agent 任务」即可就地执行，无需切换标签页。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 联网时不再静默丢弃本地检索，代码角色不再注入铁路本地资料。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔗 「关联数据」面板理顺，确认仅在有输入时显示「应用并发送」，全不选可跳过索引准备。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧑‍💼 13 个专业角色统一追加输出规范，代码角色不再灌铁路业务准则。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🌙 补齐暗黑模式适配，新增界面硬性要求同步适配暗黑。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂️ 本地选的模板 / 资料复用同一套解析入库，可随时在资料库复用。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ 智能对话发送改为「先反馈后准备」，按钮立即变红、气泡即时出现（817ms→5ms）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔥 索引空闲预热 + 缓存修正，发送准备耗时降至 0ms，「清除缓存」连静态资源强制重取。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 设置面板文字精简，长说明收进「说明」，界面更清爽。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 启动与运行性能优化，消除首屏与流式渲染主线程长任务，AI 对话不再卡顿。</span></div>
                 </div>
             </div>
 
@@ -1962,17 +1980,17 @@
                     <span>v3.74 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗃️ <strong>索引不再"重启就丢"</strong>：建好的索引（切块 + 倒排表）会<strong>缓存到本机</strong>，页面启动后<strong>自动</strong>从缓存载入（后台分批、无需手动操作，可关闭），不用再等重建（实测 1.2 万条检查信息：重建 769ms → 恢复 62ms，约 <strong>12 倍</strong>）。设置 → 数据 → 知识库新增「<strong>缓存自检</strong>」与「<strong>载入索引</strong>」（手动兜底）；面板状态：🟢 已就绪 / 🟡 已缓存未载入 / ⚪ 需建立 / ⚫ 无数据</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 <strong>数据变了才重建</strong>：用<strong>数据指纹</strong>判断缓存是否还有效，导入/编辑后自动重建；设置 → 数据 → 知识库新增「<strong>清空缓存</strong>」，可随时释放磁盘占用</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 <strong>面板不再"顺手"建索引</strong>：此前打开「知识库」面板会静默把写作资料库 / 历史报告 6000+ 块索引建起来（表现为只有这两行 🟢、其余 ⚪），现在只统计条数、不建索引</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚖️ <strong>AI 对规候选更全</strong>：对规的候选条款改用统一检索层「条款级」召回，长规章末尾的关键条款不再被 1000 字窗口挡住；进度提示会显示本次召回来源</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 <strong>设置 → 数据 页整理</strong>：长列表收进可折叠分组（各模块数据 / 知识库，知识库内再分「高级与自检」「说明」），常用项常显；展开状态会记住。高级区新增「<strong>统一检索层开关</strong>」（智能对话/写作、AI 对规、智能体/风险研判 可分别回退旧检索）与「缓存自检」</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠️ <strong>风险研判 / 智能体检索接入统一检索层</strong>：风险研判的「事故专业案例」改为条款级检索（带出处），不再全表扫描 + 正则筛选；智能体的 <code style="background:#f1f5f9;padding:0 3px;border-radius:3px;">search_rules / search_handbook / search_material</code> 内部优先走统一检索层（摘要直接给命中的那一条条款），未命中自动回退原搜索；智能体的检索词也会沉淀到长期偏好</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📤 <strong>智能对话「导出」按钮</strong>：原来的「📥 下载」只导 Markdown，现改为<strong>导出 DOCX</strong>，复用历史报告那套公文导出（真·OOXML 引擎 + 公文格式 GB/T 9704-2012，排版偏好与历史报告共用）；文件名自动取回复首行 + 日期</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <strong>检索口径统一（C 批）</strong>：智能对话的本地资料按用途分档（写作资料库/历史报告只取 2 块，业务源 5 块）+ 单轮总量预算 4500 字 —— 实测每轮注入 <strong>6373 → 4352 字（−31%）</strong>；检查信息索引只覆盖最近 12000 条时，<strong>窗口外的老数据会自动全量兜底召回</strong>（实测老记录召回 0/30 → 30/30，每次多 15~45ms），并在提示词里如实标注"索引仅覆盖最近 N 条"，不再沉默查不到</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <strong>「本地对规」「AI 对规」两个按钮合并为一键「智能对规」</strong>：一次点击先用本地知识库索引按「条款」召回、再由 AI 精排给出结论（不再要求先跑一遍本地匹配）；<strong>AI 调用/解析失败、或索引与关键词召回都拿不到候选时，自动改用「本地对规」保底</strong>并标明原因，保证点一次必有结果</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 <strong>全模块布局与按钮统一</strong>：所有模块的内容区左右边界与顶部标题栏<strong>严格对齐</strong>（此前标题栏 20px、内容区 24px，扁平主题里更是 0/13/14 三种缩进并存），留白<strong>随屏宽分档</strong>（大屏两侧 15–20px、平板 10px、小窄屏 4px，小窄屏保持"刚好"的紧凑值）以尽量多显示内容；<strong>智能对规 / 风险研判</strong>子视图去掉多余的 16px 内缩、与标题栏对齐；顶部搜索/操作行按钮<strong>等宽并占满整行</strong>——检查手册「大纲浏览 / 规章制度」、检查信息与规章「智能搜索 / 统计 / 重置」、<strong>应急电话改为输入框独占整行 + 搜索/重置 等宽排在下方</strong>、<strong>智能对规与重置固定同一行</strong>（窄屏也不拆行）</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📋 <strong>工作日志界面精简为「1 个输入按钮 + 2 个复制按钮」</strong>：<strong>✏️ 输入 ▾</strong>（工具栏）＝切视图 + 选择输入方式（文本输入 / 图片（拍照）/ 视频（录像））；<strong>📋 复制▾（工作内容标题行）</strong>＝复制全部（工作写实 + 检查问题 + 规章）或仅复制工作写实（原日期行的「全部复制」已并入此处）；<strong>📋 复制▾（检查发现问题标题行）</strong>＝<strong>先选第几条（条数按实际填写动态生成）、再选 问题 / 规章 / 两者</strong>。日期行不再有任何按钮，问题行内也不再各带一个复制按钮；新增控件与规章输入框均已适配暗黑模式</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗃️ 建好的索引缓存到本机，启动后自动载入（恢复 769ms→62ms），新增缓存自检 / 载入。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 用数据指纹判断缓存有效性，导入 / 编辑后自动重建，可手动清空缓存。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 打开知识库面板只统计条数、不再静默建索引。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚖️ 对规改用统一检索层条款级召回，长规章末尾条款不再被窗口挡住。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 设置 → 数据页整理为可折叠分组，新增统一检索层开关与缓存自检。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠️ 风险研判 / 智能体检索接入统一检索层，条款级带出处召回，未命中自动回退。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📤 智能对话「导出」改为 DOCX（公文格式 GB/T 9704-2012），文件名自动取首行 + 日期。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 检索口径统一：本地资料分档 + 单轮预算 4500 字（−31%），老数据窗口外自动兜底。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 「本地 / AI 对规」合并为一键「智能对规」，AI 失败自动本地保底。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 全模块布局与按钮统一：内容区与标题栏对齐、留白随屏宽分档、按钮等宽占满。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📋 工作日志界面精简为「1 个输入按钮 + 2 个复制按钮」，日期行不再放按钮。</span></div>
                 </div>
             </div>
 

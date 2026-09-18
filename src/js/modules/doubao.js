@@ -4737,77 +4737,16 @@
       // ---------- 8. 增强智能写作 ----------
       var originalWrGenerate = window.wrGenerate;
       if (typeof originalWrGenerate === 'function') {
-        // ⚠️ 必须接收并向下透传 isRegenerate：smart-writer.js 的「🔄 重新生成」调用的是 wrGenerate(true)，
-        // 而原包裹函数没有形参、向下调用时也不传参 → isRegenerate 恒为 undefined，
-        // 使原函数里 `if (!isRegenerate && …)` 判定成立，每次"重新生成"都会再插一条用户气泡并清空输入框。
+        // 【2026-09-18 收敛为透传】此包装层原先做两件事，现已全部由 smart-writer 内部修复取代，且各自有害：
+        //   ① 「选了资料就跳过本地检索」（_wrSkipLocalSearch=true）——会让台账统计/规章候选/历史报告
+        //      整块被清空（用户选了资料反而拿不到真实数字与规章依据，实测 materialCount={issues:0,rules:0,reports:0}），
+        //      而且该标志被当成"修改模式"，报告落库标题会变成"报告（修改版）"。
+        //      现在：手选资料只替换"资料"这一路，台账/规章/历史报告照常检索（见 smart-writer 的 wrGenerate）。
+        //   ② 用 KB 检出 5 条案例拼进输入框——台账统计口径已统一由 wrUnifiedStats 给一次，
+        //      再拼一份"案例"会出现两套数字，且污染用户需求原文。
+        // ⚠️ 形参必须继续透传 isRegenerate：否则「🔄 重新生成」会重复插气泡并清空输入框。
         window.wrGenerate = async function(isRegenerate) {
-          const q = document.getElementById('wr-query-input') ? document.getElementById('wr-query-input').value : '';
-          if (!q) return originalWrGenerate(isRegenerate);
-
-          // 判断是否需要跳过本地检索
-          // 新规则：只要选了资料就停止本地搜索（资料已给足，不卡死）
-          //       没选资料时 → 做本地检索（仅最近1个月检查信息）
-          //       用户明确要求搜索时 → 不受资料限制，仍做本地检索
-          var hasMaterials = !!(window._wrSelectedMaterialIds && window._wrSelectedMaterialIds.length > 0);
-          var askForSearch = /检索|搜索|查找|查询.*规章|查询.*检查|关联.*资料|本地.*数据|补充.*资料/.test(q);
-          var shouldSkipSearch = hasMaterials && !askForSearch;
-
-          console.log('[wrGenerate] hasMaterials=' + hasMaterials + ' askForSearch=' + askForSearch + ' shouldSkipSearch=' + shouldSkipSearch);
-
-          if (shouldSkipSearch) {
-            // 跳过本地检索，直接生成
-            window._wrSkipLocalSearch = true;
-            try {
-              await originalWrGenerate(isRegenerate);
-            } finally {
-              window._wrSkipLocalSearch = false;
-            }
-            return;
-          }
-
-          // 需要本地检索：仅搜索最近1个月检查信息（recentMonth: true）
-          // 【v3.73】优先走「统一检索层」（问题库按条分块：命中即整条进上下文，不再截 200 字）；
-          // 关闭 kb_prompt 或调用失败时回退旧路径。
-          var _wrKbOn = true;
-          try { _wrKbOn = localStorage.getItem('kb_prompt') !== '0'; } catch (e) {}
-          var issues = null;
-          if (_wrKbOn && window.KB && typeof window.KB.search === 'function') {
-            try {
-              if (typeof window.KB.ensure === 'function') await window.KB.ensure(['issues']);
-              var _wrR = window.KB.search(q, { sources: ['issues'], topK: 8, recentMonth: true });
-              issues = _wrR.length ? _wrR[0].hits.map(function (h) { return h.doc; }) : [];
-            } catch (e) { issues = null; }
-          }
-          // ⚠️ v3.74 修正：KB **命中为空**也要回退旧路径。
-          //    原先只在 KB 抛异常（issues=null）时回退，而 KB 无命中会返回 []（真值）→ 不再回退，
-          //    于是「KB 索引范围只到最近 1.2 万条、旧路径扫全量」这种差异下会**静默丢掉**本来能命中的台账。
-          if (!issues || !issues.length) {
-            var _wrOld = await retrieveLocalData(q, { topNIssues: 8, recentMonth: true });
-            if (_wrOld && _wrOld.issues && _wrOld.issues.length) {
-              issues = _wrOld.issues;
-              if (typeof console !== 'undefined') console.log('[wrGenerate] KB 无命中 → 回退旧检索，命中 ' + issues.length + ' 条');
-            } else {
-              if (!issues) issues = [];
-              if (typeof console !== 'undefined') console.log('[wrGenerate] KB 无命中 → 旧检索也无命中（本次不带台账数据）');
-            }
-          }
-          // 【v3.74 修正】这里**只补充"匹配到的历史案例"**，不再给出总数/A类/B类等统计数字：
-          //   统计口径统一由 smart-writer 的 wrExtractStatsFromIssues（按解析出的日期范围、全量台账）
-          //   在提示词里给一次；此前两处各算一份，同一条提示词里会出现两套数字（可能不一致）。
-          let statsText = '';
-          if (issues.length) {
-            const typicals = issues.slice(0,5).map(function(i,idx){ return (idx+1)+'. '+i.content.slice(0,150); }).join('\n');
-            statsText = '【匹配到的历史案例（供参考，不含统计口径）】\n'+typicals+'\n\n';
-          }
-          const originalInput = document.getElementById('wr-query-input');
-          if (originalInput && statsText) {
-            const originalVal = originalInput.value;
-            originalInput.value = statsText + '用户需求：' + originalVal;
-            await originalWrGenerate(isRegenerate);
-            originalInput.value = originalVal;
-          } else {
-            await originalWrGenerate(isRegenerate);
-          }
+          return originalWrGenerate(isRegenerate);
         };
       }
 

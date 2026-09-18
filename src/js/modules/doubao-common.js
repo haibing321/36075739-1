@@ -754,7 +754,8 @@
         if (ext && ctrl && typeof ext.addEventListener === 'function') {
             try { ext.addEventListener('abort', function () { try { ctrl.abort(); } catch (e) {} }); } catch (e) {}
         }
-        var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, opts.timeoutMs || 90000) : null;
+        var timedOut = false;
+        var to = ctrl ? setTimeout(function () { timedOut = true; try { ctrl.abort(); } catch (e) {} }, opts.timeoutMs || 90000) : null;
         try {
             var resp = await fetch(apiUrl, {
                 method: 'POST',
@@ -767,6 +768,8 @@
                 try { detail = await resp.text(); } catch (e) {}
                 return { ok: false, status: resp.status, error: (window.dsAiHttpError ? window.dsAiHttpError(resp.status, detail) : ('HTTP ' + resp.status)) };
             }
+            // 超时已经触发却仍拿到响应（个别环境 abort 不生效）→ 严格按超时处理，别让调用方以为成功
+            if (timedOut || (ctrl && ctrl.signal && ctrl.signal.aborted) || (ext && ext.aborted)) return { ok: false, error: 'timeout' };
             var j = await resp.json();
             var c = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
             if (!c) return { ok: false, error: 'empty' };

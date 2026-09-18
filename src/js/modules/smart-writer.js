@@ -4094,7 +4094,22 @@ ${details || '(无)'}
             } catch(e) { console.warn('[writer] 迁移智能体报告失败:', e.message); }
         };
         // 模块加载即触发一次迁移（fire-and-forget，不阻塞）
-        wrMigrateAgentMaterials();
+        // 【启动优化 2026-09-18】原实现：defer 阶段就 `wrOpenDB()` + **全量 getAll 资料库**来筛
+        //   「来源=智能体」的记录，属于首屏前的 IndexedDB 重活，而绝大多数启动根本没有可迁移项。
+        //   改为：① 迁移成功过就落标记，之后启动直接跳过（零开销）；
+        //       ② 没迁移过也不在启动期跑，等页面空闲（或最晚 5s 后）再跑，失败不留标记、下次重试。
+        (function scheduleAgentMigration() {
+            var DONE_KEY = 'wr_agent_migrated_v1';
+            try { if (localStorage.getItem(DONE_KEY) === '1') return; } catch (e) {}
+            var run = function () {
+                var p = wrMigrateAgentMaterials();
+                if (p && typeof p.then === 'function') {
+                    p.then(function () { try { localStorage.setItem(DONE_KEY, '1'); } catch (e) {} });
+                }
+            };
+            if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 5000 });
+            else setTimeout(run, 2500);
+        })();
 
         // 资料中心统一渲染后，原有「资料库列表 / 历史报告」刷新函数改为委托到统一渲染器，
         // 保留函数名以兼容所有旧调用点（导入 / 删除 / 设模版 / 改类型 / 报告增删改），避免重复渲染冲突。

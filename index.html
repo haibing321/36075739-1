@@ -1951,6 +1951,7 @@
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ <strong>智能对话发送不再卡滞</strong>：原先点发送后要先等"建/恢复本地索引"（大源 0.8~7 秒）才出现反馈，现在<strong>按钮立即变红 + 气泡立即出现（实测 817ms → 5ms）</strong>，准备超过 0.4 秒会提示「🔍 正在准备本地资料…」；本地资料准备失败也<strong>不再中断对话</strong>（自动降级为无资料模式继续回答）</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔥 <strong>索引空闲预热 + 缓存修正</strong>：页面加载后趁空闲把常用源索引<strong>提前备好</strong>（有缓存秒级恢复，无缓存提前建；实测预热后发送的准备耗时 0ms）；同一源<strong>不再被重复准备</strong>（开机自动载入与首次检索撞车时复用同一份工作）；「清除缓存」现在<strong>连静态资源也强制重取</strong>（原先 sw.js 会把 HTTP 缓存的旧文件存进新缓存，导致"发版了还是旧界面，非得清缓存"）</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 <strong>设置面板文字精简</strong>：知识库面板只显示「多少条 · 缓存多少 MB」（长解释一律收进「说明」）；「全局数据」后的说明、折叠标题上的副标题、开关旁的括号说明等一并删除，界面更清爽</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <strong>启动与运行性能优化</strong>：消除多处启动 / 流式主线程长任务 —— kimi 清理改为无命中快速短路 + 防抖（不再每次逐字插入都全文档扫描）；智能对话首屏仅在面板可见时渲染（不可见推迟到切入时）；词库仅在变化时回写、智能体迁移成功即跳过且改空闲执行；知识库日期排序改为一次解析（4 万条省百万次 Date 解析）、缓存恢复轻源在前重源（检查信息）殿后、面板「看得见才渲染」、索引载入改 requestIdleCallback 并等检查信息就绪 —— 首屏更快、AI 流式对话不再卡顿</span></div>
                 </div>
             </div>
 

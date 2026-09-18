@@ -297,17 +297,31 @@
             return isNaN(n) ? ISSUE_LIMIT_DEFAULT : n;
         } catch (e) { return ISSUE_LIMIT_DEFAULT; }
     }
+    // 【启动优化 2026-09-18】排序键改为「先算一次、再比较」：
+    //   原实现在比较器里调 `new Date(datetime).getTime()` —— 4 万条排序约 60 万次比较
+    //   = 120 万次日期解析，实测占掉一次 300ms 级主线程长任务。现在每条只解析一次，
+    //   且标准格式（'YYYY-MM-DD HH:mm:ss'）直接从字符串切片得到 YYYYMMDDHHMMSS，零 Date 开销。
+    var _DT_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/;
+    function _dtKey(v) {
+        var s = (v == null) ? '' : String(v).trim();
+        var m = _DT_RE.exec(s);
+        if (m) return m[1] + m[2] + m[3] + (m[4] || '00') + (m[5] || '00') + (m[6] || '00');
+        var t = new Date(s).getTime();
+        if (isNaN(t)) return '00000000000000';
+        var d = new Date(t), p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    }
     function prepareIssues(list) {
         var lim = issueLimit();
         if (!lim || !list || list.length <= lim) return list;
-        var arr = list.slice().sort(function (a, b) {
-            var ta = a && a.datetime ? new Date(a.datetime).getTime() : 0;
-            var tb = b && b.datetime ? new Date(b.datetime).getTime() : 0;
-            if (isNaN(ta)) ta = 0;
-            if (isNaN(tb)) tb = 0;
-            return tb - ta;
-        });
-        return arr.slice(0, lim);
+        var keyed = new Array(list.length);
+        for (var i = 0; i < list.length; i++) {
+            keyed[i] = { it: list[i], k: _dtKey(list[i] && list[i].datetime) };
+        }
+        keyed.sort(function (a, b) { return b.k > a.k ? 1 : (b.k < a.k ? -1 : 0); });   // 新的在前
+        var out = new Array(lim);
+        for (var j = 0; j < lim; j++) out[j] = keyed[j].it;
+        return out;
     }
 
     // loader 返回 { list, async } ：sync 源就地取数；async 源由 KB.ensure() 预载
@@ -1177,12 +1191,15 @@
     }
     function autoLoadCaches() {
         if (!autoLoadEnabled() || !cacheCapable()) return Promise.resolve(0);
-        var keys = ['issues', 'rules', 'handbook', 'materials', 'reports', 'phone', 'diary'];  // 常用源优先
+        // 【启动优化 2026-09-18】顺序调整：轻的源在前（规章/手册/电话 → 资料/报告），
+        // **最重的检查信息放最后**。这样用户在这批恢复进行到一半时就开始用系统，
+        // 先有的也是"千条级小源"，4 万条的大源（缓存 33MB 级）在最后单独跑，不挡前面的。
+        var keys = ['rules', 'handbook', 'phone', 'diary', 'materials', 'reports', 'issues'];
         var i = 0, loaded = 0;
         function step() {
             if (i >= keys.length) {
                 if (loaded) {
-                    if (typeof document !== 'undefined' && document.getElementById('kb-source-list')) panelRender();
+                    if (typeof document !== 'undefined' && document.getElementById('kb-source-list')) try { refreshPanelIfNeeded(); } catch (e) {}
                     if (typeof console !== 'undefined') console.log('[KB] 启动自动载入完成，已从本机缓存恢复 ' + loaded + ' 个源的索引');
                 }
                 return Promise.resolve(loaded);
@@ -1228,7 +1245,7 @@
                     console.log('[KB] 空闲预热完成：' + key + '（' + st2.chunks.length + ' 块，'
                         + (st2.restored ? '缓存恢复' : '本次建立') + '，' + Math.max(0, Date.now() - t0) + 'ms）');
                 }
-                if (typeof document !== 'undefined' && document.getElementById('kb-source-list')) panelRender();
+                if (typeof document !== 'undefined' && document.getElementById('kb-source-list')) try { refreshPanelIfNeeded(); } catch (e) {}
             }).catch(function () { /* 单源失败不影响其它；也不影响功能（首次检索还会再试） */ })
               .then(function () { _idleRun(step); });
         }
@@ -1288,23 +1305,63 @@
         }).catch(function () { return []; });
     }
 
-    // 打开设置面板「数据」分区时刷新面板（自包含：不改 app.js 的设置面板逻辑）
+    // 打开设置面板「数据」分区时才刷新面板（自包含：不改 app.js 的设置面板逻辑）
+    // 【启动优化 2026-09-18】原先这里在 defer 阶段就无条件执行 panelRender()，代价是：
+    //   读 7 个源的索引缓存（检查信息源 7~33MB 级的结构化克隆）+ 逐源算数据指纹 + 读写作库两个 store，
+    //   全部压在"首屏渲染前"的主线程上，实测是一段 300ms 级长任务。面板只有「设置 → 数据」才可见，
+    //   因此改为"什么时候看得见、什么时候才渲染"：由下面的统一入口触发（点导航 / 打开设置面板都会经过）。
+    function refreshPanelIfNeeded() {
+        if (typeof document === 'undefined') return;
+        var sec = document.querySelector('.st-sec[data-sec="data"]');
+        if (!sec || !sec.classList.contains('is-active')) return;              // 没停在「数据」分区
+        var panel = document.getElementById('settings-panel');
+        if (!panel || !panel.style.display || panel.style.display === 'none') return;  // 面板没打开
+        panelRender();
+    }
     if (typeof document !== 'undefined') {
+        // 「数据」分区被激活的统一入口：app.js 的 stGoSection/toggleSettingsPanel、index.html 的兜底版
+        // 最终都会调 window.updateDataManagementStats()。挂它上面（原实现照常执行，之后补一次渲染）。
+        (function hookDataSectionEntry() {
+            var orig = window.updateDataManagementStats;
+            window.updateDataManagementStats = function () {
+                if (typeof orig === 'function') { try { orig.apply(this, arguments); } catch (e) {} }
+                try { refreshPanelIfNeeded(); } catch (e) {}
+            };
+        })();
         document.addEventListener('click', function (e) {
             var t = e.target;
             if (!t || !t.closest) return;
-            if (t.closest('.st-nav-item[data-sec="data"]')) setTimeout(function () { panelRender(); }, 0);
+            if (t.closest('.st-nav-item[data-sec="data"]')) setTimeout(refreshPanelIfNeeded, 0);
         });
-        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { panelRender(); });
-        else panelRender();
+        // 兜底：启动时若面板已打开且正停在「数据」分区（例如被 page-state 还原），补渲染一次
+        setTimeout(refreshPanelIfNeeded, 0);
 
-        // 启动后延后 1.2s 自动从本机缓存载入索引（让首屏先渲染完再干这活）
+        // 启动后自动从本机缓存载入索引
         // 【v3.75】载入结束后接着进入「空闲预热」：把常用源彻底准备好（有缓存=秒级恢复，
         //   无缓存=趁空闲把索引建好），用户点发送时通常已是 🟢，不必再等。
+        // 【启动优化 2026-09-18】调度改为"等主线程真正空闲"：原先是 load+1.2s 定时器，
+        //   正好撞在用户刚打开、开始点按的时间点上（实测两段 320ms 级长任务卡在这里）。
+        //   requestIdleCallback 会挑浏览器空闲帧跑；timeout 只作为"最晚也要跑"的兜底。
         function _autoLoadLater() {
-            setTimeout(function () {
-                autoLoadCaches().then(function () { warmCommonSources(); });
-            }, 1200);
+            var kick = function () {
+                // 再等一个空闲帧：此时首屏已画完、台账已就绪，恢复索引不会与它们抢主线程
+                if (typeof requestIdleCallback === 'function') requestIdleCallback(function () {
+                    autoLoadCaches().then(function () { warmCommonSources(); });
+                }, { timeout: 2000 });
+                else setTimeout(function () { autoLoadCaches().then(function () { warmCommonSources(); }); }, 300);
+            };
+            // 【启动优化续 2026-09-18】必须等「检查信息」数据就绪后再生效：
+            //   ① 检查信息是 KB 最大的一个源（4 万条 / 缓存几十 MB），数据还没进内存时，
+            //      KB 取到的是**空数组** —— 该源既恢复不了（指纹对不上）也建不出来，白跑一趟；
+            //   ② 更重要的是别和 issue 的全量读取抢主线程（实测提前跑会把「台账就绪」从 ~420ms 拖到 ~600ms）。
+            //   等不到（3s 超时 / issue 模块异常）就照常继续，不影响其它源。
+            (function waitIssueData(then) {
+                if (window.__issueDataReady) { then(); return; }
+                var t0 = Date.now();
+                var timer = setInterval(function () {
+                    if (window.__issueDataReady || (Date.now() - t0) > 3000) { clearInterval(timer); then(); }
+                }, 100);
+            })(kick);
         }
         if (document.readyState === 'complete') _autoLoadLater();
         else window.addEventListener('load', _autoLoadLater, { once: true });

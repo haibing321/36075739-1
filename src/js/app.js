@@ -702,24 +702,44 @@ window.onclick = function(e) {
 // ============================================================
 (function() {
     function removeKimiElements() {
-        document.querySelectorAll('[id*="kimi" i],[class*="kimi" i],[class*="kimi-extension" i]').forEach(function(el) {
-            if (el.id !== '_block_kimi_fab' && el.closest('header,main,nav,section')) return;
-            el.remove();
-        });
-        document.querySelectorAll('kimi-chat-widget,kimi-fab').forEach(function(el) { el.remove(); });
-        document.querySelectorAll('body > div').forEach(function(el) {
-            var s = getComputedStyle(el);
-            if (s.position === 'fixed' && s.zIndex && parseInt(s.zIndex) > 100000 && !el.id && !el.className) {
+        var hitKimi = false;
+        try {
+            hitKimi = !!document.querySelector('[id*="kimi" i],[class*="kimi" i],[class*="kimi-extension" i],kimi-chat-widget,kimi-fab');
+        } catch (e) { hitKimi = false; }
+        if (hitKimi) {
+            document.querySelectorAll('[id*="kimi" i],[class*="kimi" i],[class*="kimi-extension" i]').forEach(function(el) {
+                if (el.id !== '_block_kimi_fab' && el.closest('header,main,nav,section')) return;
                 el.remove();
-            }
-        });
+            });
+            document.querySelectorAll('kimi-chat-widget,kimi-fab').forEach(function(el) { el.remove(); });
+        }
+        // 【启动/运行优化 2026-09-18】没有 kimi 元素时**快速短路**：原实现每次 DOM 变动都要跑两次
+        // 全文档 querySelectorAll + 对 body 直接子元素逐个 getComputedStyle（强制样式计算），
+        // 而 AI 流式对话是逐字插入 DOM 的 —— 每一次都会触发这轮扫描，是运行期最明显的一处白工。
+        // 现在只做一次轻量兜底：只扫 body 直接子元素、且每个节点只判一次（判过打标记），
+        // 这样"无 kimi 环境"下的单次成本从 O(全文档) 降到 O(body 子元素数)。
+        var kids = document.body ? document.body.children : [];
+        for (var i = 0; i < kids.length; i++) {
+            var el = kids[i];
+            if (!el || el.tagName !== 'DIV' || el.id || el.className) continue;
+            if (el.getAttribute('data-aj-scanned') === '1') continue;
+            el.setAttribute('data-aj-scanned', '1');
+            var s = getComputedStyle(el);
+            if (s.position === 'fixed' && s.zIndex && parseInt(s.zIndex) > 100000) { el.remove(); return true; }
+        }
+        return false;
     }
     setTimeout(removeKimiElements, 500);
     setTimeout(removeKimiElements, 2000);
+    // 防抖：一次 DOM 抖动只跑一次；10s 后停止监听（扩展注入发生在页面加载早期，
+    // 之后再挂一个全文档 MutationObserver 只会在流式渲染时白白唤醒主线程）。
+    var _kimiTimer = null;
     var mo = new MutationObserver(function() {
-        removeKimiElements();
+        if (_kimiTimer) return;
+        _kimiTimer = setTimeout(function() { _kimiTimer = null; removeKimiElements(); }, 400);
     });
     mo.observe(document.body, { childList: true, subtree: true });
+    setTimeout(function() { try { mo.disconnect(); } catch (e) {} }, 10000);
 })();
 
 // 更新红点的统一维护（v3.63）

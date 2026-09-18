@@ -267,7 +267,16 @@
                 PATCH_TERM_LIBRARY = Array.from(map.values());
                 rebuildTermMap();
                 if (oldTerms.length > 0) localStorage.removeItem('railway_terms_custom');
-                localStorage.setItem('patch_term_library_v2', JSON.stringify(PATCH_TERM_LIBRARY));
+                // 【启动优化 2026-09-18】只在词库**真的变了**时才回写：
+                //   原实现每次启动都无条件 JSON.stringify + setItem 整份词库（数百条），
+                //   是启动路径上的白工，也放大了 localStorage 的写放大。逐字符比对成本远低于序列化。
+                (function persistTermsIfChanged() {
+                    try {
+                        var next = JSON.stringify(PATCH_TERM_LIBRARY);
+                        if (localStorage.getItem('patch_term_library_v2') === next) return;   // 内容一致 → 不回写
+                        localStorage.setItem('patch_term_library_v2', next);
+                    } catch (e) {}
+                })();
                 console.log('[词库] 结构化词库加载完成，共 ' + PATCH_TERM_LIBRARY.length + ' 个术语');
             })();
 

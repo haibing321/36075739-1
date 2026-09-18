@@ -257,6 +257,36 @@
                 return changed;
             }
 
+            // ---- 首次渲染（启动优化 2026-09-18）----
+            // 背景：原实现无论用户当前停在哪个模块，dsInit（defer+100ms）都要渲染整段对话气泡、
+            //   重建历史列表，并读一次 `sidebar.offsetWidth`（**强制同步布局**）——实测是一段 ~50ms 长任务
+            //   （对话越多越长），而绝大多数启动的当前模块是检查信息/规章/日记等，聊天面板根本不可见。
+            // 现在：面板已可见（用户上次就停在智能助手）→ 立即渲染，行为与之前完全一致；
+            //   否则挂到「首次切到 doubao」时再渲染（onShow_doubao + tabChanged 双保险）。
+            // ⚠️ 对话数据本身（dsLoadConversations）仍在启动时加载，避免"未加载就保存"把历史覆盖掉。
+            var _dsChatRendered = false;
+            function dsPanelVisible() {
+                try {
+                    var p = document.getElementById('panel-doubao');
+                    return !!(p && p.classList.contains('active'));
+                } catch (e) { return true; }
+            }
+            function dsEnsureChatRendered() {
+                if (_dsChatRendered) return;
+                _dsChatRendered = true;
+                // 清理历史里残留的「当前模型为纯文本模型」旧提示（否则模型会在无关话题中反复复述）
+                try { migrateLegacyVisionNotices(); } catch (e) {}
+                dsRenderAll();
+                dsScrollBottom();
+                dsRenderHistoryList();
+                // 初始化侧边栏隐藏位置（适配手机端vw宽度）
+                (function() {
+                    var sb = document.getElementById('ds-sidebar');
+                    if (sb) sb.style.left = '-' + (sb.offsetWidth + 20) + 'px';
+                })();
+            }
+            window.dsEnsureChatRendered = dsEnsureChatRendered;
+
             // ---- 初始化 ----
             function dsInit() {
                 migrateLegacyApiConfig();
@@ -277,8 +307,6 @@
                 updateApiStatusBadge();
                 // 加载多对话历史
                 dsLoadConversations();
-                // 清除历史里残留的「当前模型为纯文本模型」旧提示（否则模型会在无关话题中反复复述）
-                migrateLegacyVisionNotices();
                 // 默认显示新对话（但复用已有的空对话，避免重复创建）
                 const existingEmpty = dsConversations.find(c => !c.messages || c.messages.length === 0);
                 if (existingEmpty) {
@@ -297,14 +325,18 @@
                     dsSaveConversations();
                 }
                 localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
-                dsRenderAll();
-                dsScrollBottom();
-                dsRenderHistoryList();
-                // 初始化侧边栏隐藏位置（适配手机端vw宽度）
-                (function() {
-                    var sb = document.getElementById('ds-sidebar');
-                    if (sb) sb.style.left = '-' + (sb.offsetWidth + 20) + 'px';
-                })();
+                // 首次渲染：面板可见就立即渲染，否则推迟到用户真正切进智能助手时（见 dsEnsureChatRendered）
+                if (dsPanelVisible()) {
+                    dsEnsureChatRendered();
+                } else {
+                    window.onShow_doubao = function () {
+                        try { dsEnsureChatRendered(); } catch (e) {}
+                    };
+                    // 双保险：unified-enhancements 包装过的 switchTab 会派发 tabChanged（含侧滑/程序化切换）
+                    document.addEventListener('tabChanged', function (e) {
+                        if (e && e.detail && e.detail.tab === 'doubao') dsEnsureChatRendered();
+                    });
+                }
                 // DeepSeek 习惯：Enter 发送，Shift+Enter 换行（兼容 Ctrl+Enter）
                 document.getElementById('ds-user-input').addEventListener('keydown', function(e) {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); dsSendMsg(); }

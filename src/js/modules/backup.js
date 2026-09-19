@@ -509,7 +509,7 @@
         return parts.join('\n');
     }
 
-    var LIB_JSZIP_BK = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    var LIB_JSZIP_BK = 'src/js/vendor/jszip.min.js';
 
     // ---- 全局导入进度条（使用全局 showProgress） ----
     function _showRestoreProgress(show) { if (!show) window.hideProgress(); }

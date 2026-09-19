@@ -1271,10 +1271,10 @@
                 // 按需加载解析库（只在这批文件真的需要时才联网加载，失败则明确报错，不留半成品）
                 var needXlsx = files.some(function(f) { return /\.(xlsx|xls)$/i.test(f.name); });
                 var needDocx = files.some(function(f) { return /\.docx$/i.test(f.name); });
-                if (needXlsx && !(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', { feature: '资料导入', silent: true }))) {
+                if (needXlsx && !(await window.requireLib('src/js/vendor/xlsx.full.min.js', { feature: '资料导入', silent: true }))) {
                     return { saved: saved, errors: ['解析组件（Excel）未能联网加载，请联网后重试'], processed: 0, libFail: true };
                 }
-                if (needDocx && !(await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js', { feature: '资料导入', silent: true }))) {
+                if (needDocx && !(await window.requireLib('src/js/vendor/mammoth.browser.min.js', { feature: '资料导入', silent: true }))) {
                     return { saved: saved, errors: ['解析组件（Word）未能联网加载，请联网后重试'], processed: 0, libFail: true };
                 }
                 for (const file of files) {
@@ -3872,14 +3872,14 @@
                 // ================= 通道 B/C：历史链路兜底 =================
                 // 尝试加载 html-docx-js（国内手机网络可能失败，故用 try/catch 兜底，不抛出）
                 if (typeof window.htmlDocx === 'undefined') {
-                    try { await window.loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js'); }
+                    try { await window.loadScript('src/js/vendor/html-docx.js'); }
                     catch (e) { /* 忽略，走下方离线兜底 */ }
                 }
                 if (typeof window.htmlDocx === 'undefined') {
                     try {
                         await new Promise((resolve) => {
                             const script = document.createElement('script');
-                            script.src = 'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js';
+                            script.src = 'src/js/vendor/html-docx.js';
                             script.onload = resolve;
                             script.onerror = resolve; // 失败也继续，走兜底
                             document.head.appendChild(script);

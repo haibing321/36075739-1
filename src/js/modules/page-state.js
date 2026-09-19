@@ -20,7 +20,10 @@
 (function () {
   'use strict';
 
-  var KEY = 'page_state_snapshot_v1';
+  // v2（2026-09-19）：v1 快照里的内联 onclick 是**被旧实现剥掉的**（恢复后按钮全是死的：
+  //   记入日志/复制点了没反应）。换 key → 旧快照直接作废，用户第一次刷新就用上新规则，
+  //   否则"死快照"会被反复恢复/回写、问题看起来"没修好"。
+  var KEY = 'page_state_snapshot_v2';
 
   // 各模块「未提交草稿」输入框的稳定 id（仅抓取值，不干扰业务）
   // 仅收集「明显的草稿类输入」，避免误存密码/已提交内容
@@ -201,6 +204,38 @@
     } catch (e) { /* sessionStorage 不可用（隐私模式/配额）时静默跳过 */ }
   }
 
+  // 安全的内联 onclick 判据（单个函数调用，参数仅限 标识符/this/数字/受限字符集的引号串）。
+  //   为什么要有它：见 _scrubOnAttrs 的说明 —— 一律剥掉会让"没有 onShow_ 钩子"的模块
+  //   （检查信息/规章制度/应急电话）刷新后按钮全部失效。
+  //   拦不住的示例：含 ; = ` < > / 反斜杠、嵌套括号、字符串拼接 → 一律按不安全处理。
+  var _SAFE_ONCLICK = /^[A-Za-z_$][\w$.]*\((?:[^"'<>;=`\\/()]|'[^'<>;=`\\/()]*'|"[^"<>;=`\\/()]*")*\)$/;
+  /**
+   * 【2026-09-19 修复用户报的 bug】恢复快照时「on* 一律剥掉」导致按钮点了没反应。
+   *   原实现：`el.innerHTML = snapshot.replace(/\son[a-z]+=.../g,' ')` —— 全剥，然后指望
+   *   "这些容器随后会由模块的 onShow_ 用最新数据重新渲染"把交互补回来。
+   *   但 `switchTab` 只会回调**存在**的 `window['onShow_'+tab]`：检查信息 / 规章制度 / 应急电话
+   *   **都没有**这个钩子 → 刷新（或折叠屏重建文档）后恢复出来的卡片按钮全是死的 ——
+   *   用户报的「记入日志按钮点击后无反应」就是这个（`onclick="addIssueToDiaryFromCard(this)"`
+   *   被剥掉了）。
+   *   现在：**onclick 只放行安全调用式**（我们自己渲染的那些：addIssueToDiaryFromCard(this)、
+   *   issueCopyContent(this)、editDiary('2026-09-19')…），其余 on* 事件（onerror/onload/…）
+   *   与不安全表达式继续剥离 —— 防 XSS 的初衷不变，交互不再丢。
+   */
+  function _scrubOnAttrs(html) {
+    // ⚠️ 必须**单趟**处理：先前写成"先挑出安全 onclick 保留、再跑一遍通配 on* 剥离"，
+    //   结果第二遍把刚保留的 onclick 又剥掉了（Node 单测 6 例全挂）。
+    // ⚠️ 捕获组必须带上 `on`：写成 \son([a-z]+) 时捕获到的是 "click"，与 'onclick' 比较永远不等
+    //   （Node 单测 6 例全挂就是这么来的）。
+    return String(html).replace(/\s(on[a-z]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi, function (m, name, dq, sq) {
+      var val = (dq !== undefined) ? dq : sq;
+      var quote = (dq !== undefined) ? '"' : "'";
+      if (String(name).toLowerCase() === 'onclick' && _SAFE_ONCLICK.test(String(val).trim())) {
+        return ' onclick=' + quote + val + quote;   // 我们自己渲染的安全调用式 → 保留（按钮才活着）
+      }
+      return ' ';                                   // 其余 on* / 不安全的 onclick → 剥离
+    });
+  }
+
   // 还原「动态内容区」+ 激活目标模块
   // 注意：只写回 DYNAMIC_SNAPSHOT_IDS 里的容器，绝不覆盖 panel 整体 ——
   // 覆盖整体会毁掉静态按钮的内联 onclick（详见上方 DYNAMIC_SNAPSHOT_IDS 的说明）。
@@ -215,13 +250,8 @@
       if (!el) return;
       try {
         // 快照内容混有规章名、检查信息字段等用户输入。任一渲染路径存在转义遗漏时，
-        // 内联 onclick（如 copy('...')）就会被原样还原 → DOM XSS。
-        // 这些容器里的内容随后会由模块的 onShow_ 用最新数据重新渲染，
-        // 因此这里先剥掉 on* 是安全的：交互会由重新渲染补回来。
-        var cleaned = String(snap.panelHTML[id])
-          .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, ' ')
-          .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, ' ');
-        el.innerHTML = cleaned;
+        // 内联 onclick 就可能被原样还原 → DOM XSS。用 _scrubOnAttrs 过滤（安全调用式保留）。
+        el.innerHTML = _scrubOnAttrs(snap.panelHTML[id]);
         ok = true;
       } catch (e) {}
     });

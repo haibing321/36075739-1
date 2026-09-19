@@ -88,7 +88,7 @@
             });
 
             // 解析单个DOCX文件
-            var LIB_MAMMOTH_HB = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js';
+            var LIB_MAMMOTH_HB = 'src/js/vendor/mammoth.browser.min.js';
 
             async function _parseDocxFile(file) {
                 // 用 requireLib：直接 await loadScript 在离线时抛错，

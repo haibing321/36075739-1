@@ -567,8 +567,8 @@
             // 连续搜索时旧回调可能后到并覆盖新结果（统计条数、分页、高亮全是旧的），
             // 用序号丢弃过期回调。
             var _searchSeq = 0;
-            var LIB_FUSE_ISSUE = 'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js';
-            var LIB_XLSX_ISSUE = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+            var LIB_FUSE_ISSUE = 'src/js/vendor/fuse.min.js';
+            var LIB_XLSX_ISSUE = 'src/js/vendor/xlsx.full.min.js';
 
             window.issueDoSearch = async function() {
                 var seq = ++_searchSeq;
@@ -577,7 +577,7 @@
                 // 导致下面第 530 行写好的「线性扫描 fallback」永远走不到 ——
                 // 离线时搜索 100% 不可用，且界面卡在「正在搜索...」。
                 // 用 requireLib（silent）+ 后续 fuseSearch 返回 null 自动降级即可。
-                await window.requireLib('https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js', { silent: true });
+                await window.requireLib('src/js/vendor/fuse.min.js', { silent: true });
                 if (seq !== _searchSeq) return; // 已发起更新的搜索，本次直接作废
                 if (window.perfMonitor) perfMonitor.start('search_issue');
                 const keywords = [];

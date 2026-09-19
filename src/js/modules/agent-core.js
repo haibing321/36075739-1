@@ -68,7 +68,7 @@
   var TOOLS = [
     {
       name: 'search_issues',
-      description: '搜索检查信息数据库，按关键词模糊查找问题记录（支持单位/类别/日期/性质筛选）。返回精简列表(id=全量数据中的下标+性质+时间+单位+摘要)，需要全文请用 get_issue_detail(id)',
+      description: '搜索检查信息数据库，按关键词查找问题记录（支持单位/类别/日期/性质筛选）。返回精简列表(id=全量数据中的下标+性质+时间+单位+摘要)；total 是「含关键词字面」的精确计数（要数字以它为准），items 是关键词召回样例（含近似命中，可能少于 total）。需要全文请用 get_issue_detail(id)',
       parameters: {
         type: 'object',
         properties: {

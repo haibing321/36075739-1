@@ -9,7 +9,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260919201628';
+var CACHE_VERSION = '20260919220729';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -76,16 +76,20 @@ var PRECACHE_URLS = [
   './version.json'
 ];
 
-// ========== 运行时按需从 CDN 加载的大型库 ==========
-// 这些库在联网首次成功加载后会被写入缓存，之后即可离线使用。
-// 这里主动预热，避免「用户第一次用某功能时刚好断网」导致功能不可用。
+// ========== 按需加载的大型库：**已全部自托管到 `src/js/vendor/`**（2026-09-19）==========
+// 为什么不再走 CDN：CDN 脚本一旦注入就与页面**同权限**，理论上能读 localStorage（含用户自己的
+//   API Key），而这类"库被投毒/CDN 被入侵"的事件无法由我们察觉 —— 自托管后页面里不再出现任何
+//   第三方代码（index.html 的 CSP `script-src` 也已收紧到 'self'）。
+// 这些库体积大（合计约 3.3MB）且只在特定功能里用，故仍**按需注入**；这里在安装后主动预热缓存，
+//   避免「用户第一次用某功能时刚好断网」导致功能不可用（本地路径同样命中 CacheFirst 规则）。
 var WARM_CDN_URLS = [
-  'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js',
-  'https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js'
+  './src/js/vendor/fuse.min.js',
+  './src/js/vendor/jszip.min.js',
+  './src/js/vendor/xlsx.full.min.js',
+  './src/js/vendor/mammoth.browser.min.js',
+  './src/js/vendor/pdf.min.js',
+  './src/js/vendor/pdf.worker.min.js',
+  './src/js/vendor/html-docx.js'
 ];
 
 // 本地 CSS/JS：请求拦截时判定为「本地资源 → CacheFirst」的路径规则。

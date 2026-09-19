@@ -1189,15 +1189,16 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
     }
-    // 自动检查更新：系统以离线数据完全打开后 30s，再连接远程测试有无新版本；
+    // 自动检查更新：系统以离线数据完全打开后 12s，再连接远程测试有无新版本；
     // 仅在线时执行（离线时页面照常使用本地缓存，不打扰、不阻塞）。发现更新在页面顶部弹提示条。
-    // 内置 1 小时节流（silentCheckUpdate）：避免频繁请求版本服务器。
+    // 内置 10 分钟节流（silentCheckUpdate）：避免频繁请求版本服务器（version.json 很小，10 分钟足够省）。
+    // 【2026-09-19】30s→12s / 1h→10min：发补丁当天用户能较快收到"发现新版本"提示（原来 30s+1h 导致当天几乎收不到）。
     if (navigator.onLine !== false) {
         setTimeout(function() {
             if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') {
                 silentCheckUpdate();
             }
-        }, 30000);
+        }, 12000);
     }
     // 网络恢复后立即补一次检查：此前离线打开则不会弹出更新提示
     window.addEventListener('online', function() {
@@ -1221,7 +1222,8 @@ async function checkForUpdate() {
 // 静默检查
 async function silentCheckUpdate() {
     const lastCheck = localStorage.getItem('_last_version_check');
-    if (lastCheck && (Date.now() - parseInt(lastCheck)) < 3600000) {
+    // 节流 10 分钟（原 1 小时：发补丁当天用户往往一小时内就被节流挡住，收不到更新提示）
+    if (lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) {
         return;
     }
     await performUpdateCheck(UPDATE_CHECK_URL, false);
@@ -1323,23 +1325,45 @@ async function performUpdateCheck(url, showStatus) {
             return;
         }
 
-        const isNew = compareVersions(remoteVersion, APP_VERSION) > 0;
+        // 【2026-09-19 修复】"新版本"判定必须**也看构建号**，否则"同版本号打补丁"永远检测不到：
+        //   本项目的发版习惯是「v3.76 补丁 ×N」——version 字段不变、只有 build/sw 时间戳变，
+        //   而 compareVersions('v3.76','v3.76') 恒为 0 → 红点/顶部横幅/自动预备 全都不会触发，
+        //   用户只能靠"清缓存"才拿到新版（2026-09-19 DOCX 导出失效就是这么暴露的）。
+        //   参照物：_SW_VERSION = 当前 SW 的 CACHE_VERSION（12 位时间戳，与 version.json 的 sw 同格式），
+        //   由 SW 经 MessageChannel 离线回报；拿不到时（首装/无 SW）只按版本号判定，避免误报。
+        const remoteSw = String(data.sw || '').replace(/\D/g, '');
+        const curSw = String(_SW_VERSION || '').replace(/\D/g, '');
+        const buildDiffers = !!(remoteSw && curSw && remoteSw !== curSw);
+        const verIsNew = compareVersions(remoteVersion, APP_VERSION) > 0;
+        const isNew = verIsNew || buildDiffers;
+        // 提示文案：同版本号的补丁要显示构建时间，否则用户看到"发现新版本 v3.76（当前 v3.76）"会困惑
+        const _fmtBuild = function (b) {
+            var m = String(b || '').match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/);
+            return m ? (m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5]) : '';
+        };
+        const _bTxt = _fmtBuild(data.build);
+        const remoteLabel = (buildDiffers && !verIsNew && _bTxt)
+            ? (remoteVersion + '（' + _bTxt + ' 构建）')
+            : remoteVersion;
         if (isNew) {
             setUpdateBadge(true);
             localStorage.setItem('_has_update', 'true');
             // v3.26：「立即更新」按钮原位覆盖「检查更新」按钮（循环图标样式）
             if (window.switchUpdateBtn) window.switchUpdateBtn('update');
             if (showStatus) {
-                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteVersion + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已就绪，点击上方「🔄 立即更新」应用新版本';
+                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteLabel + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已就绪，点击上方「🔄 立即更新」应用新版本';
                 statusEl.style.color = '#dc2626';
             }
             // 自动预备 SW 更新（离线优先策略下，更新仅在此触发）
             if (window.triggerApplyUpdate) window.triggerApplyUpdate();
             // 页面顶部弹出更新提示条（手动/静默检查均生效），点击即应用
-            if (window.showUpdateBanner) window.showUpdateBanner(remoteVersion);
+            if (window.showUpdateBanner) window.showUpdateBanner(remoteLabel);
         } else {
             setUpdateBadge(false);
             localStorage.removeItem('_has_update');
+            // 判定"已是最新"时顺手收起可能残留的顶部横幅（否则会出现"已是最新却还挂着发现新版本"的矛盾画面，
+            // 原实现只能等它 12s 自动收起）
+            if (window.hideUpdateBanner) { try { window.hideUpdateBanner(); } catch (e) {} }
             // v3.26：无新版本/更新完成 → 恢复「检查更新」按钮
             if (window.switchUpdateBtn) window.switchUpdateBtn('normal');
             if (showStatus) {

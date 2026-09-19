@@ -1,7 +1,7 @@
         // ========== Rule System (完整保留) ==========
         (function() {
             if (typeof pdfjsLib !== 'undefined') {
-                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'src/js/vendor/pdf.worker.min.js';
             }
 
             let rules = [];
@@ -930,10 +930,11 @@
                 closeModal('rule-importModal');
                 await processFiles(window.pendingImportFiles, trade);
             }
-            var LIB_MAMMOTH = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js';
-            var LIB_PDFJS   = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
-            var LIB_XLSX    = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-            var LIB_JSZIP   = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+            var LIB_MAMMOTH = 'src/js/vendor/mammoth.browser.min.js';
+            var LIB_PDFJS   = 'src/js/vendor/pdf.min.js';
+            var LIB_PDFJS_WORKER = 'src/js/vendor/pdf.worker.min.js';
+            var LIB_XLSX    = 'src/js/vendor/xlsx.full.min.js';
+            var LIB_JSZIP   = 'src/js/vendor/jszip.min.js';
 
             async function processFiles(files, trade) {
                 // 三个库分别加载、互不影响：原来用 Promise.all 包裸 loadScript，
@@ -949,6 +950,13 @@
                 if (!libs[0]) missingLibs.push('Word(.docx)');
                 if (!libs[1]) missingLibs.push('PDF(.pdf)');
                 if (!libs[2]) missingLibs.push('Excel(.xlsx)');
+                // 【2026-09-19 自托管修复】pdf.js 的 worker 路径必须在**解析前**指定：
+                //   本文件顶部那句 `if (typeof pdfjsLib !== 'undefined') workerSrc = ...` 是在模块
+                //   加载时执行的，而 pdfjsLib 是**按需加载**的（那一刻永远是 undefined）→ 从来没生效过，
+                //   workerSrc 一直是空串（只能靠 pdf.js 自身兜底，行为不确定）。这里在库加载成功后补上。
+                if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = LIB_PDFJS_WORKER;
+                }
                 isProcessing = true;
                 const btn = document.getElementById('rule-importBtn');
                 let successCount = 0, skipCount = 0;

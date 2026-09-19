@@ -20,7 +20,7 @@
 (function (global) {
     'use strict';
 
-    var LIB_JSZIP = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    var LIB_JSZIP = 'src/js/vendor/jszip.min.js';
     var STYLE_KEY = 'wr_docx_style';    // localStorage：导出排版偏好
 
     /* =======================================================================

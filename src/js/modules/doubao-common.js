@@ -124,7 +124,7 @@
                         continue;
                     }
                     if (typeof mammoth === 'undefined') {
-                        try { await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js'); }
+                        try { await window.loadScript('src/js/vendor/mammoth.browser.min.js'); }
                         catch (e) { /* 交给下面判空 */ }
                     }
                     if (typeof mammoth === 'undefined') {
@@ -134,7 +134,7 @@
                     }
                 } else if (ext === 'xls' || ext === 'xlsx') {
                     if (typeof XLSX === 'undefined') {
-                        try { await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); }
+                        try { await window.loadScript('src/js/vendor/xlsx.full.min.js'); }
                         catch (e) { /* 交给下面判空 */ }
                     }
                     if (typeof XLSX === 'undefined') {
@@ -144,7 +144,7 @@
                     }
                 } else if (ext === 'pdf') {
                     if (typeof pdfjsLib === 'undefined') {
-                        try { await window.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js'); }
+                        try { await window.loadScript('src/js/vendor/pdf.min.js'); }
                         catch (e) { /* 交给下面判空 */ }
                     }
                     if (typeof pdfjsLib === 'undefined') {
@@ -500,7 +500,7 @@
             reader.onload = async function(e) {
                 try {
                     const typedarray = new Uint8Array(e.target.result);
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'src/js/vendor/pdf.worker.min.js';
                     const pdf = await pdfjsLib.getDocument(typedarray).promise;
                     let result = '[PDF文件] ' + file.name + '\n\n总页数：' + pdf.numPages + '\n\n';
                     const maxPages = Math.min(pdf.numPages, 10);

@@ -81,7 +81,7 @@
                 });
             }
 
-            var LIB_XLSX_PHONE = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+            var LIB_XLSX_PHONE = 'src/js/vendor/xlsx.full.min.js';
 
             window.phoneDoSearch = function() {
                 const keyword = document.getElementById('phone-searchInput').value.trim();

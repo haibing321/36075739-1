@@ -172,6 +172,48 @@
             // content: 问题描述, regulation: 规章依据, date: 可选，默认今天
             // 返回 {ok, reason, message, date}：供 app.js 的智能体桥接层回报真实结果，
             // 避免"AI 向用户确认日志已写入、其实什么都没写"的假成功。
+            /**
+             * 【2026-09-19 修复用户报的 bug】「记入日志」后工作日志视图不刷新（第一感觉"没记进去"）。
+             *   根因有两个：① addIssueToDiary 只改内存 + 落库，**没有任何重绘**；
+             *   ② 切到「工作日志」tab 也没有 onShow 钩子（utils.switchTab 只在 window['onShow_diary']
+             *      存在时才回调）→ 打开看到的是"进入前渲染的旧内容"。只有刷新页面（DOMContentLoaded
+             *      里重新 showInputView）或进「查询」点「查看当日日志」（renderDateDetail 现渲染）才看得到。
+             *   这里做**非破坏性**同步：只「追加」新问题，绝不重载整个表单（否则会覆盖用户正在输入的内容）。
+             */
+            function diarySyncViewsAfterWrite(dateStr, issueText, regText) {
+                try {
+                    // ① 输入视图：表单正编辑这一天 → 追加一行（同文本不重复追加，尊重用户在填的内容）
+                    var dateEl = document.getElementById('diary-date');
+                    if (dateEl && dateEl.value === dateStr && issueText) {
+                        var container = document.getElementById('diary-issues-container');
+                        var dup = false;
+                        if (container) {
+                            container.querySelectorAll('.diary-issue-input').forEach(function (t) {
+                                if (String(t.value || '').trim() === issueText) dup = true;
+                            });
+                        }
+                        if (container && !dup && issueCount < MAX_ISSUES) {
+                            addIssueFieldToDOM(issueText, issueCount, regText || '');
+                            issueCount++;
+                            updateAddIssueButton();
+                        }
+                    }
+                    // ② 历史视图：今日记录列表 + 日历（记录点/考勤统计）
+                    if (document.getElementById('diary-records-list')) renderTodayRecords();
+                    if (document.getElementById('diary-calendar')) renderCalendar();
+                    // ③ 该日详情正打开着 → 立即重渲染（原来必须重新点一次日期才更新）
+                    var detail = document.getElementById('diary-date-detail');
+                    if (detail && detail.style.display !== 'none' && _selectedDate === dateStr) renderDateDetail(dateStr);
+                } catch (e) {
+                    // 刷新失败不影响"已经写入成功"的事实，但要留痕便于排查
+                    console.warn('[diary] 记入日志后刷新视图失败（数据已写入，可刷新页面查看）：', e && e.message);
+                }
+            }
+
+            // 从检查信息一键记入日志（方案 A：直接追加到今天）
+            // content: 问题描述, regulation: 规章依据, date: 可选，默认今天
+            // 返回 {ok, reason, message, date}：供 app.js 的智能体桥接层回报真实结果，
+            // 避免"AI 向用户确认日志已写入、其实什么都没写"的假成功。
             window.addIssueToDiary = function(content, regulation, date) {
                 if (!content || !content.trim()) return { ok: false, reason: 'empty', message: '内容为空，未写入' };
                 const targetDate = date || (function() {
@@ -204,6 +246,8 @@
                 diaries.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
                 saveDiaries();
                 updateDiaryCount();
+                // 写完立刻同步已渲染的视图（输入表单追加一行 / 今日记录列表 / 日历 / 该日详情）
+                diarySyncViewsAfterWrite(targetDate, content.trim(), (regulation || '').trim());
                 return { ok: true, reason: 'saved', message: '已写入 ' + targetDate + ' 的工作日志', date: targetDate };
             };
 
@@ -1488,7 +1532,7 @@
                 reader.readAsText(file);
             }
 
-            var LIB_JSZIP_DIARY = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+            var LIB_JSZIP_DIARY = 'src/js/vendor/jszip.min.js';
 
             // 从 ZIP 导入（含媒体重建 ID 映射）
             async function importDiaryFromZip(file) {
@@ -1605,6 +1649,24 @@
             });
             // 暴露数据获取接口（供联动数据使用）
             window.getDiaryData = function() { return diaries; };
+
+            /**
+             * 切到「工作日志」时的刷新钩子（utils.switchTab 会调用 window['onShow_'+tab]，缺了就没有刷新）。
+             * 没有它时：在别处写入日志（检查信息「记入日志」、智能体 write_diary、一键修改）后切回工作日志
+             *   会看到旧渲染 —— 即用户报的"好像没记入日志"。
+             * 只重渲染历史相关视图（今日记录 / 日历 / 该日详情），**不碰输入表单**（避免覆盖用户正在输入的内容）。
+             */
+            window.onShow_diary = function () {
+                try {
+                    // 以本地存储为准（其它模块/智能体可能改过日志）；_diaryAiBusy 时不重载，
+                    // 避免打断正在跑的「一键修改」对 diaries 的引用。
+                    if (!_diaryAiBusy) loadDiaries();
+                    if (document.getElementById('diary-records-list')) renderTodayRecords();
+                    if (document.getElementById('diary-calendar')) renderCalendar();
+                    var detail = document.getElementById('diary-date-detail');
+                    if (detail && detail.style.display !== 'none' && _selectedDate) renderDateDetail(_selectedDate);
+                } catch (e) { console.warn('[diary] onShow_diary 刷新失败：', e && e.message); }
+            };
 
             // ================================================================
             // ── ✨ 一键 AI 修改（工作写实 + 检查问题 + 规章依据）2026-09-18 ──

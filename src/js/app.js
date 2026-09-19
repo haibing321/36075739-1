@@ -107,44 +107,86 @@ document.addEventListener('DOMContentLoaded', function() {
 // Agent 桥接函数（供 agent-core.js 工具调用）
 // ============================================================
 (function() {
-    // ---- 智能体搜索辅助：模糊匹配(复用全局 Fuse，缓存实例) + 子串降级 ----
-    var _fuseCache = {};
-    function _getFuse(data, keys) {
-        var cacheKey = keys.join(',');
-        var entry = _fuseCache[cacheKey];
-        // 缓存命中：同一数据集引用不重建 Fuse 索引（节省 3-5ms/次）
-        if (entry && entry.data === data) return entry.fuse;
-        var fuse = new window.Fuse(data, { keys: keys, threshold: 0.4, ignoreLocation: true, includeScore: true, minMatchCharLength: 1 });
-        _fuseCache[cacheKey] = { data: data, fuse: fuse };
-        return fuse;
+    // ============================================================
+    // 关键词召回 / 精确统计（唯一实现，2026-09-19 P0′）
+    // ------------------------------------------------------------
+    // 为什么替换原 Fuse 分支（实测数据，真实规模：检查信息 40166 条）：
+    //   ① Fuse 走 CDN（cdnjs + SW 缓存）→ **召回结果随网络状态变**：同一查询在线(模糊)命中
+    //      687/687、离线(子串)命中 0 条，同一功能两副面孔；
+    //   ② `count_issues` 的 total 也走同一函数 → 带关键词统计时**数字含模糊命中**，在线/离线不一致，
+    //      与提示词「必须真实总数」冲突；
+    //   ③ 代价大：Fuse 在 4 万条×5 字段上建索引 ~1.3s、常驻 +23MB，数据引用一变就重建；
+    //      离线子串全扫 44.6ms。而本实现是纯内存 n-gram 计数，毫秒级、零依赖、零常驻。
+    // 口径（重要）：**召回宽松、统计严格，两者分离**
+    //   · `_kwRecall`   —— 召回：查询的 2~4 字 n-gram 命中计数打分（中文无需分词），
+    //                       精确子串命中额外加权，保证"字面命中"排最前（与页内检索"精确优先"一致）；
+    //   · `_exactFilter`—— 统计：**精确子串**（多关键词 OR，跨字段），用于 total / count_issues，
+    //                       保证数字可信、在线/离线一致。
+    function _kwSplit(keyword) {
+        return String(keyword == null ? '' : keyword).split(/[\s,，、;；]+/).filter(Boolean);
     }
-    function _fuzzyFilter(data, keyword, keys, limit) {
+    // 目标字段拼成一段小写文本（去 HTML 标签），供两种匹配共用
+    function _kwHay(d, keys) {
+        var hay = '';
+        for (var i = 0; i < keys.length; i++) {
+            var v = d[keys[i]];
+            if (v == null || v === '') continue;
+            hay += ' ' + ('' + v);
+        }
+        return hay.replace(/<[^>]+>/g, '').toLowerCase();
+    }
+    function _kwTokens(keyword) {
+        var set = {};
+        _kwSplit(keyword).forEach(function (kw0) {
+            var kw = kw0.toLowerCase();
+            if (/[\u4e00-\u9fa5]/.test(kw)) {
+                // 中文：2~4 字滑窗（"信号机显示不良" → 信号/号机/机显/显示/…/信号机显/…）
+                for (var i = 0; i < kw.length - 1; i++) {
+                    if (!/[\u4e00-\u9fa5]/.test(kw[i])) continue;
+                    for (var len = 2; len <= Math.min(4, kw.length - i); len++) set[kw.slice(i, i + len)] = 1;
+                }
+            } else if (kw) {
+                set[kw] = 1;        // 英文/数字：整词
+            }
+        });
+        return Object.keys(set);
+    }
+    function _exactFilter(data, keyword, keys) {
+        var kws = _kwSplit(keyword).map(function (k) { return k.toLowerCase(); });
+        if (!kws.length) return data;
+        return data.filter(function (d) {
+            var hay = _kwHay(d, keys);
+            if (!hay) return false;
+            for (var i = 0; i < kws.length; i++) { if (hay.indexOf(kws[i]) !== -1) return true; }
+            return false;
+        });
+    }
+    function _kwRecall(data, keyword, keys, limit) {
         limit = limit || 10;
         if (!keyword) return data.slice(0, limit);
-        var kws = String(keyword).split(/[\s,，、]+/).filter(Boolean);
-        if (!kws.length) return data.slice(0, limit);
-        if (typeof window.Fuse !== 'undefined') {
-            try {
-                var fuse = _getFuse(data, keys);
-                var map = {};
-                kws.forEach(function(kw) {
-                    fuse.search(kw).forEach(function(h) {
-                        var i = data.indexOf(h.item);
-                        if (i === -1) return;
-                        if (!map[i]) map[i] = { item: h.item, n: 0 };
-                        map[i].n++;
-                    });
-                });
-                return Object.keys(map).map(function(k) { return map[k].item; }).slice(0, limit);
-            } catch (e) {}
+        var toks = _kwTokens(keyword);
+        if (!toks.length) return data.slice(0, limit);
+        var kws = _kwSplit(keyword).map(function (k) { return k.toLowerCase(); });
+        // 保守模式（可回退）：localStorage.agentStrictKw='1' → 召回也只认精确子串
+        var strict = false;
+        try { strict = localStorage.getItem('agentStrictKw') === '1'; } catch (e) {}
+        var scored = [];
+        for (var i = 0; i < data.length; i++) {
+            var hay = _kwHay(data[i], keys);
+            if (!hay) continue;
+            var exact = false;
+            for (var e = 0; e < kws.length; e++) { if (hay.indexOf(kws[e]) !== -1) { exact = true; break; } }
+            if (strict) { if (exact) scored.push({ i: i, s: 1000 }); continue; }
+            var s = 0;
+            for (var t = 0; t < toks.length; t++) {
+                // 长 n-gram 是更强的证据（命中"作业人员"远比命中"作业"有意义）→ 按长度加权
+                if (hay.indexOf(toks[t]) !== -1) s += Math.max(1, toks[t].length - 1);
+            }
+            if (!s && !exact) continue;
+            scored.push({ i: i, s: s + (exact ? 1000 : 0) });   // 字面命中恒排近似命中之前
         }
-        var lower = kws.map(function(k) { return k.toLowerCase(); });
-        return data.filter(function(d) {
-            return keys.some(function(k) {
-                var v = (d[k] || '').toLowerCase();
-                return lower.some(function(kw) { return v.indexOf(kw) !== -1; });
-            });
-        }).slice(0, limit);
+        scored.sort(function (a, b) { return b.s - a.s || a.i - b.i; });
+        return scored.slice(0, limit).map(function (x) { return data[x.i]; });
     }
     /** 搜索检查信息（支持日期/性质筛选 + 模糊搜索） */
     window._agentGetIssues = function(keyword, unit, category, limit, dateFrom, dateTo, nature) {
@@ -163,9 +205,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
         // 典型问题引用默认 35 条；用户要求更多时无硬上限
         var lim = (typeof limit === 'number' && limit > 0) ? limit : 35;
-        // 先取未截断的全量匹配（用于统计总数），再按 lim 截取引用列表
-        var matchedFull = _fuzzyFilter(filtered, keyword, ['性质','category','content','regulation','unit'], Number.MAX_SAFE_INTEGER);
-        return { total: matchedFull.length, items: matchedFull.slice(0, lim) };
+        // 【P0′】统计与召回分离：total=精确子串命中数（数字可信、在线/离线一致）；
+        //   items=关键词召回样例（宽松，字面命中恒排近似命中之前）
+        var _keysI = ['性质','category','content','regulation','unit'];
+        return {
+            total: _exactFilter(filtered, keyword, _keysI).length,
+            items: _kwRecall(filtered, keyword, _keysI, lim),
+            统计口径: 'total 为「含关键词字面」的精确命中数（可信）；items 为关键词召回样例（含近似命中，按相关度排序），条数可能少于 total'
+        };
     };
 
     /** 统计检查信息（时间范围内全部计入，不封顶；可按 性质/category/unit 分组） */
@@ -182,7 +229,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (dateTo)   filtered = filtered.filter(function(i) { return (i.datetime||'') <= dateTo + ' 23:59:59'; });
         if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
         var kw = (keyword && String(keyword).trim()) ? keyword : '';
-        var matched = kw ? _fuzzyFilter(filtered, kw, ['性质','category','content','regulation','unit'], Number.MAX_SAFE_INTEGER) : filtered;
+        // 【P0′】统计**一律精确子串**：原先复用 Fuse 模糊匹配 → total 含近似命中，
+        //   同一查询在线/离线数字不同（提示词要求"必须真实总数、不得估算"）。实测：
+        //   查询「作业人员未执行标准化作业程序」旧 Fuse 报 687/687，精确子串才是真值。
+        var matched = kw ? _exactFilter(filtered, kw, ['性质','category','content','regulation','unit']) : filtered;
         var groups = {};
         if (groupBy) {
             matched.forEach(function(i) {
@@ -201,9 +251,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch(e) { return { total: 0, items: [] }; }
         if (!rules.length) return { total: 0, items: [] };
         var lim = (typeof limit === 'number' && limit > 0) ? limit : 10;
-        // 先用未截断的全量匹配统计真实总数，再按 lim 截取引用列表
-        var matchedFull = _fuzzyFilter(rules, keyword, ['title','content','trade'], Number.MAX_SAFE_INTEGER);
-        return { total: matchedFull.length, items: matchedFull.slice(0, lim) };
+        // 【P0′】total=精确子串命中数（可信）；items=关键词召回样例（宽松）
+        var _keysR = ['title','content','trade'];
+        return {
+            total: _exactFilter(rules, keyword, _keysR).length,
+            items: _kwRecall(rules, keyword, _keysR, lim),
+            统计口径: 'total 为「含关键词字面」的精确命中数（可信）；items 为关键词召回样例（含近似命中），条数可能少于 total'
+        };
     };
 
     /** 写入工作日志（支持结构化 issueIds） */
@@ -281,8 +335,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch(e) { return { total: 0, items: [] }; }
         if (!hb.length) return { total: 0, items: [] };
         var lim = (typeof limit === 'number' && limit > 0) ? limit : 10;
-        var matchedFull = _fuzzyFilter(hb, keyword, ['chapter','section','item','subitem','content'], Number.MAX_SAFE_INTEGER);
-        return { total: matchedFull.length, items: matchedFull.slice(0, lim) };
+        // 【P0′】total=精确子串命中数（可信）；items=关键词召回样例（宽松）
+        var _keysH = ['chapter','section','item','subitem','content'];
+        return {
+            total: _exactFilter(hb, keyword, _keysH).length,
+            items: _kwRecall(hb, keyword, _keysH, lim),
+            统计口径: 'total 为「含关键词字面」的精确命中数（可信）；items 为关键词召回样例（含近似命中），条数可能少于 total'
+        };
     };
 
     /** 按 id(数组下标) 取单条完整记录，供智能体按需获取全文 */
@@ -406,7 +465,16 @@ window.onclick = function(e) {
 
     // 离线优先策略：SW 默认直接从缓存秒开页面，打开时不联网拉取 HTML/JS/CSS，
     // 也不在打开时自动检查更新。新版本仅由用户点击「设置→检查更新」触发下载。
-    console.log('[PWA] SW 注册中(离线优先)...');
+    // 【2026-09-19】file:// 下浏览器**必定**拒绝注册 Service Worker（origin 'null' 不受支持），
+    //   原来会打下 2 条 warn（"注册失败，降级为无离线模式" + "SW 注册失败: TypeError..."），
+    //   在"双击 index.html 自测"场景里纯属噪音，且这是浏览器硬限制、代码改不掉。
+    //   这里直接**跳过注册尝试**（只留一条会被静默的调试日志）；http/https 行为完全不变。
+    var _swSkipForFile = (location.protocol === 'file:');
+    if (_swSkipForFile) {
+        console.log('[PWA] file:// 本地打开：跳过 Service Worker（离线/PWA 需 http/https，部署后自动启用）');
+    } else {
+        console.log('[PWA] SW 注册中(离线优先)...');
+    }
 
     // 必须给 register 兜底：非 HTTPS 站点、隐私模式、被裁剪的 WebView 都可能让
     // register 直接抛错或 reject。原实现既无 try/catch 也无 .catch()，一旦失败
@@ -415,7 +483,7 @@ window.onclick = function(e) {
     // 表现就是「部分功能点不了」。
     var _regPromise = null;
     try {
-        _regPromise = navigator.serviceWorker && navigator.serviceWorker.register
+        _regPromise = (!_swSkipForFile && navigator.serviceWorker && navigator.serviceWorker.register)
             ? navigator.serviceWorker.register('sw.js')
             : null;
     } catch (swErr) {
@@ -423,7 +491,8 @@ window.onclick = function(e) {
         _regPromise = null;
     }
     if (!_regPromise || typeof _regPromise.then !== 'function') {
-        console.warn('[PWA] 当前环境不支持 Service Worker，离线能力不可用');
+        // file:// 是有意跳过（上面已给过提示），不再打 warn；其它环境仍如实告警
+        if (!_swSkipForFile) console.warn('[PWA] 当前环境不支持 Service Worker，离线能力不可用');
         _regPromise = null;
     } else {
         _regPromise.catch(function (swErr) {
@@ -453,6 +522,9 @@ window.onclick = function(e) {
     });
 
     // 新 SW 接管页面后，若本次为手动更新则刷新以应用新版本
+    // ⚠️ 需守卫：没有 Service Worker 的环境（老 WebView / file://）里若直接访问会抛错，
+    //   而这行在 IIFE 里 —— 一抛就把后面挂在 window 上的「检查更新」等函数全部丢掉。
+    if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
     navigator.serviceWorker.addEventListener('controllerchange', function() {
         _fetchSwVersion(); // 刷新离线获取的 12 位版本号
         // 修复：_pendingReload 仅在有效期内（60s）生效，过期作废。
@@ -470,6 +542,7 @@ window.onclick = function(e) {
             window.location.reload();
         }
     });
+    }   // ← 守卫块结束（见上方 if (navigator.serviceWorker && ...)）
 
     // 暴露给「检查更新」按钮：拉取并预备最新版本（离线优先下更新唯一入口）
     function triggerApplyUpdate() {

@@ -4,6 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <title>安监智能辅助系统</title>
+    <!-- 【生产静默】部署站点打开时控制台不再刷屏：默认静默 log/info/debug/trace/table/dir，
+         **保留 warn/error**（排错靠它们）。必须放在所有模块脚本之前才能"首发生效"。
+         需要看日志时：控制台执行 enableDebugLogs()（当场恢复，无需刷新；下次打开仍生效），
+         关闭用 disableDebugLogs()；本地 localhost / 127.0.0.1 自动放行（开发不受影响）。 -->
+    <script>
+      (function () {
+        var K = 'console_debug_v1';
+        var c = window.console;
+        if (!c) return;
+        var NAMES = ['log', 'info', 'debug', 'trace', 'table', 'dir'];
+        var keep = {};                                   // 原始方法备份（只静默上面这几个）
+        NAMES.forEach(function (n) { if (typeof c[n] === 'function') keep[n] = c[n]; });
+        function wantDebug() {
+          try { if (localStorage.getItem(K) === '1') return true; } catch (e) {}
+          return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname || '');
+        }
+        function silence() { NAMES.forEach(function (n) { if (keep[n]) { try { c[n] = function () {}; } catch (e) {} } }); }
+        function restore() { NAMES.forEach(function (n) { if (keep[n]) { try { c[n] = keep[n]; } catch (e) {} } }); }
+        window.enableDebugLogs = function () {
+          try { localStorage.setItem(K, '1'); } catch (e) {}
+          restore();
+          if (c.warn) c.warn('[日志] 调试日志已开启（localStorage.console_debug_v1=1，下次打开仍生效）；关闭用 disableDebugLogs()');
+        };
+        window.disableDebugLogs = function () {
+          try { localStorage.setItem(K, '0'); } catch (e) {}
+          silence();
+          if (c.warn) c.warn('[日志] 调试日志已关闭（log/info/debug 静默，warn/error 仍输出）');
+        };
+        if (!wantDebug()) silence();
+      })();
+    </script>
     <meta name="theme-color" content="#1a365d">
     <meta name="mobile-web-app-capable" content="yes">
     <!-- 旧版 iOS Safari 只识别 apple- 前缀，两者并存确保添加到主屏幕后进入全屏而非浏览器外壳 -->
@@ -31,7 +62,7 @@
          内嵌页面无法把顶层跳转到钓鱼站，也无法碰主页面 DOM/Cookie。 -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self';
-                   script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdnstatic.tencentcs.com 'unsafe-inline' 'unsafe-eval';
+                   script-src 'self' https://cdnstatic.tencentcs.com 'unsafe-inline' 'unsafe-eval';
                    style-src 'self' 'unsafe-inline';
                    connect-src 'self' https://api.deepseek.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.duckduckgo.com https://cdnjs.cloudflare.com https://open.bigmodel.cn https://dashscope.aliyuncs.com https://api.github.com;
                    img-src 'self' blob: data: https:;

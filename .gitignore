@@ -47,3 +47,14 @@ src/js/modules/pinyin-util.js
 
 # Empty directories
 src/assets/
+
+# AI 助手工作记忆（含本机路径与会话细节，不进公开仓库）—— 2026-09-19 加
+# ⚠️ 注意：本地目录本身不要从磁盘删除，只是不提交；本文件不会移除【已被跟踪】的历史文件
+#    （如 .workbuddy/memory/2026-07-19.md 早前已被提交，需要时用 git rm --cached 处理）
+.workbuddy/
+.codebuddy/
+
+# 本地测试与探针产物（测试媒体、临时探针输出）
+_test_media/
+_probe_868/
+scripts/_tmp*

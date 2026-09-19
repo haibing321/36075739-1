@@ -1601,6 +1601,7 @@
                 renderIssueFields([]);
                 updateDiaryCount();
                 showInputView(); // 默认显示输入视图（写日志卡片）
+                window.diaryAiSyncBtn();   // 未配置 API 时不显示「✨ 一键修改」（用户口径 2026-09-19）
             });
             // 暴露数据获取接口（供联动数据使用）
             window.getDiaryData = function() { return diaries; };
@@ -1840,98 +1841,62 @@
                     return best;
                 } catch (e) { return null; }
             }
-            // ── 台账（检查信息）引用优先 ────────────────────────────────────────
-            // 用户口径（2026-09-18）：对规**优先用"检查信息"里已经引用过的规章** —— 同一条问题在台账里
-            //   往往已经有 regulation（写实里的问题经常就是从台账「📝 记入日志」带过来的），相似就直接搬用，
-            //   保证写实与台账口径一致；台账里没有，才去规章库找。
-            //   另外：**《安全检查手册》不能当规章引用**（手册是检查项点，不是依据）。
+            // ── 手册过滤（《安全检查手册》是检查项点，不能当规章依据 —— 用户口径） ──
             function diaryAiIsHandbook(s) { return /手册/.test(String(s || '')); }
-            function diaryAiNormForMatch(s) {
-                return String(s || '').replace(/[\s，。、；：？！“”‘’"'（）()【】\[\]《》〈〉,.;:?!<>~—-]/g, '').trim();
-            }
-            function diaryAiSampleGrams(s, n) {
-                var t = diaryAiNormForMatch(s), out = [], seen = {};
-                var step = Math.max(2, Math.floor(t.length / (n || 6)));
-                for (var i = 0; i + 4 <= t.length; i += step) {
-                    var g = t.substr(i, 4);
-                    if (!seen[g]) { seen[g] = 1; out.push(g); }
-                    if (out.length >= (n || 6)) break;
-                }
-                if (!out.length && t.length >= 2) out.push(t.slice(0, Math.min(4, t.length)));
-                return out;
-            }
             /**
-             * 在检查信息台账里找"相似问题"，把它已引用的规章搬过来。
-             *   sim = 1（归一化后完全一致）→ 可直接照搬（diaryAiAutoFillFromLedger 自动写入）
-             *   0.62 ≤ sim < 0.8 → 作为候选给用户挑（排在最前）
-             *   台账里没引用过规章 / 引用的是手册 → 返回 null（转规章库）
-             * 性能：先 4 字滑窗预筛再算相似度，4 万条台账实测几十毫秒级；同一次运行内按问题文本缓存。
+             * 【2026-09-19 用户口径】一键修改的"对规"**完全走「智能对规」的整套召回函数**：
+             *   直接调 window.acRecallCandidates（同义词扩展 → 统一检索层 rules+issues 召回 →
+             *   关键词召回回退 → 案例条款引用提取），不再自己查台账，也不再另写一套 KB 召回。
+             *   ⚠️ 只跑召回、不调 AI：条款挑选仍由一键修改自己那次模型调用完成（更省调用）。
+             *   （原台账优先的 diaryAiLedgerRegSuggest 一套已按用户口径删除。）
              */
-            var _diaryAiLedgerCache = {};
-            function diaryAiLedgerRegSuggest(issueText) {
-                var key = String(issueText || '').trim();
-                if (!key) return null;
-                if (_diaryAiLedgerCache[key] !== undefined) return _diaryAiLedgerCache[key];
-                var ALL = (typeof window.getIssueData === 'function') ? (window.getIssueData() || []) : [];
-                var q0 = key, q = diaryAiNormForMatch(q0);
-                if (!q || !ALL.length) { _diaryAiLedgerCache[key] = null; return null; }
-                var grams = diaryAiSampleGrams(q, 6);
-                var scanned = 0, exact = null, best = null;
-                for (var i = ALL.length - 1; i >= 0 && scanned < 40000; i--) {
-                    var r = ALL[i];
-                    if (!r) continue;
-                    var reg = String(r.regulation || '').trim();
-                    if (!reg) continue;
-                    if (diaryAiIsHandbook(reg)) continue;               // 手册不算规章依据
-                    var c = String(r.content || '');
-                    if (!c) continue;
-                    scanned++;
-                    var hay = c.length > 400 ? c.slice(0, 400) : c;
-                    var hit = false;
-                    for (var k = 0; k < grams.length; k++) { if (hay.indexOf(grams[k]) !== -1) { hit = true; break; } }
-                    if (!hit) continue;
-                    if (diaryAiNormForMatch(c) === q) {                 // 同一条问题 → 直接照搬
-                        exact = { text: reg, sim: 1, date: r.datetime || '', content: c };
-                        break;
-                    }
-                    var s = diaryAiSim(q0, c);
-                    if (!best || s > best.sim || (s === best.sim && String(r.datetime || '') > String(best.date || ''))) {
-                        best = { text: reg, sim: s, date: r.datetime || '', content: c };
-                    }
+            async function diaryAiRecallViaAC(text) {
+                if (typeof window.acRecallCandidates !== 'function') return [];
+                var q = String(text || '').trim();
+                if (!q) return [];
+                try {
+                    // skipEnsure：索引由 diaryAiBuildCtx 整轮预热一次（否则多问题会各等一次 4 秒上限 → N×4s）
+                    var r = await window.acRecallCandidates(q.slice(0, 400), { kbEnsureTimeout: 4000, skipEnsure: true });
+                    var out = [];
+                    (r.items || []).forEach(function (c) {
+                        var body = String(c.clause || '').trim();
+                        if (!body) return;
+                        var title = String(c.title || '').trim();
+                        if (c.source === 'issue') {
+                            // ⚠️ 对规的案例召回有「策略2 降级」：提不出《法规》时 title 是占位名
+                            //   （"历史案例参考"）、正文是案例原文摘要。这种**不能当规章依据** ——
+                            //   先用引用句里的《法规名》兜底；连《》都没有就直接丢弃，否则会生成
+                            //   「不符合《历史案例参考》"调车作业未确认信号…"的规定。」这种伪依据。
+                            if (!title || title === '历史案例参考' || title.indexOf('《') !== -1) {
+                                var mt = body.match(/《([^》]{1,60})》/);
+                                title = mt ? mt[1] : '';
+                            }
+                            if (!title || !/《/.test(body)) return;
+                        } else if (!title) {
+                            var mt2 = body.match(/《([^》]{1,60})》/);
+                            title = mt2 ? mt2[1] : '';
+                        }
+                        if (!title) return;                                              // 没有法规名 → 不成文，不进池
+                        if (diaryAiIsHandbook(title + ' ' + (c.kbPath || ''))) return;   // 手册不算规章依据
+                        out.push({
+                            from: (c.source === 'issue') ? 'issue' : 'rules',
+                            title: title,
+                            ref: String(c.article || ''),
+                            text: body,
+                            path: (c.source === 'issue') ? '智能对规·历史案例' : '智能对规·规章库'
+                        });
+                    });
+                    return out;
+                } catch (e) {
+                    console.warn('[diary][ai] 对规召回失败：', e && e.message);
+                    return [];
                 }
-                var picked = exact || best;
-                if (picked && !exact && picked.sim < 0.62) picked = null;
-                _diaryAiLedgerCache[key] = picked;
-                return picked;
             }
-            // ⚠️ 用户口径（2026-09-18 纠正）：台账里已引用的规章**只"搬到采纳选项里"**，
-            //   **绝不自动写入** —— 由用户在回执里点「采纳」确认（与规章库候选同一套确认流程）。
             function diaryAiSyncRegDom(date, idx, text) {
                 var dateEl = document.getElementById('diary-date');
                 if (!dateEl || dateEl.value !== date) return;
                 var el = document.getElementById('diary-regulation-' + idx);
                 if (el && el.value !== text) { el.value = text; if (typeof autoResize === 'function') autoResize(el); }
-            }
-            /** 知识库索引召回候选条款（无规章依据时用；与「智能对规」同一套 KB 索引；**排除手册**） */
-            async function diaryAiRecallRules(text, topK) {
-                if (!window.KB || typeof window.KB.searchRules !== 'function') return [];
-                try {
-                    if (typeof window.KB.ensure === 'function') {
-                        // ⚠️ 最多等 4 秒：规章索引首次建立/恢复可能耗时，但绝不能因此让"一键修改"长时间无响应
-                        //    （超时就用现有索引 / 无候选继续，模型仍可正常改文字）
-                        await Promise.race([
-                            window.KB.ensure(['rules']),
-                            new Promise(function (r) { setTimeout(r, 4000); })
-                        ]);
-                    }
-                    var hits = window.KB.searchRules(String(text || '').slice(0, 400), topK || 4) || [];
-                    return hits
-                        // ⚠️ 手册（如《安全检查手册3》）写在规章库里也不能当规章引用 —— 用户明确口径
-                        .filter(function (h) { return !diaryAiIsHandbook((h.title || '') + ' ' + (h.path || '')); })
-                        .map(function (h) {
-                            return { ref: h.ref || '', title: h.title || '', trade: h.trade || '', path: h.path || '', text: String(h.text || '').slice(0, 300), from: 'rules' };
-                        });
-                } catch (e) { console.warn('[diary][ai] 规章召回失败：', e && e.message); return []; }
             }
             function diaryAiSys() {
                 return [
@@ -1959,12 +1924,13 @@
                     '10. **引号内的条款原文必须逐字保留**：只允许纠正错别字、多字少字与标点符号，不得改动用词、语序、句式，不得增删内容、不得改引其它条款；',
                     '    若给了"规章库原文"，以库内原文为准逐字校对；原文没有书名号或定位不到条款时，保持原样、不要编造。',
                     '',
-                    '【缺规章依据时 —— 先搬台账、再查规章库；给 1~3 个候选供用户挑选】',
-                    '11. 数据来源优先级（用户口径，必须遵守）：① 标着 [检查信息台账已引用·优先] 的候选，是**同一条问题在"检查信息"里已经引用过的规章** —— **必须列为候选第 1 条**（保持写实与台账一致）；',
-                    '    ② ⚠️ **台账候选只占 1 个名额，不要因为它就停止挑选**：还要从 [规章库] 候选里补 1~2 条作备用（用户明确要求：每次只给一条等于没得选）；③ **《…手册…》不是规章依据，一律不得引用**（候选里若出现手册类内容，直接忽略）。',
-                    '12. 输出候选：某条问题"规章依据"为空且给了【候选条款】时，从候选池中挑选（按贴合度从高到低；台账候选排最前），每条一个 ruleSuggest 项（i 相同）：',
+                    '【缺规章依据时 —— 从「智能对规」召回的历史案例与规章库候选里挑；给 1~3 个候选供用户挑选】',
+                    '11. 候选来源（用户口径，必须遵守）：候选来自**「智能对规」的同一套召回**（历史案例 + 规章库）；',
+                    '    ① 标着 [历史案例] 的是**同一条问题在检查信息里已被引用过的规章**，贴合度通常最高，优先选；',
+                    '    ② ⚠️ **不要只挑 1 条就停**：历史案例之外，还要从 [规章库] 候选里补 1~2 条作备用（用户明确要求：每次只给一条等于没得选）；③ **《…手册…》不是规章依据，一律不得引用**（候选里若出现手册类内容，直接忽略）。',
+                    '12. 输出候选：某条问题"规章依据"为空且给了【候选条款】时，从候选池中挑选（按贴合度从高到低；历史案例候选排最前），每条一个 ruleSuggest 项（i 相同）：',
                     '    · **条数规则（用户口径，必须遵守）：候选池多于 3 条 → 给 3 条；池 3 条 → 3 条；池 2 条 → 2 条；池 1 条 → 1 条** —— 也就是"有几条给几条、最多 3 条"；',
-                    '    · rule：按第 9 条的结论式写，如「不符合《X》第Y条“条款原文”的规定。」；台账候选原样搬也要整理成结论式；',
+                    '    · rule：按第 9 条的结论式写，如「不符合《X》第Y条“条款原文”的规定。」；历史案例候选原样搬也要整理成结论式；',
                     '    · ref / title：照抄候选的条号与标题，不得改写；cid：把该候选编号（如 c0）一并返回；',
                     '    · why：≤15 字说明"为什么这条最贴切"（如"直接对应确认信号"），供用户判断；',
                     '    · **严禁自行编造条款**：只能从候选池里选（不在池里的会被系统丢弃，并按池补齐）。',
@@ -1974,7 +1940,7 @@
                     ' "issues":[{"i":0,"text":"…","changes":[]}],',
                     ' "regulations":[{"i":0,"text":"…","changes":[{"type":"标点","from":"，。","to":"。"}]}],',
                     // ⚠️ 示例必须给 2 条：模型会照着示例的条数给（曾因示例只有 1 条 → 用户实测"每次候选都只有一条"）
-                    ' "ruleSuggest":[{"i":1,"rule":"不符合《X》第Y条“条款原文”的规定。","ref":"第Y条","title":"X","why":"台账已引用","cid":"c0"},'
+                    ' "ruleSuggest":[{"i":1,"rule":"不符合《X》第Y条“条款原文”的规定。","ref":"第Y条","title":"X","why":"同类案例已引用","cid":"c0"},'
                     + '{"i":1,"rule":"不符合《Z》第W条“条款原文”的规定。","ref":"第W条","title":"Z","why":"同一专业备用条款","cid":"c1"}]}',
                     '要求：issues/regulations 的 i 与输入编号严格对应；**只返回有改动的内容** —— 某条问题或规章没改动就整条省略（不要复述原文），工作写实没改动就不要返回 work 字段，changes 只列真正改过的地方（原→改）。'
                 ].join('\n');
@@ -1997,9 +1963,9 @@
                     L.push('');
                     L.push('【候选条款（只能从这里选，不得编造；请把选中的候选编号 cid 一并返回）】');
                     ctx.cands.forEach(function (c, i) {
-                        var label = (c.from === 'ledger') ? '[检查信息台账已引用·优先]' : '[规章库]';
+                        var label = (c.from === 'issue') ? '[历史案例]' : '[规章库]';
                         L.push('[c' + i + ']' + label + ' '
-                            + (c.from === 'ledger'
+                            + (c.from === 'issue'
                                 ? String(c.text || '').slice(0, 240)
                                 : ((c.title ? '《' + c.title + '》' : '') + (c.ref ? c.ref + '：' : '') + String(c.text || '').slice(0, 200)))
                             + (c.path ? '（' + c.path + '）' : ''));
@@ -2018,7 +1984,7 @@
                     return (String(x || '').trim() && !String(((rec.regulations || [])[i]) || '').trim()) ? i : -1;
                 }).filter(function (i) { return i >= 0; });
                 if (missing.length) {
-                    _diaryAiNote = '正在从检查信息台账/知识库匹配规章条款…';
+                    _diaryAiNote = '正在走「智能对规」召回规章条款…';
                     var seen = {};
                     var countOfIssue = function (issueIdx) {
                         return ctx.cands.filter(function (x) { return x.issue === issueIdx; }).length;
@@ -2034,25 +2000,26 @@
                         c.issue = issueIdx;
                         ctx.cands.push(c);
                     };
+                    // 【性能·2026-09-19】对规召回内部会 KB.ensure；多问题循环里若每轮各等一次 4 秒上限，
+                    //   索引未就绪时会被拖成 N×4s。这里**整轮只预热一次**（同样 4 秒上限），循环里传 skipEnsure。
+                    //   索引已就绪（开机自动载入）时这一步近乎零成本。
+                    try {
+                        if (window.KB && typeof window.KB.ensure === 'function') {
+                            await Promise.race([
+                                window.KB.ensure(['rules', 'issues']),
+                                new Promise(function (r) { setTimeout(r, 4000); })
+                            ]);
+                        }
+                    } catch (e) { console.warn('[diary][ai] 规章索引预热失败（继续用现有索引）：', e && e.message); }
                     for (var k = 0; k < missing.length && ctx.cands.length < 36; k++) {
                         var it = String((rec.issues || [])[missing[k]] || '');
-                        // ① 检查信息台账里相似问题已引用的规章 —— **优先**（照搬，保持与台账一致）
-                        var led = diaryAiLedgerRegSuggest(it);
-                        if (led) {
-                            pushCand({
-                                from: 'ledger', title: '检查信息台账已引用', ref: '',
-                                text: String(led.text).slice(0, 400),
-                                path: (led.date ? (String(led.date).slice(0, 10) + ' 台账') : '台账'),
-                                sim: led.sim
-                            }, missing[k]);
-                        }
-                        // ② 规章库（KB 条款召回，已排除手册）
-                        var hits = await diaryAiRecallRules(it, 5);
+                        // 完全走「智能对规」的整套召回（历史案例 + 规章库），不再自己查台账/另写 KB 召回
+                        var hits = await diaryAiRecallViaAC(it);
                         hits.forEach(function (h) { pushCand(h, missing[k]); });
                     }
                     ctx.cands.forEach(function (c, i) {
                         c.cid = 'c' + i;
-                        ctx.candMeta[i] = { from: c.from || '', title: c.title || '', sim: (c.sim != null ? c.sim : null), issue: (c.issue == null ? -1 : c.issue) };
+                        ctx.candMeta[i] = { from: c.from || '', title: c.title || '', issue: (c.issue == null ? -1 : c.issue) };
                     });
                     // 诊断钩子：控制台可直接看池内容（排查"为什么给这几条候选"用）
                     ctx.missingIssues = missing.slice();
@@ -2063,22 +2030,22 @@
                         })
                     };
                     // 候选池构成：回执里显示"池里几条 → AI 选了几条"，用户才能判断是池子薄还是模型偷懒
-                    var _ledN = 0, _kbN = 0;
-                    ctx.cands.forEach(function (c) { if (c.from === 'ledger') _ledN++; else _kbN++; });
-                    ctx.pool = { total: ctx.cands.length, ledger: _ledN, rules: _kbN, issues: missing.length };
+                    var _caseN = 0, _kbN = 0;
+                    ctx.cands.forEach(function (c) { if (c.from === 'issue') _caseN++; else _kbN++; });
+                    ctx.pool = { total: ctx.cands.length, cases: _caseN, rules: _kbN, issues: missing.length };
                     if (typeof console !== 'undefined') {
-                        console.log('[diary][ai] 候选池：' + ctx.cands.length + ' 条（台账 ' + _ledN + ' · 规章库 ' + _kbN + '），涉及 '
+                        console.log('[diary][ai] 候选池：' + ctx.cands.length + ' 条（对规·历史案例 ' + _caseN + ' · 规章库 ' + _kbN + '），涉及 '
                             + missing.length + ' 条缺依据的问题');
                     }
                 }
                 return ctx;
             }
-            /** 由候选池生成一条"结论式"规章依据（与提示词第 9 条同形；台账整句也能拆出法规名与条号） */
+            /** 由候选池生成一条"结论式"规章依据（与提示词第 9 条同形；案例整句也能拆出法规名与条号） */
             function diaryAiRegSentence(c) {
                 c = c || {};
                 var body = String(c.text || '').trim();
                 var mT = body.match(/《([^》]{1,60})》/);
-                var title = (c.from === 'ledger') ? '' : String(c.title || '').trim();     // 台账候选的 title 是标签不是法规名
+                var title = String(c.title || '').trim();
                 if (!title && mT) title = mT[1];
                 if (!title) return null;                                                   // 连法规名都没有 → 不成文，不进池
                 // 书名号后紧跟的文号（如"（电检函〔2017〕103号）"）要带上，否则依据不完整
@@ -2118,7 +2085,7 @@
              * 为什么必须本地兜底：提示词说"最多 3 条"时模型会只给 1 条（实测），条数不能交给它决定。
              *   · 模型只负责"挑与排"：选中且确实来自池里的保留（保留其 why 与顺序）；
              *   · 不在池里的（可能是编造的条款）一律丢弃，计入待复核 —— "严禁编造条款"由此变成硬约束；
-             *   · 不足的按池顺序补齐（台账优先，与提示词优先级一致），并标注"按池补齐"，
+             *   · 不足的按池顺序补齐（历史案例优先，与提示词优先级一致），并标注"按池补齐"，
              *     免得用户以为这是模型的判断。
              */
             function diaryAiFillSuggest(list, ctx) {
@@ -2152,7 +2119,7 @@
                         s.sys = false;
                         out.push(s);
                     });
-                    // ② 不足 → 按池顺序补齐（台账优先）
+                    // ② 不足 → 按池顺序补齐（历史案例优先）
                     for (var n2 = 0; n2 < arr.length && countOf(is) < need; n2++) {
                         var p2 = arr[n2];
                         if (used[p2.cid]) continue;
@@ -2160,15 +2127,12 @@
                         var c2 = p2.c || {};
                         out.push({
                             i: is, text: p2.sentence,
-                            ref: String(c2.ref || ''), title: (c2.from === 'ledger' ? '检查信息台账已引用' : String(c2.title || '')),
-                            why: (c2.from === 'ledger' ? '台账已引用（按池补齐）' : '候选池备用条款（按池补齐）'),
-                            src: c2.from || '', cid: p2.cid, sys: true,
-                            note: (c2.from === 'ledger' && c2.sim != null)
-                                ? ('台账相似度 ' + (c2.sim >= 0.999 ? '完全一致' : c2.sim.toFixed(2))) : ''
+                            ref: String(c2.ref || ''), title: String(c2.title || ''),
+                            why: (c2.from === 'issue' ? '同类案例已引用（按池补齐）' : '候选池备用条款（按池补齐）'),
+                            src: c2.from || '', cid: p2.cid, sys: true
                         });
                     }
                 });
-                out.sort(function (a, b) { return ((b.src === 'ledger') ? 1 : 0) - ((a.src === 'ledger') ? 1 : 0); });
                 return { list: out, dropped: dropped, fixed: fixed };
             }
             /** 结果归一 + 字段守卫（越界回退原值并计入 warns） */
@@ -2226,20 +2190,16 @@
                         if ((perIssue[i] || 0) >= 3) return;                    // 超量截断
                         seenSug[i + '|' + txt] = 1;
                         perIssue[i] = (perIssue[i] || 0) + 1;
-                        // 用模型回传的候选编号(cid)反查来源（台账优先 / 规章库），回执里如实标注
+                        // 用模型回传的候选编号(cid)反查来源（历史案例 / 规章库），回执里如实标注
                         var cidM = String((s && s.cid) || '').match(/^c?(\d+)$/);
                         var meta = (ctx && ctx.candMeta && cidM) ? ctx.candMeta[parseInt(cidM[1], 10)] : null;
                         out.ruleSuggest.push({
                             i: i, text: txt,
                             ref: String((s && s.ref) || ''), title: String((s && s.title) || ''),
                             why: String((s && s.why) || '').slice(0, 30),
-                            src: (meta && meta.from) || '', cid: String((s && s.cid) || ''),
-                            note: (meta && meta.from === 'ledger' && meta.sim != null)
-                                ? ('台账相似度 ' + (meta.sim >= 0.999 ? '完全一致' : meta.sim.toFixed(2))) : ''
+                            src: (meta && meta.from) || '', cid: String((s && s.cid) || '')
                         });
                     });
-                    // 台账来源的排前面（用户口径：优先台账）
-                    out.ruleSuggest.sort(function (a, b) { return (b.src === 'ledger' ? 1 : 0) - (a.src === 'ledger' ? 1 : 0); });
                 }
                 // 【候选条数硬规则】本地兜底（见 diaryAiFillSuggest 注释）：条数 = min(3, 该问题候选池条数)
                 var _fill = diaryAiFillSuggest(out.ruleSuggest, ctx);
@@ -2249,7 +2209,7 @@
                 // 池里一条都没匹配到的：明确告诉用户（否则那条问题看着像"被漏掉了"）
                 ((ctx && ctx.missingIssues) || []).forEach(function (is) {
                     var has = out.ruleSuggest.some(function (s) { return s.i === is; });
-                    if (!has) out.notes.push('问题' + (is + 1) + '：台账与规章库都没有匹配到可引用的条款，本次未给候选（可手工填写依据）');
+                    if (!has) out.notes.push('问题' + (is + 1) + '：历史案例与规章库都没有匹配到可引用的条款，本次未给候选（可手工填写依据）');
                 });
                 return out;
             }
@@ -2485,11 +2445,34 @@
             //   没有范围选择面板、没有 ▾ 菜单、不弹任何确认 —— 点一下就对这一天开跑（≤上限条数），改完自动保存、可撤销。
             //   ⚠️ 回执面板必须放在 index.html 的两个视图**之外**，否则在编辑界面点按钮时回执渲染在隐藏的
             //      查询视图里，表现为"点击无反应"（实测就是这个原因）。
+            /**
+             * 【2026-09-19 用户口径】未配置 API 接口 → **不显示**「✨ 一键修改」按钮。
+             *   "已配置"判据与智能对话一致：`ds_api_key_v1` 有值且不是占位符。
+             *   占位符按值对齐 doubao.js 的 DS_PLACEHOLDER_KEY（'YOUR_API_KEY_HERE'，那边是 IIFE 私有常量）。
+             *   刷新时机：① 日记模块初始化（DOMContentLoaded）；② 配置变更（doubao.js 的 syncLegacyKeys 收口调用）。
+             */
+            function diaryAiHasApiKey() {
+                try {
+                    var k = localStorage.getItem('ds_api_key_v1') || '';
+                    return !!k && k !== 'YOUR_API_KEY_HERE';
+                } catch (e) { return false; }
+            }
+            /** 按"是否已配置 API"同步「✨ 一键修改」按钮显隐；返回当前是否可用（诊断用） */
+            window.diaryAiSyncBtn = function () {
+                var b = document.getElementById('diary-ai-fix-btn');
+                var ok = diaryAiHasApiKey();
+                if (b) {
+                    var want = ok ? '' : 'none';
+                    if (b.style.display !== want) b.style.display = want;
+                }
+                if (!ok) { try { diaryAiBtnBusy(false); } catch (e) {} }
+                return ok;
+            };
             window.diaryAiFix = function () {
                 if (typeof console !== 'undefined') console.log('[diary][ai] 引擎 v' + DIARY_AI_VER);
                 if (_diaryAiBusy) { alert('AI 修改正在进行中，请等它跑完。'); return; }
                 if (!window.dsCallOnce) { alert('底层 AI 调用未就绪（doubao-common.js 未加载）。'); return; }
-                if (!(localStorage.getItem('ds_api_key_v1') || '')) { alert('请先在「设置 → API 配置」里填写 API Key。'); return; }
+                if (!diaryAiHasApiKey()) { alert('请先在「设置 → API 配置」里填写 API Key。'); return; }   // 兜底：按钮正常已隐藏
                 var def = diaryAiDefaultScope();
                 var kind = 'day:' + def.date;
                 var n = diaryAiPick(kind).length;
@@ -2504,12 +2487,12 @@
                 }
                 // 【点击即有反馈（用户实测："气泡未立即启动"）】—— 反馈必须在**同一个同步 tick** 内画出来：
                 //   浏览器要等 JS 让出才会重绘，只要点击处理里不 await、不做重活，气泡就会立即出现。
-                //   顺带把按钮置灰，避免连点；真正的准备工作（备份/台账与规章召回）放在后面。
+                //   顺带把按钮置灰，避免连点；真正的准备工作（备份/对规召回）放在后面。
                 var t0 = Date.now();
                 diaryAiInline('✨ 准备中…');
                 diaryAiBtnBusy(true);
                 diaryAiToast('✨ AI 修改中…（' + escapeHtml(def.label) + '）'
-                    + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">正在准备（读台账/规章索引）…点此停止</div>',
+                    + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">正在准备（对规召回/规章索引）…点此停止</div>',
                     { sticky: true, onClick: function () { window.diaryAiStop(); } });
                 diaryAiPanelEnsureVisible();
                 window.diaryAiRun(kind, t0);
@@ -2531,7 +2514,6 @@
                 var stats = { total: list.length, done: 0, changed: 0, skipped: 0, failed: 0, warns: 0, notes: 0, suggestions: 0, t0: t0 || Date.now() };
                 var details = [];
                 // ① 先把反馈画出来（进度面板 + 按钮旁文字 + 顶部气泡），② 再做准备工作
-                _diaryAiLedgerCache = {};    // 台账相似检索缓存（按问题文本），每次运行重置
                 var needKb = list.some(function (d) {
                     return (d.issues || []).some(function (x, i) { return String(x || '').trim() && !String(((d.regulations || [])[i]) || '').trim(); });
                 });
@@ -2549,7 +2531,7 @@
                     for (var idx = 0; idx < list.length; idx++) {
                         if (_diaryAiStop) break;
                         var target = list[idx].date;
-                        if (idx === 0 && typeof console !== 'undefined') console.log('[diary][ai] 点击→首个请求 ' + (Date.now() - stats.t0) + 'ms（含备份/台账与规章召回）');
+                        if (idx === 0 && typeof console !== 'undefined') console.log('[diary][ai] 点击→首个请求 ' + (Date.now() - stats.t0) + 'ms（含备份/对规召回）');
                         var live = diaries.filter(function (d) { return d.date === target; })[0];
                         if (!live) { stats.skipped++; continue; }                    // 已被删除
                         // 请求前记录两条指纹，返回时比对，任一变化就跳过（绝不覆盖用户的新内容）：
@@ -2648,8 +2630,8 @@
                                 return '<div style="margin:3px 0;display:flex;gap:6px;align-items:flex-start;">'
                                     + '<span style="opacity:.6;flex-shrink:0;">' + '①②③'.charAt(k) + '</span>'
                                     + '<span style="flex:1;min-width:0;">'
-                                    + (s.src === 'ledger'
-                                        ? '<span style="background:#ecfdf5;color:#047857;border-radius:5px;padding:0 4px;margin-right:4px;font-size:0.74rem;">台账已引用·优先</span>'
+                                    + (s.src === 'issue'
+                                        ? '<span style="background:#ecfdf5;color:#047857;border-radius:5px;padding:0 4px;margin-right:4px;font-size:0.74rem;">历史案例·已引用</span>'
                                         : (s.src === 'rules' ? '<span style="background:#eff6ff;color:#1d4ed8;border-radius:5px;padding:0 4px;margin-right:4px;font-size:0.74rem;">规章库</span>' : ''))
                                     + escapeHtml(s.text)
                                     + (s.note ? ' <span style="color:#047857;font-size:0.74rem;">（' + escapeHtml(s.note) + '）</span>' : '')
@@ -2689,12 +2671,12 @@
                 if (running) html.push('<div style="margin:4px 0;color:var(--text-secondary);">⏳ ' + escapeHtml(_diaryAiNote || '正在调用模型…') + '</div>');
                 // 进行中：把"建议补的规章依据"区块先立起来（用户口径：框要立刻出现，内容边跑边填）
                 if (running && !sugRows.length) html.push('<div style="margin-top:8px;"><b>📜 建议补的规章依据</b>'
-                    + '<span style="color:var(--text-secondary);font-weight:400;">（正在从检查信息台账与规章库匹配条款…）</span></div>');
+                    + '<span style="color:var(--text-secondary);font-weight:400;">（正在走「智能对规」召回：历史案例 + 规章库…）</span></div>');
                 if (sugRows.length) {
                     // 把"候选池有几条"一并交代：用户才能判断"只给 1 条"是池子薄还是模型偷懒
-                    var poolT = { total: 0, ledger: 0, rules: 0, issues: 0 };
+                    var poolT = { total: 0, cases: 0, rules: 0, issues: 0 };
                     (details || []).forEach(function (d) {
-                        if (d && d.pool) { poolT.total += d.pool.total; poolT.ledger += d.pool.ledger; poolT.rules += d.pool.rules; poolT.issues += d.pool.issues; }
+                        if (d && d.pool) { poolT.total += d.pool.total; poolT.cases += (d.pool.cases || 0); poolT.rules += d.pool.rules; poolT.issues += d.pool.issues; }
                     });
                     var sysN = 0;
                     (details || []).forEach(function (d) {
@@ -2703,11 +2685,11 @@
                         });
                     });
                     var poolTxt = poolT.total
-                        ? '候选池 ' + poolT.total + ' 条（台账 ' + poolT.ledger + ' · 规章库 ' + poolT.rules + '）→ 选中 ' + stats.suggestions + ' 条'
+                        ? '候选池 ' + poolT.total + ' 条（历史案例 ' + poolT.cases + ' · 规章库 ' + poolT.rules + '）→ 选中 ' + stats.suggestions + ' 条'
                             + (sysN ? '，其中 ' + sysN + ' 条由系统按池补齐' : '')
                         : ('选中 ' + stats.suggestions + ' 条');
                     html.push('<div style="margin-top:8px;"><b>📜 建议补的规章依据</b>'
-                        + '<span style="color:var(--text-secondary);font-weight:400;">（' + escapeHtml(poolTxt) + '；点「采纳」写入该条问题，台账已引用的排最前）</span>'
+                        + '<span style="color:var(--text-secondary);font-weight:400;">（' + escapeHtml(poolTxt) + '；点「采纳」写入该条问题，历史案例的排最前）</span>'
                         + sugRows.join('') + '</div>');
                 }
                 if (chgRows.length) html.push('<div style="margin-top:8px;"><b>✏️ 改动明细（前 ' + Math.min(chgRows.length, 60) + ' 条）</b>' + chgRows.slice(0, 60).join('') + '</div>');

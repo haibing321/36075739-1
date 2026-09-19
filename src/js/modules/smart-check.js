@@ -1640,6 +1640,248 @@
                 return { boost: boost, correctedTitles: correctedTitles, wrongTitles: wrongTitles };
             }
 
+            /**
+             * 从案例全文中提取"规章引用部分"（对规主链与「一键修改」共用同一口径；
+             * 原为 autoCheckAI_force 内部函数，2026-09-19 提到模块级供共用）。
+             */
+            function acExtractRegulationQuote(text) {
+                if (!text) return '';
+                // 匹配"不符合/违反《...》...的要求/的规定/的约束"格式
+                var m = text.match(/(?:不符合|违反)《[^》]*》[^。]*?(?:的要求|的规定|的约束)/);
+                if (m) return m[0];
+                // 降级：匹配"不符合/违反《...》...。"整句
+                m = text.match(/(?:不符合|违反)《[^》]*》[^。]*。/);
+                if (m) return m[0];
+                // 再降级：匹配"《...》...的要求/的规定"
+                m = text.match(/《[^》]*》[^。]*?(?:的要求|的规定|的约束)/);
+                if (m) return m[0];
+                // 兜底：截取前200字
+                return text.length > 200 ? text.slice(0, 200) + '…' : text;
+            }
+
+            /**
+             * 条号提取（与 diary 侧 diaryAiArticleNo 同口径）：兼容「第4.3.4条 / 第十二条 / 《X》4.3.4：」，
+             * 中文数字归一为阿拉伯数字。取不到返回 ''。
+             * 为什么放在共用层：案例召回的条款正文里常自带条号（如"违反《X》第9条：…"），
+             * 而候选的 article 字段可能为空 —— 消费方（一键修改 / 智能体 autocheck）都要从正文补条号。
+             */
+            function acArticleNoFromText(text) {
+                var t = String(text || '');
+                var m = t.match(/第\s*([0-9]+(?:\.[0-9]+)*|[〇零一二三四五六七八九十百]{1,8})\s*条/);
+                if (!m) m = t.match(/》\s*([0-9]+(?:\.[0-9]+)*)\s*[:：]/);
+                if (!m) return '';
+                var s = m[1];
+                if (/^[0-9.]+$/.test(s)) return s.replace(/^0+(\d)/, '$1');
+                var D = { '〇': 0, '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+                var total = 0, num = 0;
+                for (var i = 0; i < s.length; i++) {
+                    var ch = s[i];
+                    if (D[ch] != null) num = D[ch];
+                    else if (ch === '十') { total += (num || 1) * 10; num = 0; }
+                    else if (ch === '百') { total = (total + (num || 1)) * 100; num = 0; }
+                }
+                return String(total + num);
+            }
+            /**
+             * 取「引文正文」（与 diary 侧 diaryAiRegBody 同口径）：优先中文引号内内容；
+             * 否则剥掉"违反《X》"这类前缀、条号前缀与结尾"的规定。"，只留可直接引用的条款原文。
+             */
+            function acRegBodyText(text) {
+                var t = String(text || '').trim();
+                var q = t.match(/[“"]([^”"]{4,})[”"]/);
+                if (q) return q[1];
+                return t
+                    .replace(/^[^《]*《[^》]*》/, '')
+                    .replace(/^\s*第?\s*[〇零一二三四五六七八九十百0-9.]{1,8}\s*条?\s*[:：、]?\s*/, '')
+                    .replace(/[，,。；;]?\s*的?\s*规定\s*[。.]?\s*$/, '')
+                    .trim();
+            }
+            /**
+             * 正文可用性判据：只有条号/占位符的空壳（如"第XX条"、"第十二条"、"4.3.4"）不能成文 ——
+             * 否则会写出「不符合《X》"第XX条"的规定。」这种伪依据（实测：检查信息里存在这类记录）。
+             * 消费方（一键修改 / 智能体 autocheck）都按此过滤，只保留真的条款内容。
+             */
+            function acUsableRegBody(b) {
+                var s = String(b || '').replace(/\s/g, '');
+                if (s.length < 4) return false;
+                if (/^第?[0-9Xx×〇零一二三四五六七八九十百.]{1,10}条?$/.test(s)) return false;
+                return true;
+            }
+
+            /**
+             * 【2026-09-19 用户口径】对规「召回链」对外唯一入口。
+             *   「一键修改」等模块直接调用本函数 = 走智能对规同一套召回，**不要再另写一份**。
+             *   链路：同义词扩展 → 统一检索层 rules+issues 召回 → 关键词召回回退 → 案例条款引用提取。
+             *   本函数**不含 AI**：AI 精排由调用方自行决定（对规主链接着调 AI；一键修改复用自己那次
+             *   模型调用挑选，不再多发一次）。
+             * 返回 { kbUsable, expandedQuery, ruleCandidates, issueCandidates, items, recallSrc, kbRecallUsed, inferredTrade }
+             *   · ruleCandidates / issueCandidates：主链 _globalCandidatesMap 的原始输入（主链行为不变）
+             *   · items：已归一化候选（案例走 acExtractRegulationQuote，与主链 _globalCandidatesMap 同口径），
+             *     字段 { source:'issue'|'rule', title, fileNumber, article, clause, ... } 供外部模块直接用
+             * opts.onProgress(msg)：进度回调（主链用它刷 UI；缺省不刷）
+             * opts.kbEnsureTimeout：KB.ensure 等待上限（毫秒；0/缺省=不设限，一键修改传 4000 防卡死）
+             * opts.skipEnsure：跳过本函数内的 KB.ensure（调用方已自行预热时用 —— 多问题循环里
+             *   每轮各等一次 4 秒上限会被拖成 N×4s，一键修改改为整轮只预热一次）
+             */
+            window.acRecallCandidates = async function (query, opts) {
+                opts = opts || {};
+                var onProgress = (typeof opts.onProgress === 'function') ? opts.onProgress : function () {};
+                var q = String(query || '').trim();
+                if (!q) {
+                    return { kbUsable: false, expandedQuery: '', ruleCandidates: [], issueCandidates: [], items: [], recallSrc: '', kbRecallUsed: false, inferredTrade: '' };
+                }
+
+                var kbUsable = false;
+                try { kbUsable = (localStorage.getItem('kb_autocheck') !== '0') && !!window.KB && typeof window.KB.search === 'function'; }
+                catch (e) { kbUsable = !!window.KB && typeof window.KB.search === 'function'; }
+
+                onProgress('正在扩展查询同义词…');
+                await new Promise(function (r) { setTimeout(r, 0); });     // 让浏览器先把提示画出来，再算同步计算
+                var expandedQuery = expandQueryWithSynonyms(q);
+                console.log('[对规召回] 扩展后查询:', expandedQuery);
+
+                onProgress('正在从规章库召回候选条款…');
+                await new Promise(function (r) { setTimeout(r, 0); });
+
+                // 统一检索层（knowledge.js）优先：规章按「条款」切块、检查信息按「条」，命中哪一条就把
+                //   那一条完整给到候选；打分用带 idf 与长度归一的 BM25。
+                //   开关 kb_autocheck：默认开；置 '0' 或 KB 无命中/异常时，回退关键词召回。
+                var allRules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
+                var ruleCandidates = [];
+                var issueCandidates = [];
+                var inferredTrade = patchInferTrade(q);
+                var kbIssueHits = [];
+                var kbRulesUsed = false;
+                if (kbUsable) {
+                    try {
+                        if (typeof window.KB.ensure === 'function' && !opts.skipEnsure) {
+                            if (opts.kbEnsureTimeout > 0) {
+                                await Promise.race([
+                                    window.KB.ensure(['rules', 'issues']),
+                                    new Promise(function (r) { setTimeout(r, opts.kbEnsureTimeout); })
+                                ]);
+                            } else {
+                                await window.KB.ensure(['rules', 'issues']);
+                            }
+                        }
+                        var kbGroups = window.KB.search(expandedQuery, { sources: ['rules', 'issues'], topK: 8 });
+                        var kbRuleHits = [];
+                        kbGroups.forEach(function (g) {
+                            if (g.key === 'rules') kbRuleHits = g.hits;
+                            else if (g.key === 'issues') kbIssueHits = g.hits;
+                        });
+                        // 命中块 → 现有候选格式（KB 命中已按 BM25 降序，用排名近似分数）
+                        ruleCandidates = kbRuleHits.map(function (h, i) {
+                            var doc = h.doc || {};
+                            var txt = String(h.text || '');
+                            return {
+                                title: h.title || doc.title || '',
+                                trade: h.trade || doc.trade || '',
+                                fileNumber: doc.fileNumber || '',
+                                article: h.ref || '',
+                                snippet: txt.slice(0, 220) + (txt.length > 220 ? '…' : ''),
+                                fullText: txt,
+                                score: kbRuleHits.length - i,
+                                ruleRef: doc,
+                                ruleIdx: allRules.indexOf(doc),
+                                kbPath: h.path || ''
+                            };
+                        });
+                        // 专业优先：同专业命中前置（保留其它专业候选，不丢召回）
+                        if (inferredTrade && ruleCandidates.length > 1) {
+                            var _sameT = [], _otherT = [];
+                            ruleCandidates.forEach(function (c) { (c.trade === inferredTrade ? _sameT : _otherT).push(c); });
+                            ruleCandidates = _sameT.concat(_otherT);
+                        }
+                        ruleCandidates = ruleCandidates.slice(0, 6);
+                        kbRulesUsed = ruleCandidates.length > 0;
+                        console.log('[对规召回] 统一检索层：规章', ruleCandidates.length, '条，检查信息', kbIssueHits.length, '条');
+                    } catch (e) {
+                        console.warn('[对规召回] 统一检索层失败，回退关键词召回：', e && e.message);
+                        ruleCandidates = [];
+                        kbIssueHits = [];
+                    }
+                }
+
+                if (!ruleCandidates.length) {
+                    // ----- 回退：原「专业优先检索」关键词召回（与主链逻辑完全一致） -----
+                    if (inferredTrade && allRules.length > 0) {
+                        var sameTradeRules = allRules.filter(function (r) { return r.trade === inferredTrade; });
+                        if (sameTradeRules.length > 0) {
+                            var _sameCand = localBM25RecallWithRules(expandedQuery, 6, sameTradeRules);
+                            ruleCandidates.push.apply(ruleCandidates, _sameCand);
+                            console.log('[对规召回·专业优先] 同专业 ' + sameTradeRules.length + ' 条 → 召回 ' + _sameCand.length + ' 条');
+                        }
+                        if (ruleCandidates.length < 6) {
+                            var otherRules = allRules.filter(function (r) { return r.trade !== inferredTrade; });
+                            if (otherRules.length > 0) {
+                                var _otherCand = localBM25RecallWithRules(expandedQuery, 6 - ruleCandidates.length, otherRules);
+                                ruleCandidates.push.apply(ruleCandidates, _otherCand);
+                                console.log('[对规召回·补充] 其他专业补充 ' + _otherCand.length + ' 条');
+                            }
+                        }
+                    } else {
+                        ruleCandidates = localBM25Recall(expandedQuery, 6);
+                    }
+                    console.log('[对规召回] 最终规章库召回（关键词回退）', ruleCandidates.length, '条');
+                }
+
+                onProgress('正在从历史案例召回候选条款…');
+                await new Promise(function (r) { setTimeout(r, 0); });
+                // 案例召回：KB 命中优先喂给「条款引用提取」；无 KB 命中时沿用本地匹配缓存
+                if (kbIssueHits.length) {
+                    issueCandidates = extractCandidatesFromIssues(q, 4, kbIssueHits.map(function (h, i) {
+                        return { iss: h.doc || {}, score: kbIssueHits.length - i };
+                    }));
+                }
+                if (!issueCandidates.length) issueCandidates = extractCandidatesFromIssues(q, 4);
+                console.log('[对规召回] 历史案例', issueCandidates.length, '条');
+
+                // 归一化候选（与主链 _globalCandidatesMap 同口径）：案例 → 条款引用提取；规章 → 条款正文
+                // body / articleNo：消费方（一键修改、智能体 autocheck）直接可用的「引文正文 + 归一化条号」，
+                //   在共用层算一次 —— 案例的条号常只存在于正文里（"违反《X》第9条：…"），候选 article 为空。
+                var items = [];
+                issueCandidates.forEach(function (c) {
+                    var raw = String(c.snippet || c.fullText || '');
+                    var _q = acExtractRegulationQuote(raw);
+                    var _b = acRegBodyText(_q);
+                    if (!acUsableRegBody(_b)) return;      // 只有条号/空壳的不能成文
+                    items.push({
+                        source: 'issue',
+                        title: c.title || '', fileNumber: c.fileNumber || '', article: c.article || '',
+                        clause: _q, rawClause: raw,
+                        body: _b,
+                        articleNo: acArticleNoFromText(c.article) || acArticleNoFromText(raw),
+                        issueCount: c.issueCount || 1, trade: c.trade || ''
+                    });
+                });
+                ruleCandidates.forEach(function (c) {
+                    var _cl = String(c.fullText || c.snippet || c.content || '').replace(/…\s*$/, '');
+                    var _b2 = acRegBodyText(_cl);
+                    if (!acUsableRegBody(_b2)) return;     // 同上
+                    items.push({
+                        source: 'rule',
+                        title: c.title || '', fileNumber: c.fileNumber || '', article: c.article || '',
+                        clause: _cl,
+                        body: _b2,
+                        articleNo: acArticleNoFromText(c.article) || acArticleNoFromText(_cl),
+                        trade: c.trade || '', kbPath: c.kbPath || ''
+                    });
+                });
+
+                return {
+                    kbUsable: kbUsable,
+                    expandedQuery: expandedQuery,
+                    ruleCandidates: ruleCandidates,
+                    issueCandidates: issueCandidates,
+                    items: items,
+                    recallSrc: '规章：' + (kbRulesUsed ? '统一检索层' : '关键词召回')
+                             + '；案例：' + (kbIssueHits.length ? '统一检索层' : '本地匹配缓存'),
+                    kbRecallUsed: !!(kbRulesUsed || kbIssueHits.length),
+                    inferredTrade: inferredTrade
+                };
+            };
+
             // ── 选中条款查看规章库全文 ──
             window.acRuleViewByRef = function (title, fileNumber, article) {
                 var rules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
@@ -1727,118 +1969,23 @@
                     return; // 交给调用方（autoCheckSmart / 面板自动）走本地保底
                 }
 
-                // ── 阶段1：双路召回 (BM25 + 历史案例) ──
-                // 每步 await setTimeout(0) 让浏览器先渲染提示，再执行同步计算
+                // ── 阶段1：召回（**唯一实现**：window.acRecallCandidates，「一键修改」也调它） ──
+                // ⚠️ 2026-09-19 用户口径：对规召回链只保留一份；本处不再内联 KB/关键词召回逻辑。
                 let expandedQuery, ruleCandidates, issueCandidates;
+                var _acRecallSrc = '';       // 阶段3 进度提示里显示本次真实召回来源
                 try {
-                    container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在扩展查询同义词…</div>';
-                    await new Promise(r => setTimeout(r, 0));
-                    expandedQuery = expandQueryWithSynonyms(query);
-                    console.log('[AI对规] 扩展后查询:', expandedQuery);
-
-                    container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在从规章库召回候选条款…</div>';
-                    await new Promise(r => setTimeout(r, 0));
-
-                    // 【v3.74】统一检索层（knowledge.js）优先：规章按「条款」切块、检查信息按「条」，
-                    //   命中哪一条就把那一条完整给到候选（不再"整篇取 content 前 1000 字"——长规章的
-                    //   关键条款常被 1000 字窗口挡在门外）；打分用带 idf 与长度归一的 BM25，而非
-                    //   无 idf 的 2–4 字 n-gram 计数（后者天然偏袒长文档）。
-                    //   开关 kb_autocheck：默认开；置 '0' 或 KB 无命中/异常时，回退下面的关键词召回（原逻辑未改动）。
-                    var allRules = typeof window.getRulesData === 'function' ? window.getRulesData() : [];
-                    ruleCandidates = [];
-                    issueCandidates = [];
-                    var inferredTrade = patchInferTrade(query);
-                    var _acKbOn = true;
-                    try { _acKbOn = localStorage.getItem('kb_autocheck') !== '0'; } catch (e) {}
-                    var _kbIssueHits = [];          // KB 召回的问题库记录，稍后交给「条款引用提取」
-                    var _acKbRulesUsed = false;     // 规章候选是否来自 KB
-                    var _acRecallSrc = '关键词召回';   // 阶段3 进度提示里显示本次真实召回来源
-                    if (_acKbOn && window.KB && typeof window.KB.search === 'function') {
-                        try {
-                            if (typeof window.KB.ensure === 'function') await window.KB.ensure(['rules', 'issues']);
-                            var _kbGroups = window.KB.search(expandedQuery, { sources: ['rules', 'issues'], topK: 8 });
-                            var _kbRuleHits = [];
-                            _kbGroups.forEach(function (g) {
-                                if (g.key === 'rules') _kbRuleHits = g.hits;
-                                else if (g.key === 'issues') _kbIssueHits = g.hits;
-                            });
-                            // 命中块 → 现有候选格式（KB 命中已按 BM25 降序，用排名近似分数）
-                            ruleCandidates = _kbRuleHits.map(function (h, i) {
-                                var doc = h.doc || {};
-                                var txt = String(h.text || '');
-                                return {
-                                    title: h.title || doc.title || '',
-                                    trade: h.trade || doc.trade || '',
-                                    fileNumber: doc.fileNumber || '',
-                                    article: h.ref || '',
-                                    snippet: txt.slice(0, 220) + (txt.length > 220 ? '…' : ''),
-                                    fullText: txt,
-                                    score: _kbRuleHits.length - i,
-                                    ruleRef: doc,
-                                    ruleIdx: allRules.indexOf(doc),
-                                    kbPath: h.path || ''
-                                };
-                            });
-                            // 专业优先：同专业命中前置（保留其它专业候选，不丢召回）
-                            if (inferredTrade && ruleCandidates.length > 1) {
-                                var _sameT = [], _otherT = [];
-                                ruleCandidates.forEach(function (c) { (c.trade === inferredTrade ? _sameT : _otherT).push(c); });
-                                ruleCandidates = _sameT.concat(_otherT);
-                            }
-                            ruleCandidates = ruleCandidates.slice(0, 6);
-                            _acKbRulesUsed = ruleCandidates.length > 0;
-                            console.log('[AI对规] 统一检索层召回规章', ruleCandidates.length, '条，检查信息', _kbIssueHits.length, '条');
-                        } catch (e) {
-                            console.warn('[AI对规] 统一检索层召回失败，回退关键词召回：', e && e.message);
-                            ruleCandidates = [];
-                            _kbIssueHits = [];
+                    var _recall = await window.acRecallCandidates(query, {
+                        onProgress: function (msg) {
+                            container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ ' + msg + '</div>';
                         }
-                    }
-
-                    if (!ruleCandidates.length) {
-                        // ----- 回退：原「专业优先检索」关键词召回（逻辑未改动） -----
-                        if (inferredTrade && allRules.length > 0) {
-                            // 1. 过滤出同专业规章
-                            var sameTradeRules = allRules.filter(function(r){ return r.trade === inferredTrade; });
-                            console.log('[专业优先] 推断专业: ' + inferredTrade + ', 同专业规章数: ' + sameTradeRules.length);
-
-                            if (sameTradeRules.length > 0) {
-                                var sameTradeCandidates = localBM25RecallWithRules(expandedQuery, 6, sameTradeRules);
-                                ruleCandidates.push.apply(ruleCandidates, sameTradeCandidates);
-                                console.log('[专业优先] 同专业召回 ' + sameTradeCandidates.length + ' 条');
-                            }
-
-                            // 2. 如果同专业召回不足 6 条，再从其他专业补充
-                            if (ruleCandidates.length < 6) {
-                                var otherRules = allRules.filter(function(r){ return r.trade !== inferredTrade; });
-                                if (otherRules.length > 0) {
-                                    var otherCandidates = localBM25RecallWithRules(expandedQuery, 6 - ruleCandidates.length, otherRules);
-                                    ruleCandidates.push.apply(ruleCandidates, otherCandidates);
-                                    console.log('[补充召回] 其他专业补充 ' + otherCandidates.length + ' 条');
-                                }
-                            }
-                        } else {
-                            // 未推断出专业，走原逻辑
-                            ruleCandidates = localBM25Recall(expandedQuery, 6);
-                        }
-                        console.log('[AI对规] 最终规章库召回（回退）', ruleCandidates.length, '条');
-                    }
-
-                    container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ 正在从历史案例召回候选条款…</div>';
-                    await new Promise(r => setTimeout(r, 0));
-                    // 案例召回：KB 命中优先喂给原有「条款引用提取」（正则提取《》+文号+第X条+引号原文的逻辑不变）；
-                    // 无 KB 命中时沿用本地匹配缓存（原路径）
-                    if (_kbIssueHits.length) {
-                        issueCandidates = extractCandidatesFromIssues(query, 4, _kbIssueHits.map(function (h, i) {
-                            return { iss: h.doc || {}, score: _kbIssueHits.length - i };
-                        }));
-                    }
-                    if (!issueCandidates.length) issueCandidates = extractCandidatesFromIssues(query, 4);
-                    console.log('[AI对规] 历史案例召回', issueCandidates.length, '条');
-                    _acRecallSrc = '规章：' + (_acKbRulesUsed ? '统一检索层' : '关键词召回')
-                                 + '；案例：' + (_kbIssueHits.length ? '统一检索层' : '本地匹配缓存');
+                    });
+                    expandedQuery = _recall.expandedQuery;
+                    ruleCandidates = _recall.ruleCandidates;
+                    issueCandidates = _recall.issueCandidates;
+                    _acRecallSrc = _recall.recallSrc;
                     // KB 已提供候选（规章或案例任一）→ user 消息不再重复注入本地匹配摘要
-                    _acKbRecallUsed = !!(_acKbRulesUsed || _kbIssueHits.length);
+                    _acKbRecallUsed = _recall.kbRecallUsed;
+                    console.log('[AI对规] 召回完成：' + _acRecallSrc + '，规章 ' + ruleCandidates.length + ' 条，案例 ' + issueCandidates.length + ' 条');
                 } catch (e) {
                     console.error('[AI对规] 召回候选条款异常:', e);
                     var _escErr = typeof window.escapeHtml === 'function' ? window.escapeHtml : function(s){return String(s).replace(/</g,'&lt;');};
@@ -1862,22 +2009,6 @@
                 let idCounter = 0;
                 const allCandidates = [];
 
-                // ── 从案例全文中提取规章引用部分 ──
-                function extractRegulationQuote(text) {
-                    if (!text) return '';
-                    // 匹配"不符合/违反《...》...的要求/的规定/的约束"格式
-                    var m = text.match(/(?:不符合|违反)《[^》]*》[^。]*?(?:的要求|的规定|的约束)/);
-                    if (m) return m[0];
-                    // 降级：匹配"不符合/违反《...》...。"整句
-                    m = text.match(/(?:不符合|违反)《[^》]*》[^。]*。/);
-                    if (m) return m[0];
-                    // 再降级：匹配"《...》...的要求/的规定"
-                    m = text.match(/《[^》]*》[^。]*?(?:的要求|的规定|的约束)/);
-                    if (m) return m[0];
-                    // 兜底：截取前200字
-                    return text.length > 200 ? text.slice(0, 200) + '…' : text;
-                }
-
                 issueCandidates.forEach(c => {
                     const id = 'cand_' + (idCounter++);
                     const rawClause = c.snippet || c.fullText || '';
@@ -1886,7 +2017,7 @@
                         title: c.title || '',
                         fileNumber: c.fileNumber || '',
                         article: c.article || '',
-                        clause: extractRegulationQuote(rawClause),
+                        clause: acExtractRegulationQuote(rawClause),
                         rawClause: rawClause,  // 保留原文供参考
                         issueCount: c.issueCount || 1,
                         score: c.score || 0,
@@ -2172,7 +2303,7 @@
                             + '<div style="margin-bottom:6px;"><span style="font-size:0.78rem;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 10px;border-radius:20px;">📋 匹配案例条款参考</span></div>'
                             + '<div style="display:flex;flex-direction:column;gap:6px;">';
                         issueCandidates.slice(0, 5).forEach((c, i) => {
-                            var refQuote = extractRegulationQuote(c.snippet || c.fullText || '');
+                            var refQuote = acExtractRegulationQuote(c.snippet || c.fullText || '');
                             issueRefHtml += '<div class="rule-card-item" style="padding:12px 16px;background:#f0fdf4;border-radius:8px;">'
                                 + '<div class="rule-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
                                 + '<span style="flex:1;word-break:break-all;color:#166534;font-weight:600;">[' + (i+1) + '] 《' + acEscHtml(c.title) + '》' + (c.fileNumber ? '（' + acEscHtml(c.fileNumber) + '）' : '') + (c.article ? ' 第' + acEscHtml(c.article) + '条' : '') + '</span>'
@@ -2527,6 +2658,10 @@
             // 暴露给全局，供智能助手使用
             window.acExtractKeywords = acExtractKeywords;
             window.acExtractLibraryKeywords = acExtractLibraryKeywords;
+            // 对规「条款正文 / 条号」抽取：对外共用 —— 一键修改、智能体 autocheck 都用这一套，勿另写第二份
+            window.acRegBodyText = acRegBodyText;
+            window.acArticleNoFromText = acArticleNoFromText;
+            window.acUsableRegBody = acUsableRegBody;
             window.patchInferTrade = patchInferTrade;
             window.PATCH_TERM_LIBRARY = PATCH_TERM_LIBRARY;
             window.PATCH_TRADE_KEYWORDS = PATCH_TRADE_KEYWORDS;

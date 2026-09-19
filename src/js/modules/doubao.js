@@ -1986,12 +1986,44 @@
                     dsHistory.push({ role: 'assistant', content: '', agentSteps: [] });
                     var _agentMsgIdx = dsHistory.length - 1;
                     dsRenderAll(); dsScrollBottom();
-                    _dsPaintBubble(_agentMsgIdx, '<div style="color:#64748b;font-size:0.85rem;">🚀 正在执行任务（可多步调用本地数据）…</div>', false);
                     (function () {
                         var _t0 = Date.now();
+                        var _cur = dsHistory[_agentMsgIdx];
+                        var _live = '🚀 正在执行任务（可多步调用本地数据）';
+                        if (_cur && !_cur.agentSteps) _cur.agentSteps = [];
+                        // 【2026-09-19 实时进度】计划/工具卡片**边跑边插入**（不再等整轮跑完一次性渲染），
+                        //   状态行每秒走秒。只重绘这一个气泡（_dsPaintBubble）= 不整表重绘、不抖动；
+                        //   结束时再写 cur.content + dsRenderAll()，卡片挂回消息上永久保留。
+                        var _paint = function () {
+                            if (!_cur) return;
+                            var s = Math.max(0, Math.round((Date.now() - _t0) / 1000));
+                            _dsPaintBubble(_agentMsgIdx,
+                                (typeof window.dsAgentStepsHtml === 'function' ? window.dsAgentStepsHtml(_cur.agentSteps) : '')
+                                + '<div style="color:#64748b;font-size:0.85rem;">' + _live + '（已等 ' + s + 's）</div>', false);
+                        };
+                        var _timer = setInterval(_paint, 1000);
+                        var _stopTick = function () { if (_timer) { clearInterval(_timer); _timer = null; } };
+                        _paint();
                         Promise.resolve()
-                            .then(function () { return window._agentRun(task); })
+                            .then(function () {
+                                return window._agentRun(task, null, {
+                                    onStep: function (ev) {
+                                        if (!ev) return;
+                                        if (ev.phase === 'plan' || ev.phase === 'tool-done') {
+                                            if (ev.step && _cur) _cur.agentSteps.push(ev.step);
+                                        } else if (ev.phase === 'thinking') {
+                                            _live = '🧠 正在思考（第 ' + (ev.round || 1) + ' 轮）';
+                                        } else if (ev.phase === 'tool-start') {
+                                            _live = '🔧 正在调用：' + ((ev.tools || []).join('、') || '工具');
+                                        } else if (ev.phase === 'answer') {
+                                            _live = '✍️ 正在整理回答';
+                                        }
+                                        _paint();
+                                    }
+                                });
+                            })
                             .then(function (res) {
+                                _stopTick();
                                 var msgs = (res && res.messages) || [];
                                 var steps = msgs.filter(function (m) { return m && (m.role === 'agent-plan' || m.role === 'agent-tool'); });
                                 var finalTxt = '';
@@ -1999,12 +2031,15 @@
                                 var cur = dsHistory[_agentMsgIdx];
                                 if (cur) {
                                     cur.agentSteps = steps;
+                                    // ⚠️ 不能用 <small> 之类的 HTML：dsMarkdown 是"先转义再替换"，标签会被当文本显示
+                                    //   （实测气泡里出现字面 <small style="…">）。这里用纯文本。
                                     cur.content = (finalTxt || '（任务已执行，未返回文本内容）')
-                                        + '\n\n<small style="color:#94a3b8;">任务耗时 ' + Math.round((Date.now() - _t0) / 1000) + 's · 工具调用 ' + steps.filter(function (s) { return s.role === 'agent-tool'; }).length + ' 次</small>';
+                                        + '\n\n（任务耗时 ' + Math.round((Date.now() - _t0) / 1000) + 's · 工具调用 ' + steps.filter(function (s) { return s.role === 'agent-tool'; }).length + ' 次）';
                                 }
                                 dsRenderAll(); dsScrollBottom();
                             })
                             .catch(function (e) {
+                                _stopTick();
                                 var cur2 = dsHistory[_agentMsgIdx];
                                 if (cur2) cur2.content = '❌ 任务执行失败：' + ((e && e.message) ? e.message : String(e));
                                 dsRenderAll(); dsScrollBottom();
@@ -5794,6 +5829,34 @@
         // 加载提示（LLM 请求耗时较长时给用户反馈）
         var loadingId = 'ds-loading-' + Date.now();
         historyEl.innerHTML += '<div id="' + loadingId + '" style="color:#6b7280;font-size:0.85rem;margin:4px 0;">⏳ 思考中…</div>';
+        // 【2026-09-19 实时进度】卡片即时插入到"思考中"行之前（不再等整轮结束），状态行每秒走秒
+        var _agentT0 = Date.now();
+        var _agentLive = '⏳ 思考中';
+        var _agentCardHtml = function (m) {
+          m = m || {};
+          if (m.role === 'agent-plan') {
+            return '<div style="margin-bottom:6px;background:#fffbeb;border-left:3px solid #f59e0b;color:#b45309;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
+          }
+          if (m.role === 'agent-tool') {
+            if (m.toolMeta) {
+              var _evi = m.toolMeta.evidence ? '<div style="color:#047857;margin-top:2px;white-space:pre-wrap;">证据：' + dsEsc(m.toolMeta.evidence) + '</div>' : '';
+              return '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:6px 10px;font-size:0.82rem;line-height:1.5;">'
+                + '<div style="font-weight:600;">🔧 ' + dsEsc(String(m.content).replace(/^🔧\s*/, '')) + '</div>'
+                + '<div style="color:#065f46;margin-top:2px;">用途：' + dsEsc(m.toolMeta.purpose || '') + '</div>' + _evi + '</div>';
+            }
+            return '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
+          }
+          if (m.role === 'assistant') {
+            // B#8: 最终回答渲染 Markdown，与普通对话体验一致
+            return '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;font-size:0.9rem;">' + dsMarkdown(m.content) + '</div>';
+          }
+          return '';
+        };
+        var _agentTick = setInterval(function () {
+          var _l = document.getElementById(loadingId);
+          if (!_l) { clearInterval(_agentTick); return; }
+          _l.innerHTML = _agentLive + '（已等 ' + Math.round((Date.now() - _agentT0) / 1000) + 's）';
+        }, 1000);
 
         try {
           // 【视觉模型接入】收集当前附件中的图片，传给智能体（纯新增；无图时传空数组，向后兼容）
@@ -5802,32 +5865,39 @@
             var _atts = (window._dsAttachments || []).filter(Boolean);
             _agentImgs = _atts.filter(function(a) { return a && a.isImage && a.dataUrl; }).map(function(a) { return a.dataUrl; });
           } catch (_e) { _agentImgs = []; }
-          var result = await window._agentRun(msg, _agentImgs);
+          var result = await window._agentRun(msg, _agentImgs, {
+            onStep: function (ev) {
+              if (!ev) return;
+              if (ev.phase === 'thinking') _agentLive = '🧠 正在思考（第 ' + (ev.round || 1) + ' 轮）';
+              else if (ev.phase === 'tool-start') _agentLive = '🔧 正在调用：' + ((ev.tools || []).join('、') || '工具');
+              else if (ev.phase === 'answer') _agentLive = '✍️ 正在整理回答';
+              if ((ev.phase === 'plan' || ev.phase === 'tool-done') && ev.step) {
+                var _card = _agentCardHtml(ev.step);
+                var _l2 = document.getElementById(loadingId);
+                if (_card) {
+                  if (_l2) _l2.insertAdjacentHTML('beforebegin', _card);   // 即时插到"思考中"行之前
+                  else historyEl.innerHTML += _card;
+                  ev.step.__rendered = true;                                // 标记：收尾时不再重复渲染
+                }
+              }
+              var _l3 = document.getElementById(loadingId);
+              if (_l3) _l3.innerHTML = _agentLive + '（已等 ' + Math.round((Date.now() - _agentT0) / 1000) + 's）';
+              historyEl.scrollTop = historyEl.scrollHeight;
+            }
+          });
+          clearInterval(_agentTick);
           // 移除加载提示
           var ld = document.getElementById(loadingId);
           if (ld) ld.remove();
           if (result && result.messages) {
             result.messages.forEach(function(m) {
-              if (m.role === 'agent-plan') {
-                historyEl.innerHTML += '<div style="margin-bottom:6px;background:#fffbeb;border-left:3px solid #f59e0b;color:#b45309;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
-              } else if (m.role === 'agent-tool') {
-                if (m.toolMeta) {
-                  // A2 透明卡片：用途 / 证据样例
-                  var _ev = m.toolMeta.evidence ? '<div style="color:#047857;margin-top:2px;white-space:pre-wrap;">证据：' + dsEsc(m.toolMeta.evidence) + '</div>' : '';
-                  historyEl.innerHTML += '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:6px 10px;font-size:0.82rem;line-height:1.5;">'
-                    + '<div style="font-weight:600;">🔧 ' + dsEsc(String(m.content).replace(/^🔧\s*/, '')) + '</div>'
-                    + '<div style="color:#065f46;margin-top:2px;">用途：' + dsEsc(m.toolMeta.purpose || '') + '</div>'
-                    + _ev + '</div>';
-                } else {
-                  historyEl.innerHTML += '<div style="margin-bottom:6px;background:#f0fdf4;border-left:3px solid #10b981;color:#047857;border-radius:6px;padding:5px 10px;font-size:0.82rem;line-height:1.5;">' + dsEsc(m.content) + '</div>';
-                }
-              } else if (m.role === 'assistant') {
-                // B#8: 最终回答渲染 Markdown，与普通对话体验一致
-                historyEl.innerHTML += '<div style="margin-bottom:10px;padding:10px 12px;background:#f0fdf4;border-radius:8px;line-height:1.7;font-size:0.9rem;">' + dsMarkdown(m.content) + '</div>';
-              }
+              if ((m.role === 'agent-plan' || m.role === 'agent-tool') && m.__rendered) return;   // 实时进度已插入过
+              var _c2 = _agentCardHtml(m);
+              if (_c2) historyEl.innerHTML += _c2;
             });
           }
         } catch(e) {
+          clearInterval(_agentTick);
           // 移除加载提示
           var ld = document.getElementById(loadingId);
           if (ld) ld.remove();

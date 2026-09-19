@@ -1708,6 +1708,35 @@
                 return true;
             }
 
+            // ── 「KB 索引就绪」闸门（2026-09-19 用户口径：超时即告知、不硬搜）────────────────
+            //   ⚠️ 为什么不能只写 Promise.race：`KB.search` 内部的 `ensureSource()` / `getBM()` 是
+            //   **同步**建索引 —— 若"等 N 秒没等到"之后照常调 search，该付的 CPU 一秒不少
+            //   （还会与在飞的异步建索引重复劳动），界面反而整段卡死，用户只看到"卡住"。
+            //   所以口径是：**等到就绪才检索；等不到就跳过 KB 检索**、退回关键词召回，并如实告知调用方。
+            //   · 并发去重：同一时刻只发起一份 ensure，其它调用等同一份在途 Promise（KB 内部也去重）。
+            //   · 冷却窗口：一次超时后 10s 内不再重复等 —— 多问题 / 多轮工具调用不会各等一次 N 秒。
+            //   · 索引在后台继续建（不取消）；建好后冷却自动解除，下次调用即恢复统一检索层。
+            var _acKbGate = { p: null, coolUntil: 0 };
+            function acKbEnsureReady(waitMs) {
+                var KB = window.KB;
+                if (!KB || typeof KB.ensure !== 'function') return Promise.resolve(true);
+                // ⚠️ 冷却判断必须在最前：索引仍在建立中时 _acKbGate.p 一直非空，若把冷却塞进
+                //    "无在途请求"分支里，多问题循环每轮都会各等一次 waitMs（实测 300ms×N）。
+                if (Date.now() < _acKbGate.coolUntil) return Promise.resolve(false);
+                if (!_acKbGate.p) {
+                    var p = Promise.resolve(KB.ensure(['rules', 'issues'])).then(
+                        function () { if (_acKbGate.p === p) { _acKbGate.p = null; _acKbGate.coolUntil = 0; } return true; },
+                        function () { if (_acKbGate.p === p) { _acKbGate.p = null; _acKbGate.coolUntil = 0; } return false; }
+                    );
+                    _acKbGate.p = p;
+                }
+                var cur = _acKbGate.p;
+                if (!(waitMs > 0)) return cur;
+                return Promise.race([cur, new Promise(function (r) {
+                    setTimeout(function () { _acKbGate.coolUntil = Date.now() + 10000; r(false); }, waitMs);
+                })]);
+            }
+
             /**
              * 【2026-09-19 用户口径】对规「召回链」对外唯一入口。
              *   「一键修改」等模块直接调用本函数 = 走智能对规同一套召回，**不要再另写一份**。
@@ -1719,9 +1748,10 @@
              *   · items：已归一化候选（案例走 acExtractRegulationQuote，与主链 _globalCandidatesMap 同口径），
              *     字段 { source:'issue'|'rule', title, fileNumber, article, clause, ... } 供外部模块直接用
              * opts.onProgress(msg)：进度回调（主链用它刷 UI；缺省不刷）
-             * opts.kbEnsureTimeout：KB.ensure 等待上限（毫秒；0/缺省=不设限，一键修改传 4000 防卡死）
-             * opts.skipEnsure：跳过本函数内的 KB.ensure（调用方已自行预热时用 —— 多问题循环里
-             *   每轮各等一次 4 秒上限会被拖成 N×4s，一键修改改为整轮只预热一次）
+             * opts.kbEnsureTimeout：KB.ensure 等待上限（毫秒；0/缺省=不设限，一键修改/智能体传 4000）。
+             *   ⚠️ 超时**不等于**"接着硬搜"：见 acKbEnsureReady 注释 —— 超时就跳过 KB 检索、退回关键词
+             *   召回，并在返回值里带 kbTimedOut + notice 让调用方如实告知用户（2026-09-19 用户口径）。
+             * opts.skipEnsure：跳过本函数内的 KB.ensure（调用方确已自行确保索引就绪时才用）
              */
             window.acRecallCandidates = async function (query, opts) {
                 opts = opts || {};
@@ -1752,18 +1782,18 @@
                 var inferredTrade = patchInferTrade(q);
                 var kbIssueHits = [];
                 var kbRulesUsed = false;
+                var kbTimedOut = false;     // 索引未就绪（等待超时）→ 本轮跳过统一检索层，走关键词召回
                 if (kbUsable) {
+                    var _kbReady = true;
+                    if (typeof window.KB.ensure === 'function' && !opts.skipEnsure) {
+                        _kbReady = await acKbEnsureReady(opts.kbEnsureTimeout > 0 ? opts.kbEnsureTimeout : 0);
+                    }
+                    if (!_kbReady) {
+                        kbTimedOut = true;   // 不硬搜：KB.search 内部会同步建索引，把界面卡死
+                        console.warn('[对规召回] 规章索引尚未就绪（等待超时）→ 本轮跳过统一检索层，改用关键词召回；索引在后台继续建立');
+                    }
                     try {
-                        if (typeof window.KB.ensure === 'function' && !opts.skipEnsure) {
-                            if (opts.kbEnsureTimeout > 0) {
-                                await Promise.race([
-                                    window.KB.ensure(['rules', 'issues']),
-                                    new Promise(function (r) { setTimeout(r, opts.kbEnsureTimeout); })
-                                ]);
-                            } else {
-                                await window.KB.ensure(['rules', 'issues']);
-                            }
-                        }
+                        if (_kbReady) {
                         var kbGroups = window.KB.search(expandedQuery, { sources: ['rules', 'issues'], topK: 8 });
                         var kbRuleHits = [];
                         kbGroups.forEach(function (g) {
@@ -1796,6 +1826,7 @@
                         ruleCandidates = ruleCandidates.slice(0, 6);
                         kbRulesUsed = ruleCandidates.length > 0;
                         console.log('[对规召回] 统一检索层：规章', ruleCandidates.length, '条，检查信息', kbIssueHits.length, '条');
+                        }
                     } catch (e) {
                         console.warn('[对规召回] 统一检索层失败，回退关键词召回：', e && e.message);
                         ruleCandidates = [];
@@ -1875,9 +1906,11 @@
                     ruleCandidates: ruleCandidates,
                     issueCandidates: issueCandidates,
                     items: items,
-                    recallSrc: '规章：' + (kbRulesUsed ? '统一检索层' : '关键词召回')
+                    recallSrc: '规章：' + (kbTimedOut ? '关键词召回（索引建立中）' : (kbRulesUsed ? '统一检索层' : '关键词召回'))
                              + '；案例：' + (kbIssueHits.length ? '统一检索层' : '本地匹配缓存'),
                     kbRecallUsed: !!(kbRulesUsed || kbIssueHits.length),
+                    kbTimedOut: kbTimedOut,
+                    notice: kbTimedOut ? '规章索引正在首次建立（本机缓存未就绪），本轮先用关键词召回；稍后重跑结果更准' : '',
                     inferredTrade: inferredTrade
                 };
             };
@@ -2093,7 +2126,31 @@
                     fbHint
                 ].join('\n');
 
-                container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div><span>🤖 AI 正在筛选最佳条款（' + _acRecallSrc + '，候选 ' + allCandidates.length + ' 条）…</span></div>';
+                // 【2026-09-19 B】AI 等待期进度：本地召回早已完成（实测 ~12ms），等待几乎全在模型这一步，
+                //   所以这里把"已等 Ns + 已召回什么"实时显示出来 —— 否则界面只有一行静态文字、像卡死。
+                var _acWaitT0 = Date.now();
+                var _acCandIssueN = 0, _acCandRuleN = 0;
+                allCandidates.forEach(function (id) {
+                    var _cc = _globalCandidatesMap[id];
+                    if (!_cc) return;
+                    if (_cc.source === 'issue') _acCandIssueN++; else _acCandRuleN++;
+                });
+                container.innerHTML = '<div style="padding:20px;color:var(--text-secondary);">'
+                    + '<div style="display:flex;align-items:center;gap:12px;">'
+                    + '<div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>'
+                    + '<span>🤖 AI 正在筛选最佳条款…</span></div>'
+                    + '<div id="ac-ai-wait" style="margin-top:8px;font-size:0.82rem;line-height:1.7;"></div>'
+                    + '</div>';
+                var _acWaitTick = function () {
+                    var el = document.getElementById('ac-ai-wait');
+                    if (!el) return;
+                    var sec = Math.round((Date.now() - _acWaitT0) / 1000);
+                    el.innerHTML = '⏱ 已等 <strong>' + sec + 's</strong>　｜　已召回 <strong>' + allCandidates.length + '</strong> 条候选'
+                        + '（历史案例 ' + _acCandIssueN + ' · 规章库 ' + _acCandRuleN + '；' + acEscHtml(_acRecallSrc) + '）→ 已交 AI 精排'
+                        + (sec >= 20 ? '<br><span style="color:#b45309;">模型响应较慢，仍在等待…（可关掉本页或稍后重试）</span>' : '');
+                };
+                _acWaitTick();                                   // 先画一次，不等第一个 500ms
+                var _acWaitTimer = setInterval(_acWaitTick, 500);
 
                 console.log('[AI对规] 阶段3：发送AI请求，召回来源:', _acRecallSrc, '候选', allCandidates.length, '个，模型:', model);
 
@@ -2114,10 +2171,8 @@
                             }
                         }
                     } catch (_e) { /* 视觉注入失败则退化为纯文本 */ }
-                    // DeepSeek V4 起思考模式默认开启，思维链同样计费/占用生成预算，
-                    // 原 max_tokens=1024 极易被思维链吃光导致 JSON 被截断（下方那一大段「截断补全」容错
-                    // 就是被这个逼出来的）。这里抬到 4096；若用户在设置中关闭思考模式，则又回到
-                    // 「temperature 0.0 真正生效」的严格确定性模式。
+                    // max_tokens=4096：历史原因是被思考链吃光预算、JSON 被截断（下方「截断补全」容错就是
+                    // 被它逼出来的）。**现在对规恒定关思考（见下）**，输出只是一个小 JSON，4096 纯属富余保险。
                     const _scBody = {
                         model: model,
                         messages: [
@@ -2128,8 +2183,14 @@
                         max_tokens: 4096,
                         stream: false
                     };
+                    // 【2026-09-19 用户拍板 A】对规**强制关思考**（mode:'off'，与「一键修改」走 dsCallOnce 的默认口径一致）。
+                    //   原因（实测）：对规本质是"从 ≤10 条候选里挑 1-3 个 ID + 回显问题原文"，不需要长思维链；
+                    //   原先不传 mode → 落到 doubao-common.js 的"深度任务恒定 high"，请求体带着
+                    //   thinking:{type:'enabled'} + reasoning_effort:'high'，白烧预算且明显拉长等待
+                    //   （本地召回实测仅 ~12ms，等待几乎全在这一步）。
+                    //   若某次挑选质量不满意，可把「设置 → 思考模式」设为"始终开启"再对比，或把 mode 改回不传。
                     if (typeof window.dsThinkingParam === 'function') {
-                        Object.assign(_scBody, window.dsThinkingParam({ apiUrl: apiUrl, model: model }));
+                        Object.assign(_scBody, window.dsThinkingParam({ apiUrl: apiUrl, model: model, mode: 'off' }));
                     }
                     const resp = await fetch(apiUrl, {
                         method: 'POST',
@@ -2431,6 +2492,7 @@
                     }
                 } finally {
                     window._dsAbortController = null;
+                    if (_acWaitTimer) { clearInterval(_acWaitTimer); _acWaitTimer = null; }   // B：收尾停掉等待期计时
                 }
             };
 

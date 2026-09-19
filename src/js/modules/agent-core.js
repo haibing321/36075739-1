@@ -576,17 +576,11 @@
           return { error: '对规模块未就绪（缺少条款正文/条号抽取函数，smart-check.js 版本过旧）' };
         }
         try {
-          // 整轮只预热一次（同 diary 侧口径）：否则智能体多轮各调一次本工具，会各等一次 4 秒上限
-          if (window.KB && typeof window.KB.ensure === 'function' && !window.__agentAcEnsured) {
-            window.__agentAcEnsured = true;
-            try {
-              await Promise.race([
-                window.KB.ensure(['rules', 'issues']),
-                new Promise(function(r) { setTimeout(r, 4000); })
-              ]);
-            } catch (e) {}
-          }
-          var rec = await window.acRecallCandidates(q, { skipEnsure: true });
+          // 索引就绪闸门在 acRecallCandidates 内部（2026-09-19 用户口径：超时即告知、不硬搜）：
+          //   等不到索引就跳过 KB、走关键词召回并经 kbTimedOut 回传，绝不"超时后照常 search"
+          //   （KB.search 内部同步建索引 → 界面整段卡死）。一次超时后自带冷却窗口，多轮工具
+          //   调用不会各等一次 4 秒，故这里不再自己预热、也不再需要 __agentAcEnsured 去重。
+          var rec = await window.acRecallCandidates(q, { kbEnsureTimeout: 4000 });
           var items = [], hbN = 0;
           (rec.items || []).forEach(function(c) {
             if (items.length >= limit) return;
@@ -628,6 +622,10 @@
               : '未召回到相关规章条款：可换关键词用 kb_search / search_rules 换个角度再找，或请用户补充问题描述'
           };
           if (hbN) out['口径提醒'] = '已剔除 ' + hbN + ' 条检查手册（手册是检查项点，不作为规章依据）';
+          if (rec.kbTimedOut) {
+            out['口径提醒'] = (out['口径提醒'] ? out['口径提醒'] + '；' : '')
+              + '规章索引正在首次建立，本条候选来自关键词召回（未走统一检索层），如需更准可稍后重试本工具';
+          }
           return out;
         } catch (e) {
           return { error: '对规召回失败：' + (e && e.message) };
@@ -752,7 +750,12 @@
   }
 
   // ========== ReAct 执行循环 ==========
-  window._agentRun = async function(userMessage, visionContent) {
+  // 【2026-09-19 实时进度】第三个参数 opts.onStep(ev)：执行过程**边跑边报**，调用方可即时渲染
+  //   （原先只能等整轮结束拿返回值，界面全程静止）。不传 opts 时行为与以前完全一致。
+  //   事件：{phase:'plan'} 计划卡 / {phase:'thinking', round} 第 N 轮请求模型 /
+  //        {phase:'tool-start', tools:[名]} 本轮工具开始执行 / {phase:'tool-done', step} 单个工具完成 /
+  //        {phase:'answer', content} 最终回答
+  window._agentRun = async function(userMessage, visionContent, opts) {
     // 【视觉模型接入】记录本轮图片（dataUrl 数组），供 _callLLM 注入首条 user（纯新增，旧调用不传则无影响）
     window.__agentVisionContent = (visionContent && Array.isArray(visionContent) && visionContent.length) ? visionContent : null;
     // B#9: 密钥预检，未配置直接返回友好提示，避免白跑 ReAct 循环
@@ -827,6 +830,9 @@
       { role: 'user', content: userMessage }
     ];
     var renderMsgs = [{ role: 'agent-plan', content: '🧠 智能体·启动', plan: [] }];
+    var _onStep = (opts && typeof opts.onStep === 'function') ? opts.onStep : function () {};
+    function _emit(ev) { try { _onStep(ev); } catch (e) { console.warn('[agent] onStep 回调异常：', e && e.message); } }
+    _emit({ phase: 'plan', step: renderMsgs[0] });
     var maxLoops = 15; // B#6: 上限 15，复杂任务更从容（含搜索+detail+分析+report）
     var planShown = false;
     var lastCallKey = '', repeatCount = 0;
@@ -837,6 +843,7 @@
     var loopError = null;
     try {
     for (var loop = 1; loop <= maxLoops; loop++) {
+      _emit({ phase: 'thinking', round: loop });
       var assistantMsg = await _callLLM(messages, true);
       var toolCalls = assistantMsg.tool_calls;
 
@@ -866,7 +873,7 @@
         // C#12: 渲染工具调用前的计划说明（仅首次）
         if (!planShown) {
           var preText = (assistantMsg.content || '').replace(/```json[\s\S]*?```/gi, '').trim();
-          if (preText) { renderMsgs.push({ role: 'agent-plan', content: '📋 ' + preText }); planShown = true; }
+          if (preText) { renderMsgs.push({ role: 'agent-plan', content: '📋 ' + preText }); planShown = true; _emit({ phase: 'plan', step: renderMsgs[renderMsgs.length - 1] }); }
         }
         // 把 assistant 消息原样加入（含 tool_calls），供 API 配对
         messages.push(assistantMsg);
@@ -887,6 +894,7 @@
               var reflectMsg = '⚠️ 你正在重复调用相同工具，请停止重复，直接基于已有信息给出最终自然语言回答，或换一个不同的检索角度。';
               messages.push({ role: 'user', content: reflectMsg });
               renderMsgs.push({ role: 'agent-tool', content: '🔄 反思：检测到重复调用，已提示智能体换策略' });
+              _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
               reflectUsed = true;
               repeatCount = 0;
               // ⚠️ 必须 continue：反思的语义就是「本轮不再执行工具」。原先缺少 continue 会用同一批
@@ -898,6 +906,7 @@
               var dupMsg = '⚠️ 检测到重复调用，已提前终止';
               taskRecord.finalOutput = dupMsg;
               renderMsgs.push({ role: 'agent-tool', content: dupMsg });
+              _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
               break;
             }
           }
@@ -905,6 +914,8 @@
 
         // 本轮工具并行执行：get_weather 等含网络请求（5s 超时），串行会把延迟叠加到一轮里。
         // 结果仍按 toolCalls 原顺序回灌 —— API 要求 tool 消息与 tool_calls 顺序一一对应。
+        // 执行前先报"正在调用"，调用方据此显示实时状态（工具内含 KB 冷建时尤其需要）
+        _emit({ phase: 'tool-start', tools: toolCalls.map(function(tc) { return tc.function.name; }) });
         var pending = toolCalls.map(function(tc) {
           var a = {};
           try { a = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e) { a = {}; }
@@ -924,12 +935,14 @@
             tool: tc.function.name,
             toolMeta: { name: tc.function.name, purpose: _toolPurpose(tc.function.name), evidence: _toolEvidence(execResult) }
           });
+          _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
           // 部分网关（含 DeepSeek 兼容层）要求 tool 消息带 name，缺字段会被判 400
           messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(execResult) });
         }
       } else {
         taskRecord.finalOutput = assistantMsg.content || '';
         renderMsgs.push({ role: 'assistant', content: assistantMsg.content || '' });
+        _emit({ phase: 'answer', content: assistantMsg.content || '' });
         break;
       }
     }

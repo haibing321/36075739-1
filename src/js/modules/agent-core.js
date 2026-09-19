@@ -23,7 +23,8 @@
     search_material: '检索写作参考资料库',
     get_material_detail: '调取参考资料详情',
     read_diary: '读取历史工作日志',
-    kb_search: '统一检索本地知识库（跨源、按条款/段落粒度，带出处）'
+    kb_search: '统一检索本地知识库（跨源、按条款/段落粒度，带出处）',
+    autocheck: '对规：按问题描述召回最贴合的规章条款（与「智能对规」同一套召回）'
   };
   function _toolPurpose(name) { return _TOOL_PURPOSE[name] || '调用工具'; }
   function _toolEvidence(execResult) {
@@ -32,7 +33,7 @@
       if (!r) return '';
       if (Array.isArray(r.items) && r.items.length) {
         return r.items.slice(0, 2).map(function(it) {
-          return [it.单位, it.标题, it.专业, it.摘要].filter(Boolean).join(' · ');
+          return [it.单位, it.标题, it.专业, it.摘要, it.结论式].filter(Boolean).join(' · ');
         }).join('\n');
       }
       if (typeof r.total === 'number') return '命中 ' + r.total + ' 条';
@@ -550,6 +551,88 @@
           return { error: '检索失败：' + (e && e.message) };
         }
       }
+    },
+    // 【2026-09-19 用户口径 A】对规工具：**不自己搜规章**，而是调「智能对规」同一套召回
+    //   （window.acRecallCandidates）—— 保证智能体拿到的候选与对规模块完全同源；也不再另调 AI
+    //   （挑选交给智能体自己那一轮推理）。结论式句式由本地拼装 → 引号内原文与条号逐字可靠。
+    {
+      name: 'autocheck',
+      description: '对规：给一段"检查发现问题"描述，返回最贴合的规章条款候选（与「智能对规」模块同一套召回：先看检查信息里相似问题已引用过的条款，再查规章库）。每条给出法规名、条号、条款原文，以及可直接引用的「结论式」句子。写"不符合《…》第X条“原文”的规定。"这类规章依据时优先用它',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '检查发现问题描述（越具体越准，如"信号机灯丝断丝未及时更换"）' },
+          limit: { type: 'number', description: '返回候选条数(可选，默认 5，最大 8)' }
+        },
+        required: ['query']
+      },
+      handler: async function(args) {
+        if (typeof window.acRecallCandidates !== 'function') return { error: '对规模块未就绪（smart-check.js 未加载）' };
+        var q = String(args.query || '').trim();
+        if (!q) return { error: '缺少 query（检查问题描述）' };
+        var limit = Math.min(Math.max(parseInt(args.limit, 10) || 5, 1), 8);
+        // 正文/条号抽取统一走共用层（与「一键修改」同一口径）；缺了它宁可报错也不能自己乱写
+        if (typeof window.acRegBodyText !== 'function' || typeof window.acUsableRegBody !== 'function' || typeof window.acArticleNoFromText !== 'function') {
+          return { error: '对规模块未就绪（缺少条款正文/条号抽取函数，smart-check.js 版本过旧）' };
+        }
+        try {
+          // 整轮只预热一次（同 diary 侧口径）：否则智能体多轮各调一次本工具，会各等一次 4 秒上限
+          if (window.KB && typeof window.KB.ensure === 'function' && !window.__agentAcEnsured) {
+            window.__agentAcEnsured = true;
+            try {
+              await Promise.race([
+                window.KB.ensure(['rules', 'issues']),
+                new Promise(function(r) { setTimeout(r, 4000); })
+              ]);
+            } catch (e) {}
+          }
+          var rec = await window.acRecallCandidates(q, { skipEnsure: true });
+          var items = [], hbN = 0;
+          (rec.items || []).forEach(function(c) {
+            if (items.length >= limit) return;
+            var title = String(c.title || '').trim();
+            var clause = String(c.clause || '').trim();
+            if (!title || !clause) return;
+            // 手册不是规章依据（用户口径）—— 对规主链不排除手册，这里按标题/路径剔除
+            if (/手册/.test(title + ' ' + (c.kbPath || ''))) { hbN++; return; }
+            if (c.source === 'issue') {
+              // 案例召回的「策略2 降级」：提不出《法规》时 title 是占位名（"历史案例参考"）、
+              //   正文是案例原文摘要 → 不能当规章依据：先按引用句里的《法规名》兜底，否则丢弃
+              if (!title || title === '历史案例参考' || title.indexOf('《') !== -1) {
+                var mt = clause.match(/《([^》]{1,60})》/);
+                title = mt ? mt[1] : '';
+              }
+              if (!title || !/《/.test(clause)) return;
+            }
+            // 正文与条号一律走共用层抽取函数（不依赖 items 是否预带 body/articleNo 字段）
+            var body = window.acRegBodyText(c.body || c.clause || '').replace(/[。.]\s*$/, '').slice(0, 300);
+            if (!window.acUsableRegBody(body)) return;      // 只有条号/空壳的不能成文（否则是伪依据）
+            var artNo = String(c.articleNo || '').trim()
+              || window.acArticleNoFromText(c.article || '')
+              || window.acArticleNoFromText(c.clause || '');
+            var art = artNo ? ('第' + artNo + '条') : '';
+            items.push({
+              法规名称: title,
+              条号: art || '',
+              条款原文: body,
+              结论式: '不符合《' + title + '》' + art + '“' + body + '”的规定。',
+              来源: (c.source === 'issue') ? '历史案例已引用' : '规章库'
+            });
+          });
+          var out = {
+            total: items.length,
+            items: items,
+            召回来源: rec.recallSrc || '',
+            note: items.length
+              ? '「结论式」可直接引用：引号内的条款原文与条号已按库内原文逐字给出，请勿改写'
+              : '未召回到相关规章条款：可换关键词用 kb_search / search_rules 换个角度再找，或请用户补充问题描述'
+          };
+          if (hbN) out['口径提醒'] = '已剔除 ' + hbN + ' 条检查手册（手册是检查项点，不作为规章依据）';
+          return out;
+        } catch (e) {
+          return { error: '对规召回失败：' + (e && e.message) };
+        }
+      }
     }
   ];
 
@@ -572,6 +655,9 @@
       return { ok: false, tool: toolName, error: (e && e.message) ? e.message : String(e || '未知错误') };
     }
   }
+
+  // 诊断/自检入口：不经过模型，直接跑单个工具并拿到它的返回（排查"工具结果为何是这样"用）
+  window._agentRunTool = function(toolName, params) { return _executeTool(toolName, params || {}); };
 
   // ========== 解析文本 JSON 兜底（仅当模型未用标准 tool_calls 且内容顶格为 JSON 块时）==========
   function _parseToolCall(content) {
@@ -715,6 +801,7 @@
     system += '8. 引用典型问题写报告时，默认列举不超过 35 条；若用户明确要更多，可在 search_issues 中加大 limit（无上限），不要自行截断或估算\n';
     system += '9. 做统计/计数（如"某时段共多少条""按性质分布"）时，必须用 count_issues 或读取 search_issues 返回的 total（该值为时间范围内真实总数，不封顶）；务必统计时间范围内的全部，不得因条数多而只取前 N 条或估算\n';
     system += '10. 检索本地资料（规章条款 / 检查信息 / 检查手册 / 写作资料 / 历史报告 / 应急电话 / 工作日志）时，优先用 kb_search：它跨源统一检索、按条款/段落粒度返回并带出处，通常比逐个调用单项检索更全；只有需要精确计数或按时间范围列明细时，才用 count_issues / search_issues 等单项工具\n';
+    system += '11. 需要给"检查发现问题"写规章依据 / 对规结论（如"不符合《X》第Y条“条款原文”的规定。"）时，**必须先用 autocheck 工具**取候选，并直接引用它返回的「结论式」——引号内的条款原文与条号一律照抄，不得改写、不得自行编造条款；autocheck 无候选时再用 kb_search / search_rules 换个角度找，仍无则如实说明"未找到可引用的规章依据"\n';
 
     try {
       var ctx = await window.getRecentAgentContext();

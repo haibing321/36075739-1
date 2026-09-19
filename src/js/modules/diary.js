@@ -1855,8 +1855,10 @@
                 var q = String(text || '').trim();
                 if (!q) return [];
                 try {
-                    // skipEnsure：索引由 diaryAiBuildCtx 整轮预热一次（否则多问题会各等一次 4 秒上限 → N×4s）
-                    var r = await window.acRecallCandidates(q.slice(0, 400), { kbEnsureTimeout: 4000, skipEnsure: true });
+                    // 索引就绪闸门在 acRecallCandidates 内部（超时即告知、不硬搜；已有冷却窗口，
+                    //   多问题循环不会各等一次 4 秒）。这里只负责把"本轮用的是关键词召回"如实回传。
+                    var r = await window.acRecallCandidates(q.slice(0, 400), { kbEnsureTimeout: 4000 });
+                    if (r && r.kbTimedOut) _diaryAiKbWarn = r.notice || '规章索引正在建立中，本轮先用关键词召回；稍后重跑结果更准';
                     var out = [];
                     (r.items || []).forEach(function (c) {
                         var body = String(c.clause || '').trim();
@@ -2000,17 +2002,9 @@
                         c.issue = issueIdx;
                         ctx.cands.push(c);
                     };
-                    // 【性能·2026-09-19】对规召回内部会 KB.ensure；多问题循环里若每轮各等一次 4 秒上限，
-                    //   索引未就绪时会被拖成 N×4s。这里**整轮只预热一次**（同样 4 秒上限），循环里传 skipEnsure。
-                    //   索引已就绪（开机自动载入）时这一步近乎零成本。
-                    try {
-                        if (window.KB && typeof window.KB.ensure === 'function') {
-                            await Promise.race([
-                                window.KB.ensure(['rules', 'issues']),
-                                new Promise(function (r) { setTimeout(r, 4000); })
-                            ]);
-                        }
-                    } catch (e) { console.warn('[diary][ai] 规章索引预热失败（继续用现有索引）：', e && e.message); }
+                    // 【性能·2026-09-19】不再单独预热：索引就绪闸门已在 acRecallCandidates 内部
+                    //   —— 等 4 秒等不到就跳过 KB、走关键词召回并如实告知，且一次超时后有冷却窗口，
+                    //   多问题循环不会各等一次 4 秒；索引已就绪时这一步本就是零成本。
                     for (var k = 0; k < missing.length && ctx.cands.length < 36; k++) {
                         var it = String((rec.issues || [])[missing[k]] || '');
                         // 完全走「智能对规」的整套召回（历史案例 + 规章库），不再自己查台账/另写 KB 召回
@@ -2346,57 +2340,24 @@
                 el.innerHTML = html;
                 el.style.display = 'block';
             }
-            // ---- 悬浮气泡（点击后的"有反应"反馈）：固定右下角，不受滚动位置影响 ----
-            //   为什么必须有它：回执面板在卡片顶部，用户在下方编辑区点按钮时它在屏幕外；
-            //   而模型单条要 10~40 秒，界面若一动不动就会被当成"点坏了"（用户实测反馈）。
-            var _diaryAiToastTimer = null, _diaryAiTick = null, _diaryAiNote = '';
+            var _diaryAiTick = null, _diaryAiNote = '';
+            var _diaryAiKbWarn = '';       // 本轮"索引建立中 → 先用关键词召回"提示（写进回执 notes，只提示一次）
             var _diaryAiRunCtx = null;    // 本次运行的 {kind,stats,details}：让回执框能"边跑边填"
             var DIARY_AI_VER = '2026-09-18k';       // 版本号：**只打印在控制台**（回执里已按用户要求不再显示）
-            // 按钮旁的进度文字（点击后立刻出现，最不会错过的反馈位置）
+            // 【2026-09-19 用户口径】已整套去掉"悬浮气泡"（原 #diary-ai-toast：秒表 + 点此停止/查看）。
+            //   现在的"点击即有反应"由两处承担，且都仍在同一个同步 tick 内出现：
+            //     ① 按钮旁进度文字 diaryAiInline（就在刚点的按钮边上，最不会错过）；
+            //     ② 回执面板 diaryAiRenderRun 边跑边填，并由 diaryAiPanelEnsureVisible 滚入视野。
+            //   ⚠️ 以后不要再加回悬浮窗 —— 用户明确要求去掉。
             function diaryAiInline(text) {
                 var el = document.getElementById('diary-ai-fix-inline');
                 if (el) el.textContent = text || '';
-            }
-            function diaryAiToast(html, opts) {
-                opts = opts || {};
-                var el = document.getElementById('diary-ai-toast');
-                if (!el) {
-                    el = document.createElement('div');
-                    el.id = 'diary-ai-toast';
-                    // 放在**屏幕顶部居中**：底部右下角容易被手机底部栏/悬浮按钮挡住（实测"气泡没出现"的可能原因之一）
-                    Object.assign(el.style, {
-                        position: 'fixed', top: '12px', left: '50%', transform: 'translateX(-50%)',
-                        maxWidth: 'min(94vw, 460px)',
-                        background: '#1e293b', color: '#fff', padding: '10px 14px', borderRadius: '14px',
-                        fontSize: '0.84rem', lineHeight: '1.5', fontWeight: '600',
-                        boxShadow: '0 4px 14px rgba(0,0,0,.3)', zIndex: '10150',
-                        opacity: '0', transition: 'opacity .25s ease', cursor: 'default'
-                    });
-                    document.body.appendChild(el);
-                }
-                el.innerHTML = html;
-                el.style.opacity = '1';
-                el.style.cursor = opts.onClick ? 'pointer' : 'default';
-                el.onclick = opts.onClick || null;
-                if (_diaryAiToastTimer) { clearTimeout(_diaryAiToastTimer); _diaryAiToastTimer = null; }
-                if (opts.sticky !== true) {
-                    _diaryAiToastTimer = setTimeout(function () { el.style.opacity = '0'; }, opts.ms || 4000);
-                }
-                return el;
             }
             function diaryAiTickStart(stats) {
                 diaryAiTickStop();
                 diaryAiBtnBusy(true);
                 var render = function () {
                     var sec = Math.round((Date.now() - stats.t0) / 1000);
-                    var head = '✨ AI 修改中…' + (stats.total > 1 ? ('（' + Math.max(1, stats.done + 1) + '/' + stats.total + '）') : '')
-                        + ' 已用 ' + sec + 's';
-                    var hint = _diaryAiNote || '正在调用模型（单条通常 10~40 秒）';
-                    // 超过 20s 主动说明"还在等、上限多久" —— 否则用户以为死机（实测反馈）
-                    if (sec >= 20) hint = '模型响应较慢，仍在等待（已 ' + sec + 's，最长等 ' + Math.round(diaryAiTimeout() / 1000) + 's）— 可点此停止';
-                    diaryAiToast(head + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">'
-                        + escapeHtml(hint) + '<br>点此停止</div>',
-                        { sticky: true, onClick: function () { window.diaryAiStop(); } });
                     diaryAiInline('✨ 修改中 ' + sec + 's…');      // 按钮旁：最不会错过的反馈
                     if (_diaryAiBusy) diaryAiRenderRun();          // 框里同步刷新（计数 + 已到的结果）
                 };
@@ -2417,7 +2378,6 @@
                     if (r.top < 0 || r.bottom > (window.innerHeight || 0)) el.scrollIntoView({ block: 'nearest' });
                 } catch (e) {}
             }
-            function diaryAiElapsed(stats) { return stats && stats.t0 ? Math.round((Date.now() - stats.t0) / 1000) : 0; }
             /** 运行中刷新回执框（计数 + 已到的结果）：由 500ms 心跳与运行开始时调用 */
             function diaryAiRenderRun() {
                 var rc = _diaryAiRunCtx;
@@ -2482,18 +2442,15 @@
                         + '先在「📋 工作内容 / ⚠️ 检查发现问题」里写点什么，再点「✨ 一键修改」。</div>'
                         + '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" onclick="document.getElementById(\'diary-ai-fix-panel\').style.display=\'none\'">关闭</button></div>');
                     diaryAiInline('');
-                    diaryAiToast('ℹ️ ' + escapeHtml(def.label) + ' 还没有可修改的内容', { ms: 4000 });
+                    diaryAiPanelEnsureVisible();   // 去了气泡：把回执框滚进视野，保证这条提示被看到
                     return;
                 }
                 // 【点击即有反馈（用户实测："气泡未立即启动"）】—— 反馈必须在**同一个同步 tick** 内画出来：
-                //   浏览器要等 JS 让出才会重绘，只要点击处理里不 await、不做重活，气泡就会立即出现。
+                //   浏览器要等 JS 让出才会重绘，只要点击处理里不 await、不做重活，按钮旁文字与回执框就会立即出现。
                 //   顺带把按钮置灰，避免连点；真正的准备工作（备份/对规召回）放在后面。
                 var t0 = Date.now();
                 diaryAiInline('✨ 准备中…');
                 diaryAiBtnBusy(true);
-                diaryAiToast('✨ AI 修改中…（' + escapeHtml(def.label) + '）'
-                    + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">正在准备（对规召回/规章索引）…点此停止</div>',
-                    { sticky: true, onClick: function () { window.diaryAiStop(); } });
                 diaryAiPanelEnsureVisible();
                 window.diaryAiRun(kind, t0);
             };
@@ -2517,7 +2474,8 @@
                 var needKb = list.some(function (d) {
                     return (d.issues || []).some(function (x, i) { return String(x || '').trim() && !String(((d.regulations || [])[i]) || '').trim(); });
                 });
-                _diaryAiNote = '准备中…' + (needKb ? '（含规章索引恢复/建立，最多等 4 秒）' : '');
+                _diaryAiKbWarn = '';
+                _diaryAiNote = '准备中…' + (needKb ? '（含规章索引恢复/建立；没就绪则本轮先用关键词召回）' : '');
                 // 【点击即刻弹出回执框】这一步全在同步路径上（之前没有任何 await），浏览器重绘即出现：
                 //   框里先立好"建议补的规章依据 / 改动明细"两块与 ⏳ 状态，模型返回后往里填内容
                 _diaryAiRunCtx = { kind: kind, stats: stats, details: details };
@@ -2567,6 +2525,7 @@
                             // 回执只认"真实发生的改动"（见 diaryAiApplyResult 注释）
                             var applied = diaryAiChangesOf(ap.applied, res.changes);
                             var aiNotes = (res.notes || []).slice();
+                            if (_diaryAiKbWarn) { aiNotes.unshift(_diaryAiKbWarn); _diaryAiKbWarn = ''; }   // 整轮只提示一次
                             if (!applied.length && (res.changes || []).length) {
                                 aiNotes.push('模型报告了 ' + res.changes.length + ' 处改动，但与底稿逐字一致（可能上次已改过或模型复述），未产生实际改动');
                             }
@@ -2587,17 +2546,7 @@
                     diaryAiTickStop();
                     diaryAiRefreshViews();
                     diaryAiReport(kind, stats, details, Date.now() - stats.t0);
-                    // 完成气泡同样只留有意义的项（0 不显示）
-                    var _tChips = ['改动 ' + stats.changed + ' 处'];
-                    if (stats.suggestions) _tChips.push('候选 ' + stats.suggestions + ' 条');
-                    if (stats.warns) _tChips.push('拦下 ' + stats.warns);
-                    if (stats.notes) _tChips.push('待复核 ' + stats.notes);
-                    if (stats.skipped) _tChips.push('跳过 ' + stats.skipped);
-                    if (stats.failed) _tChips.push('失败 ' + stats.failed);
-                    diaryAiToast('✅ AI 修改完成：' + _tChips.join(' · ')
-                        + ' ｜ 已用 ' + diaryAiElapsed(stats) + 's'
-                        + '<div style="font-weight:400;font-size:0.78rem;opacity:.85;margin-top:2px;">点此查看改动明细与「↩️ 撤销」</div>',
-                        { ms: 8000, onClick: function () { var p = document.getElementById('diary-ai-fix-panel'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
+                    // 已完成：不再弹气泡（用户口径 2026-09-19）—— 计数、明细与「↩️ 撤销」都在回执框里
                 }
             };
             function diaryAiReport(kind, stats, details, ms, opts) {
@@ -2750,7 +2699,9 @@
                     diaryAiReport(_diaryAiLastReport.kind, _diaryAiLastReport.stats, _diaryAiLastReport.details, _diaryAiLastReport.ms);
                 }
                 diaryAiRefreshViews();
-                diaryAiToast('✅ 已写入规章依据：' + escapeHtml(String(txt).slice(0, 42)) + (String(txt).length > 42 ? '…' : ''), { ms: 3000 });
+                // 去了气泡：采纳回执只在按钮旁文字上闪一下（回执框里也会标「✅ 已采纳」）
+                diaryAiInline('✅ 已写入规章依据');
+                setTimeout(function () { diaryAiInline(''); }, 3000);
             };
             window.diaryAiUndoAiFix = function () {
                 var bk = null;

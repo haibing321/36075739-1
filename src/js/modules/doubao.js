@@ -5149,11 +5149,11 @@
             if (unit) userMsg += '- 限定责任单位：' + unit + '\n';
             userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
             userMsg += '- 输出格式：' + formatDesc + '\n';
-            userMsg += '- 可参考下方【事故专业案例】中的真实事故案例，结合检查信息开展研判，使结论更具针对性。\n';
+            userMsg += '- 可参考下方【事故案例】（来自规章制度库「事故案例」专业）与【相关规章条款】中的真实案例与条款，结合检查信息开展研判，使结论更具针对性。\n';
             userMsg += '\n请开始分析。';
 
             messages = [
-              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。\n【重要约束】你只能引用下方【检查信息】真实汇总数据中的统计数字、案例与日期，严禁虚构任何统计数字、事故案例或时间；若某方面数据不足，必须如实说明"数据不足"，不得编造或推测具体数字。' },
+              { role: 'system', content: '你是铁路安全风险分析专家。请严格按照用户要求的时间范围、专业限定、分析重点和输出格式进行分析。\n【重要约束】统计数字与日期只能来自下方【检查信息】真实汇总数据；【事故案例】与【相关规章条款】可如实引用其名称与内容（引用时标明名称/出处），但严禁虚构任何统计数字、事故案例或时间；若某方面数据不足，必须如实说明"数据不足"，不得编造或推测具体数字。' },
               { role: 'user', content: userMsg }
             ];
             // 【视觉模型接入】若当前附件含图片且模型支持视觉，把首条 user 消息 content 改为多模态数组
@@ -5273,6 +5273,33 @@
       window.refineRiskAnalysis = function() {
         window.runRiskAnalysis(true);
       };
+
+      /**
+       * 事故案例「相关度排序」（风险研判内部用 · 纯内存，无索引依赖）：
+       *   按研判重点分词命中打分 —— 标题命中 +3、正文命中 +1（同一词最多计 3 次），等分保持原库顺序。
+       *   目的：与研判重点相关的案例排前面，同时**不丢弃**不相关案例（模型仍能看到库里有哪些案例）。
+       */
+      function _riskRankCases(list, focus) {
+        var f = String(focus || '').trim();
+        if (!f || !list || list.length < 2) return list || [];
+        var terms = f.split(/[\s,，、;；/|]+/).filter(function (x) { return !!x; });
+        if (!terms.length) terms = [f];
+        var scored = list.map(function (r, i) {
+          var t = String((r && r.title) || '').toLowerCase();
+          var c = String((r && r.content) || '').toLowerCase().slice(0, 4000);
+          var s = 0;
+          terms.forEach(function (w) {
+            w = String(w).toLowerCase();
+            if (!w) return;
+            if (t.indexOf(w) !== -1) s += 3;
+            var hit = 0, idx = c.indexOf(w);
+            while (idx !== -1 && hit < 3) { s += 1; hit++; idx = c.indexOf(w, idx + w.length); }
+          });
+          return { r: r, i: i, s: s };
+        });
+        scored.sort(function (a, b) { return (b.s - a.s) || (a.i - b.i); });
+        return scored.map(function (x) { return x.r; });
+      }
 
       async function _buildRiskDataSummary(dateStart, dateEnd, unitFilter) {
         var parts = [];
@@ -5406,28 +5433,71 @@
           }
         } catch(e) {}
 
-        // ---------- 读取规章制度库中的事故专业案例（按专业归类） ----------
+        // ---------- 读取规章制度库：「事故案例」专业（按专业归类）+ 相关规章条款 ----------
+        // 【2026-09-20 修正 · 用户口径】"事故案例"在规章制度模块里就是一个**专业分类**（rule.trade），
+        //   所以案例要**按专业判定**（结构化，比正则可靠），而不是"拿研判重点去检索、命中什么都算案例"。
+        //   同时修掉两个既有缺陷：
+        //   ① 旧 KB 路径：填了研判重点时检索词只剩重点词 → 命中的是普通条款，却标注成「事故专业案例」，
+        //      并且因"有命中"而跳过兜底 → 名实不符（模型以为在看案例，其实是条款）；
+        //   ② 旧兜底路径：把 ruleCollection 的 getAll() 结果（整库只有一条记录 {id:1,data:[...rules]}）
+        //      当单条规章读 r.title / r.content → 永远匹配 0 条（该分支实则恒输出"未匹配到"）。
+        //   现在：案例段走内存数组（getRulesData）+ 按研判重点本地排序（**不依赖 KB**，KB 关闭/未就绪也有案例）；
+        //        条款段仍走统一检索层（带出处）；两段分开标注，谁都不冒充谁。
         try {
           var riskFocus = (document.getElementById('risk-focus') ? document.getElementById('risk-focus').value : '') || '';
-          // 【v3.74】优先走统一检索层：按「研判重点」检索规章条款/事故案例（条款级命中 + 出处）。
-          //   取代原先"全表 getAll + 正则筛 事故|案例|事件|通报|险情|故障 + 按重点排前 10"——
-          //   那次全表扫描是研判耗时的大头，且正则命中无排序、摘要只截前 200 字。
-          //   未命中 / 开关 kb_agent 关闭 / KB 未加载 → 原逻辑作为兜底（下面 if (!_kbCaseDone) 段）。
-          var _kbCaseDone = false;
+          var _rf = String(riskFocus).trim();
+          var _caseTradeOf = function (t) { return String(t == null ? '' : t).indexOf('案例') !== -1; };
+          var _rulesLive = (typeof window.getRulesData === 'function') ? (window.getRulesData() || []) : [];
+          var _cases = _rulesLive.filter(function (r) { return _caseTradeOf(r && r.trade); });
+          var _caseByRegex = false;
+          if (!_cases.length) {
+            // 兼容：数据未按专业分类时才退回关键词识别（只看标题 + 正文前 400 字，避免正文偶尔提到"事故"被误判）
+            var _caseKw = /事故|案例|事件|通报|险情|故障|险性/;
+            _cases = _rulesLive.filter(function (r) {
+              return _caseKw.test(String((r && r.title) || '') + '\n' + String((r && r.content) || '').slice(0, 400));
+            });
+            _caseByRegex = _cases.length > 0;
+          }
+          var _CASE_TOP = 10;
+          if (_cases.length) {
+            var _shownCases = _riskRankCases(_cases, _rf).slice(0, _CASE_TOP);
+            parts.push('\n【事故案例（来自规章制度库 · 专业分类「事故案例」' + (_caseByRegex ? '，按关键词识别' : '') + '）】共 ' + _cases.length + ' 条'
+              + (_rf ? '，按研判重点「' + _rf + '」相关度排序' : '') + '，展示前 ' + _shownCases.length + ' 条：');
+            var _byTradeCase = {};
+            _shownCases.forEach(function (r) { var tr = String((r && r.trade) || '事故案例'); (_byTradeCase[tr] = _byTradeCase[tr] || []).push(r); });
+            Object.keys(_byTradeCase).forEach(function (tr) {
+              parts.push('\n▪ 专业：' + tr);
+              _byTradeCase[tr].forEach(function (r) {
+                var c = String((r && r.content) || '').replace(/\s+/g, ' ').trim();
+                parts.push('  - 《' + ((r && r.title) || '未命名') + '》' + (c ? '：' + (c.length > 200 ? c.slice(0, 200) + '…' : c) : ''));
+              });
+            });
+          } else {
+            parts.push('\n【事故案例】规章制度库中暂无案例资料：请在「规章制度」模块导入事故通报/事故案例，并把专业分类选为「事故案例」。');
+          }
+
+          // 相关规章条款（统一检索层 · 按研判重点，**剔除案例专业**，避免"标题是案例、内容是条款"）
           try {
             var _kbOnRisk = (typeof window.KB.getSwitch === 'function') ? window.KB.getSwitch('kb_agent') : true;
-            if (window.KB && typeof window.KB.search === 'function' && _kbOnRisk) {
-              // 没填研判重点时，用"事故/案例"类词兜底检索（保持旧逻辑的意图）
-              var _kbQuery = ((riskFocus || '').trim()) || '事故 案例 事件 通报 险情 故障 险性事件';
+            if (_rf && window.KB && typeof window.KB.search === 'function' && _kbOnRisk) {
               if (typeof window.KB.ensure === 'function') await window.KB.ensure(['rules']);
-              var _kbRr = window.KB.search(_kbQuery, { sources: ['rules'], topK: 10 });
-              var _kbHitsRisk = (_kbRr && _kbRr.length) ? _kbRr[0].hits : null;
-              if (_kbHitsRisk && _kbHitsRisk.length) {
-                parts.push('\n【事故专业案例（统一检索层 · 条款级命中，带出处）】命中 ' + _kbHitsRisk.length + ' 条，按专业归类：');
+              // perDoc:1 —— 同一份规章最多出 1 块（研判要的是"关联到哪些规章"，不必同一规章出多块，
+              //   否则提示词里会出现多条《同一规章》第N条，挤占其它规章的额度）
+              var _kbRr = window.KB.search(_rf, { sources: ['rules'], topK: 12, perDoc: 1 });
+              var _kbHitsRisk = ((_kbRr && _kbRr.length) ? _kbRr[0].hits : [])
+                .filter(function (h) { return !_caseTradeOf(h && h.trade); })
+                // 同一规章可能被切成多块同时命中（perDoc 允许 2 块/文件）→ 同一「标题 + 条号」只取一块，
+                //   否则提示词里会出现两条一模一样的《X》第N条
+                .filter(function (h, i, arr) {
+                  var k = String(((h.doc || {}).title) || '') + '|' + String(h.ref || '');
+                  return arr.findIndex(function (x) { return String(((x.doc || {}).title) || '') + '|' + String(x.ref || '') === k; }) === i;
+                });
+              if (_kbHitsRisk.length) {
+                parts.push('\n【相关规章条款（统一检索层 · 按研判重点「' + _rf + '」条款级命中，带出处）】命中 ' + _kbHitsRisk.length + ' 条，按专业归类：');
                 var _byTradeRisk = {};
                 _kbHitsRisk.forEach(function(h2) {
                   var _doc2 = h2.doc || {};
-                  var _tr2 = _doc2.trade || '通用';
+                  var _tr2 = _doc2.trade || h2.trade || '通用';
                   (_byTradeRisk[_tr2] = _byTradeRisk[_tr2] || []).push({ title: _doc2.title || '未命名', path: h2.path || '', text: h2.text || '' });
                 });
                 Object.keys(_byTradeRisk).forEach(function(tr3) {
@@ -5437,51 +5507,10 @@
                     parts.push('  - 《' + c3.title + '》' + (c3.path ? '（' + c3.path + '）' : '') + (t3 ? '：' + (t3.length > 200 ? t3.slice(0, 200) + '…' : t3) : ''));
                   });
                 });
-                _kbCaseDone = true;
               }
             }
-          } catch (eKbRisk) { _kbCaseDone = false; }
-
-          if (!_kbCaseDone) {
-          var ruleDb;
-          try { ruleDb = await window.dbManager.getDB('RailwayRuleDB'); }
-          catch(e) { ruleDb = await new Promise(function(res, rej) { var r = indexedDB.open('RailwayRuleDB', 3); r.onerror = function(){ rej(r.error); }; r.onsuccess = function(){ res(r.result); }; }); }
-          var allRules = await new Promise(function(res) {
-            var tx = ruleDb.transaction('ruleCollection', 'readonly');
-            var s = tx.objectStore('ruleCollection');
-            s.getAll().onsuccess = function(e){ res(e.target.result || []); };
-          });
-          if (!window.dbManager || typeof window.dbManager.getDB !== 'function') { try { ruleDb.close(); } catch(e){} }
-          if (allRules.length) {
-            var caseKw = /事故|案例|事件|通报|险情|故障|险性/;
-            var matched = allRules.filter(function(r){
-              return caseKw.test((r.title || '') + '\n' + (r.content || ''));
-            });
-            if (matched.length) {
-              var rf = (riskFocus || '').trim();
-              matched.sort(function(a, b){
-                var sa = ((a.title||'')+'\n'+(a.content||'')).indexOf(rf) >= 0 ? 1 : 0;
-                var sb = ((b.title||'')+'\n'+(b.content||'')).indexOf(rf) >= 0 ? 1 : 0;
-                return sb - sa;
-              });
-              var topCases = matched.slice(0, 10);
-              parts.push('\n【事故专业案例（来自规章制度库，按专业归类）】共匹配 ' + matched.length + ' 条，展示前 ' + topCases.length + ' 条：');
-              var byTrade = {};
-              topCases.forEach(function(r){ var tr = r.trade || '通用'; (byTrade[tr] = byTrade[tr] || []).push(r); });
-              Object.keys(byTrade).forEach(function(tr){
-                parts.push('\n▪ 专业：' + tr);
-                byTrade[tr].forEach(function(r){
-                  var c = (r.content || '').replace(/\s+/g, ' ').trim();
-                  var snippet = c.length > 200 ? c.slice(0, 200) + '…' : c;
-                  parts.push('  - 《' + (r.title || '未命名') + '》' + (snippet ? '：' + snippet : ''));
-                });
-              });
-            } else {
-              parts.push('\n【事故专业案例】规章制度库中未匹配到事故/案例类资料（可导入事故通报、事故案例后使用）。');
-            }
-          }
-          }   // ← if (!_kbCaseDone) 结束：KB 已给出案例时跳过全表扫描
-        } catch(e) { parts.push('\n【事故专业案例】读取失败'); console.error('风险研判: 规章库读取异常', e); }
+          } catch (eKbRisk) { console.warn('风险研判: 相关规章条款检索失败（不影响案例段）：', eKbRisk && eKbRisk.message); }
+        } catch(e) { parts.push('\n【事故案例】读取失败'); console.error('风险研判: 规章库读取异常', e); }
 
         return parts.join('\n');
       }

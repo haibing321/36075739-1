@@ -860,6 +860,30 @@
                         const _csvText = (typeof window.dsReadTextFileAutoEnc === 'function') ? await window.dsReadTextFileAutoEnc(file) : await file.text();
                         workbook = XLSX.read(_csvText, { type: 'string' });
                     } else {
+                        // 【2026-09-21 真数据实测】33.7MB 的 .xlsx（43585 行 × 7 列）导入耗时 **312s**、
+                        //   峰值堆 **1407MB**（xlsx 解析要把 XML/ZIP 展开成几十万单元格对象，内存放大 10~30 倍），
+                        //   手机端基本必然 OOM。同一份数据走 CSV 只要数秒（实测 3000 行 782ms，线性外推 4 万行 ≈ 10s）。
+                        //   因此大文件先让用户做选择，而不是让界面无声地卡几分钟。
+                        if (file.size > 6 * 1024 * 1024) {
+                            const _big = await window.showChoiceModal({
+                                title: 'Excel 文件较大（' + (file.size / 1048576).toFixed(1) + ' MB）',
+                                body: '实测这种体量的 .xlsx 导入需要 1~3 分钟，手机端可能因内存不足失败。\n'
+                                    + '建议：在本机 Excel 里「另存为 → CSV（逗号分隔）」再导入 —— 同样内容通常只要几秒，\n'
+                                    + '中文编码会自动识别（UTF-8/GBK 都不会乱码）。',
+                                actions: [
+                                    { label: '改用 CSV（推荐）', value: 'csv', primary: true },
+                                    { label: '仍然导入这个 Excel', value: 'go' },
+                                    { label: '取消', value: 'cancel' }
+                                ]
+                            });
+                            if (_big === 'cancel' || _big == null) { closeModal('issue-importModal'); window.hideProgress(); e.target.value = ''; return; }
+                            if (_big === 'csv') {
+                                if (window.showToast) window.showToast('请先在 Excel 里把该文件「另存为 CSV」再导入', false, 9000); else alert('请先另存为 CSV 再导入');
+                                closeModal('issue-importModal'); window.hideProgress(); e.target.value = '';
+                                return;
+                            }
+                            window.showProgress(20, '正在解析大 Excel（可能需要 1~3 分钟）…');
+                        }
                         const data = await file.arrayBuffer();
                         // 【2026-09-21】dense:true —— 稀疏对象/数组表示改为"数组的数组"：大表内存占用明显下降
                         //   （实测 20000 行 × 6 列：读取 407ms → 373ms，行数完全一致；本文件只用 sheet_to_json 消费，安全）

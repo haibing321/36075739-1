@@ -110,11 +110,34 @@
 
   // ---------- 3. 语义缓存（基于问题+上下文指纹，1 小时 TTL，持久化到 localStorage） ----------
   const _cache = new Map();
-  const CACHE_TTL = 3600000; // 1 小时
+  // 【2026-09-21】TTL 1 小时 → **15 分钟**：数据指纹只能感知"条数变化"，而**就地编辑**
+  //   （改一条规章内容、改一条台账性质）条数不变 → 键不变，旧结论仍会命中。缩短 TTL 兜住这类场景。
+  //   可用 localStorage：`ds_sem_cache_ttl_min`（分钟，0 = 关闭缓存）覆盖。
+  const CACHE_TTL = (function () {
+    try {
+      const v = localStorage.getItem('ds_sem_cache_ttl_min');
+      if (v !== null) {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 0) return n * 60000;
+      }
+    } catch (e) {}
+    return 15 * 60000;
+  })();
   const _CACHE_KEY = 'unified_semantic_cache_v1';
   const _CACHE_MAX = 80;
   function _hash(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; } return 'u_' + h; }
-  function _cacheKey(q, ctx) { return _hash(q + '|' + (ctx || '').slice(0, 50)); }
+  // 【2026-09-21】缓存键加入「数据指纹 + 当前模型」，并提供全局失效入口：
+  //   原键只有 `hash(问题 + 上下文前 50 字)` → ① 导入/删除数据后 1 小时内仍复读旧结论；
+  //   ② 换模型或改数据源后仍命中旧答案（用户会以为"没生效"）。现在数据条数或模型一变，键就变，
+  //   旧条目自然不再命中；同时暴露 window.__dsSemCacheClear 供"数据导入/清空"时主动清空。
+  function _dataSig() {
+    try {
+      const n = function (f) { try { return (typeof window[f] === 'function' ? (window[f]() || []).length : 0); } catch (e) { return 0; } };
+      return n('getIssueData') + '-' + n('getRulesData') + '-' + n('getHandbookData') + '-' + n('getPhoneData') + '-' + n('getDiaryData')
+        + '-' + (localStorage.getItem('ds_model_v1') || '');
+    } catch (e) { return 'na'; }
+  }
+  function _cacheKey(q, ctx) { return _hash(q + '|' + (ctx || '').slice(0, 50) + '|' + _dataSig()); }
   // 启动时从 localStorage 载入未过期项（并回写裁剪，清除已过期项避免存储膨胀）
   function _loadCache() {
     try {
@@ -153,6 +176,24 @@
     _cache.set(_cacheKey(q, ctx), { a: a, t: Date.now() });
     _saveCache();
   }
+  /** 主动清空语义缓存（数据导入/清空/编辑后调用；也可在控制台手动执行） */
+  window.__dsSemCacheClear = function () {
+    try { _cache.clear(); localStorage.removeItem(_CACHE_KEY); log('cache cleared'); return true; } catch (e) { return false; }
+  };
+  // 【2026-09-21】把"数据变更"与"缓存失效"接起来：各模块导入/编辑/清空数据时都会调
+  //   window.dsInvalidateRagCache(key)（统一收口点）→ 顺手清掉语义缓存，避免复读旧结论。
+  (function () {
+    var orig = window.dsInvalidateRagCache;
+    if (typeof orig === 'function' && !orig.__semHooked) {
+      var wrapped = function () {
+        try { window.__dsSemCacheClear(); } catch (e) {}
+        try { if (typeof window.__agentToolCacheClear === 'function') window.__agentToolCacheClear(); } catch (e) {}
+        return orig.apply(this, arguments);
+      };
+      wrapped.__semHooked = true;
+      window.dsInvalidateRagCache = wrapped;
+    }
+  })();
   _loadCache();
 
   // ---------- 4. 输出卡片化渲染（XSS 安全：先 DOMPurify，再安全增强；用 data-* + 事件委托避免内联 onclick） ----------
@@ -480,7 +521,12 @@
       }
 
       // 语义缓存命中
-      const cached = getCachedAnswer(question, ctx);
+      // 【2026-09-21】两类输入**一律不走缓存**：
+      //   ① `/` 开头的命令（/agent /check /write /risk …）—— 它们自身不产出 assistant 消息，
+      //      写缓存会取到"上一轮的无关回答"挂到命令上，之后执行同一命令直接返回旧答案、模块不再触发；
+      //   ② 本轮用工具查过数据的回答 —— 数据可能已变，缓存旧结论还会让用户误以为"没调用工具"。
+      const _noCacheIn = /^\s*\//.test(String(question || ''));
+      const cached = _noCacheIn ? null : getCachedAnswer(question, ctx);
       if (cached) {
         _pushUser(question);
         _pushAssistant(cached + '\n\n📌 来自缓存（如需最新可重新提问）');
@@ -490,14 +536,17 @@
       }
 
       // 否则走原有逻辑（含命令路由/子模块/意图识别/流式生成）
+      window.__dsLastTurnUsedTools = false;   // 由 doubao 侧在真正执行工具调用时置 true
       await _origSend.apply(this, arguments);
 
-      // 生成完成后缓存答案（跳过错误提示，避免缓存无效回复）
+      // 生成完成后缓存答案（跳过错误提示 / 命令 / 用过工具的轮次，避免缓存无效或过期结论）
       try {
-        const hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
-        const last = [].concat(hist).reverse().find(m => m.role === 'assistant');
-        if (last && last.content && !last.content.startsWith('❌')) {
-          setCachedAnswer(question, ctx, last.content);
+        if (!_noCacheIn && !window.__dsLastTurnUsedTools) {
+          const hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
+          const last = [].concat(hist).reverse().find(m => m.role === 'assistant');
+          if (last && last.content && !last.content.startsWith('❌')) {
+            setCachedAnswer(question, ctx, last.content);
+          }
         }
       } catch (e) {}
     };

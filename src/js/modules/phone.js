@@ -14,8 +14,20 @@
                 document.getElementById('phone-results').style.display = 'none';
                 updatePhoneSuggestions();
             }
+            /**
+             * 【2026-09-21】返回"是否保存成功"（原实现失败只 alert 一次，**内存已被改写却不回滚**：
+             *   界面显示导入成功、刷新后数据丢失）。失败时统一 toast，调用方据此回滚内存。
+             */
             function saveToStorage() {
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(phoneData)); updateStats(); updatePhoneSuggestions(); } catch (e) { alert('保存失败：' + e.message); }
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(phoneData));
+                    updateStats(); updatePhoneSuggestions();
+                    return true;
+                } catch (e) {
+                    var msg = '⚠️ 电话数据保存失败（可能存储空间不足）：' + ((e && e.message) || '未知错误');
+                    if (window.showToast) window.showToast(msg, true, 9000); else alert(msg);
+                    return false;
+                }
             }
             // 储存/数量展示已移除（统一在设置面板显示「总储存量」）
             function updateStats() {
@@ -231,14 +243,28 @@
                         const imported = JSON.parse(text);
                         if (!Array.isArray(imported)) throw new Error('JSON 数据必须是数组');
                         if (imported.length === 0) throw new Error('JSON 文件无有效数据');
+                        // 【2026-09-21】原为 confirm("确定=覆盖 / 取消=按站名去重追加")：取消=写入，反直觉；
+                        //   且保存失败不回滚（界面显示成功、刷新后丢失）。现在：三按钮 + 失败回滚 + 成功 toast。
+                        const _prev = phoneData;
+                        let _act = 'overwrite';
                         if (phoneData.length > 0) {
-                            const action = confirm(`成功解析 ${imported.length} 条JSON记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"按站名去重追加。`);
-                            if (action) phoneData = imported;
-                            else { const m = phoneMergeByStation(imported); phoneData = m.data; }
-                        } else phoneData = imported;
-                        saveToStorage();
+                            _act = await window.showChoiceModal({
+                                title: '导入应急电话（JSON）',
+                                body: '当前已有 ' + phoneData.length + ' 条，本次解析 ' + imported.length + ' 条。请选择处理方式：',
+                                actions: [
+                                    { label: '按站名去重追加', value: 'append', primary: true },
+                                    { label: '覆盖现有', value: 'overwrite', danger: true },
+                                    { label: '取消', value: 'cancel' }
+                                ]
+                            });
+                            if (_act === 'cancel' || _act == null) { e.target.value = ''; return; }
+                        }
+                        phoneData = (_act === 'append') ? phoneMergeByStation(imported).data : imported;
+                        if (!saveToStorage()) { phoneData = _prev; updateStats(); updatePhoneSuggestions(); e.target.value = ''; return; }   // 写失败回滚
                         phoneDoSearch();
-                    } catch (err) { alert('JSON导入失败: ' + err.message); }
+                        if (window.showToast) window.showToast('✅ 已导入 ' + imported.length + ' 条应急电话（当前共 ' + phoneData.length + ' 条）', false, 6000);
+                        try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e2) {}
+                    } catch (err) { if (window.showToast) window.showToast('JSON 导入失败：' + err.message, true, 9000); else alert('JSON导入失败: ' + err.message); }
                 } else {
                     await phoneHandleExcel({ target: { files: [file] } });
                 }
@@ -251,8 +277,15 @@
                 // 先取文件再加载库：失败时也能在 finally 里复位 input（见下方 catch）
                 if (!(await window.requireLib(LIB_XLSX_PHONE, { feature: 'Excel 导入' }))) { e.target.value = ''; return; }
                 try {
-                    const data = await file.arrayBuffer();
-                    const workbook = XLSX.read(data, { type: 'array' });
+                    // 【2026-09-21】CSV 同检查信息：文本读取 + 自动择码（Excel 另存 CSV 默认 GBK）
+                    let workbook;
+                    if (/\.csv$/i.test(file.name)) {
+                        const _t = (typeof window.dsReadTextFileAutoEnc === 'function') ? await window.dsReadTextFileAutoEnc(file) : await file.text();
+                        workbook = XLSX.read(_t, { type: 'string' });
+                    } else {
+                        const data = await file.arrayBuffer();
+                        workbook = XLSX.read(data, { type: 'array', dense: true });   // 同检查信息：大表更省内存（只用 sheet_to_json 消费）
+                    }
                     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                     const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
                     if (jsonData.length < 2) throw new Error('Excel文件数据不足');
@@ -283,15 +316,28 @@
                         if (item.单位 || item.站名) newData.push(item);
                     }
                     if (newData.length === 0) throw new Error('未找到有效数据');
+                    // 【2026-09-21】同 JSON 路径：三按钮替代"确定=覆盖 / 取消=追加"，失败回滚 + 成功 toast
+                    const _prevX = phoneData;
+                    let _actX = 'overwrite';
                     if (phoneData.length > 0) {
-                        const action = confirm(`成功解析 ${newData.length} 条记录。\n当前已有 ${phoneData.length} 条。\n点击"确定"覆盖，点击"取消"按站名去重追加。`);
-                        if (action) phoneData = newData;
-                        else { const m = phoneMergeByStation(newData); phoneData = m.data; }
-                    } else phoneData = newData;
-                    saveToStorage();
+                        _actX = await window.showChoiceModal({
+                            title: '导入应急电话（Excel）',
+                            body: '当前已有 ' + phoneData.length + ' 条，本次解析 ' + newData.length + ' 条。请选择处理方式：',
+                            actions: [
+                                { label: '按站名去重追加', value: 'append', primary: true },
+                                { label: '覆盖现有', value: 'overwrite', danger: true },
+                                { label: '取消', value: 'cancel' }
+                            ]
+                        });
+                        if (_actX === 'cancel' || _actX == null) { try { e.target.value = ''; } catch (e3) {} return; }
+                    }
+                    phoneData = (_actX === 'append') ? phoneMergeByStation(newData).data : newData;
+                    if (!saveToStorage()) { phoneData = _prevX; updateStats(); updatePhoneSuggestions(); try { e.target.value = ''; } catch (e4) {} return; }
                     phoneDoSearch();
+                    if (window.showToast) window.showToast('✅ 已导入 ' + newData.length + ' 条应急电话（当前共 ' + phoneData.length + ' 条）', false, 6000);
+                    try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e5) {}
                 } catch (err) {
-                    alert('导入失败: ' + err.message);
+                    if (window.showToast) window.showToast('导入失败：' + err.message, true, 9000); else alert('导入失败: ' + err.message);
                     // 必须复位 input：否则同一文件再次选中不会触发 change，用户无法重试
                     try { e.target.value = ''; } catch (e2) {}
                 }
@@ -301,7 +347,7 @@
                 if (phoneData.length === 0) { alert('没有数据可导出'); return; }
                 window.showProgress(50, '正在导出应急电话…');
                 const blob = new Blob([JSON.stringify(phoneData, null, 2)], { type: 'application/json' });
-                window.downloadBlob(blob, '应急电话_' + new Date().toISOString().slice(0,10) + '.json');
+                window.downloadBlob(blob, '应急电话_' + window.localDateStr() + '.json');
                 window.finishProgress('✅ 应急电话导出成功');
             };
             window.phoneDownloadTemplate = async function() {

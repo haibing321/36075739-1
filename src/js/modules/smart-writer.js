@@ -132,6 +132,25 @@
                 })));
             }
 
+            /**
+             * 【2026-09-21】批量写入（**单事务**）。
+             *   导入 JSON 备份时原来是"每条一个事务 + await"，2000 条 = 2000 次事务提交
+             *   （IndexedDB 最贵的部分就在事务/提交），大备份导入慢到用户以为卡死。
+             *   改为一次事务写完整批：事务数 2000 → 1。
+             */
+            function wrDbPutMany(store, items) {
+                items = (items || []).filter(function(x) { return x != null; });
+                if (!items.length) return Promise.resolve(0);
+                return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
+                    const tx = db.transaction(store, 'readwrite');
+                    const os = tx.objectStore(store);
+                    items.forEach(it => os.put(it));
+                    tx.oncomplete = () => res(items.length);
+                    tx.onerror    = () => rej(tx.error);
+                    tx.onabort    = () => rej(tx.error || new Error('事务被中止'));
+                })));
+            }
+
             // 按主键取单条（供「朗读/查看」等按 id 定位的场景使用，避免整表读取）
             function wrDbGet(store, id) {
                 return _wrRetry(() => wrOpenDB().then(db => new Promise((res, rej) => {
@@ -1277,9 +1296,23 @@
                 if (needDocx && !(await window.requireLib('src/js/vendor/mammoth.browser.min.js', { feature: '资料导入', silent: true }))) {
                     return { saved: saved, errors: ['解析组件（Word）未能联网加载，请联网后重试'], processed: 0, libFail: true };
                 }
+                // 【2026-09-21】已入库的「文件名|大小」集合：同一份文件重复导入直接跳过
+                //   （原来一律 append、id 自增 → 同一备份导两次就产生整批重复条目）
+                var _existKeys = {};
+                try {
+                    var _exist = await wrDbGetAll(WR_MAT_STORE);
+                    (_exist || []).forEach(function (m) { if (m && m.fileName) _existKeys[String(m.fileName) + '|' + (m.fileSize || 0)] = 1; });
+                } catch (e) {}
+                var skipped = [];
                 for (const file of files) {
                     console.log('[导入] 开始处理文件:', file.name, '类型:', matType);
                     try {
+                        // JSON 备份可能含增量记录，不参与"同名跳过"；普通文档按 文件名+大小 去重
+                        if (!/\.json$/i.test(file.name)) {
+                            var _fk = String(file.name) + '|' + (file.size || 0);
+                            if (_existKeys[_fk]) { skipped.push(file.name); continue; }
+                            _existKeys[_fk] = 1;
+                        }
                         const item = {
                             matType: matType,
                             fileName: file.name,
@@ -1301,7 +1334,10 @@
                         errors.push(file.name + ': ' + (err.message || '未知错误'));
                     }
                 }
-                return { saved: saved, errors: errors, processed: files.length, libFail: false };
+                // 【2026-09-21】入库后立即失效检索索引：knowledge.js 的 materials/reports 是**异步源**，
+                //   其列表被缓存，原来导完资料不改索引 → 新资料可能检索不到（智能写作/智能体都用不上）
+                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('materials'); } catch (e) {}
+                return { saved: saved, errors: errors, processed: files.length, libFail: false, skipped: skipped };
             };
 
             // 单文件解析 → 填充 item（原「资料中心导入」的解析主体，逐字搬移，勿改语义）
@@ -1320,12 +1356,12 @@
                             if (!jsonItems && Array.isArray(data)) jsonItems = data;
                             if (jsonItems && jsonItems.length > 0) {
                                 console.log('[导入] JSON检测到' + jsonItems.length + '条资料记录，拆分存储');
-                                for (const ji of jsonItems) {
-                                    const jiTitle = ji.title || ji.name || ji.fileName || file.name + '_' + jsonItems.indexOf(ji);
+                                // 【2026-09-21】批量单事务写入（原来逐条 await wrDbPut）
+                                const _matBatch = jsonItems.map(function(ji, _ix) {
+                                    const jiTitle = ji.title || ji.name || ji.fileName || file.name + '_' + _ix;
                                     const jiContent = ji.content || '';
-                                    const jiMatType = ji.matType || ji.type || matType; // 优先用自带分类，否则用用户选的
-                                    await wrDbPut(WR_MAT_STORE, {
-                                        matType:   jiMatType,
+                                    return {
+                                        matType:   ji.matType || ji.type || matType, // 优先用自带分类，否则用用户选的
                                         fileName:  ji.fileName || file.name,
                                         title:     String(jiTitle).slice(0, 200),
                                         fileSize:  ji.fileSize || file.size,
@@ -1334,8 +1370,9 @@
                                         sheets:    ji.sheets || null,
                                         rowCount:  ji.rowCount || null,
                                         rawText:   String(jiContent).slice(0, 5000)
-                                    });
-                                }
+                                    };
+                                });
+                                await wrDbPutMany(WR_MAT_STORE, _matBatch);
                             }
                             // 同时导入历史报告
                             if (jsonReports && jsonReports.length > 0) {
@@ -1343,9 +1380,10 @@
                                 // ⚠️ 字段名必须与 wrSaveReport 的 schema 对齐（query/date/category/source/templateId）；
                                 //    也不能沿用备份里的 id（本机自增 id 命中即静默覆盖本地报告）。
                                 let rptImported = 0;
+                                const _rptBatch = [];   // 【2026-09-21】同上：批量单事务写入
                                 for (const r of jsonReports) {
                                     if (!r || typeof r !== 'object') continue;
-                                    await wrDbPut(WR_RPT_STORE, {
+                                    _rptBatch.push({
                                         title:     r.title || '导入的报告',
                                         content:   r.content || '',
                                         query:     r.query || r.prompt || '',
@@ -1357,6 +1395,7 @@
                                     });
                                     rptImported++;
                                 }
+                                await wrDbPutMany(WR_RPT_STORE, _rptBatch);
                                 console.log('[导入] 历史报告已写入 ' + rptImported + ' 篇（不沿用备份 id，避免覆盖本机同 id 报告）');
                             }
                             if (jsonItems || jsonReports) {
@@ -1479,7 +1518,7 @@
                 // 创建文件选择input
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
-                fileInput.accept = '.docx,.pdf,.xlsx,.xls,.json,.txt';
+                fileInput.accept = '.docx,.pdf,.xlsx,.xls,.json,.txt,.md,.csv';
                 fileInput.multiple = true;
                 fileInput.style.display = 'none';
                 
@@ -1540,11 +1579,14 @@
                         : '';
                     
                     let msg = '✅ 已成功导入 ' + successCount + '/' + files.length + ' 个文件到「' + typeLabel + '」分类。';
+                    if (_imp.skipped && _imp.skipped.length) msg += '（跳过同名重复 ' + _imp.skipped.length + ' 个）';
                     if (errorMessages.length > 0) {
                         msg += '\n\n❌ 导入失败 ' + errorMessages.length + ' 个：\n' + errorMessages.join('\n');
                     }
                     if (tip) msg += '\n' + tip;
-                    alert(msg);
+                    // 【2026-09-21】结果提示从阻塞 alert 改为 toast（失败清单仍完整展示，并用错误色 + 延长显示）
+                    if (window.showToast) window.showToast(msg, errorMessages.length > 0, errorMessages.length > 0 ? 12000 : 7000);
+                    else alert(msg);
                     
                     fileInput.remove();
                 };
@@ -1557,10 +1599,77 @@
                 
                 document.body.appendChild(fileInput);
                 
-                // 延迟触发点击，确保DOM已更新
-                setTimeout(() => {
-                    fileInput.click();
-                }, 100);
+                // 【2026-09-21】改为**同步** click：iOS Safari 与部分国产浏览器要求 file input 的 click()
+                //   处于用户手势调用栈内，延时 100ms 后手势失效 → **文件选择器根本不弹**且无任何提示
+                //   （对比备份恢复 / 日志导入，它们都是同步 click）。
+                fileInput.click();
+            };
+
+            /**
+             * 【2026-09-21 修复】「历史报告 → 导入」写对库（WR_RPT_STORE）。
+             *   原先设置里该按钮调 wrImportWithType('history')，而它最终把**文档**存进
+             *   writing_materials(matType=history)；可同一行的计数（getWrRptCount）、导出
+             *   （wrExportAllReports）、清空（wrClearAllReports）以及资料中心「历史报告」标签
+             *   读的都是 writing_reports → 导入 docx/pdf 后"条数不变、标签里找不到、导出为空"。
+             *   现在：文档解析后按**报告 schema** 落 writing_reports；JSON 备份仍走原有分流。
+             */
+            window.wrImportReports = async function() {
+                const picker = document.createElement('input');
+                picker.type = 'file';
+                picker.accept = '.docx,.pdf,.xlsx,.xls,.txt,.md,.csv,.json';
+                picker.multiple = true;
+                picker.style.display = 'none';
+                picker.onchange = async function(e) {
+                    const files = Array.from(e.target.files || []);
+                    if (!files.length) { picker.remove(); return; }
+                    const tip = document.createElement('div');
+                    tip.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:#fff;padding:18px 26px;border-radius:10px;z-index:11500;font-size:14px;';
+                    tip.textContent = '⏳ 正在导入历史报告…';
+                    document.body.appendChild(tip);
+                    let ok = 0; const fails = [];
+                    try {
+                        await wrOpenDB();
+                        const needXlsx = files.some(f => /\.(xlsx|xls)$/i.test(f.name));
+                        const needDocx = files.some(f => /\.docx$/i.test(f.name));
+                        if (needXlsx && !(await window.requireLib('src/js/vendor/xlsx.full.min.js', { feature: '报告导入', silent: true }))) throw new Error('解析组件（Excel）未能联网加载，请联网后重试');
+                        if (needDocx && !(await window.requireLib('src/js/vendor/mammoth.browser.min.js', { feature: '报告导入', silent: true }))) throw new Error('解析组件（Word）未能联网加载，请联网后重试');
+                        for (const file of files) {
+                            try {
+                                const item = { matType: 'history', fileName: file.name, title: file.name.replace(/\.[^.]+$/, ''), fileSize: file.size, importAt: Date.now(), content: '', rawText: '' };
+                                await wrParseIntoItem(item, file, 'history');
+                                if (item.__jsonSplit) { ok++; continue; }   // JSON 备份：已按记录拆分入库（含报告分流）
+                                const body = String(item.content || item.rawText || '').trim();
+                                if (!body) { fails.push(file.name + '：未解析出正文'); continue; }
+                                await wrDbPut(WR_RPT_STORE, {
+                                    title: String(item.title || '导入的报告').slice(0, 200),
+                                    content: body.slice(0, 60000),
+                                    query: '',
+                                    category: 'other',
+                                    date: Date.now(),
+                                    templateId: null,
+                                    source: '导入'
+                                });
+                                ok++;
+                            } catch (err) { fails.push(file.name + '：' + ((err && err.message) || '未知错误')); }
+                        }
+                    } catch (e) {
+                        tip.remove(); picker.remove();
+                        if (window.showToast) window.showToast('导入失败：' + ((e && e.message) || '未知错误'), true, 8000);
+                        else alert('导入失败：' + ((e && e.message) || '未知错误'));
+                        return;
+                    }
+                    tip.remove(); picker.remove();
+                    try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('reports'); } catch (e) {}
+                    try { if (typeof window.wrRenderHistory === 'function') await window.wrRenderHistory(); } catch (e) {}
+                    try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+                    const msg = '✅ 已导入历史报告 ' + ok + '/' + files.length + ' 个'
+                        + (fails.length ? '；失败 ' + fails.length + ' 个：' + fails.join('；') : '')
+                        + (ok ? '（可在「资料中心 → 历史报告」查看）' : '');
+                    if (window.showToast) window.showToast(msg, fails.length > 0, 9000); else alert(msg);
+                };
+                picker.addEventListener('cancel', function() { picker.remove(); });
+                document.body.appendChild(picker);
+                picker.click();   // 同步 click：延时会让 iOS/国产浏览器丢失用户手势（选择器不弹）
             };
 
 
@@ -3608,10 +3717,14 @@
             window.wrImportTemplates = function() {
                 const inp = document.createElement('input');
                 inp.type = 'file'; inp.accept = '.json'; inp.style.display = 'none';
+                // 【2026-09-21】取消选择也要回收隐藏 input（原来只在 onchange 里 remove，取消一次在 body 里留一个）
+                inp.addEventListener('cancel', function() { try { inp.remove(); } catch (e) {} });
                 inp.onchange = async function(e) {
                     const file = e.target.files[0]; if (!file) return;
-                    const text = await file.text();
+                    // 【2026-09-21】`file.text()` 原来在 try **之外**：读取失败（文件被占用/权限）会变成未捕获异常，
+                    //   用户看不到任何提示；另外"全部无效"（count=0）原来也报"成功导入 0 个"。
                     try {
+                        const text = await file.text();
                         const data = JSON.parse(text);
                         const arr = Array.isArray(data) ? data : (data.templates || []);
                         let count = 0;
@@ -3623,8 +3736,12 @@
                             }
                         }
                         wrRenderTplList();
-                        alert('成功导入 ' + count + ' 个模板！');
-                    } catch(err) { alert('解析失败：' + err.message); }
+                        var _tm = count > 0 ? '✅ 成功导入 ' + count + ' 个模板' : '⚠️ 文件中没有可用模板（每条需含 title 与 content）';
+                        if (window.showToast) window.showToast(_tm, count === 0, 8000); else alert(_tm);
+                    } catch(err) {
+                        var _te = '模板导入失败：' + ((err && err.message) || '未知错误');
+                        if (window.showToast) window.showToast(_te, true, 9000); else alert(_te);
+                    }
                     inp.remove();
                 };
                 document.body.appendChild(inp); inp.click();
@@ -3634,7 +3751,7 @@
                 const templates = await wrDbGetAll(WR_TPL_STORE);
                 if (!templates.length) { alert('暂无模板可导出'); return; }
                 const blob = new Blob([JSON.stringify({ templates, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
-                window.downloadBlob(blob, '写作模板备份_' + new Date().toISOString().slice(0,10) + '.json');
+                window.downloadBlob(blob, '写作模板备份_' + window.localDateStr() + '.json');
             };
 
             // ================================================================
@@ -4080,6 +4197,11 @@
                 const modal = document.getElementById('wr-report-modal');
                 const r = modal._currentReport;
                 if (!r) return;
+                // 【2026-09-21】补空内容判断：原来空报告也照样下载一个 0 字节 txt，用户以为导出失败
+                if (!String(r.content || '').trim()) {
+                    if (window.showToast) window.showToast('该报告内容为空，无法下载', true, 6000); else alert('报告内容为空');
+                    return;
+                }
                 const blob = new Blob([r.content], { type: 'text/plain;charset=utf-8' });
                 window.downloadBlob(blob, (r.title || '报告') + '.txt');
             };
@@ -4203,7 +4325,7 @@
                 const reports = await wrDbGetAll(WR_RPT_STORE);
                 if (!reports.length) { alert('暂无报告可导出'); return; }
                 const blob = new Blob([JSON.stringify({ reports, exportDate: new Date().toISOString() }, null, 2)], { type: 'application/json' });
-                window.downloadBlob(blob, '历史报告备份_' + new Date().toISOString().slice(0,10) + '.json');
+                window.downloadBlob(blob, '历史报告备份_' + window.localDateStr() + '.json');
             };
 
             // ================================================================
@@ -4352,9 +4474,12 @@
             window.wrMaterialImport = function() {
                 const inp = document.createElement('input');
                 inp.type = 'file';
-                inp.accept = '.docx,.doc,.xlsx,.xls,.json';
+                // 【2026-09-21】去掉 .doc：解析走的是 mammoth（不支持老 .doc），accept 里写着却必失败
+                inp.accept = '.docx,.xlsx,.xls,.json';
                 inp.multiple = true;
                 inp.style.display = 'none';
+                // 【2026-09-21】取消选择回收隐藏 input（原来只在 onchange 里 remove，取消一次就留一个在 body）
+                inp.addEventListener('cancel', function() { try { inp.remove(); } catch (e) {} });
                 inp.onchange = async function(e) {
                     const files = Array.from(e.target.files);
                     if (!files.length) return;
@@ -4493,6 +4618,7 @@
                 inp.accept = '.xlsx,.xls';
                 inp.multiple = true;
                 inp.style.display = 'none';
+                inp.addEventListener('cancel', function() { try { inp.remove(); } catch (e) {} });   // 同上：取消回收
                 inp.onchange = async function(e) {
                     const files = Array.from(e.target.files);
                     if (!files.length) return;
@@ -4856,7 +4982,7 @@ ${details || '(无)'}
                 const exportMaterials = all.map(m => ({ ...m, sheets: undefined }));
                 const exportData = { materials: exportMaterials, reports: reports, exportDate: new Date().toISOString() };
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                window.downloadBlob(blob, '智能写作备份_' + new Date().toISOString().slice(0,10) + '.json');
+                window.downloadBlob(blob, '智能写作备份_' + window.localDateStr() + '.json');
             };
 
         // ---- 将内部函数暴露到全局（供 HTML onclick 调用）----

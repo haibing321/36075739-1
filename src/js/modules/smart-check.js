@@ -261,7 +261,11 @@
 
                 const migrated = oldTerms.filter(t => typeof t === 'string' && t.length >= 2).map(term => ({ term, trade: '通用' }));
                 const map = new Map();
-                DEFAULT_TERMS.forEach(item => map.set(item.term.toLowerCase(), item));
+                // 【2026-09-21】用户点过「清空术语库」→ 置了 patch_term_library_empty=1：
+                //   此处**不再回灌内置 DEFAULT_TERMS**，否则"清空"刷新后又自己长回来（等于假清空）。
+                let _termsCleared = false;
+                try { _termsCleared = localStorage.getItem('patch_term_library_empty') === '1'; } catch (e) {}
+                if (!_termsCleared) DEFAULT_TERMS.forEach(item => map.set(item.term.toLowerCase(), item));
                 migrated.forEach(item => map.set(item.term.toLowerCase(), item));
                 savedTerms.forEach(item => { if (item && item.term) map.set(item.term.toLowerCase(), item); });
                 PATCH_TERM_LIBRARY = Array.from(map.values());
@@ -283,6 +287,49 @@
             // 兼容旧代码（保持全局 RAILWAY_TERMS Set 可用）
             let RAILWAY_TERMS = new Set(PATCH_TERM_LIBRARY.map(i => i.term));
             function syncTermSet() { RAILWAY_TERMS = new Set(PATCH_TERM_LIBRARY.map(i => i.term)); }
+
+            // ==================== 【2026-09-21】术语库清空 / 恢复默认（原先只有一行内联 JS，且是"假清空"）====================
+            //  原实现：设置里 `localStorage.removeItem('patch_term_library_v2')` + alert"刷新后生效"
+            //  → 内存词库没同步（关键词提取仍用旧词库）、刷新后启动逻辑用内置 DEFAULT_TERMS 回灌并回写
+            //  → 永远清不到 0，"已清空"的提示不成立。现在：立即清内存 + 落盘 + 记住"已清空"标记。
+            function _termsWrite(emptyFlag) {
+                try { localStorage.setItem('patch_term_library_v2', JSON.stringify(PATCH_TERM_LIBRARY)); } catch (e) {}
+                try {
+                    if (emptyFlag) localStorage.setItem('patch_term_library_empty', '1');
+                    else localStorage.removeItem('patch_term_library_empty');
+                } catch (e) {}
+                try { window.PATCH_TERM_LIBRARY = PATCH_TERM_LIBRARY; } catch (e) {}   // 外部持有的是旧数组引用，必须换掉
+                try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+            }
+            /** 真清空（含内置默认词，刷新后仍为空）；返回剩余条数 */
+            window.clearRailwayTerms = function() {
+                PATCH_TERM_LIBRARY = [];
+                rebuildTermMap(); syncTermSet();
+                _termsWrite(true);
+                return 0;
+            };
+            /** 恢复内置默认词库（清空后的还原入口）；返回条数 */
+            window.resetRailwayTerms = function() {
+                PATCH_TERM_LIBRARY = DEFAULT_TERMS.slice();
+                rebuildTermMap(); syncTermSet();
+                _termsWrite(false);
+                return PATCH_TERM_LIBRARY.length;
+            };
+            /** 设置面板「清空」按钮入口（二次确认 + 非阻塞提示） */
+            window.termClearWithConfirm = function() {
+                var n = PATCH_TERM_LIBRARY.length;
+                if (!confirm('确定清空铁路术语库吗？\n（含内置默认词库，当前共 ' + n + ' 个；清空后可用「恢复默认」还原）\n注意：术语库用于对规关键词提取，清空后可能影响对规命中。')) return;
+                window.clearRailwayTerms();
+                var m = '🗑️ 术语库已清空（0 个），刷新后仍为空';
+                if (window.showToast) window.showToast(m, false, 6000); else alert(m);
+            };
+            /** 设置面板「恢复默认」按钮入口 */
+            window.termResetWithConfirm = function() {
+                if (!confirm('恢复内置默认词库？\n（会追加回内置术语，不影响你已导入的自定义术语）')) return;
+                var n = window.resetRailwayTerms();
+                var m = '✅ 已恢复内置默认词库（当前共 ' + n + ' 个）';
+                if (window.showToast) window.showToast(m, false, 6000); else alert(m);
+            };
 
 
             const PATCH_TRADE_KEYWORDS = {
@@ -1949,7 +1996,7 @@
                 var text = card ? card.getAttribute('data-conclusion') || '' : '';
                 if (!text) return;
                 var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                window.downloadBlob(blob, '对规结论_' + new Date().toISOString().slice(0, 10) + '.txt');
+                window.downloadBlob(blob, '对规结论_' + window.localDateStr() + '.txt');
             };
             window.acSpeak = function (btn) {
                 if (typeof window.speechSynthesis === 'undefined') { alert('当前浏览器不支持语音朗读'); return; }
@@ -2630,7 +2677,12 @@
                 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
                 else bind();
             })();
+            let _termsImporting = false;   // 【2026-09-21】导入互斥：解析中重复点会交叉写库
             window.importRailwayTerms = function() {
+                if (_termsImporting) {
+                    if (window.showToast) window.showToast('上一次词库导入还在处理中，请稍候…', true, 5000); else alert('词库正在导入中');
+                    return;
+                }
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.json,.txt,.csv';
@@ -2639,6 +2691,8 @@
                 input.onchange = function(e) {
                     const file = e.target.files[0];
                     if (!file) return;
+                    _termsImporting = true;
+                    try { window.showProgress(20, '正在解析词库文件…（' + file.name + '）'); } catch (e0) {}
 
                     const reader = new FileReader();
                     reader.onload = function(event) {
@@ -2668,23 +2722,33 @@
                             }
 
                             if (items.length === 0) {
-                                alert('未找到有效的术语，请检查文件格式');
+                                var _m0 = '未找到有效的术语，请检查文件格式（JSON / TXT / CSV，术语长度需 ≥2 字）';
+                                if (window.showToast) window.showToast(_m0, true, 9000); else alert(_m0);
+                                _termsImporting = false; try { window.hideProgress(); } catch (eH0) {}
                                 return;
                             }
 
                             // 合并去重（以 term 为主键）
                             const existingMap = new Map(PATCH_TERM_LIBRARY.map(function(i) { return [i.term, i]; }));
+                            const merged = PATCH_TERM_LIBRARY.slice();   // 【2026-09-21】先算合并结果，不动内存
                             let addedCount = 0;
                             items.forEach(function(item) {
-                                if (!existingMap.has(item.term)) {
-                                    PATCH_TERM_LIBRARY.push(item);
-                                    existingMap.set(item.term, item);
-                                    addedCount++;
-                                }
+                                if (!existingMap.has(item.term)) { merged.push(item); existingMap.set(item.term, item); addedCount++; }
                             });
 
-                            // 持久化 + 同步 Set
-                            localStorage.setItem('patch_term_library_v2', JSON.stringify(PATCH_TERM_LIBRARY));
+                            // 【2026-09-21】先落盘、成功后再改内存：原实现直接 push 内存再 setItem，
+                            //   配额满时 setItem 抛错被外层 catch 报成"文件解析失败"，而**内存里术语已加进去** →
+                            //   内存 / localStorage / RAILWAY_TERMS 三者不一致（刷新后凭空少词，用户以为丢数据）。
+                            try {
+                                localStorage.setItem('patch_term_library_v2', JSON.stringify(merged));
+                            } catch (eQ) {
+                                var _mq = '⚠️ 词库写入失败（存储空间可能不足）：' + ((eQ && eQ.message) || '未知错误') + '；本次导入**未生效**，请清理空间后重试。';
+                                if (window.showToast) window.showToast(_mq, true, 11000); else alert(_mq);
+                                _termsImporting = false; try { window.hideProgress(); } catch (eH1) {}
+                                return;
+                            }
+                            PATCH_TERM_LIBRARY = merged;
+                            try { window.PATCH_TERM_LIBRARY = PATCH_TERM_LIBRARY; } catch (e) {}
                             syncTermSet();
 
                             const container = document.getElementById('autoCheck-results');
@@ -2696,25 +2760,45 @@
                                 '</div>';
                             container.style.display = 'block';
                             console.log('词库导入：新增 ' + addedCount + ' 个，当前共 ' + RAILWAY_TERMS.size + ' 个');
+                            _termsImporting = false;
+                            try { window.finishProgress('✅ 词库导入完成：新增 ' + addedCount + ' 个，共 ' + RAILWAY_TERMS.size + ' 个'); } catch (eH2) {}
+                            try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('terms'); } catch (eH3) {}
                         } catch (err) {
-                            alert('文件解析失败：' + err.message + '\n请确保文件格式正确（JSON/TXT/CSV）');
+                            _termsImporting = false; try { window.hideProgress(); } catch (eH4) {}
+                            var _me = '词库导入失败：' + err.message + '\n请确保文件格式正确（JSON / TXT / CSV）';
+                            if (window.showToast) window.showToast(_me, true, 10000); else alert(_me);
                         }
                     };
-                    reader.readAsText(file);
+                    // 【2026-09-21】编码自适应：Excel「另存为 CSV」默认是 GBK，按 UTF-8 读会**静默乱码**；
+                    //   复用对话附件已有的自动择码实现（UTF-8 / GBK 试读对比）。
+                    if (typeof window.dsReadTextFileAutoEnc === 'function') {
+                        window.dsReadTextFileAutoEnc(file).then(function (txt) {
+                            try { reader.onload({ target: { result: txt } }); } catch (e) { reader.readAsText(file); }
+                        }).catch(function () { reader.readAsText(file); });
+                    } else {
+                        reader.readAsText(file);
+                    }
                     input.remove();
                 };
+                // 用户取消选择 → 回收隐藏 input（原来只在 onchange 里 remove，取消一次就在 body 里留一个）
+                input.addEventListener('cancel', function () { try { input.remove(); } catch (e) {} });
                 document.body.appendChild(input);
                 input.click();
             };
 
             // 导出词库（结构化格式，含 term + trade）
             window.exportRailwayTerms = function() {
+                // 【2026-09-21】补"无数据可导出"判断（原来空词库也会导出 {terms:[],count:0}，用户拿到空文件才知道）
+                if (!PATCH_TERM_LIBRARY.length) {
+                    if (window.showToast) window.showToast('词库为空，暂无可导出的术语', true, 6000); else alert('词库为空，暂无可导出的术语');
+                    return;
+                }
                 const sorted = PATCH_TERM_LIBRARY.slice().sort(function(a, b) {
                     return (a.trade || '').localeCompare(b.trade || '') || a.term.localeCompare(b.term);
                 });
                 const payload = { terms: sorted, count: sorted.length, exportDate: new Date().toISOString(), version: 2 };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-                window.downloadBlob(blob, '铁路专业词库_' + new Date().toISOString().slice(0, 10) + '.json');
+                window.downloadBlob(blob, '铁路专业词库_' + window.localDateStr() + '.json');
             };
 
             // 暴露给全局，供智能助手使用

@@ -30,29 +30,35 @@
 
                 // 追加合并
                 document.getElementById('handbook-confirmImport').onclick = () => {
+                    const prev = handbookData;                       // 【2026-09-21】写失败回滚基线
                     try {
                         const seen = new Set(handbookData.map(_hbKeyOf));
                         const fresh = importedData.filter(d => { const k = _hbKeyOf(d); if (seen.has(k)) return false; seen.add(k); return true; });
                         handbookData = handbookData.concat(fresh);
                         updateStats();
-                        saveToStorage();
+                        if (!saveToStorage()) { handbookData = prev; updateStats(); return; }   // 写失败：回滚 + 保留弹窗（已 toast 说明）
                         closeModal('handbook-importModal');
                         if (fresh.length < importedData.length) console.log('[手册导入] 已跳过 ' + (importedData.length - fresh.length) + ' 条重复记录');
+                        hbAfterImport(fresh.length, importedData.length);
                     } catch(e) {
                         console.error('手册追加失败:', e);
+                        handbookData = prev; updateStats();
                         closeModal('handbook-importModal');
                         alert('导入失败: ' + e.message);
                     }
                 };
                 // 覆盖现有
                 document.getElementById('handbook-confirmOverwrite').onclick = () => {
+                    const prev = handbookData;                       // 同上
                     try {
                         handbookData = importedData;
                         updateStats();
-                        saveToStorage();
+                        if (!saveToStorage()) { handbookData = prev; updateStats(); return; }
                         closeModal('handbook-importModal');
+                        hbAfterImport(importedData.length, importedData.length);
                     } catch(e) {
                         console.error('手册覆盖失败:', e);
+                        handbookData = prev; updateStats();
                         closeModal('handbook-importModal');
                         alert('导入失败: ' + e.message);
                     }
@@ -65,26 +71,62 @@
                 document.getElementById('handbook-jsonFile').click();
             });
 
+            var _hbParsing = false;   // 【2026-09-21】解析互斥：解析中再次点导入会被拒，避免两批文件交叉写库
             document.getElementById('handbook-jsonFile').addEventListener('change', async function(e) {
                 const files = Array.from(e.target.files);
-                if (files.length === 0) return;
-
-                const allImported = [];
-                for (const file of files) {
-                    const fileName = file.name.toLowerCase();
-                    if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
-                        const parsed = await _parseDocxFile(file);
-                        if (parsed) allImported.push(...parsed);
-                    } else if (fileName.endsWith('.json')) {
-                        const parsed = await _parseJsonFile(file);
-                        if (parsed) allImported.push(...parsed);
-                    }
+                if (files.length === 0) { e.target.value = ''; return; }
+                if (_hbParsing) {
+                    e.target.value = '';
+                    if (typeof window.showToast === 'function') window.showToast('上一批手册还在解析中，请稍候…', true, 5000); else alert('手册正在解析中');
+                    return;
                 }
+                _hbParsing = true;
 
-                if (allImported.length === 0) return;
+                // 【2026-09-21】原来 `if (allImported.length === 0) return;` 在 `e.target.value=''` **之前**：
+                //   任何解析失败（.doc 不受支持 / mammoth 未加载 / JSON 结构不符）都会让 input 保留旧值 →
+                //   用户再选**同一个文件**不会触发 change，表现是"点了导入毫无反应"。
+                const allImported = [];
+                const skipped = [];
+                try { window.showProgress(5, '正在解析手册文件…'); } catch (e0) {}
+                for (let _fi = 0; _fi < files.length; _fi++) {
+                    const file = files[_fi];
+                    // 【2026-09-21】手册解析此前**完全没有进度**：几百页 docx 解析时界面像死机（用户以为点了没反应）
+                    try { window.showProgress(5 + Math.round((_fi / files.length) * 90), '正在解析 ' + (_fi + 1) + '/' + files.length + '：' + file.name); } catch (e0b) {}
+                    const fileName = file.name.toLowerCase();
+                    try {
+                        if (fileName.endsWith('.docx')) {
+                            const parsed = await _parseDocxFile(file);
+                            if (parsed && parsed.length) allImported.push(...parsed);
+                            else skipped.push(file.name + '：未识别到四级标题结构（或解析组件未加载）');
+                        } else if (fileName.endsWith('.doc')) {
+                            skipped.push(file.name + '：不支持老版 .doc，请另存为 .docx');
+                        } else if (fileName.endsWith('.json')) {
+                            const parsed = await _parseJsonFile(file);
+                            if (parsed && parsed.length) allImported.push(...parsed);
+                            else skipped.push(file.name + '：JSON 结构不符（每条记录需含 chapter 字段）');
+                        } else if (/\.(txt|md|markdown)$/.test(fileName)) {
+                            // 【2026-09-21 新增】纯文本 / Markdown 手册（GBK 也能读），按四级标题识别
+                            const parsed = await _parseTextFile(file);
+                            if (parsed && parsed.length) allImported.push(...parsed);
+                            else skipped.push(file.name + '：未识别到任何内容（空文件？）');
+                        } else {
+                            skipped.push(file.name + '：不支持的格式（支持 .docx / .json / .txt / .md）');
+                        }
+                    } catch (fe) { skipped.push(file.name + '：' + ((fe && fe.message) || '解析异常')); }
+                }
+                try { window.hideProgress(); } catch (e1) {}
+                e.target.value = '';   // 无论成功/失败都复位，保证同一文件可重试
+                _hbParsing = false;    // 解析结束即解锁（后面的"追加/覆盖"确认不再持锁）
 
+                if (allImported.length === 0) {
+                    var msg = '❌ 未解析到任何手册内容：\n' + (skipped.length ? skipped.join('\n') : '（文件为空）');
+                    if (typeof window.showToast === 'function') window.showToast(msg, true, 11000); else alert(msg);
+                    return;
+                }
+                if (skipped.length) {
+                    try { if (typeof window.showToast === 'function') window.showToast('⚠️ 部分文件未导入：\n' + skipped.join('\n'), true, 10000); } catch (e2) {}
+                }
                 _showImportConfirm(allImported.length, allImported);
-                e.target.value = '';
             });
 
             // 解析单个DOCX文件
@@ -136,6 +178,76 @@
             }
 
             // 解析检查手册HTML为多级结构数据（增强版，支持任意DOCX标题格式 + 表格）
+            // 【2026-09-21】「标题级别识别」提到模块作用域：DOCX / HTML 与新增的**纯文本 / Markdown** 手册共用同一套规则
+            const LEVEL_PATTERNS = [
+                // 第1级：第X章 / 一、/ 1. / 1、/ 第一章 / Part I
+                { level: 1, re: /^第[一二三四五六七八九十百千\d]+[章节部分篇]\s*/, maxLen: 60 },
+                { level: 1, re: /^[一二三四五六七八九十]+、/, maxLen: 60 },
+                // 末尾加 (?!\d)：否则 "1.1 安全责任" 会被这条先吃掉判成一级，
+                // 四级目录（章/节/条/款）整体塌成两级
+                { level: 1, re: /^\d+[、.．](?!\d)\s*/, maxLen: 50 },
+                // 第2级：第X节 / (一) / 1.1 / 1.1.1
+                { level: 2, re: /^第[一二三四五六七八九十百千\d]+节\s*/, maxLen: 80 },
+                { level: 2, re: /^[（(][一二三四五六七八九十]+[)）]/, maxLen: 80 },
+                { level: 2, re: /^\d+\.\d+[\s.、]/, maxLen: 80 },
+                // 第3级：(一) / 1) / （1）
+                { level: 3, re: /^\d+[)）]\s*/, maxLen: 100 },
+                // 第4级：(1) / ① / a. / A.
+                { level: 4, re: /^[（(]\d+[)）]/, maxLen: 120 },
+                { level: 4, re: /^[①②③④⑤⑥⑦⑧⑨⑩]/, maxLen: 120 },
+                { level: 4, re: /^[a-zA-Z][.、．)\）]\s*/, maxLen: 120 },
+            ];
+            function detectLevelByPattern(text) {
+                for (const p of LEVEL_PATTERNS) {
+                    if (p.re.test(text) && text.length <= p.maxLen) return p.level;
+                }
+                return 0; // 普通内容
+            }
+
+            /**
+             * 【2026-09-21 新增】纯文本 / Markdown 手册解析。
+             *   复用 docx 那套 `LEVEL_PATTERNS`（章/节/条/款）：
+             *   - Markdown：`#`/`##`/`###`/`####` 直接当 1~4 级（比正则更明确）；
+             *   - 纯文本：按行用 LEVEL_PATTERNS 猜级别，非标题行累积进 content；
+             *   - 编码：走 `dsReadTextFileAutoEnc` 自动择码（Windows 记事本另存常是 GBK）。
+             */
+            async function _parseTextFile(file) {
+                const raw = (typeof window.dsReadTextFileAutoEnc === 'function')
+                    ? await window.dsReadTextFileAutoEnc(file)
+                    : await file.text();
+                const lines = String(raw || '').replace(/\r\n?/g, '\n').split('\n');
+                const data = [];
+                let cur = { chapter: '', section: '', item: '', subitem: '', content: '' };
+                function push() {
+                    const content = String(cur.content || '').trim();
+                    if (cur.chapter || cur.section || cur.item || cur.subitem) {
+                        data.push({ chapter: cur.chapter, section: cur.section, item: cur.item, subitem: cur.subitem, content: content });
+                    } else if (content) {
+                        data.push({ chapter: '未分类', section: '', item: '', subitem: '', content: content });
+                    }
+                    cur = { chapter: '', section: '', item: '', subitem: '', content: '' };
+                }
+                for (const line of lines) {
+                    const t = String(line).trim();
+                    if (!t) continue;
+                    const md = t.match(/^(#{1,6})\s+(.*)$/);
+                    let lv = 0, title = t;
+                    if (md) { lv = Math.min(md[1].length, 4); title = md[2].trim(); }
+                    else lv = detectLevelByPattern(t);
+                    if (lv >= 1 && lv <= 4) {
+                        push();
+                        if (lv === 1) cur.chapter = title;
+                        else if (lv === 2) cur.section = title;
+                        else if (lv === 3) cur.item = title;
+                        else cur.subitem = title;
+                    } else {
+                        cur.content = cur.content ? (cur.content + '\n' + t) : t;
+                    }
+                }
+                push();
+                return data;
+            }
+
             function parseHandbookHtml(html) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
@@ -143,33 +255,6 @@
 
                 // 当前层级状态
                 let cur = { chapter: '', section: '', item: '', subitem: '', content: '' };
-
-                // 检测文本标题级别的正则（按优先级排列）
-                const LEVEL_PATTERNS = [
-                    // 第1级：第X章 / 一、/ 1. / 1、/ 第一章 / Part I
-                    { level: 1, re: /^第[一二三四五六七八九十百千\d]+[章节部分篇]\s*/, maxLen: 60 },
-                    { level: 1, re: /^[一二三四五六七八九十]+、/, maxLen: 60 },
-                    // 末尾加 (?!\d)：否则 "1.1 安全责任" 会被这条先吃掉判成一级，
-                    // 四级目录（章/节/条/款）整体塌成两级
-                    { level: 1, re: /^\d+[、.．](?!\d)\s*/, maxLen: 50 },
-                    // 第2级：第X节 / (一) / 1.1 / 1.1.1
-                    { level: 2, re: /^第[一二三四五六七八九十百千\d]+节\s*/, maxLen: 80 },
-                    { level: 2, re: /^[（(][一二三四五六七八九十]+[)）]/, maxLen: 80 },
-                    { level: 2, re: /^\d+\.\d+[\s.、]/, maxLen: 80 },
-                    // 第3级：(一) / 1) / （1）
-                    { level: 3, re: /^\d+[)）]\s*/, maxLen: 100 },
-                    // 第4级：(1) / ① / a. / A.
-                    { level: 4, re: /^[（(]\d+[)）]/, maxLen: 120 },
-                    { level: 4, re: /^[①②③④⑤⑥⑦⑧⑨⑩]/, maxLen: 120 },
-                    { level: 4, re: /^[a-zA-Z][.、．)\）]\s*/, maxLen: 120 },
-                ];
-
-                function detectLevelByPattern(text) {
-                    for (const p of LEVEL_PATTERNS) {
-                        if (p.re.test(text) && text.length <= p.maxLen) return p.level;
-                    }
-                    return 0; // 普通内容
-                }
 
                 function detectLevel(el, text) {
                     const tag = el.tagName.toLowerCase();
@@ -421,8 +506,36 @@
 
             // 数据持久化
             var STORAGE_KEY = 'handbook_fourlevel_v1';
+            /**
+             * 【2026-09-21】返回"是否写入成功"。原实现空 catch 静默吞错：
+             *   localStorage 配额满时弹窗照常关闭、界面显示已导入，**刷新后数据全丢**，用户完全无感。
+             */
             function saveToStorage() {
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(handbookData)); } catch(e) {}
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(handbookData));
+                    return true;
+                } catch (e) {
+                    console.error('[手册] 写入失败：', e);
+                    try {
+                        var msg = '⚠️ 手册数据写入失败（可能存储空间不足）：' + ((e && e.message) || '未知错误') + '；本次导入未生效，请清理空间后重试。';
+                        if (typeof window.showToast === 'function') window.showToast(msg, true, 10000); else alert(msg);
+                    } catch (e2) {}
+                    return false;
+                }
+            }
+
+            /** 【2026-09-21】导入成功后的统一收尾：重建视图 + 失效检索索引 + 非阻塞成功提示 */
+            function hbAfterImport(added, parsedTotal) {
+                try {
+                    var isOutline = document.getElementById('hb-toggleOutline') && document.getElementById('hb-toggleOutline').classList.contains('active');
+                    // 原实现导入后不重建视图 → 大纲仍显示"暂无数据，请先导入DOCX文档"
+                    if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
+                } catch (e) { console.warn('[手册] 重建视图失败：', e && e.message); }
+                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('handbook'); } catch (e) {}
+                try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+                var skipped = Math.max(0, (parsedTotal || 0) - (added || 0));
+                var msg = '✅ 手册已导入 ' + added + ' 条' + (skipped ? '（跳过重复 ' + skipped + ' 条）' : '') + '，当前共 ' + handbookData.length + ' 条';
+                if (typeof window.showToast === 'function') window.showToast(msg, false, 6000); else alert(msg);
             }
             function loadFromStorage() {
                 try {
@@ -716,7 +829,7 @@
                 window.showProgress(50, '正在导出检查手册…');
                 var dataStr = JSON.stringify(handbookData, null, 2);
                 var blob = new Blob([dataStr], { type: 'application/json' });
-                window.downloadBlob(blob, '安全检查手册_' + new Date().toISOString().slice(0,10) + '.json');
+                window.downloadBlob(blob, '安全检查手册_' + window.localDateStr() + '.json');
                 window.finishProgress('✅ 检查手册导出成功');
             };
         })();

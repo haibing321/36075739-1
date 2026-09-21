@@ -1980,9 +1980,35 @@
                     const task = rawUserText.replace(/^\/agent[ \u3000]*/, '').trim();
                     if (!task) { alert('用法：/agent <任务>\n例如：/agent 统计上月供电专业 A 类问题并生成简报'); return; }
                     if (typeof window._agentRun !== 'function') { alert('智能体内核未加载，无法执行任务。'); return; }
+                    // 【2026-09-21】目标命令（/goal…）在对话内也能用：不再只限独立「智能体」标签页。
+                    //   走纯本地处理（不调模型），结果直接作为一条回答落到对话里。
+                    if (task.charAt(0) === '/' && typeof window.handleAgentCommand === 'function') {
+                        var _cmdResp = window.handleAgentCommand(task);
+                        if (_cmdResp !== null && _cmdResp !== undefined) {
+                            input.value = '';
+                            if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+                            dsHistory.push({ role: 'user', content: rawUserText });
+                            dsHistory.push({ role: 'assistant', content: _cmdResp });
+                            dsRenderAll(); dsScrollBottom();
+                            return;
+                        }
+                    }
+                    // 【2026-09-21】把当前附件里的图片一并交给智能体（原来 /agent 恒传 null →
+                    //   用户传了图却得到"看不到图片"；独立「智能体」标签页一直有这段，两边行为现已一致）
+                    var _agentImgs = [], _agentAttachNames = [];
+                    try {
+                        var _atts = (window._dsAttachments || []).filter(Boolean);
+                        _agentAttachNames = _atts.map(function(a) { return (a && a.name) || '附件'; });
+                        _agentImgs = _atts.filter(function(a) { return a && a.isImage && a.dataUrl; }).map(function(a) { return a.dataUrl; });
+                        if (_atts.length) {   // 附件已消费：清空预览，避免下一轮重复带上
+                            window._dsAttachments = [];
+                            var _af = document.getElementById('ds-attach-file');
+                            if (_af) _af.value = '';
+                        }
+                    } catch (_e) { _agentImgs = []; }
                     input.value = '';
                     if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
-                    dsHistory.push({ role: 'user', content: rawUserText });
+                    dsHistory.push({ role: 'user', content: rawUserText + (_agentAttachNames.length ? '\n📎 ' + _agentAttachNames.join('、') : '') });
                     dsHistory.push({ role: 'assistant', content: '', agentSteps: [] });
                     var _agentMsgIdx = dsHistory.length - 1;
                     dsRenderAll(); dsScrollBottom();
@@ -2006,7 +2032,7 @@
                         _paint();
                         Promise.resolve()
                             .then(function () {
-                                return window._agentRun(task, null, {
+                                return window._agentRun(task, (_agentImgs && _agentImgs.length) ? _agentImgs : null, {
                                     onStep: function (ev) {
                                         if (!ev) return;
                                         if (ev.phase === 'plan' || ev.phase === 'tool-done') {
@@ -2015,6 +2041,10 @@
                                             _live = '🧠 正在思考（第 ' + (ev.round || 1) + ' 轮）';
                                         } else if (ev.phase === 'tool-start') {
                                             _live = '🔧 正在调用：' + ((ev.tools || []).join('、') || '工具');
+                                        } else if (ev.phase === 'tool-progress') {
+                                            // 【2026-09-21】慢工具的每秒心跳 + 阶段文案（如"正在准备知识库索引…"）
+                                            _live = '🔧 正在调用：' + (ev.tool || '工具') + (ev.text ? '（' + ev.text + '）' : '')
+                                                + (ev.ms ? ' 已等 ' + Math.round(ev.ms / 1000) + 's' : '');
                                         } else if (ev.phase === 'answer') {
                                             _live = '✍️ 正在整理回答';
                                         }
@@ -2450,7 +2480,28 @@
                     // 「智能体能查天气、智能对话查不了」的能力割裂。
                     // D1：保留可用性守卫——agent-core 未加载时降级为普通对话，避免发送 tools:null 导致 400 或工具静默失效
                     var _toolsReady = (typeof window._agentToolsParam === 'function') && (typeof window._agentExecuteTool === 'function');
-                    var _useTools = _isV4 && _toolsReady;
+                    // 【2026-09-21 能力修复】原先 `_useTools = _isV4 && _toolsReady` —— 只有"模型名含 deepseek 或
+                    //   端点 api.deepseek.com"才挂 tools；用豆包等模型时**静默不挂**（无日志、无界面提示），
+                    //   用户看到的就是"智能体/工具根本不上场"。现在任何 OpenAI 兼容端点都先挂 tools；
+                    //   若端点不支持 function calling（400），下面会自动去掉 tools 重试一次并记住本机标记。
+                    var _toolsUnsupported = false;
+                    try { _toolsUnsupported = localStorage.getItem('ds_tools_unsupported') === '1'; } catch (e) {}
+                    var _useTools = _toolsReady && !_toolsUnsupported;
+                    var _toolsDegradedNote = '';
+                    window.__dsLastTurnUsedTools = false;   // 供语义缓存判断"本轮用过工具 → 不缓存"
+                    if (!_useTools) {
+                        // 修复②：能力边界**如实告诉模型**，否则它会臆测检索机制（实测它把本地 KB 注入
+                        // 说成"平台侧检索"，并给出"请触发一次新检索"这类错误操作建议）
+                        try {
+                            if (messages[0] && messages[0].role === 'system') {
+                                messages[0].content += '\n\n【能力说明】本轮未提供本地数据查询工具（tools）。'
+                                    + (_toolsUnsupported ? '（原因：本机记录当前模型不支持 function calling）' : '')
+                                    + '若用户要求按条件精确统计/查询本地台账，请如实说明"这一轮我没有查询工具"，'
+                                    + '并建议在输入框直接用「/agent 任务」触发本地工具精确查询（或改用支持工具调用的模型）；'
+                                    + '不要猜测、不要描述检索/注入机制，也不要声称"检索由平台侧完成"。';
+                            }
+                        } catch (e) {}
+                    }
                     var _toolsParamArr = _useTools ? window._agentToolsParam() : null;
                     // 【v3.76 审计】联网与「本地检索工具」目前**互斥**：联网走 Responses/Anthropic 通道，
                     //   请求体里 tools 只放服务端 web_search；工具需要"模型调用→前端执行→回灌"的闭环，
@@ -2601,6 +2652,27 @@
 
                     if (!resp.ok) {
                         var errText = await resp.text();
+                        // 【2026-09-21】端点不支持 function calling（400 且错误提到 tool/function）→ 自动降级重试一次：
+                        //   去掉 tools 重新请求，并记住本机不再尝试（避免每轮都白失败一次）。降级后会在气泡里补一行说明。
+                        // ⚠️ 必须限定在 chat/completions 分支（!useWebSearch）：联网走 Responses 通道，其 400 可能提到
+                        //   "web_search tool"，误判会平白把请求切到另一条通道。
+                        if (resp.status === 400 && !useWebSearch && _useTools && /tool|function/i.test(String(errText))) {
+                            try { localStorage.setItem('ds_tools_unsupported', '1'); } catch (e) {}
+                            console.warn('[ds] 当前端点不支持 function calling → 本轮自动降级重试（不带 tools）。要精确查本地台账请用 /agent：' + String(errText).slice(0, 200));
+                            _useTools = false; _toolsParamArr = null;
+                            _toolsDegradedNote = '（说明：当前模型不支持工具调用，本轮已降级为普通对话；要精确查本地台账请在输入框用 `/agent 任务`，或改用支持工具调用的模型）';
+                            var _bodyNoTools = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
+                            if (thinkingOn) { _bodyNoTools.thinking = { type: 'enabled' }; _bodyNoTools.reasoning_effort = _thinkEffort; } else { _bodyNoTools.thinking = { type: 'disabled' }; }
+                            resp = await fetch(dsApiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                                body: JSON.stringify(_bodyNoTools),
+                                signal: window._dsAbortController.signal
+                            });
+                            try { errText = resp.ok ? '' : await resp.text(); } catch (e) { errText = ''; }
+                        }
+                    }
+                    if (!resp.ok) {
                         var errMsg = '请求失败（HTTP ' + resp.status + '）';
                         var statusHints = {
                             401: '⚠️ API Key 无效或未填写，请确认已填入正确的 Key',
@@ -2698,18 +2770,26 @@
                         // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
                         await _dsStreamChat(resp, assistantIdx, _pendingToolCalls);
+                        if (_toolsDegradedNote) {   // 端点不支持工具 → 如实补一行说明（不再静默降级）
+                            dsHistory[assistantIdx].content = (dsHistory[assistantIdx].content || '') + '\n\n' + _toolsDegradedNote;
+                            _toolsDegradedNote = '';
+                        }
                         // 若模型请求调用工具：本地执行后回灌结果，再请求一轮让其总结（最多 4 轮，避免无限循环）
                         var _tcRound = 1;
                         var _maxTcRounds = 4;
                         while (_useTools && _toolExec && _pendingToolCalls.length && _tcRound < _maxTcRounds) {
                             _tcRound++;
+                            // 【2026-09-21】标记"本轮用过工具"：语义缓存据此**不缓存**这类回答
+                            //   （否则数据变更后会继续复读旧答案，用户也会误以为"没调用工具"）
+                            window.__dsLastTurnUsedTools = true;
                             _pendingToolCalls = _pendingToolCalls.filter(Boolean);
                             // 官方硬性要求：携带 tools 的请求，后续轮次必须**完整回传 reasoning_content**，
                             // 即使该轮未真正产生工具调用；缺失会被 API 判 400。
                             // 本轮思维链已由 _dsStreamChat 累积进 dsHistory[assistantIdx].reasoning，先取出再回传。
                             var _tcReasoning = dsHistory[assistantIdx].reasoning || '';
                             // D2：回灌前规范化 arguments——模型未生成参数时为空串，必须补为 '{}' 合法 JSON，否则 API 报 400
-                            _pendingToolCalls.forEach(function(_c) {
+                            _pendingToolCalls.forEach(function(_c, _ci) {
+                                if (!_c.id) _c.id = 'call_tc' + _tcRound + '_' + _ci;   // 缺 id → tool_call_id='' 会被判 400（与智能体侧 :866 对齐）
                                 if (!_c.function) _c.function = { name: '', arguments: '{}' };
                                 if (typeof _c.function.arguments !== 'string' || _c.function.arguments.trim() === '') _c.function.arguments = '{}';
                             });
@@ -2718,6 +2798,15 @@
                             // 非思考模式（thinking disabled）不会产出该字段，此处自然为空、不影响请求。
                             if (_tcReasoning) _tcAssistant.reasoning_content = _tcReasoning;
                             messages.push(_tcAssistant);
+                            // 【2026-09-21】工具执行期进度：每秒把"正在调用 X（阶段文案）已等 Ns"写进气泡
+                            //   （慢工具如 kb_search 冷建索引时，用户不再只能看到静止的"正在调用…"）
+                            window.__agentProgress = function (_tool, _ms, _text) {
+                                try {
+                                    dsHistory[assistantIdx].content = '🔧 正在调用 ' + _tool + (_text ? '（' + _text + '）' : '') + '… 已等 ' + Math.round(_ms / 1000) + 's';
+                                    var _cb = document.getElementById('ds-chat-box');
+                                    if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); }
+                                } catch (e) {}
+                            };
                             for (var _k = 0; _k < _pendingToolCalls.length; _k++) {
                                 var _call = _pendingToolCalls[_k];
                                 var _args = {};
@@ -2735,9 +2824,14 @@
                                 }
                                 dsHistory[assistantIdx].content = '🔧 ' + _summary;
                                 (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
-                                var _tcContent = JSON.stringify(_exec && _exec.result !== undefined ? _exec.result : _exec, null, 2);
-                                messages.push({ role: 'tool', tool_call_id: _call.id, content: _tcContent });
+                                var _tcPayload = (_exec && _exec.result !== undefined) ? _exec.result : _exec;
+                                // 统一预算裁剪（与智能体侧同一实现）：避免一次 limit 不封顶把数百 KB 灌进上下文；
+                                //   同时去掉 null,2 缩进美化（纯浪费 20~30% token）
+                                if (typeof window._agentTrimToolResult === 'function') _tcPayload = window._agentTrimToolResult(_tcPayload);
+                                var _tcContent = JSON.stringify(_tcPayload);
+                                messages.push({ role: 'tool', tool_call_id: _call.id, name: _call.function.name, content: _tcContent });
                             }
+                            window.__agentProgress = null;   // 本轮工具跑完，撤掉进度回传
                             // 清空气泡，准备下一轮最终回答
                             dsHistory[assistantIdx].content = '';
                             dsHistory[assistantIdx].reasoning = '';
@@ -5089,7 +5183,7 @@
       }
       function riskDownloadReport(txt) {
         var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-        window.downloadBlob(blob, '风险研判_' + new Date().toISOString().slice(0,10) + '.txt');
+        window.downloadBlob(blob, '风险研判_' + window.localDateStr() + '.txt');
       }
       function riskSpeak(btn) {
         if (typeof window.speechSynthesis === 'undefined') return;
@@ -5577,7 +5671,7 @@
             if (firstLine) break;
           }
           firstLine = firstLine.slice(0, 18).replace(/[\\/:*?"<>|]/g, '');
-          var name = '智能对话_' + (firstLine ? firstLine + '_' : '') + new Date().toISOString().slice(0, 10);
+          var name = '智能对话_' + (firstLine ? firstLine + '_' : '') + window.localDateStr();
           if (typeof window.wrExportMdToDocx === 'function') {
             try {
               window.wrExportMdToDocx(raw, name);
@@ -5899,6 +5993,7 @@
               if (!ev) return;
               if (ev.phase === 'thinking') _agentLive = '🧠 正在思考（第 ' + (ev.round || 1) + ' 轮）';
               else if (ev.phase === 'tool-start') _agentLive = '🔧 正在调用：' + ((ev.tools || []).join('、') || '工具');
+              else if (ev.phase === 'tool-progress') _agentLive = '🔧 正在调用：' + (ev.tool || '工具') + (ev.text ? '（' + ev.text + '）' : '') + (ev.ms ? ' 已等 ' + Math.round(ev.ms / 1000) + 's' : '');
               else if (ev.phase === 'answer') _agentLive = '✍️ 正在整理回答';
               if ((ev.phase === 'plan' || ev.phase === 'tool-done') && ev.step) {
                 var _card = _agentCardHtml(ev.step);
@@ -5943,10 +6038,14 @@
 
       // B#7: 停止智能体（中断在途请求 + 终止后续循环）
       window.dsAgentStop = function() {
-        _agentRunning = false;
+        // 【2026-09-21】除了 abort 在途请求，还要**作废当前 run 的令牌** —— 否则工具执行期（天气 5s / KB 冷建）
+        //   按停止无效、循环下一轮又新建 AbortController 继续跑（用户看到"停了还在动"）。
+        //   agent-core 每轮开头与每个工具执行前都会校验令牌。
+        try { window.__agentRunToken = (window.__agentRunToken || 0) + 1; } catch (_) {}
         if (window.__agentAbort && typeof window.__agentAbort.abort === 'function') {
           try { window.__agentAbort.abort(); } catch (_) {}
         }
+        _agentRunning = false;
         var stopBtn = document.getElementById('ds-agent-stop');
         var runBtn = document.getElementById('ds-agent-run');
         if (stopBtn) stopBtn.style.display = 'none';
@@ -5991,8 +6090,13 @@
           }
           var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
             + '<span style="font-weight:600;font-size:0.85rem;">📜 历史任务（共 ' + tasks.length + ' 条）</span>'
+            + '<span>'
+            + '<button onclick="dsAgentClearPrefs()" title="清空用户偏好画像（常用单位/检索词/统计口径；不影响历史记录）" style="font-size:0.74rem;border:none;background:#e0e7ff;color:#4338ca;border-radius:8px;padding:4px 10px;cursor:pointer;margin-right:6px;">🧠 清空画像</button>'
             + '<button onclick="dsAgentClearHistory()" style="font-size:0.74rem;border:none;background:#fee2e2;color:#dc2626;border-radius:8px;padding:4px 10px;cursor:pointer;">🗑 清空</button>'
-            + '</div>';
+            + '</span>'
+            + '</div>'
+            // 【2026-09-21】进化：面板显示成功率/平均耗时/失败最多的工具 + 当前偏好画像（原来只有任务流水）
+            + '<div id="ds-agent-stats" style="font-size:0.76rem;color:#64748b;margin-bottom:8px;">⏳ 统计中…</div>';
           tasks.forEach(function(t) {
             var steps = (t.steps || []).map(function(s) { return s.tool + (s.ok ? ' ✅' : ' ❌'); }).join(' · ');
             var time = (t.timestamp || '').replace('T', ' ').slice(0, 16);
@@ -6003,9 +6107,30 @@
               + '</div>';
           });
           panel.innerHTML = html;
+          // 统计行异步填充（不阻塞列表渲染）
+          (async function() {
+            try {
+              var st = (typeof window.getAgentToolStats === 'function') ? await window.getAgentToolStats() : null;
+              var el = document.getElementById('ds-agent-stats');
+              if (!el || !st) return;
+              var pref = (typeof window.getPreferencePrompt === 'function') ? window.getPreferencePrompt() : '';
+              el.innerHTML = '📊 成功率 ' + st.成功率 + '｜平均耗时 ' + st.平均耗时s + 's'
+                + (st.失败最多的工具 && st.失败最多的工具.length ? '｜失败最多：' + dsEsc(st.失败最多的工具.join('、')) : '｜无失败记录')
+                + (pref ? '<br>🧠 ' + dsEsc(pref) : '<br>🧠 暂无偏好画像（多问答几次后自动累积）');
+            } catch (e) {}
+          })();
         } catch(e) {
           panel.innerHTML = '<div style="color:#dc2626;font-size:0.85rem;">加载历史失败：' + dsEsc(e.message || '') + '</div>';
         }
+      };
+
+      // 【2026-09-21】清空用户偏好画像（画像此前只写不读、更无任何清理入口 = 本地数据治理缺口）
+      window.dsAgentClearPrefs = function() {
+        if (typeof window.clearAgentPreferences !== 'function') { alert('偏好画像模块未加载'); return; }
+        if (!confirm('确定清空智能体的用户偏好画像吗？\n（常用单位 / 常用检索词 / 统计口径；清空后需重新累积，不影响历史任务记录）')) return;
+        window.clearAgentPreferences();
+        var el = document.getElementById('ds-agent-stats');
+        if (el) el.innerHTML = '🧠 偏好画像已清空（下次任务起重新累积）。';
       };
 
       // A#2: 清空历史任务记录

@@ -100,6 +100,12 @@
         }).join('');
     }
 
+    // 【2026-09-21】只读访问接口：此前 memo 数据完全无法被其它模块读到（智能体盯控/检索都用不上）
+    window.getMemoData = function() {
+        try { if (!memos || !memos.length) loadMemos(); } catch (e) {}
+        return memos || [];
+    };
+
     // 对外接口
     window.openMemoModal = function() {
         loadMemos();

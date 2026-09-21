@@ -188,6 +188,22 @@ document.addEventListener('DOMContentLoaded', function() {
         scored.sort(function (a, b) { return b.s - a.s || a.i - b.i; });
         return scored.slice(0, limit).map(function (x) { return data[x.i]; });
     }
+    /**
+     * 【2026-09-21】日期入参归一化（工具参数校验层）：
+     *   兼容 '2026-8-1' / '2026/08/01' / '2026.08.01' / '2026-08'（月粒度自动补 01 / 月末 31）。
+     *   原实现是纯字符串字典序比较（`i.datetime >= dateFrom`），模型传 '2026-08'（月）时因为
+     *   '-'（0x2D）大于空格（0x20）会把整月数据**全部排除**，静默给出错误数字；未补零的
+     *   '2026-8-1' 同样全空。库内 datetime 还可能是 '2026/09/01 09:00:00' → 统一把 '/' 视作 '-'。
+     */
+    function _agentNormDate(v, isEnd) {
+        var s = String(v == null ? '' : v).trim();
+        if (!s) return '';
+        var m = s.match(/^(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?/);
+        if (!m) return s.replace(/\//g, '-');                       // 非标准样式：只做斜杠归一，保持旧行为
+        var y = m[1], mo = String(+m[2]).padStart(2, '0'), d = m[3];
+        if (!d) return y + '-' + mo + (isEnd ? '-31' : '-01');       // 月粒度：起点 01 / 终点 31
+        return y + '-' + mo + '-' + String(+d).padStart(2, '0');
+    }
     /** 搜索检查信息（支持日期/性质筛选 + 模糊搜索） */
     window._agentGetIssues = function(keyword, unit, category, limit, dateFrom, dateTo, nature) {
         var data = [];
@@ -198,11 +214,12 @@ document.addEventListener('DOMContentLoaded', function() {
         var filtered = data;
         if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
         if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
-        // 日期范围过滤（datetime 字段，前缀匹配即可）
-        if (dateFrom) filtered = filtered.filter(function(i) { return (i.datetime||'') >= dateFrom; });
-        if (dateTo)   filtered = filtered.filter(function(i) { return (i.datetime||'') <= dateTo + ' 23:59:59'; });
-        // 性质筛选（A类/B类/C类/红线/空白）
-        if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
+        // 日期范围过滤：先归一化入参（兼容 '2026-8-1' / '2026/09/01' / '2026-09' 月粒度），
+        //   并把库内 'YYYY/MM/DD' 一并归一，避免跨格式漏检（原来纯字典序比较会静默出错，见 _agentNormDate）
+        if (dateFrom) { var _df = _agentNormDate(dateFrom, false); filtered = filtered.filter(function(i) { return String(i.datetime||'').replace(/\//g, '-') >= _df; }); }
+        if (dateTo)   { var _dt = _agentNormDate(dateTo, true);    filtered = filtered.filter(function(i) { return String(i.datetime||'').replace(/\//g, '-') <= _dt + ' 23:59:59'; }); }
+        // 性质筛选：按首字符匹配（模型传 'A类问题' / 'A' 都能命中库内 'A类'；'红线' → '红'）
+        if (nature) { var _nK = String(nature).trim().charAt(0).toUpperCase(); filtered = filtered.filter(function(i) { return String(i['性质']||'').trim().charAt(0).toUpperCase() === _nK; }); }
         // 典型问题引用默认 35 条；用户要求更多时无硬上限
         var lim = (typeof limit === 'number' && limit > 0) ? limit : 35;
         // 【P0′】统计与召回分离：total=精确子串命中数（数字可信、在线/离线一致）；
@@ -225,22 +242,74 @@ document.addEventListener('DOMContentLoaded', function() {
         var filtered = data;
         if (unit) filtered = filtered.filter(function(i) { return (i.unit||'').indexOf(unit) !== -1; });
         if (category) filtered = filtered.filter(function(i) { return (i.category||'').indexOf(category) !== -1; });
-        if (dateFrom) filtered = filtered.filter(function(i) { return (i.datetime||'') >= dateFrom; });
-        if (dateTo)   filtered = filtered.filter(function(i) { return (i.datetime||'') <= dateTo + ' 23:59:59'; });
-        if (nature) filtered = filtered.filter(function(i) { return (i['性质']||'') === nature; });
+        // 日期/性质口径与 _agentGetIssues 完全一致（归一化 + 首字符匹配），避免"搜索与统计数字不一致"
+        if (dateFrom) { var _cdf = _agentNormDate(dateFrom, false); filtered = filtered.filter(function(i) { return String(i.datetime||'').replace(/\//g, '-') >= _cdf; }); }
+        if (dateTo)   { var _cdt = _agentNormDate(dateTo, true);    filtered = filtered.filter(function(i) { return String(i.datetime||'').replace(/\//g, '-') <= _cdt + ' 23:59:59'; }); }
+        if (nature) { var _cnK = String(nature).trim().charAt(0).toUpperCase(); filtered = filtered.filter(function(i) { return String(i['性质']||'').trim().charAt(0).toUpperCase() === _cnK; }); }
         var kw = (keyword && String(keyword).trim()) ? keyword : '';
         // 【P0′】统计**一律精确子串**：原先复用 Fuse 模糊匹配 → total 含近似命中，
         //   同一查询在线/离线数字不同（提示词要求"必须真实总数、不得估算"）。实测：
         //   查询「作业人员未执行标准化作业程序」旧 Fuse 报 687/687，精确子串才是真值。
         var matched = kw ? _exactFilter(filtered, kw, ['性质','category','content','regulation','unit']) : filtered;
         var groups = {};
+        var _gbErr = '';
         if (groupBy) {
-            matched.forEach(function(i) {
-                var k = (i[groupBy] != null && i[groupBy] !== '') ? i[groupBy] : '(未分类)';
-                groups[k] = (groups[k] || 0) + 1;
-            });
+            // 【2026-09-21】白名单 + 月份桶。原实现是任意字段直接索引：模型传「单位」「月份」这类中文名时
+            //   全部落入 (未分类)，却照样出报告（静默错误）。month 桶用于"近 N 个月趋势"，一次调用即可拿到。
+            if (groupBy === 'month') {
+                matched.forEach(function(i) {
+                    var k = String(i.datetime || '').replace(/\//g, '-').slice(0, 7) || '(无日期)';
+                    groups[k] = (groups[k] || 0) + 1;
+                });
+            } else if (['性质', 'category', 'unit', 'trade'].indexOf(groupBy) !== -1) {
+                matched.forEach(function(i) {
+                    var k = (i[groupBy] != null && i[groupBy] !== '') ? i[groupBy] : '(未分类)';
+                    groups[k] = (groups[k] || 0) + 1;
+                });
+            } else {
+                _gbErr = 'groupBy 仅支持 性质/category/unit/trade/month（month=按 YYYY-MM 分组，用于时间趋势）；收到：' + groupBy;
+            }
         }
-        return { total: matched.length, groups: groups };
+        var _out = { total: matched.length, groups: groups };
+        if (_gbErr) _out.参数错误 = _gbErr;
+        return _out;
+    };
+
+    /**
+     * 【2026-09-21】导出检查信息清单（CSV / UTF-8 BOM，Excel、WPS 直接打开）
+     *   补齐"批量导出"能力缺口 —— 原先智能体只能把 ≤35 条念成文本，用户要清单只能自己复制。
+     *   筛选口径与 _agentCountIssues / _agentGetIssues 完全一致（日期归一 + 性质首字符匹配）。
+     *   返回 {条数, 文件名, ...}；>5000 条按 5000 截断并明确提示（避免一次生成几十 MB 文件）。
+     */
+    window._agentExportIssues = function(opts) {
+        opts = opts || {};
+        var data = [];
+        try { if (typeof window.getIssueData === 'function') data = window.getIssueData() || []; } catch (e) { data = []; }
+        if (!data.length) return { error: '本地暂无检查信息可导出' };
+        var filtered = data;
+        if (opts.unit) filtered = filtered.filter(function(i) { return String(i.unit || '').indexOf(opts.unit) !== -1; });
+        if (opts.category) filtered = filtered.filter(function(i) { return String(i.category || '').indexOf(opts.category) !== -1; });
+        if (opts.dateFrom) { var _df = _agentNormDate(opts.dateFrom, false); filtered = filtered.filter(function(i) { return String(i.datetime || '').replace(/\//g, '-') >= _df; }); }
+        if (opts.dateTo) { var _dt = _agentNormDate(opts.dateTo, true); filtered = filtered.filter(function(i) { return String(i.datetime || '').replace(/\//g, '-') <= _dt + ' 23:59:59'; }); }
+        if (opts.nature) { var _nk = String(opts.nature).trim().charAt(0).toUpperCase(); filtered = filtered.filter(function(i) { return String(i['性质'] || '').trim().charAt(0).toUpperCase() === _nk; }); }
+        if (opts.keyword) filtered = _exactFilter(filtered, opts.keyword, ['性质', 'category', 'content', 'regulation', 'unit']);
+        var total = filtered.length;
+        if (!total) return { 条数: 0, 说明: '按当前条件没有匹配到检查信息，未生成文件' };
+        var CAP = 5000;
+        var rows = filtered.slice(0, CAP);
+        var q = function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"'; };
+        var csv = '\ufeff' + ['时间', '性质', '类别', '单位', '专业', '问题描述', '规章依据'].join(',') + '\r\n';
+        rows.forEach(function(i) {
+            csv += [i.datetime || '', i['性质'] || '', i.category || '', i.unit || '', i.trade || '', i.content || '', i.regulation || ''].map(q).join(',') + '\r\n';
+        });
+        var name = '检查信息_' + (opts.unit || '全部') + '_' + (opts.dateFrom || '起') + '-' + (opts.dateTo || '今') + '.csv';
+        try {
+            if (typeof window.downloadBlob !== 'function') return { error: '下载组件未就绪（downloadBlob 缺失）' };
+            window.downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), name);
+        } catch (e) { return { error: '导出失败：' + ((e && e.message) || '未知错误') }; }
+        var out = { 条数: total, 文件名: name, 说明: 'CSV（UTF-8 BOM），Excel/WPS 可直接打开' };
+        if (total > CAP) out.截断提示 = '本次仅导出前 ' + CAP + ' 条（共 ' + total + ' 条），请缩小筛选范围后分批导出';
+        return out;
     };
 
     /** 搜索规章制度（返回 {total:未截断匹配数, items:截断列表}，与 search_issues 一致，避免 AI 统计相关条数时被 limit 截断） */

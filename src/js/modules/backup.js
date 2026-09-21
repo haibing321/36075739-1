@@ -214,14 +214,29 @@
                     store.clear();
                 }
                 var completed = 0;
+                var expected = 0;
                 var hasError = false;
+                // 【2026-09-21 修复】原来"**无条件**删掉 id 再 add()"（假设所有 store 都是自增主键）。
+                //   但 `DiaryMediaDB/media` 等 store 的 keyPath='id' **不自增** → add() 抛
+                //   "Evaluating the object store's key path did not yield a value" → **整次恢复中断**
+                //   （实测：带日志附件的备份，恢复必失败）。现在按 store 的真实主键策略处理。
+                var keyPath = store.keyPath;
+                var autoInc = !!store.autoIncrement;
                 for (var i = 0; i < data.length; i++) {
                     var item = data[i];
-                    // 移除原有的 id 字段，让数据库自动生成新 ID，避免冲突
+                    if (!item || typeof item !== 'object') continue;
                     var cleanItem = {};
                     for (var k in item) {
-                        if (item.hasOwnProperty(k) && k !== 'id') cleanItem[k] = item[k];
+                        if (!Object.prototype.hasOwnProperty.call(item, k)) continue;
+                        if (k === 'id' && autoInc) continue;   // 仅自增主键才丢弃原 id（避免冲突）
+                        cleanItem[k] = item[k];
                     }
+                    // 非自增主键：必须有主键值，否则 add() 会抛错并让整次恢复中断 → 跳过并告警
+                    if (keyPath && !autoInc && cleanItem[keyPath] == null) {
+                        console.warn('[backup] ' + dbName + '.' + storeName + ' 记录缺少主键 ' + keyPath + '，已跳过：', item);
+                        continue;
+                    }
+                    expected++;
                     var addReq = store.add(cleanItem);
                     addReq.onerror = function(ev) {
                         console.error('写入 ' + dbName + '.' + storeName + ' 失败:', ev.target.error);
@@ -230,12 +245,12 @@
                     };
                     addReq.onsuccess = function() {
                         completed++;
-                        if (completed === data.length && !hasError) {
+                        if (completed === expected && !hasError) {
                             resolve();
                         }
                     };
                 }
-                if (data.length === 0) resolve();
+                if (data.length === 0 || expected === 0) resolve();
                 tx.oncomplete = function() {
                     // 只有自己打开的连接才关闭，dbManager 共享连接不关
                     if (isOwnDB) { try { db.close(); } catch(e) {} }
@@ -361,14 +376,20 @@
             window.showProgress(55, '正在收集术语库…');
             backup.modules.termLibrary = getLocal('patch_term_library_v2', []);
             backup.modules.memos = getLocal('railway_memo_v1', []);
+            // 【2026-09-21】智能体「长期目标」（agent_active_goals）原来不进任何备份清单 →
+            //   换机/恢复后盯控目标整批丢失（同文件其它 localStorage 键都在清单里，属遗漏）。
+            try { backup.modules.agentGoals = getLocal('agent_active_goals', []); } catch(e) { errors.push('智能体目标: ' + e.message); }
             window.showProgress(60, '正在收集多媒体文件…');
             // 与其它模块一致：读取失败只记录错误，不让整次备份直接失败
             try { backup.modules.diaryMedia = await readIndexedDB('DiaryMediaDB', 'media', 1); } catch(e) { errors.push('多媒体: '+e.message); }
-            // 将 diaryMedia 中的 blob (ArrayBuffer) 异步转为 base64，避免手机端主线程卡死
+            // 【2026-09-21 媒体独立成目录】原来"一律把每个附件转 base64 塞进 full_backup.json"：
+            //   ① base64 天然 +33% 体积；② 恢复时要一次性 JSON.parse 整个大字符串（手机端易 OOM）。
+            //   现在 ZIP 路径把媒体作为**独立条目** `media/<id>.<ext>`，JSON 里只留元数据 + path；
+            //   只有落到「HTML 单文件兜底」（ZIP 不可用）时才按需转 base64（HTML 无法携带多文件）。
             var mediaFileCount = 0, mediaTotalBytes = 0;
+            var _bkMediaEntries = [];   // [{path, blob, idx}] —— ZIP 打包用
             if (backup.modules.diaryMedia && backup.modules.diaryMedia.length > 0) {
-                _toast('正在处理多媒体文件(' + backup.modules.diaryMedia.length + '个)…');
-                var converted = [];
+                var meta = [];
                 for (var i = 0; i < backup.modules.diaryMedia.length; i++) {
                     var rec = backup.modules.diaryMedia[i];
                     var copy = { id: rec.id, type: rec.type || 'image/jpeg', captureTime: rec.captureTime || '' };
@@ -376,25 +397,31 @@
                         // 兼容不同浏览器返回格式（ArrayBuffer 或 Blob）
                         var rawBlob = rec.blob instanceof Blob ? rec.blob : new Blob([rec.blob], { type: rec.type || 'application/octet-stream' });
                         var rawSize = rec.blob.byteLength || rec.blob.size || rawBlob.size || 0;
-                        // 使用 FileReader 异步编码，不阻塞主线程（华为/手机端不会卡死）
-                        copy.blobBase64 = await new Promise(function(resolve) {
-                            var reader = new FileReader();
-                            reader.onload = function() { resolve(reader.result.split(',')[1] || ''); };
-                            reader.onerror = function() { resolve(''); };
-                            reader.readAsDataURL(rawBlob);
-                        });
+                        var _ext = (function(t) {
+                            t = String(t || '');
+                            if (/png/i.test(t)) return 'png';
+                            if (/gif/i.test(t)) return 'gif';
+                            if (/webp/i.test(t)) return 'webp';
+                            if (/mp4/i.test(t)) return 'mp4';
+                            if (/webm/i.test(t)) return 'webm';
+                            if (/mpeg|mp3/i.test(t)) return 'mp3';
+                            if (/wav/i.test(t)) return 'wav';
+                            if (/quicktime|mov/i.test(t)) return 'mov';
+                            return 'jpg';
+                        })(copy.type);
+                        copy.path = 'media/' + rec.id + '.' + _ext;
                         copy.blobSize = rawSize;
+                        copy.blobBase64 = '';   // 仅 HTML 兜底路径会填（见下方"生成 HTML 备份"前）
+                        _bkMediaEntries.push({ path: copy.path, blob: rawBlob, idx: meta.length });
                         mediaFileCount++;
                         mediaTotalBytes += rawSize;
-                        // 每处理5个文件让出主线程，给 UI 刷新的机会
-                        if (i % 5 === 4) { await new Promise(function(r) { setTimeout(r, 10); }); }
                     }
-                    converted.push(copy);
+                    meta.push(copy);
                 }
-                backup.modules.diaryMedia = converted;
+                backup.modules.diaryMedia = meta;
             }
 
-            var fileNameBase = '安监系统备份_' + new Date().toISOString().slice(0,19).replace(/:/g,'-');
+            var fileNameBase = '安监系统备份_' + window.localStamp();
             var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
             var shareSupported = false;
             if (isMobile && navigator.share && typeof navigator.canShare === 'function') {
@@ -413,6 +440,11 @@
                     window.showProgress(75, '正在压缩打包…');
                     var zip = new JSZip();
                     zip.file('full_backup.json', JSON.stringify(backup, null, 2));
+                    // 【2026-09-21】媒体独立条目（体积比 base64 小约 25%，恢复时按需读取）
+                    if (_bkMediaEntries.length) {
+                        window.showProgress(85, '正在打包 ' + _bkMediaEntries.length + ' 个附件…');
+                        _bkMediaEntries.forEach(function(m) { try { zip.file(m.path, m.blob); } catch (e) { console.warn('[backup] 附件打包失败：' + m.path, e && e.message); } });
+                    }
                     var blob = await zip.generateAsync({ type: 'blob' });
                     window.showProgress(90, '正在下载…');
                     await window.downloadBlob(blob, fileNameBase + '.zip');
@@ -425,6 +457,22 @@
 
             // 移动端系统分享不可用（或 JSZip 加载失败）→ HTML 单文件兜底（不依赖 ZIP，手机直接打开看图文）
             window.showProgress(75, '正在生成 HTML 备份…');
+            // 【2026-09-21】HTML 单文件无法携带多文件 → **只在这条兜底路径**才把媒体按需转 base64
+            //   （ZIP 路径不再付出这个代价：不转码、不占内存、不 toast 卡顿）
+            try {
+                for (var _mi = 0; _mi < _bkMediaEntries.length; _mi++) {
+                    var _ent = _bkMediaEntries[_mi];
+                    var _mrec = backup.modules.diaryMedia[_ent.idx];
+                    if (!_mrec || _mrec.blobBase64) continue;
+                    _mrec.blobBase64 = await new Promise(function(resolve) {
+                        var reader = new FileReader();
+                        reader.onload = function() { resolve(reader.result.split(',')[1] || ''); };
+                        reader.onerror = function() { resolve(''); };
+                        reader.readAsDataURL(_ent.blob);
+                    });
+                    if (_mi % 5 === 4) { await new Promise(function(r) { setTimeout(r, 10); }); }
+                }
+            } catch (eH) { console.warn('[backup] HTML 媒体内联失败：', eH && eH.message); }
             var html = buildBackupHtml(backup);
             var htmlBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
             window.showProgress(90, '正在下载…');
@@ -515,20 +563,101 @@
     function _showRestoreProgress(show) { if (!show) window.hideProgress(); }
     function _setRestoreProgress(pct, status) { window.showProgress(pct, status); }
 
+    /**
+     * 【2026-09-21】从 HTML 单文件备份中取出备份对象。
+     *   HTML 备份（移动端系统分享不可用时的兜底）把完整数据内嵌成 `var D=JSON.parse("<JSON文本>");`
+     *   —— 这里做两层解析：先取 JS 字符串字面量，再 parse 出备份对象。
+     */
+    function _extractBackupFromHtml(text) {
+        try {
+            var m = String(text || '').match(/var\s+D\s*=\s*JSON\.parse\(([\s\S]*?)\)\s*;/);
+            if (!m) return null;
+            var inner = JSON.parse(m[1]);                 // ← 第一层：字符串字面量 → 内嵌 JSON 文本
+            if (typeof inner !== 'string') return null;
+            var obj = JSON.parse(inner);                  // ← 第二层：JSON 文本 → 备份对象
+            return (obj && obj.modules) ? obj : null;
+        } catch (e) { console.warn('[backup] HTML 备份解析失败：', e && e.message); return null; }
+    }
+
+    /**
+     * 【2026-09-21】恢复前预览 + 二次确认（动态 modal，返回 Promise<boolean>）。
+     *   原实现：选定文件后**直接覆盖本机全部数据**并 1 秒后刷新，既无预览也无二次确认 ——
+     *   一次误点不可撤销，用户甚至看不到自己恢复的是哪份备份（导出时间/条数）。
+     */
+    function _confirmRestore(backup, file) {
+        return new Promise(function(resolve) {
+            try {
+                var bm = (backup && backup.modules) || {};
+                var ruleCount = '（备份中无此项：将保留本机现有数据）';
+                if (Array.isArray(bm.rules)) {
+                    ruleCount = (bm.rules.length === 1 && bm.rules[0] && bm.rules[0].data ? bm.rules[0].data.length : bm.rules.length) + ' 条';
+                }
+                var cnt = function (k, label) {
+                    if (!(k in bm)) return [label, '（备份中无此项：将保留本机现有数据）'];
+                    var v = bm[k];
+                    return [label, Array.isArray(v) ? (v.length + ' 条') : (v && typeof v === 'object' ? (Object.keys(v).length + ' 项') : String(v == null ? '—' : v))];
+                };
+                var rows = [
+                    ['导出时间', backup.exportDate || backup.timestamp || '（未记录）'],
+                    ['备份版本', 'v' + (backup.version || '?')],
+                    ['来源文件', (file && file.name) || '—']
+                ].concat([
+                    cnt('issues', '检查信息'), cnt('rules', '规章制度'), cnt('handbook', '检查手册'),
+                    cnt('phone', '应急电话'), cnt('diary', '工作日志'), cnt('diaryMedia', '日志附件'),
+                    cnt('writingMaterials', '写作资料'), cnt('writingReports', '历史报告'),
+                    cnt('termLibrary', '术语库'), cnt('memos', '备忘')
+                ].map(function (r) {
+                    if (r[0] === '规章制度') return ['规章制度', ruleCount];
+                    return r;
+                }));
+                var mask = document.createElement('div');
+                mask.className = 'modal active';   // 复用 .modal 样式（已提升到设置面板之上）
+                mask.style.zIndex = '11500';
+                mask.innerHTML = '<div class="modal-content" style="max-width:540px;">'
+                    + '<h3 style="margin:0 0 8px;font-size:1.05rem;">⚠️ 确认恢复本机数据</h3>'
+                    + '<div style="font-size:0.85rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:10px;">'
+                    + '恢复会<strong>覆盖本机全部数据</strong>且<strong>无法撤销</strong>。请核对下面的备份信息，确认是你要恢复的那一份。</div>'
+                    + '<table style="width:100%;font-size:0.85rem;border-collapse:collapse;">'
+                    + rows.map(function (r) { return '<tr><td style="padding:4px 6px;color:#64748b;white-space:nowrap;vertical-align:top;">' + r[0] + '</td><td style="padding:4px 6px;word-break:break-all;">' + r[1] + '</td></tr>'; }).join('')
+                    + '</table>'
+                    + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">'
+                    + '<button type="button" data-act="cancel" style="padding:8px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer;">取消</button>'
+                    + '<button type="button" data-act="ok" style="padding:8px 14px;border:none;background:#dc2626;color:#fff;border-radius:8px;cursor:pointer;">确认恢复</button>'
+                    + '</div></div>';
+                document.body.appendChild(mask);
+                var done = function (val) { try { mask.remove(); } catch (e) {} resolve(val); };
+                mask.querySelector('[data-act="cancel"]').onclick = function () { done(false); };
+                mask.querySelector('[data-act="ok"]').onclick = function () { done(true); };
+                mask.addEventListener('click', function (ev) { if (ev.target === mask) done(false); });   // 点背景 = 取消
+            } catch (e) {
+                console.warn('[backup] 恢复确认弹窗构建失败，退化为原生 confirm：', e && e.message);
+                resolve(confirm('确认恢复？此操作将覆盖本机全部数据且无法撤销。'));
+            }
+        });
+    }
+
     window.oneClickRestore = function() {
         // 先用同步手势打开文件选择器（避免 await 丢失用户手势）
-        triggerFileInput('.zip', async function(e) {
+        triggerFileInput('.zip,.html,.htm', async function(e) {
             var file = e.target.files[0]; if (!file) return;
-            // 原实现先 await loadScript 再取 file：离线时异常直接外泄（此处无 try 包裹），
-            // 恢复流程静默中断、进度条不收起，用户以为文件没选上
-            if (!(await window.requireLib(LIB_JSZIP_BK, { feature: 'ZIP 恢复' }))) return;
-            if (typeof JSZip === 'undefined') { _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
             try {
                 _setRestoreProgress(5, '正在解析备份文件…');
-                var zip = await JSZip.loadAsync(file);
-                var backupFile = zip.file('full_backup.json');
-                if (!backupFile) throw new Error('缺少 full_backup.json，可能不是有效的安系统备份文件');
-                var backup = JSON.parse(await backupFile.async('string'));
+                var backup = null;
+                // 【2026-09-21】支持 HTML 单文件兜底备份（数据是内嵌 JSON）：原先 accept 只收 .zip →
+                //   手机端（系统分享不可用）导出的 HTML 备份**永远无法恢复**，而备份完成提示里也没说明。
+                if (/\.html?$/i.test(file.name)) {
+                    backup = _extractBackupFromHtml(await file.text());
+                    if (!backup) { window.hideProgress(); _toast('无法从该 HTML 中解析出备份数据（可能不是本系统导出的备份）', true); return; }
+                } else {
+                    // 原实现先 await loadScript 再取 file：离线时异常直接外泄（此处无 try 包裹），
+                    // 恢复流程静默中断、进度条不收起，用户以为文件没选上
+                    if (!(await window.requireLib(LIB_JSZIP_BK, { feature: 'ZIP 恢复' }))) { window.hideProgress(); return; }
+                    if (typeof JSZip === 'undefined') { window.hideProgress(); _toast('JSZip 未加载，请检查网络后刷新重试', true); return; }
+                    var zip = await JSZip.loadAsync(file);
+                    var backupFile = zip.file('full_backup.json');
+                    if (!backupFile) throw new Error('缺少 full_backup.json，可能不是有效的安系统备份文件');
+                    backup = JSON.parse(await backupFile.async('string'));
+                }
                 // 兼容旧版本备份：v1/v2 自动升级到 v3
                 if (!backup.version || backup.version < 1 || backup.version > 3) {
                     throw new Error('无法识别的备份文件版本（当前文件v' + (backup.version||'未知') + '，仅支持v1~v3）');
@@ -545,6 +674,10 @@
                     if (backup.modules.dsDataSource === undefined) backup.modules.dsDataSource = null;
                     if (backup.modules.memoryEnabled === undefined) backup.modules.memoryEnabled = null;
                 }
+
+                // 【2026-09-21】恢复前先让用户看清"要恢复的是哪份备份"（导出时间/版本/各模块条数），
+                //   确认后才写库 —— 原实现选定文件即覆盖 + 1 秒后自动刷新，误点不可撤销、也无处核对。
+                if (!(await _confirmRestore(backup, file))) { window.hideProgress(); return; }
 
                 _showRestoreProgress(true);
                 _setRestoreProgress(10, '正在恢复检查信息…');
@@ -631,7 +764,7 @@
                 if (bm.handbook && Array.isArray(bm.handbook) && bm.handbook.length) {
                     localStorage.setItem('handbook_fourlevel_v1', JSON.stringify(bm.handbook));
                 }
-                _setRestoreProgress(18, '正在恢复规章图片…');
+                _setRestoreProgress(50, '正在恢复规章图片…');   // 【2026-09-21】原为 18%：进度条会从 45% **倒退**到 18%（编号残留）
                 if (Array.isArray(bm.ruleImages)) {
                     try {
                         await writeKeyedStore('RailwayRuleDB', 3, 'rule_images', bm.ruleImages);
@@ -705,10 +838,29 @@
                 _setRestoreProgress(70, '正在恢复术语库…');
                 if (bm.termLibrary) localStorage.setItem('patch_term_library_v2', JSON.stringify(bm.termLibrary));
                 if (bm.memos) localStorage.setItem('railway_memo_v1', JSON.stringify(bm.memos));
+                if (bm.agentGoals) localStorage.setItem('agent_active_goals', JSON.stringify(bm.agentGoals));   // 见导出端说明
                 _setRestoreProgress(75, '正在还原多媒体文件…');
                 if (Array.isArray(bm.diaryMedia)) {
                     for (var i = 0; i < bm.diaryMedia.length; i++) {
                         var rec = bm.diaryMedia[i];
+                        // 【2026-09-21】新备份格式：媒体是 ZIP 内独立条目（rec.path = media/<id>.<ext>）
+                        if (!rec.blobBase64 && rec.path) {
+                            try {
+                                var _zf = (typeof zip !== 'undefined' && zip && typeof zip.file === 'function') ? zip.file(rec.path) : null;
+                                if (_zf) {
+                                    var _u8 = await _zf.async('uint8array');
+                                    rec.blob = _u8.buffer;
+                                    delete rec.blobSize;
+                                    if (typeof rec.id === 'string') rec.id = parseInt(rec.id, 10);
+                                    continue;
+                                }
+                                console.warn('[backup] 备份缺少媒体条目：' + rec.path + '（跳过该附件）');
+                                rec.__missing = true;
+                            } catch (eM) {
+                                console.warn('[backup] 读取媒体条目失败：' + rec.path, eM && eM.message);
+                                rec.__missing = true;
+                            }
+                        }
                         if (rec.blobBase64) {
                             rec.blob = await new Promise(function(resolve) {
                                 var binary = atob(rec.blobBase64);
@@ -732,7 +884,11 @@
                             if (typeof rec.id === 'string') rec.id = parseInt(rec.id, 10);
                         }
                     }
-                    await writeIndexedDB('DiaryMediaDB', 'media', 1, bm.diaryMedia);
+                    // 【2026-09-21】既无 base64 又没读到独立条目的占位记录不写入（避免产生"空附件"）
+                    var _mediaOk = bm.diaryMedia.filter(function(r) { return !r.__missing; });
+                    await writeIndexedDB('DiaryMediaDB', 'media', 1, _mediaOk);
+                    var _missN = bm.diaryMedia.length - _mediaOk.length;
+                    if (_missN > 0) _toast('⚠️ 有 ' + _missN + ' 个附件在备份中缺失，已跳过', true);
                 }
 
                 _setRestoreProgress(100, '✅ 恢复完成，即将刷新…' +
@@ -740,7 +896,12 @@
                 setTimeout(function() {
                     setTimeout(function(){ location.reload(); }, 2000);
                 }, 1000);
-            } catch(err) { window.showProgress(0, '❌ 恢复失败：' + err.message); _toast('恢复失败：' + err.message, true); }
+            } catch(err) {
+                // 【2026-09-21】原来这里用 showProgress(0, …) 而不是 hideProgress()：进度条会**永久停在 0%**
+                //   压在页面角落（同文件其它失败分支都用 hideProgress，备份失败也是）。
+                window.hideProgress();
+                _toast('恢复失败：' + err.message, true);
+            }
         });
     };
 
@@ -763,7 +924,8 @@ window.clearAllGlobalData = function() {
         'railway_work_diary_v2', 'railway_phone_db_v1', 'handbook_fourlevel_v1',
         'railway_memo_v1', 'patch_term_library_v2', 'ds_conversations_v1',
         'ds_chat_history_v1', 'railway_rules_v1', 'railway_terms_custom',
-        'patch_term_library_v1', 'attendance_v1'
+        'patch_term_library_v1', 'attendance_v1',
+        'agent_active_goals', 'patch_term_library_empty'   // 【2026-09-21】智能体长期目标 + 术语库"已清空"标记（不清会把恢复后的词库继续压空）
     ];
     lsKeys.forEach(function(k) { try { localStorage.removeItem(k); } catch(e) {} });
     window.showProgress(30, '正在清空 IndexedDB 数据…');

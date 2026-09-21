@@ -801,8 +801,38 @@
             // 桌面端：标准 a.click()；移动端：优先系统分享(navigator.share 带文件)，失败则简洁「点击下载」按钮(真实手势内重试)
             window.__lastDownload = null;
 
+            // 【2026-09-21】文件名净化 + 本地日期：导出文件名有两个跨平台坑
+            //  ① 非法字符：`\ / : * ? " < > |` 在 Windows/Android 上会导致**保存失败或被截断**
+            //     （报告标题来自 AI 生成/用户输入，可能含「调车/防溜」这类斜杠、问号）；
+            //  ② `toISOString()` 是 **UTC**：北京时间 00:00-07:59 导出时文件名日期会**早一天**。
+            //     这里统一提供 helper，并在 downloadBlob 入口对文件名再做一次净化（单点兜底全部 27 处导出）。
+            window.safeFileName = function(name) {
+                var s = String(name == null ? '' : name).replace(/[\\/:*?"<>\r\n\t|]/g, '_').replace(/\s+/g, ' ').trim();
+                if (!s) s = 'download';
+                return s.length > 180 ? s.slice(0, 176) + s.slice(-4) : s;   // 兼顾保留扩展名
+            };
+            window.localDateStr = function(d) {
+                d = d || new Date();
+                var p = function(n) { return (n < 10 ? '0' : '') + n; };
+                return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+            };
+            window.localStamp = function(d) {
+                d = d || new Date();
+                var p = function(n) { return (n < 10 ? '0' : '') + n; };
+                return window.localDateStr(d) + 'T' + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
+            };
+
+            // 下载失败时的可见兜底（原来没有任何提示，用户只看到"按钮没反应"）
+            function _downloadFailTip(filename, err) {
+                var msg = '⚠️ 导出失败：' + ((err && err.message) || '浏览器拒绝下载') + '\n文件名：' + filename
+                    + '\n可尝试：① 允许本站的"自动下载"权限；② 换用 Chrome/Edge 打开；③ 关闭无痕/隐私模式后重试。';
+                try { if (typeof window.showToast === 'function') window.showToast(msg, true, 12000); else alert(msg); }
+                catch (e) { try { alert(msg); } catch (e2) {} }
+            }
+
             window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
+                filename = window.safeFileName(filename);   // ← 单点净化：所有导出都受益
                 window.__lastDownload = { blob: blob, filename: filename };
                 // 旧 IE / EdgeHTML：直接调系统 API
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {
@@ -962,6 +992,42 @@ window.hideProgress = function() {
 window.finishProgress = function(label) {
     window.showProgress(100, label || '✅ 完成');
     setTimeout(window.hideProgress, 2000);
+};
+
+// ==================== 【2026-09-21】通用「多选一」弹窗（替代"确定=操作A / 取消=操作B"的 confirm） ====================
+// 背景：检查信息/应急电话的导入用 `confirm('确定=覆盖，取消=追加')` —— "取消"居然是一种**写入操作**，
+//   与直觉相反、也没有真正的取消；且 confirm 阻塞主线程、移动端体验差。
+// 用法：const act = await window.showChoiceModal({ title, body, actions: [{label, value, primary|danger}, ...] })
+//   点背景 / 未选择 → resolve(null)；返回被点按钮的 value。
+window.showChoiceModal = function(opts) {
+    return new Promise(function(resolve) {
+        try {
+            opts = opts || {};
+            var mask = document.createElement('div');
+            mask.className = 'modal active';
+            mask.style.zIndex = '11600';   // 高于设置面板(11000)与业务弹窗(11500)
+            var btns = (opts.actions || []).map(function(a, i) {
+                var style = a.danger ? 'background:#dc2626;color:#fff;border:none;'
+                    : (a.primary ? 'background:var(--primary,#2563eb);color:#fff;border:none;'
+                        : 'background:#fff;color:#334155;border:1px solid #cbd5e1;');
+                return '<button type="button" data-i="' + i + '" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:0.86rem;' + style + '">' + (a.label || '确定') + '</button>';
+            }).join('');
+            mask.innerHTML = '<div class="modal-content" style="max-width:460px;">'
+                + (opts.title ? '<h3 style="margin:0 0 8px;font-size:1.02rem;">' + opts.title + '</h3>' : '')
+                + (opts.body ? '<div style="font-size:0.86rem;color:#475569;line-height:1.6;white-space:pre-wrap;">' + opts.body + '</div>' : '')
+                + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">' + btns + '</div>'
+                + '</div>';
+            document.body.appendChild(mask);
+            var done = function(v) { try { mask.remove(); } catch (e) {} resolve(v); };
+            Array.prototype.forEach.call(mask.querySelectorAll('button[data-i]'), function(b) {
+                b.onclick = function() { var a = opts.actions[+b.getAttribute('data-i')] || {}; done(a.value); };
+            });
+            mask.addEventListener('click', function(ev) { if (ev.target === mask) done(null); });   // 点背景 = 取消
+        } catch (e) {
+            console.warn('[ui] showChoiceModal 构建失败，退化为 confirm：', e && e.message);
+            resolve(confirm((opts && opts.body) || '确认执行？') ? 'ok' : null);
+        }
+    });
 };
 
 // ==================== 轻量全局提示条 ====================

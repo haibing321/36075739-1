@@ -98,7 +98,7 @@
     },
     {
       name: 'count_issues',
-      description: '统计检查信息数量（用于数据汇总/报表）。按单位/类别/日期/性质/关键词筛选后，返回时间范围内【全部】条数的真实总数(不封顶)，可选按 性质/category/unit 分组计数。做统计务必用本工具而非 search_issues，以保证不遗漏。',
+      description: '统计检查信息数量（用于数据汇总/报表）。按单位/类别/日期/性质/关键词筛选后，返回时间范围内【全部】条数的真实总数(不封顶)，可选分组计数。做统计务必用本工具而非 search_issues，以保证不遗漏。参数口径：日期 YYYY-MM-DD，可只到月（如 2026-09 表示整月）；nature 传 A类/B类/C类/红线；groupBy 支持 性质/category/unit/trade/month（month=按 YYYY-MM 分组，用于"近N个月趋势/按月分布"，一次调用即可）。',
       parameters: {
         type: 'object',
         properties: {
@@ -159,6 +159,45 @@
           var realIdx = idxMap.has(r) ? idxMap.get(r) : -1;
           return { id: realIdx, 标题: r.title||'', 专业: r.trade||'', 摘要: (r.content||'').replace(/<[^>]+>/g,'').slice(0,150) };
         })};
+      }
+    },
+    {
+      name: 'get_issue_details',
+      description: '批量获取多条检查信息全文（比逐条 get_issue_detail 省轮次）。ids 传 search_issues 返回的 id 数组，一次最多 20 条',
+      parameters: { type: 'object', properties: { ids: { type: 'array', items: { type: 'integer' }, description: '检查信息 id 数组（全量下标），最多 20 个' } }, required: ['ids'] },
+      handler: async function(args) {
+        var ids = Array.isArray(args.ids) ? args.ids.slice(0, 20) : [];
+        if (!ids.length) return { error: '缺少 ids（检查信息下标数组）' };
+        var items = [];
+        ids.forEach(function(id) {
+          var r = window._agentGetIssueDetail(id);
+          if (!r) { items.push({ id: id, error: '未找到' }); return; }
+          items.push({ id: id, 性质: r['性质'] || '', 时间: r.datetime || '', 类别: r.category || '', 单位: r.unit || '', 问题描述: r.content || '', 规章依据: r.regulation || '' });
+        });
+        var out = { total: items.length, items: items };
+        if (ids.length === 20) out.说明 = '单次最多取 20 条；更多请分批调用';
+        return out;
+      }
+    },
+    {
+      name: 'export_issues',
+      description: '把检查信息导出为 CSV 文件（用户下载，Excel/WPS 可直接打开）。支持 单位/类别/日期/性质/关键词 筛选；筛选口径与 count_issues 完全一致。用于"导出本月问题清单""给我一份某单位的问题表"这类需求',
+      parameters: {
+        type: 'object',
+        properties: {
+          unit: { type: 'string', description: '责任单位筛选(可选)' },
+          category: { type: 'string', description: '类别筛选(可选)' },
+          dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD，可只到月如 2026-09(可选)' },
+          dateTo: { type: 'string', description: '结束日期 YYYY-MM-DD，可只到月如 2026-09(可选)' },
+          nature: { type: 'string', description: '性质 A类/B类/C类/红线(可选)' },
+          keyword: { type: 'string', description: '关键词(可选)' }
+        },
+        required: []
+      },
+      handler: async function(args) {
+        if (typeof window._agentExportIssues !== 'function') return { error: '导出组件未就绪（app.js 未加载）' };
+        window.__agentPhase && window.__agentPhase('export_issues', '正在生成 CSV…');
+        return window._agentExportIssues(args || {});
       }
     },
     {
@@ -530,7 +569,8 @@
         if (!srcs.length) srcs = ['rules', 'issues', 'handbook', 'materials', 'reports'];
         var topK = Math.min(Math.max(parseInt(args.topK, 10) || 4, 1), 8);
         try {
-          if (typeof window.KB.ensure === 'function') await window.KB.ensure(srcs);
+          if (typeof window.KB.ensure === 'function') { window.__agentPhase('kb_search', '正在准备知识库索引…'); await window.KB.ensure(srcs); }
+          window.__agentPhase('kb_search', '正在检索…');
           var res = window.KB.search(args.query, { sources: srcs, topK: topK });
           if (!res.length) return { total: 0, items: [], note: '知识库中未检索到相关内容（可能尚未导入资料）' };
           var items = [];
@@ -580,6 +620,7 @@
           //   等不到索引就跳过 KB、走关键词召回并经 kbTimedOut 回传，绝不"超时后照常 search"
           //   （KB.search 内部同步建索引 → 界面整段卡死）。一次超时后自带冷却窗口，多轮工具
           //   调用不会各等一次 4 秒，故这里不再自己预热、也不再需要 __agentAcEnsured 去重。
+          window.__agentPhase && window.__agentPhase('autocheck', '正在召回候选条款…');
           var rec = await window.acRecallCandidates(q, { kbEnsureTimeout: 4000 });
           var items = [], hbN = 0;
           (rec.items || []).forEach(function(c) {
@@ -642,20 +683,171 @@
   }
 
   // ========== 执行工具 ==========
+  // 【2026-09-21】通用超时（原来只有 get_weather 自带 5s）：KB 冷建索引（0.75~3.6s，慢设备更久）、
+  //   导出、写库这类慢工具会把整轮 ReAct **挂住且无任何提示**。这里统一加兜底超时，
+  //   超时按"失败"回灌（工具结果里已附"换关键词/放宽条件"提示，模型可据此改策略或分批重试）。
+  //   可用 window.__agentToolTimeoutMs 覆盖（排查/测试用，例如把 default 调到 500 验证超时路径）。
+  window.__agentToolTimeoutMs = window.__agentToolTimeoutMs || {
+    default: 15000, get_weather: 8000, kb_search: 30000, autocheck: 30000,
+    export_issues: 30000, save_report: 30000, write_diary: 20000
+  };
+  // 【2026-09-21】只读工具的"失败自动重试一次"：瞬时抖动（IndexedDB 忙、KB 冷建竞态、
+  //   网络抖动）导致的失败重试一次往往就能成功，能少一轮 ReAct（一轮 = 一次完整模型调用）。
+  //   ⚠️ 只对**只读**工具生效：写库类（write_diary / save_report）与导出类（export_issues，可能已生成文件）
+  //   一律不重试，避免产生重复记录/重复下载。超时也不重试（大概率再超时，白等一轮）。
+  var RETRYABLE_TOOLS = ['search_issues', 'count_issues', 'get_issue_detail', 'get_issue_details',
+    'search_rules', 'get_rule_detail', 'search_handbook', 'get_handbook_detail', 'kb_search',
+    'autocheck', 'search_phone', 'search_material', 'get_material_detail', 'read_diary', 'get_weather'];
+  // 可用 window.__agentToolRetry = {工具名: 次数} 覆盖（排查/测试用）
+  function _retryTimes(toolName) {
+    var ov = window.__agentToolRetry;
+    if (ov && ov[toolName] !== undefined) return Math.max(0, ov[toolName] | 0);
+    return RETRYABLE_TOOLS.indexOf(toolName) !== -1 ? 1 : 0;
+  }
+
+  // 【2026-09-21】只读工具结果"会话内短缓存"：模型重复发同样的检索很常见（反思后换策略、多轮追问），
+  //   每次白跑一次 IO 不值。这里按「工具名 + 参数」缓存 **60 秒**（可 window.__agentToolCacheTtlMs 覆盖，0=关闭）。
+  //   仅缓存**只读且成功**的结果；有副作用的工具（export_issues 会生成/下载文件）永不缓存。
+  //   数据导入/编辑/清空时由 dsInvalidateRagCache 钩子统一清空（见 unified-enhancements.js）。
+  var TOOL_CACHE_TTL = 60000;
+  var _toolCache = new Map();
+  var _TOOL_NOCACHE = ['export_issues'];
+  function _toolCacheKey(name, params) { try { return name + '|' + JSON.stringify(params || {}); } catch (e) { return ''; } }
+  function _toolCacheGet(name, params) {
+    try {
+      if (_TOOL_NOCACHE.indexOf(name) !== -1) return null;
+      if (RETRYABLE_TOOLS.indexOf(name) === -1) return null;                    // 只读工具才走缓存
+      var ttl = (window.__agentToolCacheTtlMs !== undefined) ? window.__agentToolCacheTtlMs : TOOL_CACHE_TTL;
+      if (!ttl) return null;
+      var k = _toolCacheKey(name, params);
+      if (!k) return null;
+      var e = _toolCache.get(k);
+      if (!e) return null;
+      if ((Date.now() - e.t) >= ttl) { _toolCache.delete(k); return null; }
+      return { result: e.r, ageMs: Date.now() - e.t };
+    } catch (e2) { return null; }
+  }
+  function _toolCacheSet(name, params, result) {
+    try {
+      if (_TOOL_NOCACHE.indexOf(name) !== -1 || RETRYABLE_TOOLS.indexOf(name) === -1) return;
+      var ttl = (window.__agentToolCacheTtlMs !== undefined) ? window.__agentToolCacheTtlMs : TOOL_CACHE_TTL;
+      if (!ttl) return;
+      var k = _toolCacheKey(name, params);
+      if (!k) return;
+      if (_toolCache.size >= 50) {   // 上限 50 条，淘汰最旧
+        var oldest = null, ot = Infinity;
+        _toolCache.forEach(function (v, kk) { if (v.t < ot) { ot = v.t; oldest = kk; } });
+        if (oldest) _toolCache.delete(oldest);
+      }
+      _toolCache.set(k, { r: result, t: Date.now() });
+    } catch (e) {}
+  }
+  window.__agentToolCacheClear = function () { try { _toolCache.clear(); } catch (e) {} return true; };
+  // 【2026-09-21】工具"分段进度"：慢工具可调用 window.__agentPhase('工具名','当前阶段文案')
+  //   上报里程碑（如"正在准备知识库索引…"）；_executeTool 每秒心跳一次，把"已等 Ns + 阶段文案"
+  //   通过 window.__agentProgress 回传给 UI（对话气泡 / 智能体状态行）。
+  var _phaseText = {};
+  window.__agentPhase = function (tool, text) { try { _phaseText[tool] = String(text || ''); } catch (e) {} };
   async function _executeTool(toolName, params) {
     var tool = TOOLS.find(function(t) { return t.name === toolName; });
     if (!tool) return { ok: false, error: '未知工具: ' + toolName };
-    try {
-      var result = await tool.handler(params || {});
-      return { ok: true, tool: toolName, result: result };
-    } catch(e) {
-      // handler 可能抛字符串/对象，直接取 e.message 会得到 undefined，模型看不到失败原因
-      return { ok: false, tool: toolName, error: (e && e.message) ? e.message : String(e || '未知错误') };
+    var _ov = window.__agentToolTimeoutMs || {};
+    var _limit = _ov[toolName] || _ov.default || 15000;
+    var _retry = _retryTimes(toolName);
+    var _attempts = 0, _lastErr = '', _timedOut = false;
+    var _tickStart = Date.now(), _tick = null;
+    if (typeof window.__agentProgress === 'function') {
+      _tick = setInterval(function () {
+        try { window.__agentProgress(toolName, Date.now() - _tickStart, _phaseText[toolName] || ''); } catch (e) {}
+      }, 1000);
     }
+    function _stopTick() { if (_tick) { clearInterval(_tick); _tick = null; } }
+    // 会话内短缓存命中：直接返回（不再执行、不重试），并如实标注缓存来源
+    var _hit = _toolCacheGet(toolName, params);
+    if (_hit) {
+      _stopTick();
+      return { ok: true, tool: toolName, result: _hit.result, 缓存说明: '命中本会话缓存（' + Math.round(_hit.ageMs / 1000) + 's 前的同样调用）' };
+    }
+    while (_attempts <= _retry) {
+      _attempts++;
+      _timedOut = false;
+      var _timer = null;
+      try {
+        var result = await Promise.race([
+          Promise.resolve(tool.handler(params || {})),
+          new Promise(function(_, rej) {
+            _timer = setTimeout(function() {
+              _timedOut = true;
+              rej(new Error('工具执行超时：' + toolName));
+            }, _limit);
+          })
+        ]);
+        if (_timer) clearTimeout(_timer);
+        _stopTick();
+        _toolCacheSet(toolName, params, result);   // 只读成功结果入短缓存（写库/导出不入）
+        var _out = { ok: true, tool: toolName, result: result };
+        if (_attempts > 1) _out.重试说明 = '第 ' + _attempts + ' 次尝试成功（前一次为瞬时失败，已自动重试）';
+        return _out;
+      } catch(e) {
+        if (_timer) clearTimeout(_timer);
+        _lastErr = (e && e.message) ? e.message : String(e || '未知错误');
+        if (_timedOut) break;                                   // 超时不重试
+        if (_attempts > _retry) break;                          // 已达重试上限
+        await new Promise(function(r) { setTimeout(r, 300); });  // 短退避后重试
+      }
+    }
+    _stopTick();
+    if (_timedOut) {
+      var _limTxt = _limit >= 1000 ? (Math.round(_limit / 1000) + 's') : (_limit + 'ms');
+      return { ok: false, tool: toolName, error: '工具执行超时（超过 ' + _limTxt + '）'
+        + ((toolName === 'kb_search' || toolName === 'autocheck') ? '：知识库索引可能正在建立，请稍后重试或先缩小检索范围' : '') };
+    }
+    // handler 可能抛字符串/对象，直接取 e.message 会得到 undefined，模型看不到失败原因
+    return { ok: false, tool: toolName, error: _lastErr + (_attempts > 1 ? '（已自动重试 ' + (_attempts - 1) + ' 次仍失败）' : '') };
   }
 
   // 诊断/自检入口：不经过模型，直接跑单个工具并拿到它的返回（排查"工具结果为何是这样"用）
   window._agentRunTool = function(toolName, params) { return _executeTool(toolName, params || {}); };
+
+  // ========== 工具结果「入上下文预算」（2026-09-21 新增，智能体与智能对话共用）==========
+  //   为什么：回灌给模型的工具结果原本是**整包 JSON**，而 search_issues 的 limit 无上限 →
+  //   一次 limit=5000 就能灌进数百 KB（上下文膨胀、费用、超时，甚至撞模型上限）。
+  //   口径字段（total / groups / 统计口径 / error / 提示）永远保留 —— 统计数字必须可信；
+  //   列表限 50 条、单条字符串限 300 字（条款原文类工具自己的上限更细，不受影响）。
+  var TOOL_RESULT_MAX = 12000, TOOL_ITEM_MAX = 50, TOOL_STR_MAX = 300;
+  function _shrinkVal(v) {
+    if (typeof v === 'string') return v.length > TOOL_STR_MAX ? (v.slice(0, TOOL_STR_MAX) + '…（已截断）') : v;
+    if (Array.isArray(v)) return v.slice(0, TOOL_ITEM_MAX).map(_shrinkVal);
+    if (v && typeof v === 'object') {
+      var o = {};
+      Object.keys(v).forEach(function (k) { o[k] = _shrinkVal(v[k]); });
+      return o;
+    }
+    return v;
+  }
+  function _trimToolResult(res) {
+    try {
+      var out = _shrinkVal(res);
+      var s = JSON.stringify(out);
+      if (!s || s.length <= TOOL_RESULT_MAX) return out;
+      // ⚠️ 仅仅"逐字截断整包 JSON"会把结果变成一串残缺字符串（模型几乎无法用）。
+      //   这里**保留结构**：优先按 items 数组逐步对半收缩，并写明截断条数；total/groups 等口径字段始终保留。
+      if (out && typeof out === 'object' && Array.isArray(out.items)) {
+        var keep = out.items.length;
+        while (keep > 5) {
+          keep = Math.floor(keep / 2);
+          var cand = {};
+          Object.keys(out).forEach(function (k) { cand[k] = (k === 'items') ? out.items.slice(0, keep) : out[k]; });
+          cand.截断提示 = '结果较大，items 仅保留前 ' + keep + ' 条（total 仍是真实总数，可缩小条件后分批查询）';
+          if (JSON.stringify(cand).length <= TOOL_RESULT_MAX) return cand;
+        }
+      }
+      return { 提示: '结果过大已自动截断（请缩小筛选条件或分批查询）', total: (res && res.total) !== undefined ? res.total : undefined, 摘要: s.slice(0, TOOL_RESULT_MAX) + '…' };
+    } catch (e) {
+      return { 提示: '结果序列化失败：' + ((e && e.message) || '未知错误') };
+    }
+  }
+  window._agentTrimToolResult = _trimToolResult;
 
   // ========== 解析文本 JSON 兜底（仅当模型未用标准 tool_calls 且内容顶格为 JSON 块时）==========
   function _parseToolCall(content) {
@@ -758,6 +950,16 @@
   window._agentRun = async function(userMessage, visionContent, opts) {
     // 【视觉模型接入】记录本轮图片（dataUrl 数组），供 _callLLM 注入首条 user（纯新增，旧调用不传则无影响）
     window.__agentVisionContent = (visionContent && Array.isArray(visionContent) && visionContent.length) ? visionContent : null;
+    // 【2026-09-21】模型不支持视觉时**不再静默丢图**（用户以为它看过了）：置空 + 记标志，
+    //   稍后写进 system，让模型如实说明"看不到图片"，并建议换视觉模型或补文字描述。
+    var _visionUnsupported = false;
+    try {
+      var _vmName = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
+      if (window.__agentVisionContent && typeof window.dsModelSupportsVision === 'function' && !window.dsModelSupportsVision(_vmName)) {
+        _visionUnsupported = true;
+        window.__agentVisionContent = null;
+      }
+    } catch (e) {}
     // B#9: 密钥预检，未配置直接返回友好提示，避免白跑 ReAct 循环
     if (!localStorage.getItem('ds_api_key_v1')) {
       return { messages: [{ role: 'assistant', content: '⚠️ 尚未配置 API Key，请先在「设置 → 智能助手」中填写 DeepSeek API Key，再使用智能体。' }], taskId: null };
@@ -793,6 +995,14 @@
         if (unitList.length > 0 && unitList.length <= 20) system += '涉及单位：' + unitList.join('、') + '。\n';
       }
     } catch(e) { system += '数据量获取失败，请自行搜索。\n'; }
+    // 【2026-09-21】注入"当前日期（含星期）"：统计类需求里"本月/上月/近一周"是高频词，
+    //   智能体侧原先没有日期（普通对话有）→ 模型只能猜，两条链路口径不一致。
+    try {
+      var _nowD = new Date();
+      var _wdCn = ['日', '一', '二', '三', '四', '五', '六'][_nowD.getDay()];
+      system += '当前日期：' + _nowD.getFullYear() + '-' + String(_nowD.getMonth() + 1).padStart(2, '0') + '-' + String(_nowD.getDate()).padStart(2, '0')
+        + '（星期' + _wdCn + '）。用户说"本月/上月/近一周"时以此推算，日期参数一律按 YYYY-MM-DD 传。\n';
+    } catch (e) {}
     system += '规则：\n';
     system += '1. 先用一句话说明计划（如："我将先查数据再生成报告"）\n';
     system += '2. 需要真实数据时，调用对应 function（每次可调用一个或多个）\n';
@@ -800,11 +1010,14 @@
     system += '4. 一轮搜索后如已获取足够数据，直接总结回答，不要逐条 detail（浪费轮次）\n';
     system += '5. 拿到结果后继续推理，直到能给出「最终自然语言回答」，此时不要调用 function\n';
     system += '6. 不需要工具时直接回答\n';
-    system += '7. 整个任务控制在 5 轮以内完成\n';
-    system += '8. 引用典型问题写报告时，默认列举不超过 35 条；若用户明确要更多，可在 search_issues 中加大 limit（无上限），不要自行截断或估算\n';
+    system += '7. 尽量在 6 轮内完成（逐月/逐单位这类本质需要多轮的任务可以继续），但不要无意义地重复调用同一参数\n';
+    system += '8. 引用典型问题写报告时，默认列举不超过 35 条；若用户明确要更多，可在 search_issues 中加大 limit（结果过大时系统会自动压缩为摘要，必要时分批查询），不要自行截断或估算\n';
     system += '9. 做统计/计数（如"某时段共多少条""按性质分布"）时，必须用 count_issues 或读取 search_issues 返回的 total（该值为时间范围内真实总数，不封顶）；务必统计时间范围内的全部，不得因条数多而只取前 N 条或估算\n';
     system += '10. 检索本地资料（规章条款 / 检查信息 / 检查手册 / 写作资料 / 历史报告 / 应急电话 / 工作日志）时，优先用 kb_search：它跨源统一检索、按条款/段落粒度返回并带出处，通常比逐个调用单项检索更全；只有需要精确计数或按时间范围列明细时，才用 count_issues / search_issues 等单项工具\n';
     system += '11. 需要给"检查发现问题"写规章依据 / 对规结论（如"不符合《X》第Y条“条款原文”的规定。"）时，**必须先用 autocheck 工具**取候选，并直接引用它返回的「结论式」——引号内的条款原文与条号一律照抄，不得改写、不得自行编造条款；autocheck 无候选时再用 kb_search / search_rules 换个角度找，仍无则如实说明"未找到可引用的规章依据"\n';
+
+    system += '12. 参数口径（很重要）：日期一律 YYYY-MM-DD，可只到月（如 2026-09 表示整月）；性质 nature 只传 A类/B类/C类/红线（或首字母 A/B/C）；count_issues 的 groupBy 只支持 性质/category/unit/trade/month —— 做「近 N 个月趋势」「按月分布」时用 groupBy="month"，**一次调用即可拿到**，不要逐月调用多次\n';
+    system += '13. 工具返回里 total 是真实总数（可信）；若返回「0 命中」或「执行失败」，请更换关键词/放宽条件后重试，不要用同一参数重复调用\n';
 
     try {
       var ctx = await window.getRecentAgentContext();
@@ -825,6 +1038,8 @@
       }
     } catch(e) {}
 
+    if (_visionUnsupported) system += '【提示】用户本轮附带了图片，但当前模型不支持图片输入，你无法看到图片内容；请如实告知，并建议改用支持视觉的模型或补充文字描述。\n';
+
     var messages = [
       { role: 'system', content: system },
       { role: 'user', content: userMessage }
@@ -834,6 +1049,44 @@
     function _emit(ev) { try { _onStep(ev); } catch (e) { console.warn('[agent] onStep 回调异常：', e && e.message); } }
     _emit({ phase: 'plan', step: renderMsgs[0] });
     var maxLoops = 15; // B#6: 上限 15，复杂任务更从容（含搜索+detail+分析+report）
+    // 【2026-09-21】run 级「停止令牌」：原先「⏹ 停止」只 abort 在途 HTTP —— 工具执行期（天气 5s / KB 冷建数秒）
+    //   按停止无效，且循环里没有任何 stop 标记 → 下一轮又新建 AbortController 继续跑（用户看到"停了还在动"）。
+    //   现在每轮开头、每个工具执行前都校验令牌；令牌由 doubao 侧的停止/切换按钮递增。
+    window.__agentRunToken = (window.__agentRunToken || 0) + 1;
+    var _runToken = window.__agentRunToken;
+    function _runStopped() { return window.__agentRunToken !== _runToken; }
+    // 【2026-09-21】工具执行**总预算**：单工具超时（最长 30s）+ 重试叠加，最坏情况一个任务能等到分钟级。
+    //   这里给整轮任务一个工具总耗时上限（默认 120s，可 window.__agentToolBudgetMs 覆盖）：
+    //   预算用完后**不再执行新工具**，按"未执行"回灌并请模型基于已有信息作答（避免用户干等）。
+    var _toolBudget = (typeof window.__agentToolBudgetMs === 'number' && window.__agentToolBudgetMs > 0) ? window.__agentToolBudgetMs : 120000;
+    var _budgetTxt = _toolBudget >= 1000 ? (Math.round(_toolBudget / 1000) + 's') : (_toolBudget + 'ms');
+    var _toolSpent = 0, _budgetSkipRounds = 0;
+    var _t0 = Date.now();   // 【2026-09-21】任务耗时（写入任务记录，供"进化"统计与面板展示）
+    // 工具进度回传（配合 _executeTool 的每秒心跳）：UI 据此显示"正在调用 X（阶段文案）已等 Ns"
+    window.__agentProgress = function (tool, ms, text) {
+      _emit({ phase: 'tool-progress', tool: tool, ms: ms, text: text || '' });
+    };
+
+    // 【2026-09-21】上下文预算：ReAct 循环里 messages 只增不减（每轮成对追加 assistant+tool），
+    //   长任务会把十几轮的工具结果**全部重复**发给模型（token/费用随轮次线性上涨，且撞上限后直接失败）。
+    //   这里在每轮请求前做一次轻量压缩：最近 CTX_TOOL_KEEP 条工具结果保持完整，更早的只留一行摘要
+    //   （保留 total 口径，模型需要细节可重新调用工具）。
+    var CTX_TOOL_KEEP = 6;
+    function _compactMessages(messages) {
+      if (!messages || messages.length < 12) return;
+      var toolIdx = [];
+      for (var i = 0; i < messages.length; i++) if (messages[i].role === 'tool') toolIdx.push(i);
+      if (toolIdx.length <= CTX_TOOL_KEEP) return;
+      toolIdx.slice(0, toolIdx.length - CTX_TOOL_KEEP).forEach(function (i) {
+        var m = messages[i];
+        var c = String(m.content == null ? '' : m.content);
+        if (c.indexOf('（历史工具结果已省略') === 0) return;     // 已压缩过，避免反复改写
+        var total = '';
+        try { var j = JSON.parse(c); if (j && j.total !== undefined) total = '，total=' + j.total; } catch (e) {}
+        m.content = '（历史工具结果已省略' + total + '；如需细节可重新调用该工具）';
+      });
+    }
+    window._agentCompactMessages = _compactMessages;   // 供回归审计使用
     var planShown = false;
     var lastCallKey = '', repeatCount = 0;
     var reflectUsed = false; // A1-P2 反思回灌只允许一次，避免模型持续重复时空转剩余轮次
@@ -843,8 +1096,17 @@
     var loopError = null;
     try {
     for (var loop = 1; loop <= maxLoops; loop++) {
+      // 停止校验（每轮开头）：用户点过「⏹ 停止」→ 立即收尾，不再发起新一轮请求
+      if (_runStopped()) {
+        taskRecord.finalOutput = '⏹️ 已手动停止';
+        renderMsgs.push({ role: 'assistant', content: '⏹️ 已手动停止（本轮未执行）。' });
+        break;
+      }
+      _compactMessages(messages);   // 上下文预算：更早的工具结果只留一行摘要（长任务省 token）
       _emit({ phase: 'thinking', round: loop });
       var assistantMsg = await _callLLM(messages, true);
+      // 图片只在首轮注入：后续轮次继续带图会让视觉 token 按轮叠加（15 轮 = 15 倍成本）
+      if (window.__agentVisionContent) window.__agentVisionContent = null;
       var toolCalls = assistantMsg.tool_calls;
 
       // 兜底：模型未用标准 tool_calls 但文本里含 {"tool":...}
@@ -873,7 +1135,7 @@
         // C#12: 渲染工具调用前的计划说明（仅首次）
         if (!planShown) {
           var preText = (assistantMsg.content || '').replace(/```json[\s\S]*?```/gi, '').trim();
-          if (preText) { renderMsgs.push({ role: 'agent-plan', content: '📋 ' + preText }); planShown = true; _emit({ phase: 'plan', step: renderMsgs[renderMsgs.length - 1] }); }
+          if (preText) { renderMsgs.push({ role: 'agent-plan', content: '📋 ' + preText }); planShown = true; taskRecord.plan = [preText]; _emit({ phase: 'plan', step: renderMsgs[renderMsgs.length - 1] }); }
         }
         // 把 assistant 消息原样加入（含 tool_calls），供 API 配对
         messages.push(assistantMsg);
@@ -891,15 +1153,21 @@
           if (repeatCount >= 1) {
             if (!reflectUsed && window._agentEnhanceOn && window._agentEnhanceOn()) {
               // A1-P2 反思回灌：提示模型换策略，不再重复，继续循环一轮（上限保证不无限）
-              var reflectMsg = '⚠️ 你正在重复调用相同工具，请停止重复，直接基于已有信息给出最终自然语言回答，或换一个不同的检索角度。';
-              messages.push({ role: 'user', content: reflectMsg });
-              renderMsgs.push({ role: 'agent-tool', content: '🔄 反思：检测到重复调用，已提示智能体换策略' });
+              // 【2026-09-21 契约修复】反思不再"插一条 user 就 continue" —— 那会让上一条
+              //   assistant(tool_calls) **完全没有配对 tool 响应**（本文件此前自认的契约违反，从"插在中间"
+              //   变成"完全缺失"），反思路径大概率直接把整轮打成「❌ 执行中断」，反思反而制造失败。
+              //   正确做法：为每个 tool_call 补一条**配对的 tool 响应**（说明已跳过执行），
+              //   保持 messages 配对完整后再进入下一轮。
+              var _skipNote = '⚠️ 检测到与上一轮完全相同的调用，本次**已跳过执行**（避免重复写入/空转）。'
+                + '请改换检索角度（更换关键词、放宽或缩小条件、改用 kb_search / count_issues 等），或直接基于已有信息给出最终自然语言回答。';
+              for (var _si = 0; _si < toolCalls.length; _si++) {
+                var _sc = toolCalls[_si];
+                messages.push({ role: 'tool', tool_call_id: _sc.id, name: _sc.function.name, content: _skipNote });
+              }
+              renderMsgs.push({ role: 'agent-tool', content: '🔄 反思：检测到重复调用，已跳过本轮并提示换策略' });
               _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
               reflectUsed = true;
               repeatCount = 0;
-              // ⚠️ 必须 continue：反思的语义就是「本轮不再执行工具」。原先缺少 continue 会用同一批
-              // toolCalls 再执行一遍（write_diary/save_report 产生重复条目），并在 assistant(tool_calls)
-              // 与其配对 tool 消息之间插入 user 消息，违反 API 契约导致该轮 400。
               continue;
             } else {
               // 纯净 ReAct：保持原行为，直接终止避免文案矛盾
@@ -916,12 +1184,37 @@
         // 结果仍按 toolCalls 原顺序回灌 —— API 要求 tool 消息与 tool_calls 顺序一一对应。
         // 执行前先报"正在调用"，调用方据此显示实时状态（工具内含 KB 冷建时尤其需要）
         _emit({ phase: 'tool-start', tools: toolCalls.map(function(tc) { return tc.function.name; }) });
+        // 停止校验（工具执行前）：工具可能要跑数秒（天气 5s / KB 冷建），停在这里就不执行，
+        //   并补上配对的 tool 响应保持 API 契约（否则下一轮请求会 400）
+        if (_runStopped()) {
+          for (var _qi = 0; _qi < toolCalls.length; _qi++) {
+            messages.push({ role: 'tool', tool_call_id: toolCalls[_qi].id, name: toolCalls[_qi].function.name, content: '（用户已停止本次任务，工具未执行）' });
+          }
+          taskRecord.finalOutput = '⏹️ 已手动停止';
+          renderMsgs.push({ role: 'assistant', content: '⏹️ 已手动停止（工具未执行）。' });
+          break;
+        }
+        // 总预算校验：用完了就不再执行（并按配对要求回灌"未执行"）
+        if (_toolSpent >= _toolBudget) {
+          _budgetSkipRounds++;
+          for (var _bi = 0; _bi < toolCalls.length; _bi++) {
+            messages.push({ role: 'tool', tool_call_id: toolCalls[_bi].id, name: toolCalls[_bi].function.name,
+              content: '（本次任务的工具执行总预算 ' + _budgetTxt + ' 已用完，本工具**未执行**；'
+                + '请基于已有信息直接给出最终回答，并说明"数据可能不完整"，或提示用户缩小范围后重试）' });
+          }
+          renderMsgs.push({ role: 'agent-tool', content: '⏱️ 工具总预算 ' + _budgetTxt + ' 已用完，本轮工具未执行' });
+          _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
+          if (_budgetSkipRounds >= 2) messages.push({ role: 'user', content: '请立即基于已有信息给出最终回答，不要再调用任何工具。' });
+          continue;
+        }
+        var _roundT0 = Date.now();
         var pending = toolCalls.map(function(tc) {
           var a = {};
           try { a = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e) { a = {}; }
           return _executeTool(tc.function.name, a).then(function(r) { return { tc: tc, args: a, res: r }; });
         });
         var toolResults = await Promise.all(pending);
+        _toolSpent += (Date.now() - _roundT0);   // 计入总预算（含超时与重试耗时）
         for (var t = 0; t < toolResults.length; t++) {
           var tc = toolResults[t].tc;
           var args = toolResults[t].args;
@@ -937,7 +1230,18 @@
           });
           _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
           // 部分网关（含 DeepSeek 兼容层）要求 tool 消息带 name，缺字段会被判 400
-          messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(execResult) });
+          // 【2026-09-21】回灌前统一**预算裁剪**；并对「失败 / 0 命中」附一行提示 ——
+          //   原先工具失败或 0 命中不触发任何反思，模型会用同一参数反复空转直到撞上重复检测。
+          var _resForModel = _trimToolResult(execResult);
+          if (!execResult.ok) {
+            _resForModel = {
+              错误: execResult.error || '执行失败',
+              提示: '该工具执行失败：请更换关键词、放宽或缩小条件，或改用 kb_search 换个角度；不要用同一参数重复调用'
+            };
+          } else if (_resForModel && typeof _resForModel === 'object' && _resForModel.total === 0) {
+            _resForModel.无命中提示 = '本次 0 命中：请更换关键词或放宽条件（日期用 YYYY-MM-DD，可只到月）后重试，不要用同样参数重复调用';
+          }
+          messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(_resForModel) });
         }
       } else {
         taskRecord.finalOutput = assistantMsg.content || '';
@@ -958,9 +1262,20 @@
       renderMsgs.push({ role: 'assistant', content: taskRecord.finalOutput });
     }
 
-    try { await window.saveAgentTask(taskRecord); } catch(e) {}
-    // A1-P1 记忆写回：从历史任务中累积用户关注的单位/常用检索词
-    try { if (window._agentEnhanceOn && window._agentEnhanceOn() && typeof window.learnFromConversation === 'function') window.learnFromConversation(userMessage, taskRecord); } catch(e) {}
+    // 【2026-09-21】进化：任务记录补"耗时 / 工具调用数 / 失败数"（供统计与面板展示），
+    //   并让落库失败**可见**（原来是 `catch(e){}` 静默，落库失败完全无感知）。
+    taskRecord.durationMs = Date.now() - _t0;
+    taskRecord.toolCalls = taskRecord.steps.length;
+    taskRecord.failedTools = taskRecord.steps.filter(function(s) { return !s.ok; }).length;
+    taskRecord.toolSpentMs = _toolSpent;   // 工具耗时合计（含超时/重试），便于排查"时间都花哪了"
+    try { await window.saveAgentTask(taskRecord); } catch (e) { console.warn('[agent] 任务记录落库失败（不影响本次结果）：', e && e.message); }
+    // A1-P1 记忆写回：从历史任务中累积用户关注的单位/检索词/统计口径。
+    //   ⚠️ 2026-09-21：不再受 `_agentEnhanceOn()` 门控 —— 学习是纯本地零成本操作，
+    //   而"关掉增强 → 画像永久冻结且无任何提示"会让偏好长期不更新（注入侧仍受该开关控制）。
+    try { if (typeof window.learnFromConversation === 'function') window.learnFromConversation(userMessage, taskRecord); } catch (e) {}
+    // 收尾清理：图片内容（dataUrl）常驻内存直到下次任务 → 本轮结束立即释放
+    window.__agentVisionContent = null;
+    window.__agentProgress = null;   // 进度回传只在 run 期间有效（避免全局残留在别的调用上触发 UI 更新）
     return { messages: renderMsgs, taskId: taskId };
   };
 

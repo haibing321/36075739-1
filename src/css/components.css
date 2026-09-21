@@ -640,7 +640,12 @@
     /* iOS Safari 全系只认 -webkit-backdrop-filter，缺前缀时遮罩模糊静默失效 */
     -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
-    z-index: 2000;
+    /* 【2026-09-21 层叠修复】2000 → 11500：设置面板 `#settings-panel.st-modal` 是 11000，
+       而「设置 → 数据」里的导入按钮会打开本类弹窗（规章选专业 / 手册追加-覆盖 / 检查信息进度-清空等）。
+       原值低于设置面板 → 弹窗被压在设置界面**下面**，用户必须关掉设置才看得见。
+       层级阶梯（自下而上）：header 1000 < .modal 11500 < 设置面板? 见下 —— 实际上设置 11000、
+       API 配置弹窗 11200、写作类型弹窗 11500、进度条/toast 99999/100002。 */
+    z-index: 11500;
     justify-content: center;
     align-items: center;
     padding: 20px;

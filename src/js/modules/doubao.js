@@ -4740,9 +4740,36 @@
           const qTokens = this._tokenize(query);
           if (!qTokens.length) return [];
           if (!this.postings) {
-            // 退化模式：全量扫描（v3.71 及以前的行为）
-            const scores = docs.map(doc => ({ doc, score: this._score(query, doc) }));
-            return scores.filter(s => s.score > 0).sort((a, b) => b.score - a.score).slice(0, topN).map(s => s.doc);
+            // 【2026-09-21 真数据提速】退化（全量扫描）模式原先对**每个文档**调用 _score()，
+            //   而 _score 会把整篇正文重新分词一遍：真数据规章语料 139385 块 × 逐块分词 ≈ **5.9s/次**
+            //   （实测：仅 rules 源 5849ms；issues 源（倒排模式）只要 8ms）。这条路径对规/写作/智能体
+            //   每轮检索都要走，属于"每次必付"的代价，真数据下直接毁掉体验。
+            //   现在两条廉价化改造，**打分公式与 idf 来源完全不变、排序结果等价**：
+            //     ① 快筛：把查询词拼成一个合并正则（原生扫描），正文一个查询词都没出现的块直接跳过；
+            //     ② 候选块用 indexOf 统计查询词出现次数得到 tf（与 _tokenize 的 2/3 字滑窗计数一致，
+            //        重叠位置按 at+1 继续找，保证 tf 口径不缩小）。
+            //   只有"真正含查询词"的块才会进入打分，绝大多数块一次原生正则就排除了。
+            const k1 = this.k1, b = this.b, avgLen = this.avgLen;
+            let re = null;
+            try { re = new RegExp(qTokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i'); } catch (e) { re = null; }
+            const hits2 = [];
+            for (let i = 0; i < docs.length; i++) {
+              const text = this._textOf(docs[i]);
+              if (!text || (re && !re.test(text))) continue;          // 快筛：不含任何查询词 → 跳过
+              const lower = text.toLowerCase();
+              const lenNorm = avgLen ? (text.length / avgLen) : 1;
+              let score = 0;
+              for (let qi = 0; qi < qTokens.length; qi++) {
+                const t = qTokens[qi];
+                let tf = 0, from = 0, at;
+                while ((at = lower.indexOf(t, from)) !== -1) { tf++; from = at + 1; }
+                if (!tf) continue;
+                const idf = this.idf.get(t) || 0;
+                score += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * lenNorm));
+              }
+              if (score > 0) hits2.push({ doc: docs[i], score: score });
+            }
+            return hits2.sort((a, b2) => b2.score - a.score).slice(0, topN).map(s => s.doc);
           }
           const N = docs.length, k1 = this.k1, b = this.b, avgLen = this.avgLen, docLen = this.docLen;
           const scores = new Float64Array(N);

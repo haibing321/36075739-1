@@ -53,6 +53,7 @@ const SUITES = [
   { name: 'boot-bench',            file: 'scripts/boot-bench.js',            kind: 'bench', desc: '冷启动性能基线',                            timeout: 900000 },
   { name: 'kb-ab-bench',           file: 'scripts/kb-ab-bench.js',           kind: 'bench', desc: '知识库检索 A/B',                            timeout: 900000 },
   { name: 'kb-budget-measure',     file: 'scripts/kb-budget-measure.js',     kind: 'bench', desc: 'KB 注入预算测量',                           timeout: 900000 },
+  { name: 'realdata-bench',        file: 'scripts/realdata-bench.js',        kind: 'bench', desc: '真数据基准：冷启动(43585条)/检索P50-P95/4万条Excel往返', timeout: 1800000 },
 ];
 
 // ---------------- 参数 ----------------

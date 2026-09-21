@@ -209,28 +209,48 @@
 
             // escapeHtml 已统一到 utils.js (window.escapeHtml)，此处不再重复定义
 
-            // 按站名去重合并：同名站点以导入数据覆盖，新站点追加。
-            // ⚠️ 无站名的记录必须原样保留：导入侧允许"有单位、无站名"的行入库（见 phoneHandleFile 的
-            // `if (item.单位 || item.站名)`），而这里原先只用带站名的记录重建整个数据集 →
-            // 下一次选择「追加合并」时，这些记录会被整批静默抹掉（用户只看到"导入成功"）。
+            /**
+             * 【2026-09-21 真实数据修复】记录级去重键：站名 + 单位 + 线名 + 路电 + 市电（全部 trim 后比较）。
+             *
+             * 用真实备份（安监系统测试数据.zip，839 条电话）实测「导出 → 追加导入」，原「按站名去重」得到
+             * **839 → 1293**，暴露两个反向缺陷：
+             *   ① **无站名记录完全不参与去重**：839 条里 **475 条站名为空**（单位/线名级联系人），
+             *      原实现把它们原样 push → 同一份文件再导入一次这部分几乎原样翻倍；
+             *   ② **同名站名的多条记录被合并成 1 条**：真数据里「安全生产指挥中心」11 条、「兰州西」3 条
+             *      （同名站、不同单位/线名/号码）→ 静默丢 20 条。
+             * 键长是拿真数据量出来的，不看直觉：
+             *   · 3 字段（站名+单位+线名）→ 839 只落到 **833** 组，被吞掉的 5 组 6 条**号码各不相同**
+             *     （同一站的多个号码，属正常业务数据，必须各自保留）；
+             *   · 5 字段（再含 路电+市电）→ **839 组、0 吞并**，而完全相同的记录仍会被去重／覆盖。
+             * 返回 null 表示"五项全空、完全无法辨识"→ 调用方不参与去重，避免被合并吞掉。
+             */
+            function phoneRecordKey(r) {
+                var t = function(v) { return String(v == null ? '' : v).trim(); };
+                var k = t(r.站名) + '\u0001' + t(r.单位) + '\u0001' + t(r.线名) + '\u0001' + t(r.路电) + '\u0001' + t(r.市电);
+                // 五项全空 → 无法辨识，返回 null（调用方不参与去重，避免被合并吞掉）
+                return k === '\u0001\u0001\u0001\u0001' ? null : k;
+            }
+            window.phoneRecordKey = phoneRecordKey;   // 供审计脚本/排查使用
+
+            // 按 phoneRecordKey（站名+单位+线名+路电+市电）去重合并：同键以导入数据覆盖，新键追加
+            // （函数名保留 phoneMergeByStation，历史调用点不变）
             function phoneMergeByStation(incoming) {
                 const map = new Map();
-                const noStation = []; // 无站名、无法参与去重的记录：旧数据与新导入均原样保留
+                const rest = [];   // 无法辨识的记录：参与合并但不参与去重（既不被吞掉、也不重复计数）
                 phoneData.forEach(function(it) {
-                    if (it && it.站名) map.set(it.站名, it);
-                    else if (it) noStation.push(it);
+                    if (!it) return;
+                    var k = phoneRecordKey(it);
+                    if (k) map.set(k, it); else rest.push(it);
                 });
                 let replaced = 0;
                 incoming.forEach(function(it) {
                     if (!it) return;
-                    if (it.站名) {
-                        if (map.has(it.站名)) replaced++;
-                        map.set(it.站名, it);
-                    } else {
-                        noStation.push(it);
-                    }
+                    var k = phoneRecordKey(it);
+                    if (!k) { rest.push(it); return; }
+                    if (map.has(k)) replaced++;
+                    map.set(k, it);
                 });
-                return { data: Array.from(map.values()).concat(noStation), replaced: replaced };
+                return { data: Array.from(map.values()).concat(rest), replaced: replaced };
             }
 
             window.phoneHandleFile = async function(e) {
@@ -252,7 +272,7 @@
                                 title: '导入应急电话（JSON）',
                                 body: '当前已有 ' + phoneData.length + ' 条，本次解析 ' + imported.length + ' 条。请选择处理方式：',
                                 actions: [
-                                    { label: '按站名去重追加', value: 'append', primary: true },
+                                    { label: '按 站名+单位+线名 去重追加', value: 'append', primary: true },
                                     { label: '覆盖现有', value: 'overwrite', danger: true },
                                     { label: '取消', value: 'cancel' }
                                 ]
@@ -324,7 +344,7 @@
                             title: '导入应急电话（Excel）',
                             body: '当前已有 ' + phoneData.length + ' 条，本次解析 ' + newData.length + ' 条。请选择处理方式：',
                             actions: [
-                                { label: '按站名去重追加', value: 'append', primary: true },
+                                { label: '按 站名+单位+线名 去重追加', value: 'append', primary: true },
                                 { label: '覆盖现有', value: 'overwrite', danger: true },
                                 { label: '取消', value: 'cancel' }
                             ]

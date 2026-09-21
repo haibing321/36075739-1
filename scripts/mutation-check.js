@@ -49,6 +49,16 @@ const MUTATIONS = [
     to: "copy.path = '';",
     suite: 'scripts/backup-audit.js',
     why: 'backup-audit 的 ③ 断言（media/* 独立条目）必须失败'
+  },
+  {
+    // 【2026-09-21】真实数据（839 条电话，475 条无站名）暴露的缺陷：旧口径只看站名
+    //   → 无站名记录重复导入成倍复制、同名站多号码记录被合并吞掉。
+    name: '电话去重退回"只看站名"（无站名记录翻倍 + 同名站多号码被吞）',
+    file: 'src/js/modules/phone.js',
+    from: "var k = t(r.站名) + '\\u0001' + t(r.单位) + '\\u0001' + t(r.线名) + '\\u0001' + t(r.路电) + '\\u0001' + t(r.市电);",
+    to: 'var k = t(r.站名);',
+    suite: 'scripts/data-io-audit.js',
+    why: 'data-io-audit 的 ④.6 断言（无站名不翻倍、同名站不同单位/不同号码都要保留）必须失败'
   }
 ];
 

@@ -48,6 +48,7 @@ const SUITES = [
   { name: 'diary-ai-fix-audit',    file: 'scripts/diary-ai-fix-audit.js',    kind: 'audit', desc: '日志 AI 修改链路',                          timeout: 900000 },
   { name: 'data-io-audit',         file: 'scripts/data-io-audit.js',         kind: 'audit', desc: '数据导入导出：CSV/GBK/边界/去重口径/真实落盘', timeout: 600000 },
   { name: 'backup-audit',          file: 'scripts/backup-audit.js',          kind: 'audit', desc: '备份结构 + 恢复往返（含媒体附件）',           timeout: 600000 },
+  { name: 'realdata-e2e',          file: 'scripts/realdata-e2e.js',          kind: 'audit', desc: '真实数据端到端：90MB 备份恢复→条数/媒体→再导出往返（含 4 万检查信息）', timeout: 1200000 },
   { name: 'mutation-check',        file: 'scripts/mutation-check.js',        kind: 'audit', desc: '测试敏感度自检：注入已知缺陷验证套件确实会失败', timeout: 900000 },
   { name: 'boot-bench',            file: 'scripts/boot-bench.js',            kind: 'bench', desc: '冷启动性能基线',                            timeout: 900000 },
   { name: 'kb-ab-bench',           file: 'scripts/kb-ab-bench.js',           kind: 'bench', desc: '知识库检索 A/B',                            timeout: 900000 },
@@ -139,6 +140,9 @@ function runSuite(s, args, prevMs) {
   const combined = String(r.stdout || '') + String(r.stderr || '');
   let status;
   if (r.error && r.error.code === 'ETIMEDOUT') status = 'FAIL';
+  // 套件自报跳过（例如 realdata-e2e 在本地缺真实测试数据时打印 ⏭ SKIP）：记 SKIP 而不是 PASS，
+  // 避免"没跑也算过"，也避免"数据没在就红一片"
+  else if (/^\s*⏭\s*SKIP/m.test(combined) || /SKIP[:：]未找到/.test(combined)) status = 'SKIP';
   else if (/Edge.*(未找到|not found)|ENOENT.*msedge|无法启动浏览器/i.test(combined)) status = 'SKIP';
   else if (r.status === 0 && out.bad === 0) status = 'PASS';
   else status = 'FAIL';

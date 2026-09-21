@@ -58,3 +58,7 @@ src/assets/
 _test_media/
 _probe_868/
 scripts/_tmp*
+
+# Local real test data (~90MB) - never commit; scripts/realdata-e2e.js skips when absent
+安监系统测试数据.zip
+scripts/_tmp_zipdata/

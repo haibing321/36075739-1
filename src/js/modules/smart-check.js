@@ -20,7 +20,11 @@
     // 【v3.74 合并】本轮「智能对规」主链路（KB + AI）的结束状态，供 autoCheckSmart 决定是否走本地保底：
     //   ''=未跑 / 'ok'=成功 / 'ai-error'=AI 调用或解析失败 / 'aborted'=用户主动停止（不保底）
     //   'no-candidates'=KB 与关键词召回都没候选 / 'no-cache'=KB 不可用且无本地匹配缓存 / 'recall-error'=召回异常
+    //   'ai-none'=【2026-09-21】AI 明确判定"候选条款均不相关"（validIds 为空）→ 同样要走本地保底
     var _acSmartStatus = '';
+    // 【2026-09-21】本轮召回里被剔除的「检查手册」条目数（手册有独立匹配区，不参与规章候选）：
+    //   回执里要写明"已排除 N 条检查手册"，避免用户以为手册内容没被检索到。
+    var _acHbExcluded = 0;
     var _acSmartBusy = false;      // 是否由 autoCheckSmart 驱动（避免内部失败分支与外部保底重复触发本地匹配）
             // ========== 自动对规子模块 ==========
             // ========== 结构化术语库（带专业标签） ==========
@@ -893,7 +897,11 @@
                 // ---------- 匹配规章制度（OR模式 + BM25加权）----------
                 // 改进：OR模式（段落命中任意关键词即可参与评分），使用BM25加权
                 const matchedRules = [];
+                // 【2026-09-21】保底（本地匹配）也不能把"检查手册"类条目当规章：审计把「安全检查手册3」
+                //   塞进规章表复现该风险，实测它确实以 or/1 进了「⚖️ 相关规章条款」。手册有独立的
+                //   「📋 检查手册条目」区，这里按标题剔除，避免同一份内容既当手册又当规章双重引用。
                 rules.forEach(function(r) {
+                    if (/手册/.test(String((r && r.title) || ''))) return;
                     if (typeof generateRuleSnippet === 'function') {
                         // 先尝试 AND 模式精确匹配
                         var snippetHtml = generateRuleSnippet(r, keywords, -1, 'and');
@@ -1593,7 +1601,9 @@
                     'ai-error': 'AI 服务调用失败（网络 / 接口 / 密钥异常）',
                     'no-candidates': '知识库索引与关键词召回都没能找到候选条款',
                     'no-cache': '知识库索引不可用，且本地匹配缓存为空',
-                    'recall-error': '候选条款召回过程异常'
+                    'recall-error': '候选条款召回过程异常',
+                    // 【2026-09-21】AI 判定"候选条款均不相关"时也要说清原因（此前会落到默认文案）
+                    'ai-none': 'AI 认为候选条款均不相关'
                 }[status] || 'AI 对规未能完成';
                 var html = '<div style="margin-bottom:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:8px;">'
                     + '<div style="font-weight:700;color:#b45309;font-size:0.9rem;margin-bottom:4px;">🛟 已自动改用「本地对规」保底</div>'
@@ -1903,6 +1913,18 @@
                     }
                     console.log('[对规召回] 最终规章库召回（关键词回退）', ruleCandidates.length, '条');
                 }
+
+                // 【2026-09-21】把「检查手册」条目从 AI 候选里剔除（对规候选只应有规章；手册另有独立匹配区）：
+                //   口径与 agent-core.js 的"剔除检查手册"一致（按标题/路径命中），并记数供回执说明。
+                //   此前手册条目会作为 [规章库] 候选喂给模型（审计 S5 断言"AI 候选里没有检查手册"因此失败）。
+                _acHbExcluded = 0;
+                var _isHbCand = function (c) {
+                    var t = String((c && (c.title || (c.rule && c.rule.title) || (c.doc && c.doc.title))) || '');
+                    var p = String((c && (c.kbPath || (c.rule && c.rule.kbPath))) || '');
+                    return /手册/.test(t) || /handbook/i.test(p);
+                };
+                ruleCandidates = ruleCandidates.filter(function (c) { if (_isHbCand(c)) { _acHbExcluded++; return false; } return true; });
+                if (_acHbExcluded) console.log('[对规召回] 已排除 ' + _acHbExcluded + ' 条检查手册（不参与 AI 候选）');
 
                 onProgress('正在从历史案例召回候选条款…');
                 await new Promise(function (r) { setTimeout(r, 0); });
@@ -2328,6 +2350,10 @@
                     } else {
                         sourceTipHtml = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fcd34d;margin-bottom:10px;font-size:0.82rem;color:#92400e;"><span>⚠️</span><span>未找到历史案例，已从规章库检索，请人工核实。</span></div>';
                     }
+                    // 【2026-09-21】回执说明手册被排除的条数：让用户知道手册内容进了独立匹配区、没被丢掉
+                    if (_acHbExcluded > 0) {
+                        sourceTipHtml += '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:10px;font-size:0.78rem;color:#475569;"><span>🧹</span><span>已排除 ' + _acHbExcluded + ' 条检查手册（手册内容不参与规章候选，避免与规章重复引用）。</span></div>';
+                    }
 
                     // ── 对规结论（分区展示：案例条款 + 规章库条款） ──
                     let conclusionHtml = '';
@@ -2483,7 +2509,11 @@
                         + (reason ? ('\n\n选择理由：' + reason) : '');
                     var _cardEl = document.getElementById('ac-conclusion-card');
                     if (_cardEl) _cardEl.setAttribute('data-conclusion', conclusionPlain);
-                    _acSmartStatus = 'ok';        // 【v3.74 合并】主链路成功 → autoCheckSmart 不再走本地保底
+                    // 【2026-09-21】AI 明确判定"所有候选条款均不相关"（validIds 为空）**不算主链路成功**：
+                    //   置 'ai-none' 让 autoCheckSmart 继续改走本地保底并写明原因。
+                    //   此前无条件置 'ok' → 1634 行直接 return，用户只看到一句"所有候选条款均不相关"、
+                    //   拿不到任何条款（审计 S4 的两条断言即因此失败）。
+                    _acSmartStatus = validIds.length ? 'ok' : 'ai-none';
 
                     // X4：对规结论持久化（刷新/切换后可在历史中回溯）
                     try {

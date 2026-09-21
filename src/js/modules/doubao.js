@@ -4601,23 +4601,37 @@
             step();
           });
         }
-        // 超大语料的退化路径：只保留 idf 表，不常驻倒排（与 v3.71 及以前完全一致的实现）
+        // 超大语料的退化路径 【2026-09-21 真数据优化】
+        //   原实现：把**整库分词一遍**、为语料里每个词算 df/idf 存进 Map。
+        //   真数据实测：规章语料 139385 块 → 建索 ~12s（每次会话首检索必付，实测首次检索 12.3s），
+        //   且词表 Map 常驻（百万级词条）——这是 4 万条真数据下堆 567MB 的主要来源之一。
+        //   现在：建索只累加文本长度算 avgLen（毫秒级）；**df/idf 改成按查询词惰性计算并缓存**：
+        //     · 只有真正被查到的词才做一次全库扫描（原生不区分大小写正则，~100-200ms/词），随后命中缓存；
+        //     · 词表从"全库词表"变成"本会话查过的词"，内存大幅下降；
+        //     · 打分口径不变（tf 用出现次数、idf 用 log((N-df+0.5)/(df+0.5)+1)、lenNorm 用 avgLen）。
         _buildScan() {
           const docs = this.docs;
           const docCount = docs.length;
-          const termDocs = new Map();
-          docs.forEach((doc, idx) => {
-            const tokens = this._tokenize(this._textOf(doc));
-            const uniq = new Set(tokens);
-            for (let t of uniq) {
-              if (!termDocs.has(t)) termDocs.set(t, []);
-              termDocs.get(t).push(idx);
-            }
-          });
-          for (let [term, docsArr] of termDocs.entries()) {
-            const freq = docsArr.length;
-            this.idf.set(term, Math.log((docCount - freq + 0.5) / (freq + 0.5) + 1));
+          let totalLen = 0;
+          for (let i = 0; i < docCount; i++) totalLen += this._textOf(docs[i]).length;
+          this.avgLen = docCount ? totalLen / docCount : 0;
+          this._lazyDf = new Map();     // term → df（按需填充）
+        }
+        /** 惰性 df：全库扫一遍统计"含该词的文档数"（不区分大小写），结果缓存（打分口径与旧 idf 表一致） */
+        _dfOfLazy(term) {
+          const cached = this._lazyDf.get(term);
+          if (cached !== undefined) return cached;
+          let re = null;
+          try { re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); } catch (e) { re = null; }
+          const docs = this.docs;
+          let df = 0;
+          for (let i = 0; i < docs.length; i++) {
+            const text = this._textOf(docs[i]);
+            if (!text) continue;
+            if (re ? re.test(text) : (text.indexOf(term) !== -1)) df++;
           }
+          this._lazyDf.set(term, df);
+          return df;
         }
         // 与旧版正则写法逐字符等价（仅用 charCode 判定，省掉每字符一次正则）——已用全量语料 +
         // 边界串（空串 / 纯英文数字 / 全角 / 标点 / 表情符号）核对分词结果完全一致。
@@ -4764,7 +4778,14 @@
                 let tf = 0, from = 0, at;
                 while ((at = lower.indexOf(t, from)) !== -1) { tf++; from = at + 1; }
                 if (!tf) continue;
-                const idf = this.idf.get(t) || 0;
+                // 惰性 df 模式（本次会话新建的索引）：按词现算 df → idf；旧缓存恢复的索引仍走 idf 表
+                let idf;
+                if (this._lazyDf) {
+                  const df = this._dfOfLazy(t);
+                  idf = df ? this._idfOf(df) : 0;
+                } else {
+                  idf = this.idf.get(t) || 0;
+                }
                 score += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * lenNorm));
               }
               if (score > 0) hits2.push({ doc: docs[i], score: score });

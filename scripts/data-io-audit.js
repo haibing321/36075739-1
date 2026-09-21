@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+/**
+ * 审计套件 · 数据导入导出（覆盖此前**无人看守**的盲区）
+ * ------------------------------------------------------------------
+ * 本套件把"曾经靠临时探针才发现真实缺陷"的检查固化为常驻回归：
+ *   ① 检查信息 CSV(UTF-8) 大批量导入：条数精确 + 耗时阈值
+ *   ② 检查信息 CSV(GBK)：中文不乱码 + 列名识别（Excel 另存 CSV 默认 GBK）
+ *   ③ 坏 JSON 导入：不写库且给失败提示
+ *   ④ 追加导入去重口径：内容+单位+**日期**（换日期保留、同日重复合并）
+ *   ⑤ 导出真实落盘：检查信息 / 电话 / 词库 JSON + 智能体 CSV(带 BOM) + 文件名合法
+ * 退出码：0 全通过 / 1 有失败。用法：node scripts/data-io-audit.js
+ */
+'use strict';
+const path = require('path');
+const H = require('./audit-harness');
+
+(async () => {
+  const h = await H.start({ port: 8161, cdpPort: 9371, view: 'dataio' });
+  console.log('==== 数据导入导出审计 ====');
+  try {
+    await h.nav('index.html?v=io');
+    await h.ev(`(() => { window.confirm = () => true; window.showChoiceModal = async () => 'append'; return 1; })()`);
+
+    // ---------- ① CSV(UTF-8) 3000 行 ----------
+    const big = await h.ev(`(async () => {
+      const N = 3000;
+      let csv = '性质,时间,类别,问题描述,规章依据,单位\\n';
+      for (let i = 0; i < N; i++) csv += 'A类,2026-09-' + String((i % 28) + 1).padStart(2, '0') + ' 10:00,调车,防溜措施缺失 第' + i + '条,《调车规章》第12条,站' + (i % 7) + '\\n';
+      const base = (window.getIssueData() || []).length;
+      const t0 = performance.now();
+      await window.issueHandleFile({ target: { files: [new File([csv], 'io_utf8.csv', { type: 'text/csv' })], value: '' } });
+      const ms = Math.round(performance.now() - t0);
+      return { base: base, got: (window.getIssueData() || []).length - base, ms: ms };
+    })()`, 120000);
+    h.F(big.got === 3000, '① 检查信息 CSV(UTF-8) 3000 行全部入库（实际 ' + big.got + '，' + big.ms + 'ms）');
+    h.F(big.ms <= 8000, '① 导入耗时在阈值内（' + big.ms + 'ms ≤ 8000ms，基线约 800ms）');
+
+    // ---------- ② CSV(GBK) ----------
+    const gbk = await h.ev(`(async () => {
+      // 「问题描述,单位」表头 + 「防溜措施,测试站」数据（GBK 字节，硬编码自校验）
+      const bytes = new Uint8Array([0xCE,0xC2,0xCC,0xE2,0xC3,0xE8,0xCA,0xF6,0x2C,0xB5,0xA5,0xCE,0xBB,0x0A,
+                                    0xB7,0xC0,0xC1,0xEF,0xB4,0xEB,0xCA,0xA9,0x2C,0xB2,0xE2,0xCA,0xD4,0xD5,0xBE,0x0A]);
+      const base = (window.getIssueData() || []).length;
+      await window.issueHandleFile({ target: { files: [new File([bytes], 'io_gbk.csv', { type: 'text/csv' })], value: '' } });
+      const all = window.getIssueData() || [];
+      const hit = all.filter(r => String(r.content || '') === '防溜措施');
+      return { added: all.length - base, unit: hit.length ? String(hit[0].unit || '') : '(未识别)' };
+    })()`);
+    h.F(gbk.added === 1 && gbk.unit === '测试站', '② CSV(GBK) 中文不乱码且列名识别正确（解码 防溜措施/' + gbk.unit + '）');
+
+    // ---------- ③ 坏 JSON ----------
+    const bad = await h.ev(`(async () => {
+      const before = (window.getIssueData() || []).length;
+      try { await window.issueHandleFile({ target: { files: [new File(['{"not":"array"}'], 'bad.json', { type: 'application/json' })], value: '' } }); } catch (e) {}
+      await new Promise(r => setTimeout(r, 500));
+      return { before: before, after: (window.getIssueData() || []).length };
+    })()`);
+    h.F(bad.before === bad.after, '③ 坏 JSON 不写库（' + bad.before + ' → ' + bad.after + '）');
+
+    // ---------- ④ 去重口径（内容+单位+日期）----------
+    const dedup = await h.ev(`(async () => {
+      const mk = (date) => new File([JSON.stringify([{ 性质:'A类', datetime: date, category:'调车', content:'口径断言：同单位同一问题', regulation:'《X》第1条', unit:'口径站' }])], 'd.json', { type:'application/json' });
+      const n0 = (window.getIssueData() || []).length;
+      await window.issueHandleFile({ target: { files: [mk('2026-09-01 08:00')], value: '' } });
+      const n1 = (window.getIssueData() || []).length;
+      await window.issueHandleFile({ target: { files: [mk('2026-09-05 08:00')], value: '' } });   // 换日期
+      const n2 = (window.getIssueData() || []).length;
+      await window.issueHandleFile({ target: { files: [mk('2026-09-05 08:00')], value: '' } });   // 同日重复
+      const n3 = (window.getIssueData() || []).length;
+      return { seq: [n0, n1, n2, n3] };
+    })()`);
+    const s = dedup.seq;
+    h.F((s[1] - s[0]) === 1 && (s[2] - s[1]) === 1 && (s[3] - s[2]) === 0,
+      '④ 追加去重口径 = 内容+单位+日期（换日期保留、同日同单位合并）：' + JSON.stringify(s));
+
+    // ---------- ④.5 电话 CSV 导入（为导出准备数据；顺带覆盖第二条 CSV 通路）----------
+    const phone = await h.ev(`(async () => {
+      let csv = '序号,单位,站名,路电,市电,备注\\n';
+      for (let i = 0; i < 5; i++) csv += (i + 1) + ',测试段,站' + i + ',001-' + i + ',010-' + i + ',\\n';
+      const base = (window.getPhoneData() || []).length;
+      await window.phoneHandleFile({ target: { files: [new File([csv], 'io_phone.csv', { type: 'text/csv' })], value: '' } });
+      return { added: (window.getPhoneData() || []).length - base };
+    })()`);
+    h.F(phone.added === 5, '④.5 应急电话 CSV 导入 5 行（新增 ' + phone.added + '）');
+
+    // ---------- ⑤ 导出真实落盘 ----------
+    const exports = [
+      ['检查信息 JSON', `issueExportJSON()`, /^铁路检查信息_\d{4}-\d{2}-\d{2}_\d+条\.json$/],
+      ['应急电话 JSON', `phoneExportJSON()`, /^应急电话_\d{4}-\d{2}-\d{2}\.json$/],
+      ['铁路术语库 JSON', `exportRailwayTerms()`, /^铁路专业词库_\d{4}-\d{2}-\d{2}\.json$/],
+      ['智能体 CSV', `window._agentExportIssues({})`, /\.csv$/]
+    ];
+    const fs = require('fs');
+    for (const [label, expr, re] of exports) {
+      const got = await h.grab(expr, 20000);
+      let detail = '';
+      if (got) {
+        const full = path.join(h.DL, got);
+        const ext = path.extname(got).toLowerCase();
+        if (ext === '.json') { try { JSON.parse(fs.readFileSync(full, 'utf8')); detail = 'JSON 可解析'; } catch (e) { detail = 'JSON 解析失败'; } }
+        else if (ext === '.csv') { const t = fs.readFileSync(full, 'utf8'); detail = t.charCodeAt(0) === 0xFEFF ? 'CSV 含 UTF-8 BOM' : '缺 BOM'; }
+      }
+      h.F(!!got && re.test(got) && !/失败|缺 BOM/.test(detail), '⑤ ' + label + ' 真实落盘且格式正确 → ' + (got || '(未生成)') + (detail ? '（' + detail + '）' : ''));
+    }
+
+    // ---------- 无阻塞弹窗 & 无页面异常 ----------
+    h.F(h.dialogs.length === 0, '全程无阻塞式 alert/confirm（实测会挂死页面 JS）');
+    h.F(h.pageErrors.length === 0, '页面无未捕获异常（' + (h.pageErrors[0] || '') + '）');
+  } catch (e) {
+    h.F(false, '套件执行异常：' + (e && e.message));
+  }
+  h.done();
+})();

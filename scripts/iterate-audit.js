@@ -46,6 +46,8 @@ const SUITES = [
   { name: 'autocheck-audit',       file: 'scripts/autocheck-audit.js',       kind: 'audit', desc: '智能对规链路（召回/AI 精排/保底）',          timeout: 900000 },
   { name: 'writer-prompt-audit',   file: 'scripts/writer-prompt-audit.js',   kind: 'audit', desc: '智能写作提示词与取数口径',                  timeout: 600000 },
   { name: 'diary-ai-fix-audit',    file: 'scripts/diary-ai-fix-audit.js',    kind: 'audit', desc: '日志 AI 修改链路',                          timeout: 900000 },
+  { name: 'data-io-audit',         file: 'scripts/data-io-audit.js',         kind: 'audit', desc: '数据导入导出：CSV/GBK/边界/去重口径/真实落盘', timeout: 600000 },
+  { name: 'backup-audit',          file: 'scripts/backup-audit.js',          kind: 'audit', desc: '备份结构 + 恢复往返（含媒体附件）',           timeout: 600000 },
   { name: 'boot-bench',            file: 'scripts/boot-bench.js',            kind: 'bench', desc: '冷启动性能基线',                            timeout: 900000 },
   { name: 'kb-ab-bench',           file: 'scripts/kb-ab-bench.js',           kind: 'bench', desc: '知识库检索 A/B',                            timeout: 900000 },
   { name: 'kb-budget-measure',     file: 'scripts/kb-budget-measure.js',     kind: 'bench', desc: 'KB 注入预算测量',                           timeout: 900000 },

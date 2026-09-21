@@ -49,14 +49,22 @@ async function start(opts) {
   const profileDir = path.join(os.tmpdir(), 'audit-profile-' + view + '-' + Date.now());
   fs.mkdirSync(profileDir, { recursive: true });
 
-  const server = http.createServer((req, res) => {
-    let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
-    const f = path.join(ROOT, p);
-    if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-    fs.createReadStream(f).pipe(res);
-  });
-  await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+  // 【部署后 smoke】设置 AUDIT_BASE_URL（如 CloudStudio 预览地址）时，不再起本地服务，直接打线上环境
+  const REMOTE = (process.env.AUDIT_BASE_URL || '').replace(/\/+$/, '');
+  let server = null, baseUrl = REMOTE;
+  if (REMOTE) {
+    console.log('（远端模式）AUDIT_BASE_URL = ' + REMOTE);
+  } else {
+    server = http.createServer((req, res) => {
+      let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
+      const f = path.join(ROOT, p);
+      if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+      fs.createReadStream(f).pipe(res);
+    });
+    await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+    baseUrl = 'http://127.0.0.1:' + PORT;
+  }
   const child = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--remote-debugging-port=' + CDP_PORT, '--user-data-dir=' + profileDir, 'about:blank'], { stdio: 'ignore' });
   let info = null;
   for (let i = 0; i < 80 && !info; i++) { try { info = await (await fetch('http://127.0.0.1:' + CDP_PORT + '/json/version')).json(); } catch (e) { await sleep(300); } }
@@ -83,12 +91,13 @@ async function start(opts) {
     listDL: () => { try { return fs.readdirSync(DL).filter((f) => !f.endsWith('.crdownload')); } catch (e) { return []; } },
     ev: async (expr, tmo) => { const r = await cdp.send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }, sessionId, tmo || 60000);
       if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; },
-    nav: async (u) => { const url = /^http/.test(u) ? u : ('http://127.0.0.1:' + PORT + '/' + u);
+    nav: async (u) => { const url = /^http/.test(u) ? u : (baseUrl + '/' + u);
       const p = cdp.waitEvent('Page.loadEventFired', 60000, sessionId); await S('Page.navigate', { url }); await p; await sleep(2600); },
+    baseUrl: baseUrl, remote: !!REMOTE,
     /** 触发一次导出并等待新文件落盘，返回文件名 */
     grab: async (expr, waitMs) => { const before = new Set(api.listDL()); await api.ev(expr);
       for (let i = 0; i < Math.ceil((waitMs || 20000) / 250); i++) { await sleep(250); const nw = api.listDL().filter((f) => !before.has(f)); if (nw.length) return nw[nw.length - 1]; } return null; },
-    stop: () => { try { child.kill(); } catch (e) {} try { server.close(); } catch (e) {} },
+    stop: () => { try { child.kill(); } catch (e) {} try { if (server) server.close(); } catch (e) {} },
     done: () => { console.log('\n==== 汇总：' + pass + '/' + (pass + fail) + ' 通过 ===='); api.stop(); process.exit(fail === 0 ? 0 : 1); }
   };
   return api;

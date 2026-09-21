@@ -1823,6 +1823,9 @@
                             <span class="st-actions">
                                 <button onclick="document.getElementById('phone-fileInput').click()" class="st-mini btn-data-blue">导入</button>
                                 <button onclick="phoneExportJSON()" class="st-mini btn-data-green">导出</button>
+                                <!-- 【2026-09-21】补「模板」入口：phoneDownloadTemplate() 此前无任何 UI 引用（死代码），
+                                     用户拿不到标准列名的 Excel 模板，只能靠猜列名（缺\"单位/站名\"列会直接报错） -->
+                                <button onclick="phoneDownloadTemplate()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">模板</button>
                                 <button onclick="phoneShowClear()" class="st-mini btn-data-red">清空</button>
                             </span>
                         </div>
@@ -1830,6 +1833,8 @@
                             <span class="st-row-label">✍️ 写作资料 <span class="st-row-sub" id="set-wr-count">—</span></span>
                             <span class="st-actions">
                                 <button onclick="wrMaterialImportUnified()" class="st-mini btn-data-blue">导入</button>
+                                <!-- 【2026-09-21】Excel 专用导入（含多 Sheet 与列名映射引导）此前无 UI 入口 -->
+                                <button onclick="wrMaterialImportExcel()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">Excel 导入</button>
                                 <button onclick="wrMaterialExportAll()" class="st-mini btn-data-green">导出</button>
                                 <button onclick="wrMaterialClearAll()" class="st-mini btn-data-red">清空</button>
                             </span>
@@ -1849,6 +1854,31 @@
                                 <button onclick="exportRailwayTerms()" class="st-mini btn-data-green">导出</button>
                                 <button onclick="termClearWithConfirm()" class="st-mini btn-data-red">清空</button>
                                 <button onclick="termResetWithConfirm()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">恢复默认</button>
+                            </span>
+                        </div>
+                        <!-- 【2026-09-21】备忘录：此前**没有任何独立导入/导出入口**（只能整包备份），
+                             新增 导入(JSON) / 导出(JSON) / 清空 三件套（memo.js） -->
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">⏰ 备忘录 <span class="st-row-sub" id="set-memo-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="importMemo()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="exportMemo()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="memoShowClear()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <!-- 【2026-09-21】写作模板：wrImportTemplates() 此前无 UI 引用；配套一个诊断导出区 -->
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">🧩 写作模板 <span class="st-row-sub">导入 JSON</span></span>
+                            <span class="st-actions">
+                                <button onclick="wrImportTemplates()" class="st-mini btn-data-blue">导入</button>
+                            </span>
+                        </div>
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">🧪 诊断数据 <span class="st-row-sub">错误日志 / 性能采样</span></span>
+                            <span class="st-actions">
+                                <button onclick="exportErrorLog()" class="st-mini btn-data-green">错误日志</button>
+                                <button onclick="exportPerfReport()" class="st-mini btn-data-green">性能报告</button>
+                                <button onclick="clearDiagData()" class="st-mini btn-data-red">清空</button>
                             </span>
                         </div>
 

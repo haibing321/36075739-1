@@ -155,6 +155,9 @@ async function main() {
     console.log('  └────────────────────────────────────────────────');
     h.F(m.dcl > 0 && m.load > 0 && m.overlayGone > 0 && boot2.errs.length === 0,
       '② 带真数据冷启动可采集且无页面异常（遮罩消失 ' + m.overlayGone + 'ms / 台账就绪 ' + (m.issueReady || '-') + 'ms / 堆 ' + boot2.heapMB + 'MB）');
+    // 【门禁】冷启动（含 KB 预热到 13s 处）堆占用：从 567MB（初测）→ 217MB（rules 改 scan+lazy 后）。
+    //   放在 350MB：明显超了说明又有大对象常驻（真数据 4 万条 + 13.9 万块的场景）。
+    h.F(boot2.heapMB > 0 && boot2.heapMB < 350, '②b 冷启动堆占用受控（' + boot2.heapMB + 'MB < 350MB；初测 567MB、改 scan+lazy 后 217MB）');
 
     const cnt = await h.ev(`(async () => {
       var out = { issues: (window.getIssueData() || []).length, phone: (window.getPhoneData() || []).length, handbook: (window.getHandbookData() || []).length, term: (window.PATCH_TERM_LIBRARY || []).length };
@@ -226,7 +229,11 @@ async function main() {
     h.F(ret.err === 0 && ret.done >= 10, '⑤ 真数据检索全部正常返回（完成 ' + ret.done + '/' + ret.n + ' 次' + (ret.stopped ? '，超过 ' + Math.round(ret.spentMs / 1000) + 's 预算提前收尾' : '') + '，异常 ' + ret.err + '，P95 ' + ret.p95 + 'ms，空结果 ' + ret.emptyRate + '%）');
     // 【性能回归门禁·检索】修复前实测：规则源（13.9 万块）走"退化全量扫描"→ 每次 5.9s、对规 6.6s；
     //   改成"合并正则快筛 + indexOf 计频"后 → 113ms / 104ms（46~63 倍）。这里卡住阈值防止退化回去。
-    h.F(ret.p50 < 800 && ret.done === ret.n, '⑥ 检索性能门禁：P50 ' + ret.p50 + 'ms < 800ms 且 50 次全部跑完（修复前 5909ms/次，退化即失败）');
+    // 【门禁口径说明·2026-09-21】阈值按"内存优先"的当前取舍定：
+    //   rules（139385 块）走 scan+lazy（堆 502MB→217MB，移动端可接受），代价是**首会话长句查询**
+    //   每个新词要扫一遍全库算 df（长句 900ms 上下）；二次会话靠 df 缓存回到 139ms（见 _tmp-dfcache.js 实测）。
+    //   短关键词查询一直是 114~175ms。所以门禁放在 1500ms：能抓住"又退回 6s/查"的退化，又不误报这个取舍。
+    h.F(ret.p50 < 1500 && ret.done === ret.n, '⑥ 检索性能门禁：P50 ' + ret.p50 + 'ms < 1500ms 且 50 次全部跑完（首会话长句；短查询 114~175ms、二次会话 139ms；修复前 5909ms/次）');
     // 【2026-09-21】退化模式改为"惰性 df"后，首次检索不再需要全库建索（原先 12.3s）→ 实测最长 963ms。
     //   门禁放在 6s：既能抓住"又有人把全库建索加回来"的退化，又给慢机器留余量。
     h.F(ret.max < 6000, '⑦ 首次检索不再付全库建索代价（最长 ' + ret.max + 'ms < 6s；修复前首次 12.3s、单次 5.9s）');

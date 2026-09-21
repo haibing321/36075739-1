@@ -867,9 +867,9 @@
                         if (file.size > 6 * 1024 * 1024) {
                             const _big = await window.showChoiceModal({
                                 title: 'Excel 文件较大（' + (file.size / 1048576).toFixed(1) + ' MB）',
-                                body: '实测这种体量的 .xlsx 导入需要 1~3 分钟，手机端可能因内存不足失败。\n'
-                                    + '建议：在本机 Excel 里「另存为 → CSV（逗号分隔）」再导入 —— 同样内容通常只要几秒，\n'
-                                    + '中文编码会自动识别（UTF-8/GBK 都不会乱码）。',
+                                body: '实测这种体量的 .xlsx 导入需要 1~3 分钟（其中绝大部分是"把整库重写进本地库"），\n'
+                                    + '手机端还可能因内存不足失败。改用 CSV 能省掉 Excel 解析与内存膨胀这一大块，\n'
+                                    + '中文编码会自动识别（UTF-8/GBK 都不会乱码）；若数据量本身就很大，写库仍需一些时间。',
                                 actions: [
                                     { label: '改用 CSV（推荐）', value: 'csv', primary: true },
                                     { label: '仍然导入这个 Excel', value: 'go' },
@@ -923,6 +923,13 @@
                             unit: cols.unit !== -1 ? String(row[cols.unit] || '').trim() : ''
                         });
                     }
+                    // 【2026-09-21 真数据实测】解析中间产物要在写库前主动释放：
+                    //   33.7MB 的 xlsx 展开后是几十万单元格对象，与「已有 4 万条 + 新数组」叠加会把峰值堆顶到
+                    //   1.4GB；接着的 IndexedDB 写入在 GC 压力下被拖慢一个数量级
+                    //   （实测 5000 行追加导入：解析 0.2s + 映射 1.5s，但 put 循环 11.7s、事务提交共 18.4s）。
+                    //   这里把 workbook / jsonData 提前清掉（newData 已建好，不再需要它们）。
+                    try { workbook = null; } catch (e) {}
+                    try { jsonData.length = 0; } catch (e) {}
                     if (newData.length === 0) throw new Error('未找到有效数据');
                     const existingCount = dataCache.length; let finalData = newData;
                     if (existingCount > 0) {

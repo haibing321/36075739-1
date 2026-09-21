@@ -104,7 +104,10 @@
             function replaceAllData(dataArray) {
                 return new Promise((resolve, reject) => {
                     const list = dataArray || [];
-                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    // 【2026-09-21】大批量导入用 durability:'relaxed'：省掉每次事务提交的 fsync 屏障，
+                    //   几万条写入明显更快；**事务原子性不变**（要么全成功要么全回滚），代价只是"断电/崩溃
+                    //   可能丢掉刚写完的这一批"——导入是用户当场主动做的操作，重做即可，可接受。
+                    const transaction = db.transaction([STORE_NAME], 'readwrite', { durability: 'relaxed' });
                     const store = transaction.objectStore(STORE_NAME);
                     let settled = false;
                     const fail = (err) => { if (settled) return; settled = true; reject(err); };
@@ -128,7 +131,8 @@
             /** 差量写入：把"新增/更新"与"删除"放进**同一个事务**（原子性覆盖变化集，规模远小于整库） */
             function applyIssueDelta(toPut, toDelete) {
                 return new Promise(function (resolve, reject) {
-                    var transaction = db.transaction([STORE_NAME], 'readwrite');
+                    // 同 replaceAllData：导入用 relaxed（见那里的说明）
+                    var transaction = db.transaction([STORE_NAME], 'readwrite', { durability: 'relaxed' });
                     var store = transaction.objectStore(STORE_NAME);
                     var settled = false;
                     var fail = function (err) { if (settled) return; settled = true; reject(err); };

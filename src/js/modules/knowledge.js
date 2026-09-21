@@ -418,6 +418,50 @@
     function cacheDel(key) { return cacheTx('readwrite', function (s) { s.delete(key); return null; }); }
     function cacheClear() { return cacheTx('readwrite', function (s) { s.clear(); return null; }); }
 
+    // ==================== 【2026-09-21】惰性 df 缓存（跨会话复用）====================
+    //   背景：退化（scan+lazy）模式里"每个新查询词都要扫一遍全库算 df"是检索耗时的主要来源
+    //   （真数据实测：短查询 114~175ms；长句查询 550~950ms，因为词多且互不重复）。
+    //   把"查过的词 → df"持久化后，下次打开同一个库时这些词直接命中缓存，二次检索回到百毫秒内。
+    var _dfDirty = {}, _dfTimer = null, _DF_CACHE_MAX = 4000;
+    /** 便宜的指纹（只取块数/平均长度/首尾块片段，不遍历全部块）：数据一变就不复用缓存 */
+    function dfSigOf(prepared, bm) {
+        var n = prepared ? prepared.length : 0;
+        var first = n ? String(prepared[0] && prepared[0].content || '').slice(0, 24) : '';
+        var last = n ? String(prepared[n - 1] && prepared[n - 1].content || '').slice(-24) : '';
+        return n + ':' + Math.round((bm && bm.avgLen) || 0) + ':' + first + ':' + last;
+    }
+    /** 建完索引即尝试恢复 df 缓存（只有惰性 df 模式的源需要；指纹不符则丢弃） */
+    function attachDfCache(key, st, prepared) {
+        try {
+            if (!st || !st.bm || !st.bm._lazyDf) return;
+            st.dfSig = dfSigOf(prepared, st.bm);
+            var sig = st.dfSig;
+            cacheGet('dfcache:' + key).then(function (rec) {
+                if (!rec || !rec.df) return;
+                if (rec.sig !== sig) { cacheDel('dfcache:' + key).catch(function () {}); return; }
+                var n = st.bm.importDfCache(rec.df, _DF_CACHE_MAX);
+                if (n && typeof console !== 'undefined') console.log('[KB] 惰性 df 缓存命中：' + key + ' 复用 ' + n + ' 个词');
+            }).catch(function () {});
+        } catch (e) {}
+    }
+    function scheduleDfFlush() {
+        if (_dfTimer) return;
+        _dfTimer = setTimeout(function () { _dfTimer = null; flushDfCache(); }, 1500);
+    }
+    /** 回写 df 缓存（节流调用 + pagehide 兜底；不阻塞检索） */
+    function flushDfCache() {
+        Object.keys(_dfDirty).forEach(function (key) {
+            delete _dfDirty[key];
+            var st = STATE[key];
+            if (!st || !st.bm || !st.bm._lazyDf || !st.dfSig) return;
+            var df = null;
+            try { df = st.bm.exportDfCache(); } catch (e) { df = null; }
+            if (!df) return;
+            cachePut('dfcache:' + key, { sig: st.dfSig, df: df, at: Date.now() }).catch(function () {});
+        });
+    }
+    try { if (typeof window !== 'undefined') window.addEventListener('pagehide', function () { try { flushDfCache(); } catch (e) {} }); } catch (e) {}
+
     // 数据指纹：条数 + 每条的位置/正文长度/正文首尾片段/关键字段（改一条正文也会变）
     function sourceSig(items) {
         var h = 2166136261;
@@ -587,6 +631,7 @@
                     myState.chunks = chunks;
                     myState.bm = _BM.importIndex(rec.bm, bmDocsOf(chunks));
                     myState.restored = true;
+                    attachDfCache(key, myState, prepared);   // 惰性 df 模式：把上次会话查过的词接回来
                     // ⚠️ startedAt 是 Date.now()（墙钟），这里也必须用 Date.now() 相减，
                     //    别混用 performance.now()（单调钟，起点是页面导航）→ 会算出负数。
                     if (typeof console !== 'undefined') console.log('[KB] 已从本机缓存恢复索引：' + s.label + '（' + chunks.length + ' 块，'
@@ -619,6 +664,7 @@
                             return null;
                         }
                         myState.bm = inst;
+                        attachDfCache(key, myState, prepared);   // 惰性 df 模式：把上次会话查过的词接回来
                         // —— b) 建好即缓存到本机。——
                         // ⚠️ 必须**等写完**再报"就绪"：大源（1.2 万条 ≈ 7MB）序列化 + 落盘要一段时间，
                         //    原先"发射后不管"会让用户看到"已重建"就立刻重启 → 缓存还没写完 → 索引看似没保留。
@@ -748,6 +794,15 @@
                 });
             }
         });
+        // 【2026-09-21】本轮检索里惰性 df 模式的源可能新算了若干词组 → 标记回写（节流 1.5s，不阻塞检索）
+        try {
+            var _dirty = false;
+            keys.forEach(function (key) {
+                var st = STATE[key];
+                if (st && st.bm && st.bm._lazyDf && st.bm._lazyDf.size > 0 && st.dfSig) { _dfDirty[key] = 1; _dirty = true; }
+            });
+            if (_dirty) scheduleDfFlush();
+        } catch (e) {}
         return results;
     }
 

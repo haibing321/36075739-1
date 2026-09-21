@@ -4505,6 +4505,11 @@
       const BM25_TF_BASE = 1024;                 // 倒排项编码：docIdx * 1024 + tf（词频上限 1023）
       const BM25_TF_CAP = 1023;
       const BM25_POSTINGS_MAX_CHARS = 10000000;  // 启用倒排的字数上限（实测 ≈12MB/百万字 → 上限约 125MB）
+// 【2026-09-21 真数据补充】除了字数，**文档数**也要设上限：真数据规章语料 139385 块（每块只有几十字，
+//   总字数没过阈值）会走倒排模式 → 词表 Map 上百万条、常驻上百 MB（实测稳态堆 330MB 里的主要部分），
+//   而它的检索并不比"scan + 惰性 df"快多少（实测短查询 114~175ms）。超过此块数直接走 scan+lazy：
+//   内存只需要"块 + 查过的词"，跨会话还能靠 df 缓存复用。
+const BM25_POSTINGS_MAX_DOCS = 30000;
       // 【v3.74】索引导出/恢复时词表的分隔符（用 \u0001 这类控制字符，正常语料不会出现）
       const BM25_TERM_SEP = '\u0001';
       class LightBM25 {
@@ -4525,7 +4530,7 @@
           let totalLen = 0;
           for (let i = 0; i < docCount; i++) totalLen += this._textOf(docs[i]).length;
           this.avgLen = totalLen / docCount;
-          if (totalLen > BM25_POSTINGS_MAX_CHARS) { this._buildScan(); return; }
+          if (totalLen > BM25_POSTINGS_MAX_CHARS || docCount > BM25_POSTINGS_MAX_DOCS) { this._buildScan(); return; }
           // ---- 倒排模式 ----
           this.postings = new Map();
           this.docLen = new Float64Array(docCount);
@@ -4559,33 +4564,12 @@
           let totalLen = 0;
           for (let i = 0; i < docCount; i++) totalLen += this._textOf(docs[i]).length;
           this.avgLen = docCount ? totalLen / docCount : 0;
-          if (totalLen > BM25_POSTINGS_MAX_CHARS) {
-            // 超大语料退化模式：同样分片，避免一次阻塞
-            const termDocs = new Map();
-            let i = 0;
-            return new Promise(function (resolve) {
-              function step() {
-                const end = Math.min(i + sliceSize, docCount);
-                for (; i < end; i++) {
-                  const tokens = self._tokenize(self._textOf(docs[i]));
-                  const uniq = new Set(tokens);
-                  uniq.forEach(function (t) {
-                    if (!termDocs.has(t)) termDocs.set(t, []);
-                    termDocs.get(t).push(i);
-                  });
-                }
-                if (onProgress) onProgress(i, docCount);
-                if (i < docCount) setTimeout(step, 0);
-                else {
-                  termDocs.forEach(function (docsArr, term) {
-                    const freq = docsArr.length;
-                    self.idf.set(term, Math.log((docCount - freq + 0.5) / (freq + 0.5) + 1));
-                  });
-                  resolve(true);
-                }
-              }
-              step();
-            });
+          if (totalLen > BM25_POSTINGS_MAX_CHARS || docCount > BM25_POSTINGS_MAX_DOCS) {
+            // 【2026-09-21】超大语料（或块数太多）→ 直接用"scan + 惰性 df"：只算 avgLen，毫秒级完成。
+            //   原实现在这里仍然把整库分词建 termDocs/idf（真数据 139385 块 ≈ 12s + 上百万条词表常驻），
+            //   改为惰性后建索引几乎零成本，检索时只对"真正查到的词"扫一遍全库算 df。
+            this._buildScan();
+            return Promise.resolve(true);
           }
           this.postings = new Map();
           this.docLen = new Float64Array(docCount);
@@ -4632,6 +4616,28 @@
           }
           this._lazyDf.set(term, df);
           return df;
+        }
+        /**
+         * 【2026-09-21】惰性 df 缓存导出/导入 —— 供 KB 索引缓存持久化，**跨会话复用**。
+         * 只存"这个会话真正查过的词"，体量很小（几千词 ≈ 几十 KB），却能把二次检索里
+         * "每个新词扫一遍全库"（~100-200ms/词）直接省掉。调用方负责用数据指纹校验有效性。
+         */
+        exportDfCache() {
+          if (!this._lazyDf || !this._lazyDf.size) return null;
+          var out = {};
+          this._lazyDf.forEach(function (v, k) { out[k] = v; });
+          return out;
+        }
+        importDfCache(obj, max) {
+          if (!this._lazyDf || !obj) return 0;
+          var cap = max || 4000, n = 0;
+          for (var k in obj) {
+            if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+            if (this._lazyDf.size >= cap) break;
+            var v = obj[k];
+            if (typeof v === 'number' && v >= 0) { this._lazyDf.set(k, v); n++; }
+          }
+          return n;
         }
         // 与旧版正则写法逐字符等价（仅用 charCode 判定，省掉每字符一次正则）——已用全量语料 +
         // 边界串（空串 / 纯英文数字 / 全角 / 标点 / 表情符号）核对分词结果完全一致。

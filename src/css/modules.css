@@ -842,7 +842,8 @@
        原先是智能对规独占整行、重置半行，窄屏被拆成上下两行） */
     #autoCheck-smartBtn,
     #autoCheck-clearBtn { flex: 1 1 0 !important; min-width: 0 !important; }
-    #autoCheck-importBtn, #autoCheck-exportBtn { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }
+    /* 【2026-09-21 清理】`#autoCheck-importBtn` / `#autoCheck-exportBtn` 的排布规则已随按钮一并删除
+       （按钮永久 hidden，属死入口；导入/导出词库统一走「设置 → 数据 → 铁路术语」） */
     /* 手机端侧边栏全宽覆盖（DeepSeek：贴边全高，无圆角） */
     #ds-sidebar { width: 82vw !important; max-width: 300px !important; border-radius: 0 !important; }
     #ds-sidebar-toggle-text { display: none; }

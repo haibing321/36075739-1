@@ -20,6 +20,7 @@
             }
             const MAX_KEYWORDS = 4;
             let pendingFiles = [], isProcessing = false, currentEditIndex = null;
+            let _procStartAt = 0;   // 【2026-09-21】导入锁的起始时间：用于自动解除"卡死"的锁（见下方守卫）
             const ruleSearchMode = 'paragraph'; // 固定段落模式
             let rulePage = 1, rulePageSize = 10, ruleTotalPages = 1, ruleAllResults = [];
 
@@ -836,7 +837,11 @@
             }
 
             function handleImportClick() {
-                if (isProcessing) { alert('正在处理中'); return; }
+                // 【2026-09-21】原实现只判 isProcessing，而它仅在正常路径复位（下方 1105/1113）：
+                //   一旦异常逃逸（refreshTradeSelect/renderResults 抛错等）→ 之后**所有导入都被"正在处理中"拒绝，只能刷新页面**。
+                //   改为带时间戳的锁：超过 3 分钟视为失效，自动放行并留日志。
+                if (isProcessing && (Date.now() - _procStartAt) < 180000) { alert('正在处理中，请稍候…'); return; }
+                if (isProcessing) { console.warn('[规章导入] 上一次处理已超过 3 分钟未结束，自动解除锁定（疑似异常未复位）'); }
                 const input = document.getElementById('rule-fileInput');
                 if (!input) return;
                 input.click();
@@ -849,7 +854,11 @@
                     _inp.onchange = async (e) => {
                         const files = e.target.files;
                         if (!files || files.length === 0) return;
-                        if (isProcessing) { alert('正在处理中'); return; }
+                        // 【2026-09-21】原实现只判 isProcessing，而它仅在正常路径复位（下方 1105/1113）：
+                //   一旦异常逃逸（refreshTradeSelect/renderResults 抛错等）→ 之后**所有导入都被"正在处理中"拒绝，只能刷新页面**。
+                //   改为带时间戳的锁：超过 3 分钟视为失效，自动放行并留日志。
+                if (isProcessing && (Date.now() - _procStartAt) < 180000) { alert('正在处理中，请稍候…'); return; }
+                if (isProcessing) { console.warn('[规章导入] 上一次处理已超过 3 分钟未结束，自动解除锁定（疑似异常未复位）'); }
 
                         const zipFile = Array.from(files).find(f => f.name.toLowerCase().endsWith('.zip'));
                         if (zipFile) {
@@ -957,13 +966,19 @@
                 if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
                     pdfjsLib.GlobalWorkerOptions.workerSrc = LIB_PDFJS_WORKER;
                 }
-                isProcessing = true;
+                isProcessing = true; _procStartAt = Date.now();
                 const btn = document.getElementById('rule-importBtn');
                 let successCount = 0, skipCount = 0;
+                // 【2026-09-21】逐文件跳过原因：原来只累计 skipCount → 用户只看到"跳过 2 个"，
+                //   完全不知道是被什么拦下的（后缀不支持？.doc 老格式？解析失败？）
+                const skipNotes = [];
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const ext = file.name.split('.').pop().toLowerCase();
                     if (btn) btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></span> ' + (i + 1) + '/' + files.length;
+                    // 【2026-09-21】进度同时走**全局进度条**：从「设置 → 数据」入口导入时
+                    //   `#rule-importBtn` 根本不存在（按钮已迁到设置面板）→ 原来等于**零进度**，用户不知道在跑。
+                    try { window.showProgress(Math.round(i / files.length * 100), '正在导入规章 ' + (i + 1) + '/' + files.length + '：' + file.name); } catch (e) {}
                     try {
                         let contentHtml = '';
                         let searchText = '';
@@ -1063,9 +1078,14 @@
                                 }
                                 continue;
                             }
-                        } else { skipCount++; continue; }
-                        
-                        if (!searchText.trim() && !contentHtml.trim()) { skipCount++; continue; }
+                        } else {
+                            skipCount++;
+                            if (ext === 'doc') skipNotes.push(file.name + '：不支持老版 .doc，请在 Word 里「另存为 .docx」后再导入');
+                            else skipNotes.push(file.name + '：不支持的格式 .' + ext + '（支持 pdf / docx / json / zip）');
+                            continue;
+                        }
+
+                        if (!searchText.trim() && !contentHtml.trim()) { skipCount++; skipNotes.push(file.name + '：未解析出正文（可能为扫描件/图片版 PDF）'); continue; }
                         const title = file.name.replace(/\.[^/.]+$/, '');
                         // 去重必须带上专业：同名文件导入到不同专业时属于两条不同规章，
                         // 只按 title 判定会把第二次导入覆盖掉第一次（与 DOCX / JSON 分支不一致）
@@ -1080,7 +1100,12 @@
                         if (dupIdx !== -1) rules[dupIdx] = ruleData;
                         else rules.push(ruleData);
                         successCount++;
-                    } catch (err) { console.error(err); skipCount++; }
+                    } catch (err) {
+                        console.error(err); skipCount++;
+                        // .doc（老二进制 Word）走的是 docx 解析分支 → mammoth 必抛，这里给出可操作的说明
+                        if (ext === 'doc') skipNotes.push(file.name + '：不支持老版 .doc，请在 Word 里「另存为 .docx」后再导入');
+                        else skipNotes.push(file.name + '：' + ((err && err.message) || '解析异常'));
+                    }
                 }
                 // B4：保存失败必须让用户知道，并把内存回滚到库里的真实状态 ——
                 // 否则界面显示"导入成功"，刷新后数据全部消失。
@@ -1099,13 +1124,23 @@
                     ? '\n\n以下类型的解析组件未能联网加载，相关文件已跳过：' + missingLibs.join('、') +
                       '\n（联网成功加载一次后会自动缓存，之后可离线使用）'
                     : '';
-                alert('导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个' + libTip);
+                // 【2026-09-21】完成提示从**阻塞 alert** 改为"进度条收尾 + 非阻塞 toast"（失败/缺库时用错误色并延长显示）
+                var _skipTip = skipNotes.length ? '\n\n未导入的文件及原因：\n· ' + skipNotes.slice(0, 6).join('\n· ') + (skipNotes.length > 6 ? '\n· …等共 ' + skipNotes.length + ' 个' : '') : '';
+                var _doneMsg = '导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个' + (_skipTip ? '（原因见下）' : '');
+                try { window.finishProgress('✅ ' + _doneMsg); } catch (e) {}
+                try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+                var _fullMsg = (skipCount === 0 ? '✅ ' : '⚠️ ') + _doneMsg + _skipTip + libTip;
+                if (window.showToast) window.showToast(_fullMsg, missingLibs.length > 0 || skipCount > 0, (missingLibs.length || skipNotes.length) ? 14000 : 6000);
+                else alert(_doneMsg + _skipTip + libTip);
             }
-            window.doExport = async function(format) {
+            window.doExport = async function(format, forceAll) {
                 // 用 requireLib：直接 await loadScript 会在离线时抛错，
                 // 使下面 1054 行写好的「自动降级为 JSON 导出」兜底永远走不到
                 await window.requireLib(LIB_JSZIP, { feature: 'ZIP 导出', silent: true });
-                const selectedTrade = document.getElementById('rule-exportTrade')?.value;
+                // 【2026-09-21】forceAll：从「设置 → 数据」导出时必须**导出全部** ——
+                //   该下拉框在隐藏的 rule-exportModal 里，用户看不见却会沿用上一次模块内的筛选，
+                //   出现"我在设置里点了导出，结果只导出了某个专业"的困惑。
+                const selectedTrade = forceAll ? '' : (document.getElementById('rule-exportTrade')?.value);
                 let exportRules = rules;
                 if (selectedTrade && selectedTrade !== '') exportRules = rules.filter(r => r.trade === selectedTrade);
                 if (exportRules.length === 0) { alert('所选专业暂无规章'); return; }
@@ -1132,7 +1167,7 @@
                 }));
                 const dataStr = JSON.stringify(exportData, null, 2);
                 const blob = new Blob([dataStr], { type: 'application/json' });
-                const filename = selectedTrade ? '铁路规章_' + selectedTrade + '_' + new Date().toISOString().slice(0, 10) + '.json' : '铁路规章_全部_' + new Date().toISOString().slice(0, 10) + '.json';
+                const filename = selectedTrade ? '铁路规章_' + selectedTrade + '_' + window.localDateStr() + '.json' : '铁路规章_全部_' + window.localDateStr() + '.json';
                 downloadBlob(blob, filename);
                 closeModal('rule-exportModal');
             }
@@ -1199,12 +1234,18 @@
                     const zipBlob = await zip.generateAsync({ type: 'blob' });
                     const typedZipBlob = new Blob([zipBlob], { type: 'application/zip' });
                     const tradeSuffix = selectedTrade ? '_' + selectedTrade : '_全部';
-                    downloadBlob(typedZipBlob, '铁路规章' + tradeSuffix + '_' + new Date().toISOString().slice(0, 10) + '.zip');
+                    downloadBlob(typedZipBlob, '铁路规章' + tradeSuffix + '_' + window.localDateStr() + '.zip');
                     
-                    alert('导出成功！共 ' + exportRules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : ''));
+                    // 【2026-09-21】成功提示从**阻塞 alert** 改为进度条收尾 + toast：
+                    //   实测中这条 alert 会把页面 JS 挂住（无头/自动化下后续操作全部超时；手机上也会打断用户操作）。
+                    var okMsg = '导出成功！共 ' + exportRules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : '')
+                        + (/Mobi|Android/i.test(navigator.userAgent) ? '（手机端请点屏幕底部「📥 下载」完成保存）' : '');
+                    try { window.finishProgress('✅ ' + okMsg); } catch (e) {}
+                    if (window.showToast) window.showToast('✅ ' + okMsg, false, 6000); else alert(okMsg);
                 } catch (err) {
                     console.error('ZIP导出失败:', err);
-                    alert('导出失败: ' + err.message);
+                    try { window.hideProgress(); } catch (e) {}
+                    if (window.showToast) window.showToast('导出失败：' + err.message, true, 9000); else alert('导出失败: ' + err.message);
                 }
             };
 
@@ -1256,7 +1297,13 @@
             // ========== ZIP 导出/导入功能 ==========
             window.exportToZip = async function() {
                 if (rules.length === 0) { alert('暂无规章可导出'); return; }
-                if (typeof JSZip === 'undefined') { alert('JSZip 库未加载，请检查网络连接'); return; }
+                // 【2026-09-21】ZIP 路径必须**按需加载** JSZip：本仓库 vendor 库一律懒加载，
+                //   旧代码只判 `typeof JSZip === 'undefined'` 就报"库未加载" →
+                //   **本次会话没跑过 ZIP 导出时，ZIP 导出 100% 失败**（与用户操作、文件都无关）。
+                if (!(await window.requireLib(LIB_JSZIP, { feature: '规章 ZIP 导出', silent: true })) || typeof JSZip === 'undefined') {
+                    if (window.showToast) window.showToast('ZIP 组件需联网加载一次，本次可改用 JSON 导出', true, 9000); else alert('JSZip 库未加载，请检查网络连接');
+                    return;
+                }
                 
                 try {
                     const zip = new JSZip();
@@ -1314,19 +1361,28 @@
                     // 生成ZIP文件（显式设置MIME类型，兼容华为等浏览器）
                     const zipBlob = await zip.generateAsync({ type: 'blob' });
                     const typedZipBlob = new Blob([zipBlob], { type: 'application/zip' });
-                    downloadBlob(typedZipBlob, '铁路规章备份_' + new Date().toISOString().slice(0, 10) + '.zip');
+                    downloadBlob(typedZipBlob, '铁路规章备份_' + window.localDateStr() + '.zip');
                     
-                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '\n\n【手机端】请点击屏幕底部「📥 下载」按钮完成下载。' : '';
-                    alert('导出成功！共 ' + rules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : '') + mobileMsg);
+                    var mobileMsg = /Mobi|Android/i.test(navigator.userAgent) ? '（手机端请点屏幕底部「📥 下载」完成保存）' : '';
+                    // 【2026-09-21】同前：阻塞 alert → toast
+                    var okMsg2 = '导出成功！共 ' + rules.length + ' 条规章' + (allImageIds.size > 0 ? '，包含 ' + allImageIds.size + ' 张图片' : '') + mobileMsg;
+                    try { window.finishProgress('✅ ' + okMsg2); } catch (e) {}
+                    if (window.showToast) window.showToast('✅ ' + okMsg2, false, 6000); else alert(okMsg2);
                 } catch (err) {
                     console.error('ZIP导出失败:', err);
-                    alert('导出失败: ' + err.message);
+                    try { window.hideProgress(); } catch (e) {}
+                    if (window.showToast) window.showToast('导出失败：' + err.message, true, 9000); else alert('导出失败: ' + err.message);
                 }
             };
 
             window.importFromZip = async function(file) {
-                if (typeof JSZip === 'undefined') { alert('JSZip 库未加载，请检查网络连接'); return; }
                 if (!file) return;
+                // 【2026-09-21】原实现只判空 JSZip 就报"库未加载" → 从「设置 → 规章制度 → 导入」选 .zip 时，
+                //   只要本会话还没加载过 JSZip 就**必然失败**（实测复现）。改为懒加载。
+                if (!(await window.requireLib(LIB_JSZIP, { feature: '规章 ZIP 导入', silent: true })) || typeof JSZip === 'undefined') {
+                    if (window.showToast) window.showToast('ZIP 组件需联网加载一次，请联网后重试（或改用 JSON 导入）', true, 9000); else alert('JSZip 库未加载，请检查网络连接');
+                    return;
+                }
                 
                 try {
                     const zip = await JSZip.loadAsync(file);
@@ -1368,7 +1424,11 @@
                     }
                     
                     // 导入规章
-                    for (const item of importRules) {
+                    // 【2026-09-21】进度 + 互斥：含图 ZIP 的写库可能十几秒（原实现既无进度也无 isProcessing 保护，可重复触发）
+                    isProcessing = true; _procStartAt = Date.now();
+                    for (let _zi = 0; _zi < importRules.length; _zi++) {
+                        const item = importRules[_zi];
+                        if (_zi % 10 === 0) { try { window.showProgress(Math.round(_zi / Math.max(1, importRules.length) * 80), '正在写入规章 ' + (_zi + 1) + '/' + importRules.length + '…'); } catch (e) {} }
                         if (item.title && (item.content || item.contentHtml)) {
                             const dupIdx = rules.findIndex(r => 
                                 r.title.toLowerCase().trim() === item.title.toLowerCase().trim() && 
@@ -1398,24 +1458,31 @@
                         }
                     }
                     
+                    isProcessing = false;   // ZIP 导入循环结束：释放互斥锁（异常路径由 3 分钟自动解锁兜底）
                     if (!(await saveToStorage({ silent: true }))) {
                         try { await loadRulesFromDB(); } catch (e) { console.warn('[rule] 回滚失败:', e && e.message); }
                         refreshTradeSelect();
                         updateTotalBadge();
                         renderResults();
-                        alert('备份内容未能写入本地存储（通常是存储空间不足），已回滚本次导入。\n原有规章不受影响，请清理后再试。');
+                        try { window.hideProgress(); } catch (e) {}
+                        var _zr = '备份内容未能写入本地存储（通常是存储空间不足），已回滚本次导入。\n原有规章不受影响，请清理后再试。';
+                        if (window.showToast) window.showToast(_zr, true, 12000); else alert(_zr);
                         return;
                     }
                     refreshTradeSelect();
                     updateTotalBadge();
                     renderResults();
                     
-                    alert('导入完成：成功 ' + successCount + ' 条' + 
-                          (imageCount > 0 ? '，图片 ' + imageCount + ' 张' : '') + 
-                          (skipCount > 0 ? '，跳过 ' + skipCount + ' 条' : ''));
+                    // 【2026-09-21】ZIP 导入原为**全无进度 + 阻塞 alert**（含图备份可能要几秒~十几秒，用户以为卡死）
+                    var _zipMsg = '导入完成：成功 ' + successCount + ' 条' +
+                          (imageCount > 0 ? '，图片 ' + imageCount + ' 张' : '') +
+                          (skipCount > 0 ? '，跳过 ' + skipCount + ' 条' : '');
+                    try { window.finishProgress('✅ ' + _zipMsg); } catch (e) {}
+                    if (window.showToast) window.showToast('✅ ' + _zipMsg, false, 6000); else alert(_zipMsg);
                 } catch (err) {
                     console.error('ZIP导入失败:', err);
-                    alert('导入失败: ' + err.message);
+                    try { window.hideProgress(); } catch (e) {}
+                    if (window.showToast) window.showToast('ZIP 导入失败：' + err.message, true, 9000); else alert('导入失败: ' + err.message);
                 }
             };
             window.showCatalog = function() {
@@ -2264,21 +2331,10 @@
                 _el = document.getElementById('rule-importBtn'); if (_el) _el.addEventListener('click', handleImportClick);
                 _el = document.getElementById('rule-exportBtn'); if (_el) _el.addEventListener('click', function() { openModal('rule-exportModal'); });
                 _el = document.getElementById('rule-catalogBtn'); if (_el) _el.addEventListener('click', showCatalog);
-                _el = document.getElementById('rule-clearBtn'); if (_el) _el.addEventListener('click', async function() {
-                    if (confirm('确定要清空所有规章吗？\n\n点击"确定"：清空\n点击"取消"：恢复示例')) {
-                        rules = [];
-                        await saveToStorage();
-                        refreshTradeSelect();
-                        updateTotalBadge();
-                        renderResults();
-                    } else {
-                        rules = sampleRules.map(r => ({ ...r }));
-                        await saveToStorage();
-                        refreshTradeSelect();
-                        updateTotalBadge();
-                        renderResults();
-                    }
-                });
+                // 【2026-09-21 删除】此处原有 `#rule-clearBtn` 的 handler，其 else 分支是"取消 = 恢复示例数据并保存"。
+                //   该按钮已从 index.html 移除（死代码），但危险默认值留着迟早出事（谁把按钮加回来 =
+                //   "点取消把真实规章换成示例"）。需要清空规章请走「设置 → 数据 → 规章制度 → 清空」。
+                _el = null;
                 document.getElementById('rule-tradeSelect').addEventListener('change', renderResults);
                 document.getElementById('rule-catalogFilter')?.addEventListener('input', renderCatalog);
                 document.getElementById('rule-catalogTradeFilter')?.addEventListener('change', renderCatalog);

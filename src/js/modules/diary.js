@@ -1477,8 +1477,10 @@
                     await window.requireLib(LIB_JSZIP_DIARY, { feature: 'ZIP 导出', silent: true });
                     if (typeof JSZip === 'undefined') {
                         // 降级：纯 JSON（不含媒体）
-                        _downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '.json');
-                        window.finishProgress('⚠️ JSZip 未加载，已导出纯文本（不含媒体），请联网后重试以打包图片' + (attCount > 0 ? '（含 ' + attCount + ' 天考勤）' : ''));
+                        // 【2026-09-21】文件名加 `_无媒体`：原来与"确有媒体且打包成功"的纯 JSON 场景**同名**，
+                        //   用户以为照片都在里面，换机恢复时才发现全丢。
+                        _downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '工作写实_' + stamp + '_无媒体.json');
+                        window.finishProgress('⚠️ ZIP 组件未加载，已导出**不含媒体**的纯文字备份（文件名带「_无媒体」）；联网后重试可打包图片' + (attCount > 0 ? '（含 ' + attCount + ' 天考勤）' : ''));
                         return;
                     }
                     const zip = new JSZip();
@@ -1504,16 +1506,19 @@
 
             // 导入日记数据（支持 .json / .zip）
             window.importDiary = function() {
-                window.showProgress(10, '正在导入工作日志…');
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.json,.zip';
                 input.onchange = function(e) {
                     const file = e.target.files[0];
                     if (!file) { window.hideProgress(); return; }
+                    // 【2026-09-21】进度条改到"真的选了文件之后"才显示：原实现先 showProgress(10) 再弹选择框，
+                    //   用户点"取消"时没有 cancel 监听 → 进度条**永久停在 10%**（backup.js 有正确的 cancel 回收范例）。
+                    window.showProgress(10, '正在导入工作日志…');
                     if (/\.zip$/i.test(file.name)) { importDiaryFromZip(file); return; }
                     importDiaryFromJson(file);
                 };
+                input.addEventListener('cancel', function() { window.hideProgress(); });   // 取消选择 → 复位进度条
                 input.click();
             };
 

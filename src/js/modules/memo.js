@@ -106,6 +106,125 @@
         return memos || [];
     };
 
+    // ==================== 【2026-09-21】备忘录独立导入 / 导出 / 清空 ====================
+    //  背景：备忘录此前**只能靠全局备份**（railway_memo_v1 一起打包），没有独立的导入导出入口 ——
+    //   用户想单独备份待办、或把待办迁到另一台机器时无从下手；导出/导入/清空三件套与其它模块对齐。
+    function _memoRefreshStats() {
+        try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+    }
+    /** 导出为 JSON（与全局备份里的 memos 数组同构，可互相导入） */
+    window.exportMemo = function() {
+        var list = window.getMemoData();
+        if (!list || !list.length) {
+            var _m0 = '暂无备忘可导出';
+            if (window.showToast) window.showToast(_m0, true, 5000); else alert(_m0);
+            return;
+        }
+        var name = '备忘录_' + (window.localDateStr ? window.localDateStr() : new Date().toISOString().slice(0, 10)) + '.json';
+        var payload = { type: 'memo_export', version: 1, exportDate: new Date().toISOString(), count: list.length, memos: list };
+        window.downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), name);
+        var _m1 = '✅ 已导出 ' + list.length + ' 条备忘（' + name + '）';
+        if (window.showToast) window.showToast(_m1, false, 6000); else alert(_m1);
+    };
+    /** 导入 JSON：追加（按 时间+内容 去重）/ 覆盖 / 取消 三选一，失败不改内存 */
+    window.importMemo = function() {
+        var input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.style.display = 'none';
+        input.addEventListener('cancel', function() { try { input.remove(); } catch (e) {} });
+        input.onchange = async function(e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) { input.remove(); return; }
+            var incoming = [];
+            try {
+                var data = JSON.parse(await file.text());
+                var raw = Array.isArray(data) ? data : (data && Array.isArray(data.memos) ? data.memos : []);
+                // 字段归一：本模块用 {datetime, content, done, id}；兼容 time/remindAt/text/title 等写法
+                incoming = raw.filter(function(m) { return m && (m.content || m.text || m.title); }).map(function(m) {
+                    var dt = String(m.datetime || m.time || m.remindAt || '').trim();
+                    return {
+                        datetime: dt ? dt.replace(' ', 'T').slice(0, 16) : '',
+                        content: String(m.content || m.text || m.title || '').slice(0, 500),
+                        done: !!(m.done || m.confirmed),
+                        id: (typeof m.id === 'number' || /^\d+$/.test(String(m.id || ''))) ? Number(m.id) : Date.now() + Math.floor(Math.random() * 1000)
+                    };
+                });
+            } catch (err) {
+                var _me = '备忘录导入失败：' + ((err && err.message) || '不是有效的 JSON 文件');
+                if (window.showToast) window.showToast(_me, true, 9000); else alert(_me);
+                input.remove(); return;
+            }
+            if (!incoming.length) {
+                var _m2 = '文件中没有可用的备忘条目（每条需含 datetime + content）';
+                if (window.showToast) window.showToast(_m2, true, 8000); else alert(_m2);
+                input.remove(); return;
+            }
+            loadMemos();
+            var cur = memos.slice();
+            var act = 'append';
+            if (cur.length > 0) {
+                act = await window.showChoiceModal({
+                    title: '导入备忘录（JSON）',
+                    body: '当前已有 ' + cur.length + ' 条，本次解析 ' + incoming.length + ' 条。请选择处理方式：',
+                    actions: [
+                        { label: '追加（时间+内容 去重）', value: 'append', primary: true },
+                        { label: '覆盖现有', value: 'overwrite', danger: true },
+                        { label: '取消', value: 'cancel' }
+                    ]
+                });
+                if (act === 'cancel' || act == null) { input.remove(); return; }   // 真正取消：不写库
+            }
+            var merged, dup = 0;
+            if (act === 'overwrite') merged = incoming;
+            else {
+                var seen = {};
+                cur.forEach(function(m) { seen[String(m.datetime || '') + '|' + String(m.content || '')] = 1; });
+                merged = cur.slice();
+                incoming.forEach(function(m) {
+                    var k = String(m.datetime || '') + '|' + String(m.content || '');
+                    if (seen[k]) { dup++; return; }
+                    seen[k] = 1; merged.push(m);
+                });
+            }
+            // 先落盘成功再改内存（与其它模块一致：写失败不留半成品）
+            var backup = memos;
+            memos = merged;
+            try {
+                localStorage.setItem(MEMO_KEY, JSON.stringify(memos));
+            } catch (eQ) {
+                memos = backup;
+                var _mq = '⚠️ 备忘录写入失败（可能存储空间不足）：' + ((eQ && eQ.message) || '未知错误') + '；本次导入未生效。';
+                if (window.showToast) window.showToast(_mq, true, 10000); else alert(_mq);
+                input.remove(); return;
+            }
+            try { renderMemoList(); } catch (e2) {}
+            _memoRefreshStats();
+            input.remove();
+            var msg = '✅ 已导入备忘录：' + (act === 'overwrite' ? '覆盖为 ' : '新增 ') + (act === 'overwrite' ? incoming.length : (merged.length - cur.length))
+                + ' 条' + (dup ? '（跳过重复 ' + dup + ' 条）' : '') + '，当前共 ' + memos.length + ' 条';
+            if (window.showToast) window.showToast(msg, false, 7000); else alert(msg);
+        };
+        document.body.appendChild(input);
+        input.click();   // 同步点击：延时会让 iOS/国产浏览器丢失用户手势（选择器不弹）
+    };
+    /** 清空全部备忘（带确认；建议先导出） */
+    window.memoShowClear = function() {
+        loadMemos();
+        if (!memos.length) {
+            var _m3 = '备忘录已为空';
+            if (window.showToast) window.showToast(_m3, false, 4000); else alert(_m3);
+            return;
+        }
+        if (!confirm('确定清空全部 ' + memos.length + ' 条备忘吗？\n此操作不可撤销（建议先点「导出」备份）。')) return;
+        memos = [];
+        try { localStorage.setItem(MEMO_KEY, JSON.stringify(memos)); } catch (e) {}
+        try { renderMemoList(); } catch (e2) {}
+        _memoRefreshStats();
+        var _m4 = '🗑️ 备忘录已清空（0 条）';
+        if (window.showToast) window.showToast(_m4, false, 5000); else alert(_m4);
+    };
+
     // 对外接口
     window.openMemoModal = function() {
         loadMemos();

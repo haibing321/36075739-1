@@ -943,7 +943,7 @@
 
             // ========== 设置面板 — 各模块数据计数更新 ==========
             window.updateDataManagementStats = async function() {
-                var els = { handbook: 'set-handbook-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', wrmat: 'set-wr-count', wrrpt: 'set-wrhist-count', term: 'set-term-count' };
+                var els = { handbook: 'set-handbook-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', wrmat: 'set-wr-count', wrrpt: 'set-wrhist-count', term: 'set-term-count', memo: 'set-memo-count' };
                 var getters = {
                     handbook: function() { return window.getHandbookData ? window.getHandbookData().length : 0; },
                     issue:    function() { return window.getIssueData    ? window.getIssueData().length    : 0; },
@@ -952,7 +952,8 @@
                     phone:    function() { return window.getPhoneData   ? window.getPhoneData().length   : 0; },
                     wrmat:    async function() { return window.getWrMatCount ? await window.getWrMatCount() : '—'; },
                     wrrpt:    async function() { return window.getWrRptCount ? await window.getWrRptCount() : '—'; },
-                    term:     function() { return window.getTermCount   ? window.getTermCount()          : '—'; }
+                    term:     function() { return window.getTermCount   ? window.getTermCount()          : '—'; },
+                    memo:     function() { return window.getMemoData    ? window.getMemoData().length    : 0; }
                 };
                 var keys = Object.keys(els);
                 for (var i = 0; i < keys.length; i++) {
@@ -992,6 +993,45 @@ window.hideProgress = function() {
 window.finishProgress = function(label) {
     window.showProgress(100, label || '✅ 完成');
     setTimeout(window.hideProgress, 2000);
+};
+
+// ==================== 【2026-09-21】诊断导出（错误日志 / 性能报告）====================
+//  背景：`errorMonitor.exportText()` / `perfMonitor.exportText()` 只**返回字符串**，
+//   仓库里没有任何 UI 入口 → 出问题时用户/支持人员拿不到诊断信息（只能让用户开控制台）。
+//   这里补两个入口，统一走 downloadBlob（文件名净化 + 移动端分享/兜底按钮都自动复用）。
+window.exportErrorLog = function() {
+    var text = '';
+    try { text = (window.errorMonitor && window.errorMonitor.exportText) ? window.errorMonitor.exportText() : ''; } catch (e) { console.warn('[diag] 错误日志导出失败：', e); }
+    if (!text) {
+        var _m0 = '暂无错误日志可导出';
+        if (window.showToast) window.showToast(_m0, false, 5000); else alert(_m0);
+        return;
+    }
+    window.downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), '错误日志_' + window.localDateStr() + '.txt');
+    var _n = 0;
+    try { _n = (window.errorMonitor.getLogs ? window.errorMonitor.getLogs().length : 0); } catch (e) {}
+    var _m1 = '✅ 已导出错误日志' + (_n ? '（' + _n + ' 条）' : '');
+    if (window.showToast) window.showToast(_m1, false, 6000); else alert(_m1);
+};
+window.exportPerfReport = function() {
+    var text = '';
+    try { text = (window.perfMonitor && window.perfMonitor.exportText) ? window.perfMonitor.exportText() : ''; } catch (e) { console.warn('[diag] 性能报告导出失败：', e); }
+    if (!text) {
+        var _p0 = '暂无可导出的性能数据';
+        if (window.showToast) window.showToast(_p0, false, 5000); else alert(_p0);
+        return;
+    }
+    window.downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), '性能报告_' + window.localDateStr() + '.txt');
+    var _p1 = '✅ 已导出性能报告';
+    if (window.showToast) window.showToast(_p1, false, 6000); else alert(_p1);
+};
+/** 一键清空诊断数据（错误日志 + 性能采样） */
+window.clearDiagData = function() {
+    if (!confirm('确定清空错误日志与性能采样数据吗？（不影响业务数据）')) return;
+    try { if (window.errorMonitor) window.errorMonitor.clear(); } catch (e) {}
+    try { if (window.perfMonitor) window.perfMonitor.clear(); } catch (e) {}
+    var _c = '🗑️ 诊断数据已清空';
+    if (window.showToast) window.showToast(_c, false, 5000); else alert(_c);
 };
 
 // ==================== 【2026-09-21】通用「多选一」弹窗（替代"确定=操作A / 取消=操作B"的 confirm） ====================

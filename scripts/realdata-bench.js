@@ -76,7 +76,8 @@ async function main() {
     process.exit(0);
   }
   const sizeMB = Math.round(fs.statSync(ZIP).size / 1048576 * 10) / 10;
-  const h = await H.start({ port: 8177, cdpPort: 9387, view: 'rdbench' });
+  // 端口可用环境变量覆盖：便于与其它套件并行跑（默认 8177/9387）
+  const h = await H.start({ port: Number(process.env.RD_PORT || 8177), cdpPort: Number(process.env.RD_CDP || 9387), view: process.env.RD_VIEW || 'rdbench' });
   fs.mkdirSync(TMPDL, { recursive: true });
   let restoreMs = 0;
   try {
@@ -259,6 +260,13 @@ async function main() {
         var txt = await (await fetch('/scripts/_tmp_dl/bench_issues.xlsx')).arrayBuffer();
         window.__xlsxFile = new File([txt], 'bench_issues.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         window.__heapPeak = 0;
+        // 统计本次导入真正写了几条（差量写入的"0 次写入"要有硬证据）
+        var puts = 0, dels = 0;
+        try {
+          var P = IDBObjectStore.prototype, op = P.put, od = P.delete;
+          P.put = function () { puts++; return op.apply(this, arguments); };
+          P.delete = function () { dels++; return od.apply(this, arguments); };
+        } catch (e) {}
         var timer = setInterval(function () { var m = (performance.memory && performance.memory.usedJSHeapSize) || 0; if (m > window.__heapPeak) window.__heapPeak = m; }, 200);
         var before = (window.getIssueData() || []).length;
         var inp = document.getElementById('issue-fileInput');
@@ -272,17 +280,23 @@ async function main() {
           await new Promise(function (r) { setTimeout(r, 250); });
           after = (window.getIssueData() || []).length;
           var lab = document.getElementById('global-progress-label');
-          var done = lab && /完成|成功/.test(lab.textContent || '');
-          if (after !== before && done) break;
+          // 【2026-09-21】以"导入完成提示"为准结束等待：重复导入同一份数据时条数可能**完全不变**（差量 0 次写入），
+          //   若仍以"条数变化"为条件会白等满 5 分钟，把测量值污染成 300s。
+          if (lab && /完成|成功/.test(lab.textContent || '')) break;
         }
         clearInterval(timer);
-        return { ms: Math.round(performance.now() - t0), before: before, after: after, peakMB: +(window.__heapPeak / 1048576).toFixed(1) };
+        return { ms: Math.round(performance.now() - t0), before: before, after: after, peakMB: +(window.__heapPeak / 1048576).toFixed(1), puts: puts, dels: dels };
       })()`, 420000);
-      console.log('  ┌─ C) 4 万条 Excel 覆盖导入 ────────────────────────');
+      console.log('  ┌─ C) 4 万条 Excel 覆盖导入（同一份数据）────────────');
       console.log('  │ 文件 ' + (xf || '-') + '（' + gen.mb + 'MB，生成 ' + Math.round((gen.ms || 0) / 1000) + 's）');
       console.log('  │ 导入 ' + Math.round((imp.ms || 0) / 1000) + 's ｜ 条数 ' + imp.before + ' → ' + imp.after + ' ｜ 峰值堆 ' + imp.peakMB + 'MB');
+      console.log('  │ 实际写入：put ' + imp.puts + ' 条 ｜ delete ' + imp.dels + ' 条（差量应≈0；修复前是 48586 次 put 的整库重写）');
       console.log('  └────────────────────────────────────────────────');
       h.F(imp.after === EXPECT_ISSUES, '⑧ 4 万条 Excel 覆盖导入正确（' + imp.before + ' → ' + imp.after + '，耗时 ' + Math.round((imp.ms || 0) / 1000) + 's，峰值堆 ' + imp.peakMB + 'MB）');
+      // 【性能门禁·重复导入】同一份数据再导入一次 = 差量 0 次写入，应秒级完成。
+      //   修复前实测 312~317s（整库重写：48586 次 put 的单事务）；改差量后目标 < 60s（含解析与映射）。
+      h.F((imp.ms || 0) < 60000, '⑨ 重复导入同一份数据不再整库重写（' + Math.round((imp.ms || 0) / 1000) + 's < 60s；修复前 317s）');
+      h.F(imp.puts <= 5 && imp.dels <= 5, '⑩ 差量写入硬证据：同一份数据再导入只写 ' + imp.puts + ' 条 / 删 ' + imp.dels + ' 条（修复前整库重写 48586 次 put）');
     } else {
       h.F(false, '⑧ 4 万条 Excel 覆盖导入未执行（导出文件缺失）');
     }

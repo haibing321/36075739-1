@@ -47,9 +47,42 @@
                 }
             }
 
-            async function saveData(dataArray) {
+            /**
+             * 【2026-09-21】保存数据。opts.delta=true 时走**差量写入**：只写"新增/有变化"的记录、
+             * 只删"已被移除"的记录，不再整库重写。
+             *
+             * 为什么必须这么做（真数据实测，见 realdata-bench / 时间线探针）：
+             *   · 4 万条 Excel 导入耗时 **317s**、峰值堆 **1.4GB**；时间线把账算清了：
+             *     解析 0.2s + 映射/去重 1.5s，而 **put 循环 11.7s、事务 complete 18.4s**（5000 行样本、
+             *     48586 次 put 的单事务 = 把整库重写一遍）。真数据 4 万行时同样的 put 次数要 317s，
+             *     每记录成本从 0.24ms 涨到 ~5ms（内存压力下 GC 拖累）。
+             *   · 而"重新导入同一份数据"这种最常见场景，其实**一条都不用写**（差量 0 次）→ 秒级完成。
+             *
+             * 安全约束：
+             *   ① 与 dataCache 是**同一个数组引用**（调用方原地改了记录）时无法比对 → 回退整库重写；
+             *   ② 变化量过大（新增+删除 > 最终条数 × 1.3）时回退整库重写（clear+put 比"边写边删"更省）；
+             *   ③ 同键记录一律**沿用原 id**（保持记录身份稳定，历史/收藏等外部引用不失效）。
+             */
+            async function saveData(dataArray, opts) {
                 if (!db || !ensureStoreExists()) await initDB();
-                await replaceAllData(dataArray);
+                var _useDelta = !!(opts && opts.delta) && dataCache !== dataArray;
+                if (_useDelta) {
+                    var plan = planIssueDelta(dataCache, dataArray);
+                    var ops = plan.toPut.length + plan.toDelete.length;
+                    if (ops === 0) {
+                        console.log('[issue] 数据与库中完全一致，跳过写入（差量 0 次；整库 ' + dataArray.length + ' 条）');
+                        dataArray = plan.merged;      // 库未变 → 内存也改用库中记录（id 与库一致）
+                    } else if (ops > (dataArray.length + 1) * 1.3) {
+                        console.log('[issue] 变化量过大（' + ops + ' 次操作 vs 整库 ' + dataArray.length + ' 条）→ 回退整库重写');
+                        await replaceAllData(dataArray);   // 库里写的是 dataArray，内存保持 dataArray（一致）
+                    } else {
+                        console.log('[issue] 差量写入：新增/更新 ' + plan.toPut.length + ' 条、删除 ' + plan.toDelete.length + ' 条（整库 ' + dataArray.length + ' 条）');
+                        await applyIssueDelta(plan.toPut, plan.toDelete);
+                        dataArray = plan.merged;      // 同键未变记录沿用库中那一条 → 内存/库 id 严格一致
+                    }
+                } else {
+                    await replaceAllData(dataArray);
+                }
                 dataCache = dataArray;
                 // 写入成功即视为「已初始化」：此后即便数据为空，也不再自动注入演示数据
                 try { localStorage.setItem(ISSUE_INIT_FLAG, '1'); } catch (e) {}
@@ -90,6 +123,65 @@
                         fail(e);
                     }
                 });
+            }
+
+            /** 差量写入：把"新增/更新"与"删除"放进**同一个事务**（原子性覆盖变化集，规模远小于整库） */
+            function applyIssueDelta(toPut, toDelete) {
+                return new Promise(function (resolve, reject) {
+                    var transaction = db.transaction([STORE_NAME], 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    var settled = false;
+                    var fail = function (err) { if (settled) return; settled = true; reject(err); };
+                    transaction.oncomplete = function () { if (!settled) { settled = true; resolve(); } };
+                    transaction.onerror = function () { fail(transaction.error || new Error('差量写入事务失败')); };
+                    transaction.onabort = function () { fail(transaction.error || new Error('差量写入事务被中断')); };
+                    try {
+                        (toDelete || []).forEach(function (id) { if (id != null) store.delete(id); });
+                        (toPut || []).forEach(function (r) { store.put(r); });
+                    } catch (e) {
+                        try { transaction.abort(); } catch (e2) {}
+                        fail(e);
+                    }
+                });
+            }
+
+            /**
+             * 计算差量计划（键 = issueStableKey：内容+单位+日期）：
+             *   · finalData 里"库中没有"的 → 写入；
+             *   · finalData 里"库中有但字段有变"的 → 写入（并沿用库中 id）；
+             *   · 库中"finalData 里已不存在"的 → 删除（覆盖导入时被移除的记录）。
+             * 返回 { toPut, toDelete }；调用方据规模决定是否改走整库重写。
+             */
+            function planIssueDelta(existing, finalData) {
+                var exMap = new Map();
+                (existing || []).forEach(function (r) { if (r) exMap.set(issueStableKey(r), r); });
+                var seen = new Set();
+                var toPut = [];
+                var merged = [];                 // 内存里应持有的"权威数组"（见下方 merged 说明）
+                finalData.forEach(function (r) {
+                    if (!r) return;
+                    var k = issueStableKey(r);
+                    seen.add(k);
+                    var old = exMap.get(k);
+                    if (!old) { toPut.push(r); merged.push(r); return; }
+                    if (String(old.content || '') !== String(r.content || '')
+                        || String(old.regulation || '') !== String(r.regulation || '')
+                        || String(old.unit || '') !== String(r.unit || '')
+                        || String(old.category || '') !== String(r.category || '')
+                        || String(old['性质'] || '') !== String(r['性质'] || '')
+                        || String(old.datetime || '') !== String(r.datetime || '')) {
+                        if (old.id != null) r.id = old.id;      // 沿用原 id：记录身份稳定
+                        toPut.push(r); merged.push(r);
+                    } else {
+                        // 【关键】库中已存在且**内容一致**的记录：内存里沿用**库中那一条**（不能换成导入侧的新对象）。
+                        //   导入侧每条都带新 id（Date.now()+i），若内存换成新对象，而库中仍是旧 id，
+                        //   就会出现"内存 id 与库中 id 不一致"——后续编辑/删除/盯控按 id 操作会全部落空。
+                        merged.push(old);
+                    }
+                });
+                var toDelete = [];
+                (existing || []).forEach(function (r) { if (r && !seen.has(issueStableKey(r))) toDelete.push(r.id); });
+                return { toPut: toPut, toDelete: toDelete, merged: merged };
             }
 
             async function loadData() {
@@ -837,7 +929,8 @@
                         if (_act === 'cancel' || _act == null) { window.hideProgress(); return; }   // 真正取消：不写库
                         if (_act === 'append') finalData = issueDedupMerge(dataCache, normalized);
                     }
-                    await saveData(finalData); await updateStorage();
+                    // 差量写入：只写新增/有变化的记录（同一份数据重复导入 → 0 次写入，不再整库重写）
+                    await saveData(finalData, { delta: true }); await updateStorage();
                     window.finishProgress('✅ 成功导入 ' + imported.length + ' 条检查记录');
                     try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
                 } catch (err) { window.hideProgress(); if (window.showToast) window.showToast('JSON 导入失败：' + err.message, true, 9000); else alert('JSON导入失败: ' + err.message); }
@@ -950,7 +1043,9 @@
                     }
                     window.showProgress(70, '正在保存到数据库…');
                     document.getElementById('issue-importStatus').textContent = '正在保存...';
-                    await saveData(finalData); await updateStorage(); closeModal('issue-importModal');
+                    // 差量写入：真数据实测整库重写是导入 317s 的绝对瓶颈（48586 次 put 的单事务），
+                    // 改差量后"重新导入同一份数据"直接 0 次写入、全新的表也只写变化部分。
+                    await saveData(finalData, { delta: true }); await updateStorage(); closeModal('issue-importModal');
                     window.finishProgress('✅ 成功导入 ' + newData.length + ' 条记录');
                     try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
                 } catch (err) { closeModal('issue-importModal'); window.hideProgress(); if (window.showToast) window.showToast('导入失败：' + err.message, true, 9000); else alert('导入失败: ' + err.message); }

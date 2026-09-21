@@ -48,6 +48,7 @@ const SUITES = [
   { name: 'diary-ai-fix-audit',    file: 'scripts/diary-ai-fix-audit.js',    kind: 'audit', desc: '日志 AI 修改链路',                          timeout: 900000 },
   { name: 'data-io-audit',         file: 'scripts/data-io-audit.js',         kind: 'audit', desc: '数据导入导出：CSV/GBK/边界/去重口径/真实落盘', timeout: 600000 },
   { name: 'backup-audit',          file: 'scripts/backup-audit.js',          kind: 'audit', desc: '备份结构 + 恢复往返（含媒体附件）',           timeout: 600000 },
+  { name: 'mutation-check',        file: 'scripts/mutation-check.js',        kind: 'audit', desc: '测试敏感度自检：注入已知缺陷验证套件确实会失败', timeout: 900000 },
   { name: 'boot-bench',            file: 'scripts/boot-bench.js',            kind: 'bench', desc: '冷启动性能基线',                            timeout: 900000 },
   { name: 'kb-ab-bench',           file: 'scripts/kb-ab-bench.js',           kind: 'bench', desc: '知识库检索 A/B',                            timeout: 900000 },
   { name: 'kb-budget-measure',     file: 'scripts/kb-budget-measure.js',     kind: 'bench', desc: 'KB 注入预算测量',                           timeout: 900000 },
@@ -55,7 +56,7 @@ const SUITES = [
 
 // ---------------- 参数 ----------------
 function parseArgs(argv) {
-  const args = { quick: false, list: false, only: null, timeout: null, resume: false, budgetMs: 0, status: false, bump: null, markDeployed: null };
+  const args = { quick: false, list: false, only: null, timeout: null, resume: false, budgetMs: 0, status: false, bump: null, markDeployed: null, retry: 1, maxRegress: 30 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--quick') args.quick = true;
@@ -67,8 +68,25 @@ function parseArgs(argv) {
     else if (a === '--budget-ms') args.budgetMs = parseInt(argv[++i], 10) || 0;
     else if (a === '--bump-improvements') args.bump = parseInt(argv[++i], 10);
     else if (a === '--mark-deployed') args.markDeployed = argv[++i] || '';
+    else if (a === '--retry') args.retry = parseInt(argv[++i], 10) || 0;              // 失败重跑次数（Flaky 隔离）
+    else if (a === '--max-regress') args.maxRegress = parseInt(argv[++i], 10);        // 耗时回归门禁（%）
   }
   return args;
+}
+
+/** 版本指纹：把代码版本与评测结果绑定（业界要求"Golden Set / 模型 / Prompt / 提交一起保存"） */
+function versionFingerprint() {
+  const out = { gitCommit: null, appVersion: null };
+  try {
+    const r = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+    if (r.status === 0) out.gitCommit = String(r.stdout || '').trim();
+  } catch (e) {}
+  try {
+    const vj = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8'));
+    out.appVersion = vj.version || null;
+    out.swBuild = vj.sw || null;
+  } catch (e) {}
+  return out;
 }
 
 // ---------------- 状态（队列） ----------------
@@ -85,6 +103,7 @@ function saveState(s) {
 function startCycle(state, mode, names) {
   state.cycle = { id: 'c' + Date.now(), mode, startedAt: new Date().toISOString(), completedAt: null, total: names.length, done: 0 };
   state.suites = {};
+  state.version = versionFingerprint();   // 版本绑定：评测结果与代码提交/SW 构建号一起保存
   names.forEach(n => { state.suites[n] = { status: 'PENDING' }; });
   return state;
 }
@@ -109,7 +128,7 @@ function summarize(stdout, stderr) {
   const tail = lines.filter(l => /通过|失败|断言|PASS|FAIL|结果|Summary|汇总/.test(l)).slice(-3);
   return { ok, bad, tail: tail.length ? tail : lines.slice(-3) };
 }
-function runSuite(s, args) {
+function runSuite(s, args, prevMs) {
   const abs = path.join(ROOT, s.file);
   const started = Date.now();
   if (!fs.existsSync(abs)) return { name: s.name, kind: s.kind, desc: s.desc, status: 'SKIP', reason: '脚本不存在：' + s.file, ms: 0, ok: 0, bad: 0, tail: [] };
@@ -123,8 +142,14 @@ function runSuite(s, args) {
   else if (/Edge.*(未找到|not found)|ENOENT.*msedge|无法启动浏览器/i.test(combined)) status = 'SKIP';
   else if (r.status === 0 && out.bad === 0) status = 'PASS';
   else status = 'FAIL';
-  return { name: s.name, kind: s.kind, desc: s.desc, status, ms, ok: out.ok, bad: out.bad, tail: out.tail,
-    reason: r.error ? (r.error.code || r.error.message) : (r.status ? 'exit=' + r.status : '') };
+  // 【性能回归门禁】绝对阈值之外加"相对基线"：仅当上次 PASS、且两边都 ≥3s（避开抖动）才判定
+  let reason = r.error ? (r.error.code || r.error.message) : (r.status ? 'exit=' + r.status : '');
+  if (status === 'PASS' && prevMs && prevMs >= 3000 && ms > prevMs * (1 + ((args.maxRegress == null ? 30 : args.maxRegress) / 100))) {
+    const pct = Math.round((ms / prevMs - 1) * 100);
+    status = 'FAIL';
+    reason = '性能回归 ' + pct + '%（上次 ' + (prevMs / 1000).toFixed(1) + 's → 本次 ' + (ms / 1000).toFixed(1) + 's，阈值 +' + (args.maxRegress == null ? 30 : args.maxRegress) + '%）';
+  }
+  return { name: s.name, kind: s.kind, desc: s.desc, status, ms, ok: out.ok, bad: out.bad, tail: out.tail, reason };
 }
 
 // ---------------- 留档（增量） ----------------
@@ -132,12 +157,14 @@ function writeReports(results, meta, state) {
   const pass = results.filter(r => r.status === 'PASS').length;
   const fail = results.filter(r => r.status === 'FAIL').length;
   const skip = results.filter(r => r.status === 'SKIP').length;
+  const flaky = results.filter(r => r.status === 'FLAKY').length;
   try {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     fs.writeFileSync(LAST_RUN, JSON.stringify({
       date: new Date().toISOString(), mode: meta.mode,
+      version: state.version || versionFingerprint(),
       cycle: state.cycle ? { id: state.cycle.id, startedAt: state.cycle.startedAt, completedAt: state.cycle.completedAt } : null,
-      totals: { pass, fail, skip, all: results.length },
+      totals: { pass, fail, skip, flaky, all: results.length },
       pendingImprovements: state.pendingImprovements, results
     }, null, 2), 'utf8');
   } catch (e) {}
@@ -149,7 +176,8 @@ function writeReports(results, meta, state) {
   const rows = results.map(r => '| ' + r.name + ' | ' + r.desc + ' | ' + r.status + ' | ' + (r.ms / 1000).toFixed(1) + 's | '
     + (r.status === 'PASS' ? ('✓ ' + r.ok + (r.bad ? ' / ✗ ' + r.bad : '')) : (r.reason || '')) + ' |').join('\n');
   const md = '\n## ' + day + ' ' + time + ' · ' + meta.mode + (meta.partial ? '（增量）' : '') + '\n\n'
-    + '合计：**通过 ' + pass + ' / 失败 ' + fail + ' / 跳过 ' + skip + '**（本轮 ' + results.length + ' 套件）'
+    + '版本：' + JSON.stringify(state.version || versionFingerprint()) + '\n\n'
+    + '合计：**通过 ' + pass + ' / 失败 ' + fail + ' / 跳过 ' + skip + (flaky ? ' / Flaky ' + flaky : '') + '**（本轮 ' + results.length + ' 套件）'
     + '｜周期：' + (state.cycle ? (state.cycle.completedAt ? '已完成' : '进行中 ' + state.cycle.done + '/' + state.cycle.total) : '—')
     + '｜待部署项：' + state.pendingImprovements + '\n\n'
     + '| 套件 | 覆盖 | 状态 | 耗时 | 明细 |\n| --- | --- | --- | --- | --- |\n' + rows + '\n';
@@ -230,9 +258,17 @@ function main() {
       break;
     }
     process.stdout.write('\n▶ ' + s.name + '（' + s.desc + '）… ');
+    const prevMs = (state.suites[s.name] || {}).ms || 0;
     let r;
-    try { r = runSuite(s, args); }
+    try { r = runSuite(s, args, prevMs); }
     catch (e) { r = { name: s.name, kind: s.kind, desc: s.desc, status: 'FAIL', ms: 0, ok: 0, bad: 0, tail: [], reason: 'runner:' + (e && e.message) }; interrupted = true; }
+    // 【Flaky 隔离】失败先重跑一次：重跑通过 → 记 FLAKY（**不算 PASS**，下次仍会跑；报告中与真失败分开）
+    if (r.status === 'FAIL' && (args.retry || 0) > 0) {
+      process.stdout.write('（重跑以隔离 Flaky…）');
+      const r2 = runSuite(s, args, prevMs);
+      if (r2.status === 'PASS') { r2.status = 'FLAKY'; r2.reason = '首次失败（' + (r.reason || '断言失败') + '），重跑通过 → 疑似不稳定，已隔离'; r = r2; }
+      else { r = r2; r.reason = (r.reason || '') + '（重跑仍失败）'; }
+    }
     results.push(r);
     // ★ 每跑完一个套件立刻落盘（断点续跑的关键）
     state.suites[s.name] = { status: r.status, ms: r.ms, ok: r.ok, bad: r.bad, at: new Date().toISOString(), reason: r.reason || '' };

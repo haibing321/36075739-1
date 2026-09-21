@@ -83,6 +83,45 @@ const H = require('./audit-harness');
     })()`);
     h.F(phone.added === 5, '④.5 应急电话 CSV 导入 5 行（新增 ' + phone.added + '）');
 
+    // ---------- ④.6 电话追加去重口径（真实数据回归，2026-09-21）----------
+    // 背景：真实备份（839 条里 475 条站名为空）实测「导出 → 追加导入」= 839 → **1293**。
+    // 旧口径「按站名去重」有两个反向缺陷：无站名记录**不参与去重**（重复导入成倍复制）、
+    // 同名站名的多条记录被**合并成 1 条**（真数据里"安全生产指挥中心"11 条只剩 1 条）。
+    // 键长由真实数据量出（3 字段 → 吞 6 条；5 字段 → 0 吞并），这里把它钉死，防止口径回退。
+    const pDedup = await h.ev(`(async () => {
+      window.showChoiceModal = async () => 'append';
+      var rows = [
+        { 单位: '甲单位', 线名: 'X线', 站名: '测试站A', 路电: '1001', 市电: '2001' },
+        { 单位: '乙单位', 线名: 'Y线', 站名: '',       路电: '1002', 市电: '2002' },   // 无站名（真数据里占 57%）
+        { 单位: '丙单位', 线名: 'Z线', 站名: '测试站A', 路电: '1003', 市电: '2003' },   // 同名站、不同单位
+        { 单位: '丁单位', 线名: 'W线', 站名: '测试站B', 路电: '2001', 市电: '3001' },   // 同名站同单位同线，
+        { 单位: '丁单位', 线名: 'W线', 站名: '测试站B', 路电: '2002', 市电: '3001' }    // 仅号码不同 → 必须两条都留
+      ];
+      var feed = async function () {
+        var dt = new DataTransfer();
+        dt.items.add(new File([JSON.stringify(rows)], 'p.json', { type: 'application/json' }));
+        var inp = document.getElementById('phone-fileInput');
+        inp.files = dt.files;
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        for (var i = 0; i < 40; i++) { await new Promise(function (r) { setTimeout(r, 200); }); }
+      };
+      var base = (window.getPhoneData() || []).length;
+      await feed();                                  // 首次：5 条应全进
+      var added1 = window.getPhoneData().length - base;
+      await feed();                                  // 再来一次完全相同：应 0 新增（幂等）
+      var added2 = window.getPhoneData().length - base;
+      var d = window.getPhoneData();
+      return {
+        added1: added1, added2: added2,
+        sameStation: d.filter(function (r) { return r.站名 === '测试站A' && (r.单位 === '甲单位' || r.单位 === '丙单位'); }).length,
+        noStation: d.filter(function (r) { return r.单位 === '乙单位' && !r.站名; }).length,
+        multiNumber: d.filter(function (r) { return r.站名 === '测试站B' && r.单位 === '丁单位'; }).length
+      };
+    })()`);
+    h.F(pDedup.added1 === 5 && pDedup.added2 === 5 && pDedup.sameStation === 2 && pDedup.noStation === 1 && pDedup.multiNumber === 2,
+      '④.6 电话追加去重（幂等 + 不吞合法重复）：首次 +' + pDedup.added1 + '、重复导入仍 +' + pDedup.added2
+      + '；无站名保留 ' + pDedup.noStation + ' 条、同名站不同单位保留 ' + pDedup.sameStation + ' 条、同站同单位不同号码保留 ' + pDedup.multiNumber + ' 条');
+
     // ---------- ⑤ 导出真实落盘 ----------
     const exports = [
       ['检查信息 JSON', `issueExportJSON()`, /^铁路检查信息_\d{4}-\d{2}-\d{2}_\d+条\.json$/],

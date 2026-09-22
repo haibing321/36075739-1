@@ -2127,9 +2127,12 @@
                     <option value="">全部类型</option>
                     <option value="report">写作报告</option>
                     <option value="inspect">检查信息</option>
-                    <option value="template">写作模版</option>
                     <option value="fault">故障报告</option>
-                    <option value="notice">通报文电</option>
+                    <!-- 【2026-09-22】原来写的是 notice —— 资料库类型字段用的是 matType（通报文电=dispatch），
+                         筛选值对不上，选任何类型都筛不出资料 -->
+                    <option value="dispatch">通报文电</option>
+                    <option value="meeting">会议纪要</option>
+                    <option value="template">写作模版</option>
                     <option value="other">其它</option>
                 </select>
             </div>

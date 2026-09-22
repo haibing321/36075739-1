@@ -557,16 +557,16 @@
         type: 'object',
         properties: {
           query: { type: 'string', description: '检索问题或关键词（尽量用业务用词，越具体越准）' },
-          sources: { type: 'string', description: '要检索的源，逗号分隔(可选)：rules,cases,issues,handbook,materials,reports,phone,diary；默认 rules,cases,issues,handbook,materials,reportsls,reports' },
+          sources: { type: 'string', description: '要检索的源，逗号分隔(可选)：rules,cases,issues,handbook,accidents,materials,reports,phone,diary；默认 rules,cases,issues,handbook,accidents,materials,reportsls,reports' },
           topK: { type: 'number', description: '每个源返回条数(可选，默认 4，最大 8)' }
         },
         required: ['query']
       },
       handler: async function(args) {
         if (!window.KB || typeof window.KB.search !== 'function') return { error: '知识库未就绪（knowledge.js 未加载）' };
-        var allowed = ['rules', 'cases', 'issues', 'handbook', 'materials', 'reports', 'phone', 'diary'];   // 【2026-09-22】cases=案例/汇编（原混在 rules 里，会挤占条款召回）
+        var allowed = ['rules', 'cases', 'issues', 'handbook', 'accidents', 'materials', 'reports', 'phone', 'diary'];   // 【2026-09-22】cases=案例/汇编（原混在 rules 里）；accidents=用户导入的事故案例（与检查手册平行）
         var srcs = String(args.sources || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return allowed.indexOf(s) !== -1; });
-        if (!srcs.length) srcs = ['rules', 'cases', 'issues', 'handbook', 'materials', 'reports'];
+        if (!srcs.length) srcs = ['rules', 'cases', 'issues', 'handbook', 'accidents', 'materials', 'reports'];
         var topK = Math.min(Math.max(parseInt(args.topK, 10) || 4, 1), 8);
         try {
           if (typeof window.KB.ensure === 'function') { window.__agentPhase('kb_search', '正在准备知识库索引…'); await window.KB.ensure(srcs); }

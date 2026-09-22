@@ -329,6 +329,7 @@
             backup.modules.phone = getLocal('railway_phone_db_v1', []);
             window.showProgress(35, '正在收集检查手册…');
             backup.modules.handbook = getLocal('handbook_fourlevel_v1', []);
+            backup.modules.accident = getLocal('accident_fourlevel_v1', []);   // 【2026-09-22】事故案例（与手册平行的第二份四级目录数据）
             window.showProgress(40, '正在收集写作资料…');
             try { backup.modules.writingMaterials = await readIndexedDB('railway_writer_db', 'writing_materials', 2); } catch(e) { errors.push('写作资料: '+e.message); }
             window.showProgress(45, '正在收集历史报告…');
@@ -761,6 +762,9 @@
                 _setRestoreProgress(40, '正在恢复应急电话…');
                 if (bm.phone) localStorage.setItem('railway_phone_db_v1', JSON.stringify(bm.phone));
                 _setRestoreProgress(45, '正在恢复检查手册…');
+                if (bm.accident && Array.isArray(bm.accident) && bm.accident.length) {   // 【2026-09-22】事故案例
+                    localStorage.setItem('accident_fourlevel_v1', JSON.stringify(bm.accident));
+                }
                 if (bm.handbook && Array.isArray(bm.handbook) && bm.handbook.length) {
                     localStorage.setItem('handbook_fourlevel_v1', JSON.stringify(bm.handbook));
                 }
@@ -928,7 +932,7 @@ window.clearAllGlobalData = function() {
     window.showProgress(10, '正在清空 localStorage 数据…');
     // 清空 localStorage 模块数据
     var lsKeys = [
-        'railway_work_diary_v2', 'railway_phone_db_v1', 'handbook_fourlevel_v1',
+        'railway_work_diary_v2', 'railway_phone_db_v1', 'handbook_fourlevel_v1', 'accident_fourlevel_v1',
         'railway_memo_v1', 'patch_term_library_v2', 'ds_conversations_v1',
         'ds_chat_history_v1', 'railway_rules_v1', 'railway_terms_custom',
         'patch_term_library_v1', 'attendance_v1',

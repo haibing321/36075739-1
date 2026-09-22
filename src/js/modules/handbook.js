@@ -9,6 +9,25 @@
             let subItemsMap = {};
             let contentMap = {};
 
+            /**
+             * 【2026-09-22 用户需求】「事故案例」= 与检查手册**平行**的第二份数据。
+             *   导入原理与手册完全一致：同一套解析（docx/json/txt/md → 章/节/条/款四级路径）、
+             *   同一套去重键（四级路径 + 正文前 50 字）、多文件**追加合并互不覆盖**。
+             *   两份数据**完全隔离**（各占一个 localStorage 键、各自的大纲与检索），互不影响。
+             * 大纲浏览栏由此多出第三个视图：检查手册 / 事故案例 / 规章制度。
+             */
+            let accidentData = [];
+            var HB_SETS = {
+                handbook: { key: 'handbook_fourlevel_v1', label: '检查手册', kb: 'handbook', btn: 'hb-toggleOutline',
+                            get: function () { return handbookData; }, set: function (v) { handbookData = v; } },
+                cases:    { key: 'accident_fourlevel_v1', label: '事故案例', kb: 'accidents', btn: 'hb-toggleCases',
+                            get: function () { return accidentData; }, set: function (v) { accidentData = v; } }
+            };
+            var _hbActive = 'handbook';      // 当前数据集（导入目标 + 大纲/检索视图共用）
+            function _hbCur() { return HB_SETS[_hbActive] || HB_SETS.handbook; }
+            function _hbGet() { try { return _hbCur().get() || []; } catch (e) { return []; } }
+            function _hbPut(v) { _hbCur().set(v); }
+
             // 注：handbook-total / handbook-size / handbook-storageBar 三个元素已随
             // 「储存量统一在设置面板展示」的改版从 index.html 移除（updateStats 也已清空逻辑）。
             // 原先在模块顶部无条件 getElementById 并保留引用，取到的恒为 null 且从未使用，属死代码，已删除。
@@ -22,43 +41,58 @@
                 return [d.chapter, d.section, d.item, d.subitem, (d.content || '').slice(0, 50)].join('||');
             }
 
+            /**
+             * 【2026-09-22】解析结果归一化：每条都补非空 chapter（其余字段补空串）。
+             *   为什么必须做："有节/条但没章"的数据会让大纲树拿不到章节点
+             *   （`tree[undefined].children` 抛异常 → **整个大纲视图空白**）。只补空值、不改已有内容。
+             */
+            function _hbNormalize(rows) {
+                (rows || []).forEach(function (r) {
+                    if (!r) return;
+                    if (!r.chapter) r.chapter = '未分类';
+                    ['section', 'item', 'subitem', 'content'].forEach(function (k) { if (r[k] == null) r[k] = ''; });
+                });
+                return rows;
+            }
+
             function _showImportConfirm(count, importedData) {
                 const modal = document.getElementById('handbook-importModal');
+                const _setName = _hbCur().label;
                 document.getElementById('handbook-importMessage').innerText =
-                    `成功解析 ${count} 条记录。\n当前已有 ${handbookData.length} 条。\n可选择「追加合并」或「覆盖现有」。`;
+                    `${_setName}：成功解析 ${count} 条记录。\n当前已有 ${_hbGet().length} 条。\n可选择「追加合并」或「覆盖现有」。`;
                 modal.classList.add('active');
 
                 // 追加合并
                 document.getElementById('handbook-confirmImport').onclick = () => {
-                    const prev = handbookData;                       // 【2026-09-21】写失败回滚基线
+                    const prev = _hbGet();                           // 【2026-09-21】写失败回滚基线
                     try {
-                        const seen = new Set(handbookData.map(_hbKeyOf));
+                        const seen = new Set(_hbGet().map(_hbKeyOf));
                         const fresh = importedData.filter(d => { const k = _hbKeyOf(d); if (seen.has(k)) return false; seen.add(k); return true; });
-                        handbookData = handbookData.concat(fresh);
+                        _hbPut(_hbGet().concat(fresh));
                         updateStats();
-                        if (!saveToStorage()) { handbookData = prev; updateStats(); return; }   // 写失败：回滚 + 保留弹窗（已 toast 说明）
+                        if (!saveToStorage()) { _hbPut(prev); updateStats(); return; }   // 写失败：回滚 + 保留弹窗（已 toast 说明）
                         closeModal('handbook-importModal');
-                        if (fresh.length < importedData.length) console.log('[手册导入] 已跳过 ' + (importedData.length - fresh.length) + ' 条重复记录');
+                        if (fresh.length < importedData.length) console.log('[' + _setName + '导入] 已跳过 ' + (importedData.length - fresh.length) + ' 条重复记录');
                         hbAfterImport(fresh.length, importedData.length);
                     } catch(e) {
                         console.error('手册追加失败:', e);
-                        handbookData = prev; updateStats();
+                        _hbPut(prev); updateStats();
                         closeModal('handbook-importModal');
                         alert('导入失败: ' + e.message);
                     }
                 };
                 // 覆盖现有
                 document.getElementById('handbook-confirmOverwrite').onclick = () => {
-                    const prev = handbookData;                       // 同上
+                    const prev = _hbGet();                           // 同上
                     try {
-                        handbookData = importedData;
+                        _hbPut(importedData);
                         updateStats();
-                        if (!saveToStorage()) { handbookData = prev; updateStats(); return; }
+                        if (!saveToStorage()) { _hbPut(prev); updateStats(); return; }
                         closeModal('handbook-importModal');
                         hbAfterImport(importedData.length, importedData.length);
                     } catch(e) {
                         console.error('手册覆盖失败:', e);
-                        handbookData = prev; updateStats();
+                        _hbPut(prev); updateStats();
                         closeModal('handbook-importModal');
                         alert('导入失败: ' + e.message);
                     }
@@ -71,13 +105,20 @@
                 document.getElementById('handbook-jsonFile').click();
             });
 
-            var _hbParsing = false;   // 【2026-09-21】解析互斥：解析中再次点导入会被拒，避免两批文件交叉写库
-            document.getElementById('handbook-jsonFile').addEventListener('change', async function(e) {
+            var _hbParsing = false;   // 【2026-09-21】解析互斥：解析中再次点导入会被拒，避免两批文件交叉写库（两个数据集共用一把锁）
+            /**
+             * 【2026-09-22】检查手册 / 事故案例 **共用同一条导入管线**（用户要求"导入原理完全一致"）：
+             *   解析（docx/json/txt/md → 四级路径）、进度、互斥、追加/覆盖确认、收尾刷新全都走这里，
+             *   唯一不同是"落到哪个数据集"—— 绑定入口时把 `_hbActive` 切过去即可。
+             */
+            function _hbBindImport(inputId, setName) {
+            document.getElementById(inputId).addEventListener('change', async function(e) {
+                if (HB_SETS[setName]) _hbActive = setName;   // 本次导入落到该数据集（大纲视图也一并切过去）
                 const files = Array.from(e.target.files);
                 if (files.length === 0) { e.target.value = ''; return; }
                 if (_hbParsing) {
                     e.target.value = '';
-                    if (typeof window.showToast === 'function') window.showToast('上一批手册还在解析中，请稍候…', true, 5000); else alert('手册正在解析中');
+                    if (typeof window.showToast === 'function') window.showToast('上一批' + _hbCur().label + '还在解析中，请稍候…', true, 5000); else alert('正在解析中');
                     return;
                 }
                 _hbParsing = true;
@@ -87,7 +128,7 @@
                 //   用户再选**同一个文件**不会触发 change，表现是"点了导入毫无反应"。
                 const allImported = [];
                 const skipped = [];
-                try { window.showProgress(5, '正在解析手册文件…'); } catch (e0) {}
+                try { window.showProgress(5, '正在解析' + _hbCur().label + '文件…'); } catch (e0) {}
                 for (let _fi = 0; _fi < files.length; _fi++) {
                     const file = files[_fi];
                     // 【2026-09-21】手册解析此前**完全没有进度**：几百页 docx 解析时界面像死机（用户以为点了没反应）
@@ -96,18 +137,18 @@
                     try {
                         if (fileName.endsWith('.docx')) {
                             const parsed = await _parseDocxFile(file);
-                            if (parsed && parsed.length) allImported.push(...parsed);
+                            if (parsed && parsed.length) { _hbNormalize(parsed); allImported.push(...parsed); }
                             else skipped.push(file.name + '：未识别到四级标题结构（或解析组件未加载）');
                         } else if (fileName.endsWith('.doc')) {
                             skipped.push(file.name + '：不支持老版 .doc，请另存为 .docx');
                         } else if (fileName.endsWith('.json')) {
                             const parsed = await _parseJsonFile(file);
-                            if (parsed && parsed.length) allImported.push(...parsed);
+                            if (parsed && parsed.length) { _hbNormalize(parsed); allImported.push(...parsed); }
                             else skipped.push(file.name + '：JSON 结构不符（每条记录需含 chapter 字段）');
                         } else if (/\.(txt|md|markdown)$/.test(fileName)) {
                             // 【2026-09-21 新增】纯文本 / Markdown 手册（GBK 也能读），按四级标题识别
                             const parsed = await _parseTextFile(file);
-                            if (parsed && parsed.length) allImported.push(...parsed);
+                            if (parsed && parsed.length) { _hbNormalize(parsed); allImported.push(...parsed); }
                             else skipped.push(file.name + '：未识别到任何内容（空文件？）');
                         } else {
                             skipped.push(file.name + '：不支持的格式（支持 .docx / .json / .txt / .md）');
@@ -119,7 +160,7 @@
                 _hbParsing = false;    // 解析结束即解锁（后面的"追加/覆盖"确认不再持锁）
 
                 if (allImported.length === 0) {
-                    var msg = '❌ 未解析到任何手册内容：\n' + (skipped.length ? skipped.join('\n') : '（文件为空）');
+                    var msg = '❌ 未解析到任何' + _hbCur().label + '内容：\n' + (skipped.length ? skipped.join('\n') : '（文件为空）');
                     if (typeof window.showToast === 'function') window.showToast(msg, true, 11000); else alert(msg);
                     return;
                 }
@@ -128,6 +169,10 @@
                 }
                 _showImportConfirm(allImported.length, allImported);
             });
+            }
+            // 两个入口：设置面板的「检查手册 导入」与「事故案例 导入」，走同一条管线
+            _hbBindImport('handbook-jsonFile', 'handbook');
+            _hbBindImport('accident-jsonFile', 'cases');
 
             // 解析单个DOCX文件
             var LIB_MAMMOTH_HB = 'src/js/vendor/mammoth.browser.min.js';
@@ -380,14 +425,17 @@
             function _hbShowContent(chapter, section, item, subitem) {
                 const contentEl = document.getElementById('hb-outlineContent');
                 let contents = [];
+                // 【2026-09-22】按**当前数据集**取正文（检查手册 / 事故案例共用本函数）
+                var _src = _hbGet();
                 if (subitem) {
-                    contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item && d.subitem === subitem);
+                    contents = _src.filter(d => d.chapter === chapter && d.section === section && d.item === item && d.subitem === subitem);
                 } else if (item) {
-                    contents = handbookData.filter(d => d.chapter === chapter && d.section === section && d.item === item);
+                    contents = _src.filter(d => d.chapter === chapter && d.section === section && d.item === item);
                 } else if (section) {
-                    contents = handbookData.filter(d => d.chapter === chapter && d.section === section);
-                } else if (chapter) {
-                    contents = handbookData.filter(d => d.chapter === chapter);
+                    contents = _src.filter(d => d.chapter === chapter && d.section === section);
+                } else if (chapter || chapter === '未分类') {
+                    // 【2026-09-22】'未分类' 是大纲树对"没有章"的记录用的兜底标签 —— 这里要按"章为空"来过滤
+                    contents = _src.filter(d => d.chapter === chapter || (chapter === '未分类' && !d.chapter));
                 }
 
                 let pathHtml = '';
@@ -415,7 +463,9 @@
                 const contentEl = document.getElementById('hb-outlineContent');
                 const infoEl = document.getElementById('hb-searchInfo');
                 const kw = (keyword || '').trim().toLowerCase();
-                const isOutline = document.getElementById('hb-toggleOutline').classList.contains('active');
+                // 【2026-09-22】大纲 / 事故案例都是"数据集视图"（区别只在 _hbActive 指向谁）；
+                //   原来只判断 hb-toggleOutline 是否 active → 在事故案例视图里搜索会错走"规章速查"分支
+                const isOutline = !document.getElementById('hb-toggleRules').classList.contains('active');
                 if (!kw) {
                     if (infoEl) infoEl.style.display = 'none';
                     if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
@@ -423,17 +473,18 @@
                 }
 
                 if (isOutline) {
-                    // ===== 大纲视图：检索手册数据 =====
-                    if (!handbookData.length) {
-                        if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '手册数据为空'; }
-                        treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">📭 尚未导入手册数据，请先在「设置」面板中导入 DOCX / JSON 文档</div>';
+                    // ===== 数据集视图（检查手册 / 事故案例）：检索当前数据集 =====
+                    var _ds = _hbGet(), _dsLabel = _hbCur().label;
+                    if (!_ds.length) {
+                        if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = _dsLabel + '数据为空'; }
+                        treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">📭 尚未导入' + _esc(_dsLabel) + '数据，请先在「设置」面板中导入 DOCX / JSON 文档</div>';
                         contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
                         return;
                     }
-                    const matched = handbookData.filter(d => [d.chapter, d.section, d.item, d.subitem, d.content].filter(Boolean).join(' ').toLowerCase().indexOf(kw) !== -1);
-                    if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = '命中 ' + matched.length + ' 条'; }
+                    const matched = _ds.filter(d => [d.chapter, d.section, d.item, d.subitem, d.content].filter(Boolean).join(' ').toLowerCase().indexOf(kw) !== -1);
+                    if (infoEl) { infoEl.style.display = 'block'; infoEl.textContent = _dsLabel + '命中 ' + matched.length + ' 条'; }
                     if (matched.length === 0) {
-                        treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">未找到与「' + _esc(keyword) + '」相关的手册内容</div>';
+                        treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">未找到与「' + _esc(keyword) + '」相关的' + _esc(_dsLabel) + '内容</div>';
                         contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击上方结果查看内容</div>';
                         return;
                     }
@@ -504,20 +555,22 @@
             };
 
 
-            // 数据持久化
+            // 数据持久化（手册每个数据集一个键：handbook_fourlevel_v1 / accident_fourlevel_v1）
             var STORAGE_KEY = 'handbook_fourlevel_v1';
             /**
              * 【2026-09-21】返回"是否写入成功"。原实现空 catch 静默吞错：
              *   localStorage 配额满时弹窗照常关闭、界面显示已导入，**刷新后数据全丢**，用户完全无感。
+             * 【2026-09-22】按**当前数据集**写入（检查手册 / 事故案例各写各的键，互不影响）。
              */
             function saveToStorage() {
+                var cur = _hbCur();
                 try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(handbookData));
+                    localStorage.setItem(cur.key, JSON.stringify(cur.get() || []));
                     return true;
                 } catch (e) {
-                    console.error('[手册] 写入失败：', e);
+                    console.error('[' + cur.label + '] 写入失败：', e);
                     try {
-                        var msg = '⚠️ 手册数据写入失败（可能存储空间不足）：' + ((e && e.message) || '未知错误') + '；本次导入未生效，请清理空间后重试。';
+                        var msg = '⚠️ ' + cur.label + '数据写入失败（可能存储空间不足）：' + ((e && e.message) || '未知错误') + '；本次导入未生效，请清理空间后重试。';
                         if (typeof window.showToast === 'function') window.showToast(msg, true, 10000); else alert(msg);
                     } catch (e2) {}
                     return false;
@@ -526,22 +579,29 @@
 
             /** 【2026-09-21】导入成功后的统一收尾：重建视图 + 失效检索索引 + 非阻塞成功提示 */
             function hbAfterImport(added, parsedTotal) {
+                var cur = _hbCur();
                 try {
-                    var isOutline = document.getElementById('hb-toggleOutline') && document.getElementById('hb-toggleOutline').classList.contains('active');
+                    // 导入后把大纲视图切到该数据集（三个 tab：检查手册 / 事故案例 / 规章制度）
+                    var btn = document.getElementById(cur.btn);
+                    if (btn && typeof window.hbSwitchView === 'function') window.hbSwitchView(cur === HB_SETS.cases ? 'cases' : 'outline');
                     // 原实现导入后不重建视图 → 大纲仍显示"暂无数据，请先导入DOCX文档"
-                    if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
-                } catch (e) { console.warn('[手册] 重建视图失败：', e && e.message); }
-                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('handbook'); } catch (e) {}
+                    else hbBuildOutlineTree();
+                } catch (e) { console.warn('[' + cur.label + '] 重建视图失败：', e && e.message); }
+                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache(cur.kb); } catch (e) {}
                 try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
                 var skipped = Math.max(0, (parsedTotal || 0) - (added || 0));
-                var msg = '✅ 手册已导入 ' + added + ' 条' + (skipped ? '（跳过重复 ' + skipped + ' 条）' : '') + '，当前共 ' + handbookData.length + ' 条';
+                var msg = '✅ ' + cur.label + '已导入 ' + added + ' 条' + (skipped ? '（跳过重复 ' + skipped + ' 条）' : '') + '，当前共 ' + (cur.get() || []).length + ' 条';
                 if (typeof window.showToast === 'function') window.showToast(msg, false, 6000); else alert(msg);
             }
+            /** 两个数据集都读（启动时各读各的键） */
             function loadFromStorage() {
-                try {
-                    var stored = localStorage.getItem(STORAGE_KEY);
-                    if (stored) handbookData = JSON.parse(stored);
-                } catch(e) { handbookData = []; }
+                Object.keys(HB_SETS).forEach(function (name) {
+                    var s = HB_SETS[name];
+                    try {
+                        var stored = localStorage.getItem(s.key);
+                        s.set(stored ? (JSON.parse(stored) || []) : []);
+                    } catch (e) { s.set([]); }
+                });
             }
 
             // 储存/数量展示已移除（统一在设置面板显示「总储存量」）
@@ -549,33 +609,47 @@
                 // 原逻辑渲染 handbook-total / handbook-size，已移除
             }
 
-            window.clearHandbookData = function() {
-                if (confirm('确定清空所有手册数据？')) {
-                    handbookData = [];
-                    updateStats();
-                    saveToStorage();
-                    const isOutline = document.getElementById('hb-toggleOutline') && document.getElementById('hb-toggleOutline').classList.contains('active');
-                    if (isOutline) hbBuildOutlineTree(); else hbBuildRulesTree();
-                    const infoEl = document.getElementById('hb-searchInfo'); if (infoEl) infoEl.style.display = 'none';
-                }
-            };
+            /** 【2026-09-22】清空某一个数据集（手册 / 事故案例各清各的，互不牵连） */
+            function _hbClearSet(setName) {
+                var s = HB_SETS[setName] || HB_SETS.handbook;
+                if (!confirm('确定清空所有' + s.label + '数据？')) return;
+                _hbActive = setName;
+                s.set([]);
+                updateStats();
+                saveToStorage();
+                try {
+                    if (document.getElementById(s.btn) && typeof window.hbSwitchView === 'function') {
+                        window.hbSwitchView(setName === 'cases' ? 'cases' : 'outline');
+                    } else { hbBuildOutlineTree(); }
+                } catch (e) { hbBuildOutlineTree(); }
+                const infoEl = document.getElementById('hb-searchInfo'); if (infoEl) infoEl.style.display = 'none';
+            }
+            window.clearHandbookData = function() { _hbClearSet('handbook'); };
+            window.clearAccidentData = function() { _hbClearSet('cases'); };
 
-            // 切换浏览模式
+            // 切换浏览模式（三个视图：检查手册 / 事故案例 / 规章制度）
             window.hbSwitchView = function(view) {
-                document.getElementById("hb-toggleOutline").classList.toggle("active", view === "outline");
-                document.getElementById("hb-toggleRules").classList.toggle("active", view === "rules");
-                var outlineWrap = document.getElementById("hb-outlineWrap");
-                outlineWrap.classList.toggle("active", view === "outline" || view === "rules");
-                if (view === "outline") hbBuildOutlineTree();
-                if (view === "rules") hbBuildRulesTree();
+                if (view === 'cases') _hbActive = 'cases';
+                else if (view === 'outline') _hbActive = 'handbook';
+                var ob = document.getElementById('hb-toggleOutline');
+                var cb = document.getElementById('hb-toggleCases');
+                var rb = document.getElementById('hb-toggleRules');
+                if (ob) ob.classList.toggle('active', view === 'outline');
+                if (cb) cb.classList.toggle('active', view === 'cases');
+                if (rb) rb.classList.toggle('active', view === 'rules');
+                var outlineWrap = document.getElementById('hb-outlineWrap');
+                if (outlineWrap) outlineWrap.classList.toggle('active', view === 'outline' || view === 'cases' || view === 'rules');
+                if (view === 'outline' || view === 'cases') hbBuildOutlineTree();
+                if (view === 'rules') hbBuildRulesTree();
             };
 
                         // 构建大纲树
             function hbBuildOutlineTree() {
                 const treeEl = document.getElementById('hb-outlineTree');
                 const contentEl = document.getElementById('hb-outlineContent');
-                if (handbookData.length === 0) {
-                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">暂无数据，请先导入DOCX文档</div>';
+                var _data = _hbGet();          // 【2026-09-22】当前数据集（检查手册 / 事故案例）
+                if (_data.length === 0) {
+                    treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">' + _esc(_hbCur().label) + '暂无数据，请先在「设置」面板导入 DOCX / JSON 文档</div>';
                     contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看内容</div>';
                     return;
                 }
@@ -586,15 +660,19 @@
                 const secMap = {};    // chapter||section -> node index
                 const itemMap = {};   // chapter||section||item -> node index
 
-                handbookData.forEach(entry => {
-                    const c = entry.chapter || '', s = entry.section || '';
+                _data.forEach(entry => {
+                    // 【2026-09-22】chapter 为空（有"节/条"没有"章"的数据）时的兜底：原来 chapIdx 会是 undefined，
+                    //   走到 tree[chapIdx].children 直接抛异常 → **整个大纲视图空白**（历史数据里这种记录并不罕见）。
+                    const cRaw = entry.chapter || '';
+                    const c = cRaw || '未分类';
+                    const s = entry.section || '';
                     const it = entry.item || '', sub = entry.subitem || '';
                     const cont = entry.content || '';
 
                     // 确保chapter节点存在
-                    if (c && chapMap[c] === undefined) {
+                    if (chapMap[c] === undefined) {
                         chapMap[c] = tree.length;
-                        tree.push({ level: 0, label: c, children: [], chapter: c, section: '', item: '', subitem: '' });
+                        tree.push({ level: 0, label: c, children: [], chapter: cRaw, section: '', item: '', subitem: '' });
                     }
                     const chapIdx = chapMap[c];
                     if (!s) {
@@ -823,13 +901,20 @@
 
             // 暴露 handbook 数据供其他模块调用（如智能助手联动）
             window.getHandbookData = function() { return handbookData; };
+            /** 【2026-09-22】事故案例（与手册平行的第二份数据，四级结构完全一致） */
+            window.getAccidentData = function() { return accidentData; };
 
-            window.exportHandbook = function() {
-                if (handbookData.length === 0) { alert('没有数据可导出'); return; }
-                window.showProgress(50, '正在导出检查手册…');
-                var dataStr = JSON.stringify(handbookData, null, 2);
+            /** 【2026-09-22】导出某个数据集（手册 / 事故案例共用） */
+            function _hbExportSet(setName) {
+                var s = HB_SETS[setName] || HB_SETS.handbook;
+                var arr = s.get() || [];
+                if (arr.length === 0) { alert('没有' + s.label + '数据可导出'); return; }
+                window.showProgress(50, '正在导出' + s.label + '…');
+                var dataStr = JSON.stringify(arr, null, 2);
                 var blob = new Blob([dataStr], { type: 'application/json' });
-                window.downloadBlob(blob, '安全检查手册_' + window.localDateStr() + '.json');
-                window.finishProgress('✅ 检查手册导出成功');
-            };
+                window.downloadBlob(blob, s.label + '_' + window.localDateStr() + '.json');
+                window.finishProgress('✅ ' + s.label + '导出成功');
+            }
+            window.exportHandbook = function() { _hbExportSet('handbook'); };
+            window.exportAccident = function() { _hbExportSet('cases'); };
         })();

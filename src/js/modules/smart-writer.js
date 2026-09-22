@@ -567,6 +567,38 @@
                 if (d) return d;
                 return String((b && b.id) == null ? '' : b.id).localeCompare(String((a && a.id) == null ? '' : a.id));
             }
+            // 供「智能对话」的资料弹窗（doubao-common.js）等外部模块复用同一套时间口径
+            window.wrItemTime = wrItemTime;
+            window.wrByTimeDesc = wrByTimeDesc;
+
+            /** 分块顺序：与资料库分类按钮一致（模板 → 检查信息 → 故障 → 通报 → 会议 → 其它） */
+            var WR_MAT_GROUP_ORDER = ['template', 'inspect', 'fault', 'stats', 'dispatch', 'bulletin', 'meeting', 'history', 'other'];
+            /**
+             * 【2026-09-22 按用户要求】把同一批资料**按类型分块**，块内保持"时间倒序、最近在最上"。
+             * 说明：调用前请先 sort(wrByTimeDesc)（各渲染点都已如此），分块只做分组不改组内顺序。
+             * 未登记的类型统一归到「其它资料」，但**不丢条目**（排到已知类型之后）。
+             */
+            function wrGroupByType(items) {
+                var by = {};
+                (items || []).forEach(function (m) {
+                    var k = (m && m.matType) || 'other';
+                    if (!WR_MAT_TYPES[k]) k = 'other';
+                    if (!by[k]) by[k] = [];
+                    by[k].push(m);
+                });
+                var order = WR_MAT_GROUP_ORDER.filter(function (k) { return by[k] && by[k].length; });
+                Object.keys(by).forEach(function (k) { if (order.indexOf(k) === -1) order.push(k); });
+                return order.map(function (k) {
+                    return { key: k, label: (WR_MAT_TYPES[k] || { label: '其它资料' }).label, items: by[k] };
+                });
+            }
+            /** 组头：类型名 + 条数 + 一条分隔线（不抢眼，只是把"块"分开） */
+            function wrGroupHeaderHtml(label, count) {
+                return '<div style="display:flex;align-items:center;gap:8px;margin:8px 2px 2px;">'
+                    + '<span style="font-size:0.78rem;font-weight:700;color:var(--primary);">' + wrEsc(label) + '</span>'
+                    + '<span style="font-size:0.72rem;color:var(--text-secondary);">' + count + ' 条</span>'
+                    + '<span style="flex:1;height:1px;background:var(--border);"></span></div>';
+            }
 
             // 各来源 adapter：load() 取原始数组，norm() 映射为统一卡片项
             var WR_CENTER_SOURCES = {
@@ -704,22 +736,41 @@
                         return;
                     }
                     _wrCenterItems = items;
-                    listEl.innerHTML = items.map(function(it, i) {
-                        var icon = (WR_CENTER_SOURCES[it.source] || {}).icon || '📄';
-                        return '<div class="wr-mat-card">'
-                            + '<div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">' + icon + '</div>'
-                            + '<div style="flex:1;min-width:0;cursor:pointer;" onclick="wrCenterOpen(' + i + ')">'
-                            +   '<div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">' + wrEsc(it.title) + '</div>'
-                            +   '<div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
-                            +     '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 8px;border-radius:10px;">' + wrEsc(it.badge || '') + '</span>'
-                            +     (it.sub ? '<span>' + wrEsc(it.sub) + '</span>' : '')
-                            +   '</div>'
-                            +   '<div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(it.summary || '') + (it.summary ? '…' : '') + '</div>'
-                            + '</div>'
-                            + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
-                            +   '<button onclick="wrCenterOpen(' + i + ')" class="wr-mat-btn wr-mat-btn-view">打开</button>'
-                            + '</div></div>';
-                    }).join('');
+                    // 【2026-09-22】按来源分块（块内时间倒序）；跨源查看时才加组头。
+                    // _wrCenterItems 必须与屏幕上卡片的顺序一致（wrCenterOpen 用下标取项），
+                    // 所以这里按分块后的顺序重建，而不是直接用时间序的 items。
+                    var _bucket = {};
+                    items.forEach(function(it) { var k = it.source || 'material'; (_bucket[k] = _bucket[k] || []).push(it); });
+                    var _ordered = [], _parts = [];
+                    var _showHead = groups.length > 1;
+                    groups.forEach(function(g) {
+                        var arr = _bucket[g] || [];
+                        if (!arr.length) return;
+                        if (_showHead) {
+                            var src = WR_CENTER_SOURCES[g] || {};
+                            _parts.push(wrGroupHeaderHtml((src.icon ? src.icon + ' ' : '') + (src.label || g), arr.length));
+                        }
+                        arr.forEach(function(it) {
+                            var i = _ordered.length;
+                            _ordered.push(it);
+                            var icon = (WR_CENTER_SOURCES[it.source] || {}).icon || '📄';
+                            _parts.push('<div class="wr-mat-card">'
+                                + '<div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">' + icon + '</div>'
+                                + '<div style="flex:1;min-width:0;cursor:pointer;" onclick="wrCenterOpen(' + i + ')">'
+                                +   '<div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">' + wrEsc(it.title) + '</div>'
+                                +   '<div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
+                                +     '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 8px;border-radius:10px;">' + wrEsc(it.badge || '') + '</span>'
+                                +     (it.sub ? '<span>' + wrEsc(it.sub) + '</span>' : '')
+                                +   '</div>'
+                                +   '<div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(it.summary || '') + (it.summary ? '…' : '') + '</div>'
+                                + '</div>'
+                                + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
+                                +   '<button onclick="wrCenterOpen(' + i + ')" class="wr-mat-btn wr-mat-btn-view">打开</button>'
+                                + '</div></div>');
+                        });
+                    });
+                    _wrCenterItems = _ordered;
+                    listEl.innerHTML = _parts.join('');
                 } catch (e) {
                     listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#b91c1c;font-size:0.85rem;">加载失败：' + wrEsc(e && e.message ? e.message : String(e)) + '</div>';
                 }
@@ -1079,10 +1130,19 @@
                     if (!libTpls.length && !localTpls.length) body += '<div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:0.85rem;">资料库里还没有模板</div>';
                 } else {
                     if (!libMats.length) body += '<div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:0.85rem;">资料库里还没有参考资料</div>';
-                    libMats.forEach(function(m) {
-                        var on = selIds.indexOf(m.id) !== -1;
-                        var t = (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它';
-                        body += '<label class="' + rowCls + '" style="' + rowCss + '"><input type="checkbox" class="wr-step-lib-mat" value="' + m.id + '"' + (on ? ' checked' : '') + '> <span style="flex:1;">' + wrEsc(m.title || m.fileName) + '</span><span style="font-size:0.72rem;color:var(--text-secondary);">' + wrEsc(t) + '</span></label>';
+                    // 【2026-09-22】按类型分块（块内时间倒序：libMats 来自 _wrAllMats，已按时间排好）；
+                    //   只有一种类型时不加组头，避免多余噪音
+                    var _matGroups = wrGroupByType(libMats);
+                    _matGroups.forEach(function(g) {
+                        if (_matGroups.length > 1) {
+                            body += '<div style="padding:7px 2px 2px;font-size:0.75rem;font-weight:700;color:var(--primary);">'
+                                + wrEsc(g.label) + ' · ' + g.items.length + ' 条</div>';
+                        }
+                        g.items.forEach(function(m) {
+                            var on = selIds.indexOf(m.id) !== -1;
+                            var t = (WR_MAT_TYPES[m.matType] || {}).label || m.matType || '其它';
+                            body += '<label class="' + rowCls + '" style="' + rowCss + '"><input type="checkbox" class="wr-step-lib-mat" value="' + m.id + '"' + (on ? ' checked' : '') + '> <span style="flex:1;">' + wrEsc(m.title || m.fileName) + '</span><span style="font-size:0.72rem;color:var(--text-secondary);">' + wrEsc(t) + '</span></label>';
+                        });
                     });
                 }
                 var overlay = document.createElement('div');
@@ -4789,7 +4849,7 @@
                     return;
                 }
 
-                listEl.innerHTML = filtered.map(m => {
+                var wrMatCardOf = function(m) {
                     const typeInfo = WR_MAT_TYPES[m.matType] || WR_MAT_TYPES.other;
                     const ext = (m.fileName || '').split('.').pop().toLowerCase();
                     const extIcon = ext === 'docx' || ext === 'doc' ? '📝' : (ext === 'xlsx' || ext === 'xls' ? '📊' : '📄');
@@ -4820,6 +4880,11 @@
                             <button onclick="wrDeleteMaterial(${JSON.stringify(m.id)})" class="wr-mat-btn wr-mat-btn-delete">删除</button>
                         </div>
                     </div>`;
+                };
+                // 【2026-09-22 按用户要求】同一批资料再**按类型分块**，块内保持"时间倒序、最近在最上"
+                //   （filtered 已在上面按时间排好；分块只分组、不打乱组内顺序）
+                listEl.innerHTML = wrGroupByType(filtered).map(function(g) {
+                    return wrGroupHeaderHtml(g.label, g.items.length) + g.items.map(wrMatCardOf).join('');
                 }).join('');
             };
 

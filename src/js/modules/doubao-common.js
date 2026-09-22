@@ -256,7 +256,8 @@
             db.close();
             // 合并：资料库条目保留原 type；历史报告统一标记为 report 类型
             var reportItems = (reports || []).map(function(r) {
-                return { title: r.title || '未命名报告', content: r.content || '', type: 'report', source: 'report', id: 'rpt-' + (r.id != null ? r.id : '') };
+                return { title: r.title || '未命名报告', content: r.content || '', type: 'report', source: 'report',
+                         date: r.date, createdAt: r.createdAt, id: 'rpt-' + (r.id != null ? r.id : '') };   // 【2026-09-22】带上时间，供列表排序
             });
             window._dsMaterialCache = (materials || []).concat(reportItems);
             dsRenderMaterialList(window._dsMaterialCache);
@@ -265,14 +266,36 @@
         }
     };
 
+    // ==================== 【2026-09-22】「写作资料库」弹窗：统一时间口径 + 按类型分块 ====================
+    //  背景：这个弹窗（对话里附加参考资料用）列表既不排序，也不分块；而且
+    //   ① 类型标签只看 `m.type`，而资料库条目用的是 `matType` → 所有资料都显示成"📎 资料"；
+    //   ② 类型筛选同样只比 `m.type` → 选任何类型都筛不出资料；
+    //   ③ 排序键缺失（旧记录/模块生成的资料没有 importAt）→ `NaN` 比较 → 顺序随机。
+    //  这里把口径与「智能写作」模块对齐（`window.wrByTimeDesc`），并保留本地兜底 ——
+    //  对话模块不应硬依赖写作模块的加载。
+    function dsItemTime(o) {
+        if (!o) return 0;
+        var v = o.importAt || o.createdAt || o.date || o.datetime || o.timestamp || o.ts || o.updatedAt;
+        if (typeof v === 'string') { var t = Date.parse(v); return isNaN(t) ? 0 : t; }
+        return (typeof v === 'number' && isFinite(v)) ? v : 0;
+    }
+    function dsByTimeDesc(a, b) {
+        if (typeof window.wrByTimeDesc === 'function') return window.wrByTimeDesc(a, b);
+        var d = dsItemTime(b) - dsItemTime(a);
+        if (d) return d;
+        return String((b && b.id) == null ? '' : b.id).localeCompare(String((a && a.id) == null ? '' : a.id));
+    }
+
     window.dsFilterMaterials = function() {
         var keyword = (document.getElementById('ds-material-search')?.value || '').trim().toLowerCase();
         var type = document.getElementById('ds-material-type-filter')?.value || '';
         var filtered = window._dsMaterialCache.filter(function(m) {
             var matchKw = !keyword || (m.title||'').toLowerCase().indexOf(keyword) !== -1 || (m.content||'').toLowerCase().indexOf(keyword) !== -1;
-            var matchType = !type || (m.type||'') === type;
+            var matchType = !type || (m.matType || m.type || '') === type;   // 资料库条目是 matType，历史报告是 type
             return matchKw && matchType;
         });
+        // 【2026-09-22】时间倒序（最近在最上）——排序放在渲染前，渲染里的复选框按"下标"取项，必须同序
+        filtered.sort(dsByTimeDesc);
         dsRenderMaterialList(filtered);
     };
 
@@ -283,21 +306,48 @@
 
     function dsRenderMaterialList(items) {
         var list = document.getElementById('ds-material-list');
+        if (!list) return;
+        // 【2026-09-22】就地按时间倒序：下面的复选框用"下标"取项（items[cb.value]），
+        //   所以必须让渲染顺序与 items 顺序一致（初次进入列表没走 dsFilterMaterials，也要排到）
+        items.sort(dsByTimeDesc);
         if (!items.length) {
             list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-secondary);">没有匹配的资料</div>';
             return;
         }
-        var typeMap = {report:'📄 历史报告',inspect:'🔍 检查信息',template:'📋 模版',fault:'⚠️ 故障',notice:'📢 通报',other:'📎 其它'};
-        var html = '';
+        var typeMap = { report:'📄 写作报告', history:'📄 历史报告', inspect:'🔍 检查信息', fault:'⚠️ 故障报告',
+                        stats:'📊 故障统计', dispatch:'📢 通报文电', bulletin:'📢 通报', meeting:'🗒️ 会议纪要',
+                        template:'📋 模版', notice:'📢 通报', other:'📎 其它' };
+        var ORDER = ['report', 'history', 'inspect', 'fault', 'stats', 'dispatch', 'bulletin', 'meeting', 'template', 'notice', 'other'];
+        // 取前 50 条（已是最新的 50 条），按类型归块；保留原下标用于回填选中项
+        var buckets = {}, keys = [];
         items.slice(0, 50).forEach(function(m, i) {
-            var typeLabel = typeMap[m.type] || '📎 资料';
-            // 资料正文来自用户导入的 txt/docx/xlsx/pdf，标题也可能来自文件名，必须转义
-            var title = dsMaterialEsc((m.title || '无标题').slice(0, 60));
-            html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:var(--card-bg);border-radius:8px;cursor:pointer;border:1px solid var(--border);" onmouseover="this.style.background=\'var(--primary-light)\'" onmouseout="this.style.background=\'var(--card-bg)\'">'
-                + '<input type="checkbox" value="'+i+'" class="ds-mat-cb" style="margin-top:2px;flex-shrink:0;">'
-                + '<div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:500;">'+typeLabel+' ' + (title||'无标题') + '</div>'
-                + '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsMaterialEsc((m.content||'').slice(0,80)) + '</div></div>'
-                + '</label>';
+            var k = m.matType || m.type || 'other';
+            if (!typeMap[k]) k = 'other';
+            if (!buckets[k]) { buckets[k] = []; keys.push(k); }
+            buckets[k].push({ m: m, i: i });
+        });
+        keys.sort(function(a, b) {
+            var ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        });
+        var html = '';
+        keys.forEach(function(k) {
+            // 只有一种类型时不加组头，避免多余噪音
+            if (keys.length > 1) {
+                html += '<div style="padding:7px 2px 2px;font-size:0.75rem;font-weight:700;color:var(--primary);">'
+                    + typeMap[k] + ' · ' + buckets[k].length + ' 条</div>';
+            }
+            buckets[k].forEach(function(row) {
+                var m = row.m, i = row.i;
+                var typeLabel = typeMap[k] || '📎 资料';
+                // 资料正文来自用户导入的 txt/docx/xlsx/pdf，标题也可能来自文件名，必须转义
+                var title = dsMaterialEsc((m.title || '无标题').slice(0, 60));
+                html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:var(--card-bg);border-radius:8px;cursor:pointer;border:1px solid var(--border);" onmouseover="this.style.background=\'var(--primary-light)\'" onmouseout="this.style.background=\'var(--card-bg)\'">'
+                    + '<input type="checkbox" value="'+i+'" class="ds-mat-cb" style="margin-top:2px;flex-shrink:0;">'
+                    + '<div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:500;">'+typeLabel+' ' + (title||'无标题') + '</div>'
+                    + '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsMaterialEsc((m.content||'').slice(0,80)) + '</div></div>'
+                    + '</label>';
+            });
         });
         list.innerHTML = html;
         document.getElementById('ds-material-confirm').onclick = function() {

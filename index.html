@@ -826,6 +826,11 @@
                                 <button onclick="wrMaterialFilter('dispatch')" id="wr-mat-filter-dispatch" class="btn-chip">📨 通报文电</button>
                                 <button onclick="wrMaterialFilter('other')" id="wr-mat-filter-other" class="btn-chip">📄 其它</button>
                                 <button onclick="wrMaterialFilter('allmodule')" id="wr-mat-filter-allmodule" class="btn-chip">🔗 全模块数据</button>
+                                <!-- 【2026-09-22】列表视图切换：按类型分块（默认，块可折叠、块内默认只展开最新 10 条）/ 按时间（纯时间倒序不分块） -->
+                                <div id="wr-list-mode" style="display:flex;align-items:center;border:1px solid var(--border);border-radius:20px;overflow:hidden;margin-left:6px;flex-shrink:0;">
+                                    <button id="wr-list-mode-type" onclick="wrSetListMode('type')" style="border:none;padding:5px 10px;font-size:0.78rem;cursor:pointer;">按类型</button>
+                                    <button id="wr-list-mode-time" onclick="wrSetListMode('time')" style="border:none;padding:5px 10px;font-size:0.78rem;cursor:pointer;border-left:1px solid var(--border);">按时间</button>
+                                </div>
                                 <input id="wr-mat-search" placeholder="🔍 搜索..." type="text" oninput="wrMaterialSearch()"
                                     style="margin-left:auto;padding:6px 12px;border:1px solid var(--border);border-radius:20px;font-size:0.82rem;min-width:120px;background:#f8fafc;transition:all 0.2s ease;">
                             </div>

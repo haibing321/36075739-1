@@ -592,13 +592,75 @@
                     return { key: k, label: (WR_MAT_TYPES[k] || { label: '其它资料' }).label, items: by[k] };
                 });
             }
-            /** 组头：类型名 + 条数 + 一条分隔线（不抢眼，只是把"块"分开） */
-            function wrGroupHeaderHtml(label, count) {
-                return '<div style="display:flex;align-items:center;gap:8px;margin:8px 2px 2px;">'
+            /** 组头：箭头 + 类型名 + 条数 + 分隔线（可点击折叠；块内条数多时默认只展开前 N 条） */
+            function wrGroupHeaderHtml(label, count, key, collapsed) {
+                var k = String(key == null ? '' : key).replace(/[^A-Za-z0-9_-]/g, '');
+                return '<div class="wr-mat-group-head" data-wr-group="' + k + '"'
+                    + ' onclick="wrToggleGroup(\'' + k + '\')" title="点击' + (collapsed ? '展开' : '收起') + '这一类"'
+                    + ' style="display:flex;align-items:center;gap:8px;margin:8px 2px 2px;cursor:pointer;user-select:none;">'
+                    + '<span style="font-size:0.7rem;color:var(--text-secondary);width:9px;">' + (collapsed ? '▸' : '▾') + '</span>'
                     + '<span style="font-size:0.78rem;font-weight:700;color:var(--primary);">' + wrEsc(label) + '</span>'
                     + '<span style="font-size:0.72rem;color:var(--text-secondary);">' + count + ' 条</span>'
                     + '<span style="flex:1;height:1px;background:var(--border);"></span></div>';
             }
+            /** 每块默认只展开最新 N 条（点击「展开全部」看其余） */
+            var WR_LIST_PREVIEW_N = 10;
+            /** 「展开全部」按钮（data 属性供审计脚本定位） */
+            function wrGroupMoreHtml(key, more) {
+                var k = String(key == null ? '' : key).replace(/[^A-Za-z0-9_-]/g, '');
+                return '<div style="text-align:center;padding:2px 0 4px;">'
+                    + '<button class="wr-mat-btn" data-wr-expand="' + k + '" onclick="wrExpandGroup(\'' + k + '\')">'
+                    + '▼ 展开全部（还有 ' + more + ' 条）</button></div>';
+            }
+            /**
+             * 【2026-09-22】资料列表视图状态：
+             *   · `_wrListMode`      'type'=按类型分块（默认，块内时间倒序） | 'time'=纯时间倒序不分块
+             *   · `_wrListCollapsed` 各块的折叠状态（按类型键，落 localStorage，刷新后保持）
+             *   · `_wrListExpanded`  本次会话内"展开全部"的块（不落盘，避免下次打开一屏几百条）
+             */
+            window._wrListMode = (function () {
+                try { return localStorage.getItem('wr_list_mode') === 'time' ? 'time' : 'type'; } catch (e) { return 'type'; }
+            })();
+            window._wrListCollapsed = (function () {
+                try { return JSON.parse(localStorage.getItem('wr_list_collapsed') || '{}') || {}; } catch (e) { return {}; }
+            })();
+            window._wrListExpanded = {};
+            window.wrSyncListModeChips = function () {
+                [['wr-list-mode-type', 'type'], ['wr-list-mode-time', 'time']].forEach(function (p) {
+                    var el = document.getElementById(p[0]);
+                    if (!el) return;
+                    var on = window._wrListMode === p[1];
+                    el.style.background = on ? 'var(--primary)' : 'transparent';
+                    el.style.color = on ? '#fff' : 'var(--text-secondary)';
+                    el.style.fontWeight = on ? '700' : '500';
+                });
+            };
+            /** 刷新当前资料列表（两种模式共用） */
+            window.wrRefreshMatList = function () {
+                try {
+                    if (_wrMatFilter === 'allmodule') { window.wrRenderMaterialCenter(_wrCenterGroup || 'all'); }
+                    else { window.wrRenderMaterials(); }
+                } catch (e) { console.warn('[wr] 刷新资料列表失败：', e); }
+            };
+            window.wrSetListMode = function (mode) {
+                window._wrListMode = (mode === 'time') ? 'time' : 'type';
+                try { localStorage.setItem('wr_list_mode', window._wrListMode); } catch (e) {}
+                window.wrSyncListModeChips();
+                window.wrRefreshMatList();
+            };
+            /** 折叠 / 展开某个块（状态落盘，切换页面回来仍保持） */
+            window.wrToggleGroup = function (key) {
+                var k = String(key || '');
+                var c = window._wrListCollapsed || (window._wrListCollapsed = {});
+                if (c[k]) { delete c[k]; } else { c[k] = 1; window._wrListExpanded[k] = 1; }   // 展开时顺带显示全部，用户点开就是想看
+                try { localStorage.setItem('wr_list_collapsed', JSON.stringify(c)); } catch (e) {}
+                window.wrRefreshMatList();
+            };
+            /** 块内「展开全部」 */
+            window.wrExpandGroup = function (key) {
+                window._wrListExpanded[String(key || '')] = 1;
+                window.wrRefreshMatList();
+            };
 
             // 各来源 adapter：load() 取原始数组，norm() 映射为统一卡片项
             var WR_CENTER_SOURCES = {
@@ -736,41 +798,54 @@
                         return;
                     }
                     _wrCenterItems = items;
-                    // 【2026-09-22】按来源分块（块内时间倒序）；跨源查看时才加组头。
-                    // _wrCenterItems 必须与屏幕上卡片的顺序一致（wrCenterOpen 用下标取项），
-                    // 所以这里按分块后的顺序重建，而不是直接用时间序的 items。
-                    var _bucket = {};
-                    items.forEach(function(it) { var k = it.source || 'material'; (_bucket[k] = _bucket[k] || []).push(it); });
-                    var _ordered = [], _parts = [];
-                    var _showHead = groups.length > 1;
-                    groups.forEach(function(g) {
-                        var arr = _bucket[g] || [];
-                        if (!arr.length) return;
-                        if (_showHead) {
+                    var _centerCardOf = function(it, i) {
+                        var icon = (WR_CENTER_SOURCES[it.source] || {}).icon || '📄';
+                        return '<div class="wr-mat-card">'
+                            + '<div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">' + icon + '</div>'
+                            + '<div style="flex:1;min-width:0;cursor:pointer;" onclick="wrCenterOpen(' + i + ')">'
+                            +   '<div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">' + wrEsc(it.title) + '</div>'
+                            +   '<div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
+                            +     '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 8px;border-radius:10px;">' + wrEsc(it.badge || '') + '</span>'
+                            +     (it.sub ? '<span>' + wrEsc(it.sub) + '</span>' : '')
+                            +   '</div>'
+                            +   '<div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(it.summary || '') + (it.summary ? '…' : '') + '</div>'
+                            + '</div>'
+                            + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
+                            +   '<button onclick="wrCenterOpen(' + i + ')" class="wr-mat-btn wr-mat-btn-view">打开</button>'
+                            + '</div></div>';
+                    };
+                    window.wrSyncListModeChips();
+                    // 【2026-09-22】按时间：纯时间倒序不分块；按类型：按来源分块（块内时间倒序，可折叠、默认只展开最新 10 条）。
+                    // _wrCenterItems 必须与屏幕上卡片的顺序一致（wrCenterOpen 用下标取项），所以分块模式下按块顺序重建。
+                    if (window._wrListMode === 'time') {
+                        _wrCenterItems = items;
+                        listEl.innerHTML = items.map(_centerCardOf).join('');
+                    } else {
+                        var _bucket = {};
+                        items.forEach(function(it) { var k = it.source || 'material'; (_bucket[k] = _bucket[k] || []).push(it); });
+                        var _ordered = [], _parts = [];
+                        var _showHead = groups.length > 1;
+                        groups.forEach(function(g) {
+                            var arr = _bucket[g] || [];
+                            if (!arr.length) return;
                             var src = WR_CENTER_SOURCES[g] || {};
-                            _parts.push(wrGroupHeaderHtml((src.icon ? src.icon + ' ' : '') + (src.label || g), arr.length));
-                        }
-                        arr.forEach(function(it) {
-                            var i = _ordered.length;
-                            _ordered.push(it);
-                            var icon = (WR_CENTER_SOURCES[it.source] || {}).icon || '📄';
-                            _parts.push('<div class="wr-mat-card">'
-                                + '<div style="font-size:1.4rem;flex-shrink:0;margin-top:1px;">' + icon + '</div>'
-                                + '<div style="flex:1;min-width:0;cursor:pointer;" onclick="wrCenterOpen(' + i + ')">'
-                                +   '<div style="font-weight:700;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary);">' + wrEsc(it.title) + '</div>'
-                                +   '<div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">'
-                                +     '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 8px;border-radius:10px;">' + wrEsc(it.badge || '') + '</span>'
-                                +     (it.sub ? '<span>' + wrEsc(it.sub) + '</span>' : '')
-                                +   '</div>'
-                                +   '<div style="font-size:0.77rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + wrEsc(it.summary || '') + (it.summary ? '…' : '') + '</div>'
-                                + '</div>'
-                                + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
-                                +   '<button onclick="wrCenterOpen(' + i + ')" class="wr-mat-btn wr-mat-btn-view">打开</button>'
-                                + '</div></div>');
+                            var label = (src.icon ? src.icon + ' ' : '') + (src.label || g);
+                            var collapsed = !!window._wrListCollapsed[g];
+                            if (_showHead) _parts.push(wrGroupHeaderHtml(label, arr.length, g, collapsed));
+                            if (collapsed && _showHead) return;
+                            var showAll = !!window._wrListExpanded[g];
+                            var shown = (showAll || arr.length <= WR_LIST_PREVIEW_N) ? arr : arr.slice(0, WR_LIST_PREVIEW_N);
+                            shown.forEach(function(it) {
+                                var i = _ordered.length;
+                                _ordered.push(it);
+                                _parts.push(_centerCardOf(it, i));
+                            });
+                            var more = arr.length - shown.length;
+                            if (more > 0) _parts.push(wrGroupMoreHtml(g, more));
                         });
-                    });
-                    _wrCenterItems = _ordered;
-                    listEl.innerHTML = _parts.join('');
+                        _wrCenterItems = _ordered;
+                        listEl.innerHTML = _parts.join('');
+                    }
                 } catch (e) {
                     listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#b91c1c;font-size:0.85rem;">加载失败：' + wrEsc(e && e.message ? e.message : String(e)) + '</div>';
                 }
@@ -4881,11 +4956,23 @@
                         </div>
                     </div>`;
                 };
-                // 【2026-09-22 按用户要求】同一批资料再**按类型分块**，块内保持"时间倒序、最近在最上"
-                //   （filtered 已在上面按时间排好；分块只分组、不打乱组内顺序）
-                listEl.innerHTML = wrGroupByType(filtered).map(function(g) {
-                    return wrGroupHeaderHtml(g.label, g.items.length) + g.items.map(wrMatCardOf).join('');
-                }).join('');
+                // 【2026-09-22】两种视图（顶部「按类型 / 按时间」切换）：
+                //   · 按类型（默认）：分块 + 块内时间倒序；组头可点击折叠，块内默认只展开最新 10 条
+                //   · 按时间：纯时间倒序、不分块
+                window.wrSyncListModeChips();
+                if (window._wrListMode === 'time') {
+                    listEl.innerHTML = filtered.map(wrMatCardOf).join('');
+                } else {
+                    listEl.innerHTML = wrGroupByType(filtered).map(function(g) {
+                        var collapsed = !!window._wrListCollapsed[g.key];
+                        var head = wrGroupHeaderHtml(g.label, g.items.length, g.key, collapsed);
+                        if (collapsed) return head;
+                        var showAll = !!window._wrListExpanded[g.key];
+                        var shown = (showAll || g.items.length <= WR_LIST_PREVIEW_N) ? g.items : g.items.slice(0, WR_LIST_PREVIEW_N);
+                        var more = g.items.length - shown.length;
+                        return head + shown.map(wrMatCardOf).join('') + (more > 0 ? wrGroupMoreHtml(g.key, more) : '');
+                    }).join('');
+                }
             };
 
             /**

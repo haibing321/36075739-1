@@ -50,6 +50,7 @@ const SUITES = [
   { name: 'backup-audit',          file: 'scripts/backup-audit.js',          kind: 'audit', desc: '备份结构 + 恢复往返（含媒体附件）',           timeout: 600000 },
   { name: 'realdata-e2e',          file: 'scripts/realdata-e2e.js',          kind: 'audit', desc: '真实数据端到端：90MB 备份恢复→条数/媒体→再导出往返（含 4 万检查信息）', timeout: 1200000 },
   { name: 'writer-list-audit',     file: 'scripts/writer-list-audit.js',     kind: 'audit', desc: '写作资料列表：按类型分块 + 块内时间倒序（4 个列表全覆盖）', timeout: 600000 },
+  { name: 'kb-recall-bench',       file: 'scripts/kb-recall-bench.js',       kind: 'audit', desc: '知识库召回基线：真实"检查描述→其引用规章"ground truth，Recall@K/MRR + 归因消融（缺数据自动 SKIP）', timeout: 1800000 },
   { name: 'mutation-check',        file: 'scripts/mutation-check.js',        kind: 'audit', desc: '测试敏感度自检：注入已知缺陷验证套件确实会失败', timeout: 900000 },
   { name: 'boot-bench',            file: 'scripts/boot-bench.js',            kind: 'bench', desc: '冷启动性能基线',                            timeout: 900000 },
   { name: 'kb-ab-bench',           file: 'scripts/kb-ab-bench.js',           kind: 'bench', desc: '知识库检索 A/B',                            timeout: 900000 },

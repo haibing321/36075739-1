@@ -1402,7 +1402,7 @@
                     var _kbSrcs = [];
                     if (useRules) _kbSrcs.push('rules', 'cases');   // 【2026-09-22】案例/汇编类已从 rules 拆出为独立源（避免挤占条款召回），对话仍可按需参考
                     if (useIssue) _kbSrcs.push('issues');
-                    if (useHandbook) _kbSrcs.push('handbook');
+                    if (useHandbook) _kbSrcs.push('handbook', 'accidents');   // 【2026-09-22】事故案例与手册同为四级目录数据，随手册开关一起纳入
                     if (useWrAll) _kbSrcs.push('materials', 'reports');
                     if (usePhone) _kbSrcs.push('phone');
                     if (useDiary) _kbSrcs.push('diary');
@@ -1413,7 +1413,7 @@
                             // 【C1/v3.74】按用途分档 topK：写作资料库/历史报告只是"文风/结构参考"，
                             //   实测它们占单轮注入量的 44%（业务源 28099 字 vs 文风源 21912 字），给 2 块足够；
                             //   业务源（规章/检查信息/手册/电话/日志）保持 5。
-                            var _kbR = window.KB.search(userQuery, { sources: _kbSrcs, topK: 5, topKByKey: { materials: 2, reports: 2, cases: 2 } });
+                            var _kbR = window.KB.search(userQuery, { sources: _kbSrcs, topK: 5, topKByKey: { materials: 2, reports: 2, cases: 2, accidents: 3 } });
                             // 保留旧逻辑的「专业优先」意图：命中块所属规章与推断专业一致时前置
                             if (inferredTrade) {
                                 for (var _qi = 0; _qi < _kbR.length; _qi++) {

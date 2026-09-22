@@ -567,15 +567,17 @@
                 </div>
                 <div class="card-body">
 
-                    <!-- 浏览模式切换 -->
+                    <!-- 浏览模式切换（【2026-09-22】新增第三个视图：事故案例 —— 与检查手册平行的第二份数据，
+                         导入原理完全一致（同一套解析/去重/多文件追加），两份数据互不覆盖） -->
                     <div class="hb-view-toggle">
-                        <button id="hb-toggleOutline" class="active" onclick="hbSwitchView('outline')">📑 大纲浏览</button>
+                        <button id="hb-toggleOutline" class="active" onclick="hbSwitchView('outline')">📑 检查手册</button>
+                        <button id="hb-toggleCases" onclick="hbSwitchView('cases')">🧯 事故案例</button>
                         <button id="hb-toggleRules" onclick="hbSwitchView('rules')">📜 规章制度</button>
                     </div>
 
                     <!-- 站内搜索 -->
                     <div class="hb-search-box" style="margin:10px 0 4px;">
-                        <input type="text" id="hb-searchInput" placeholder="🔍 搜索手册内容 / 目录（章·节·项）…" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.9rem;box-sizing:border-box;" oninput="hbSearch(this.value)" />
+                        <input type="text" id="hb-searchInput" placeholder="🔍 搜索当前数据集内容 / 目录（章·节·项）…" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.9rem;box-sizing:border-box;" oninput="hbSearch(this.value)" />
                         <div id="hb-searchInfo" style="font-size:0.78rem;color:#64748b;margin-top:4px;display:none;"></div>
                     </div>
 
@@ -590,6 +592,8 @@
                     </div>
 
                     <input type="file" id="handbook-jsonFile" accept=".json,.docx,.txt,.md,.markdown" multiple style="display:none;">
+                    <!-- 【2026-09-22】事故案例导入入口（与手册同一条管线：docx/json/txt/md、多选、追加不覆盖） -->
+                    <input type="file" id="accident-jsonFile" accept=".json,.docx,.txt,.md,.markdown" multiple style="display:none;">
                 </div>
             </div>
         </div>
@@ -1797,6 +1801,15 @@
                                 <button onclick="document.getElementById('handbook-jsonFile').click()" class="st-mini btn-data-blue">导入</button>
                                 <button onclick="exportHandbook()" class="st-mini btn-data-green">导出</button>
                                 <button onclick="clearHandbookData()" class="st-mini btn-data-red">清空</button>
+                            </span>
+                        </div>
+                        <!-- 【2026-09-22】事故案例：与检查手册平行的第二份四级目录数据（导入原理完全一致，互不覆盖） -->
+                        <div class="st-row st-row-data">
+                            <span class="st-row-label">🧯 事故案例 <span class="st-row-sub" id="set-accident-count">—</span></span>
+                            <span class="st-actions">
+                                <button onclick="document.getElementById('accident-jsonFile').click()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="exportAccident()" class="st-mini btn-data-green">导出</button>
+                                <button onclick="clearAccidentData()" class="st-mini btn-data-red">清空</button>
                             </span>
                         </div>
                         <div class="st-row st-row-data">

@@ -206,15 +206,21 @@
     }
 
     // 检查手册：一个项点一块（四级路径 chapter > section > item > subitem）
-    function chunkHandbook(hb) {
+    function chunkHandbook(hb) { return chunkFourLevel(hb, 'handbook', '检查手册'); }
+    /**
+     * 【2026-09-22】「事故案例」与「检查手册」同为四级目录数据（章/节/条/款），分块规则完全一致，
+     *   只有源标识不同 —— 参数化后两者共用一套分块（一处改、两处生效）。
+     */
+    function chunkAccidents(list) { return chunkFourLevel(list, 'accidents', '事故案例'); }
+    function chunkFourLevel(hb, srcKey, srcLabel) {
         var out = [];
         (hb || EMPTY).forEach(function (it) {
             var body = stripTags(it && it.content);
             if (!body) return;
             var parts = [it.chapter, it.section, it.item, it.subitem].filter(Boolean).map(function (x) { return String(x).trim(); });
-            var path = parts.length ? parts.join(' > ') : '检查手册';
+            var path = parts.length ? parts.join(' > ') : srcLabel;
             splitLong(body, parts.length ? parts[parts.length - 1] : '').forEach(function (piece) {
-                var c = makeChunk('handbook', '检查手册', path, piece, it);
+                var c = makeChunk(srcKey, srcLabel, path, piece, it);
                 if (c) out.push(c);
             });
         });
@@ -350,6 +356,7 @@
         { key: 'cases', label: '案例/汇编', grain: '条款', accessor: 'getRulesData', pick: onlyCaseDocs, chunk: chunkRules },
         { key: 'issues', label: '检查信息', grain: '条', accessor: 'getIssueData', chunk: chunkIssues, prepare: prepareIssues },
         { key: 'handbook', label: '检查手册', grain: '项点', accessor: 'getHandbookData', chunk: chunkHandbook },
+        { key: 'accidents', label: '事故案例', grain: '项点', accessor: 'getAccidentData', chunk: chunkAccidents },   // 【2026-09-22】与手册平行的第二份四级目录数据
         { key: 'materials', label: '写作资料库', grain: '段落', async: true, loader: '_wrGetAllMaterials', chunk: chunkMaterials },
         { key: 'reports', label: '历史报告', grain: '段落', async: true, loader: '_wrGetAllReports', chunk: chunkReports },
         { key: 'phone', label: '应急电话', grain: '条', accessor: 'getPhoneData', chunk: chunkPhone },
@@ -1312,7 +1319,7 @@
     function warmCommonSources() {
         if (!autoLoadEnabled() || !cacheCapable()) return;
         if (typeof document !== 'undefined' && document.hidden) return;    // 页面在后台先不做
-        var keys = ['issues', 'rules', 'handbook', 'phone', 'diary'];
+        var keys = ['issues', 'rules', 'handbook', 'accidents', 'phone', 'diary'];
         var i = 0;
         function step() {
             if (i >= keys.length) return;
@@ -1457,6 +1464,7 @@
         chunkRules: chunkRules,
         chunkIssues: chunkIssues,
         chunkHandbook: chunkHandbook,
+        chunkAccidents: chunkAccidents,
         chunkMaterials: chunkMaterials,
         chunkReports: chunkReports,
         chunkPhone: chunkPhone,

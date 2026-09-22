@@ -943,9 +943,10 @@
 
             // ========== 设置面板 — 各模块数据计数更新 ==========
             window.updateDataManagementStats = async function() {
-                var els = { handbook: 'set-handbook-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', wrmat: 'set-wr-count', wrrpt: 'set-wrhist-count', term: 'set-term-count', memo: 'set-memo-count' };
+                var els = { handbook: 'set-handbook-count', accident: 'set-accident-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', wrmat: 'set-wr-count', wrrpt: 'set-wrhist-count', term: 'set-term-count', memo: 'set-memo-count' };
                 var getters = {
                     handbook: function() { return window.getHandbookData ? window.getHandbookData().length : 0; },
+                    accident: function() { return window.getAccidentData ? window.getAccidentData().length : 0; },   // 【2026-09-22】事故案例（与手册平行的第二份数据）
                     issue:    function() { return window.getIssueData    ? window.getIssueData().length    : 0; },
                     rule:     function() { return window.getRulesData   ? window.getRulesData().length   : 0; },
                     diary:    function() { return window.getDiaryData   ? window.getDiaryData().length   : 0; },

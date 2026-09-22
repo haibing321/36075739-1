@@ -893,6 +893,13 @@
 
                 _setRestoreProgress(100, '✅ 恢复完成，即将刷新…' +
                     (_bkNeedKey > 0 ? '（备份不含 API 密钥，' + _bkNeedKey + ' 个模型需重新填写）' : ''));
+                // 【2026-09-22 压瞬时堆】收尾前主动断开大引用：把解析出来的备份对象（真数据里是 88MB JSON →
+                //   几十万条记录的对象树）置空，让"恢复完 → reload"这 3 秒里的垃圾**尽快可回收**。
+                //   实测依据（_tmp-warm-heap.js 堆时间线）：峰值 623.6MB 出现在重载后 0~13.8s，
+                //   期间 KB 块数/就绪数完全不变 → 峰值不是"预热在建索引"，而是**上一份文档尚未回收的垃圾**，
+                //   13.8s 一次 GC 直接掉到 216.9MB。
+                try { if (bm) { for (var _mk in bm) { try { bm[_mk] = null; } catch (e2) {} } } } catch (e) {}
+                try { if (typeof backup === 'object') backup = null; } catch (e3) {}
                 setTimeout(function() {
                     setTimeout(function(){ location.reload(); }, 2000);
                 }, 1000);

@@ -126,10 +126,14 @@
             src: src,
             srcLabel: srcLabel,
             path: path,
-            text: t,
-            doc: doc,                                   // 归属的原始记录（用于同文档限流）
-            searchText: path + '\n' + t                 // 出处也参与检索（与旧路径 title+content 一致）
+            doc: doc                                     // 归属的原始记录（用于同文档限流）
         };
+        // 出处也参与检索（与旧路径 title+content 一致）
+        c.searchText = path + '\n' + t;
+        // 【2026-09-22 省内存】text 不再单独复制一份：直接取 searchText 的切片 —— V8 对够长的 slice 生成
+        //   SlicedString（只存父串引用 + 偏移，不复制字符），`c.text` 取值与原来完全一致。
+        //   真数据规章 139385 块的量级下，这省掉的就是"同一段正文存两份"里的那一份。
+        c.text = (t.length >= 13) ? c.searchText.slice(path.length + 1) : t;
         if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) c[k] = extra[k];
         return c;
     }

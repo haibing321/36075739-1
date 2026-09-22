@@ -1851,7 +1851,10 @@
                     }
                     try {
                         if (_kbReady) {
-                        var kbGroups = window.KB.search(expandedQuery, { sources: ['rules', 'issues'], topK: 8 });
+                        // 【2026-09-22 阶段 0 实测调整】topK 8 → 20：真实数据召回基线里"平均规章候选只有
+                        //   5.6 条"（8 都没填满），放大候选池是**零成本**的召回提升 —— 同批样本 Recall@10
+                        //   61.7% → 70.0%、Recall@20 61.7% → 76.7%（见 scripts/kb-recall-bench.js）。
+                        var kbGroups = window.KB.search(expandedQuery, { sources: ['rules', 'issues'], topK: 20 });
                         var kbRuleHits = [];
                         kbGroups.forEach(function (g) {
                             if (g.key === 'rules') kbRuleHits = g.hits;
@@ -1880,7 +1883,11 @@
                             ruleCandidates.forEach(function (c) { (c.trade === inferredTrade ? _sameT : _otherT).push(c); });
                             ruleCandidates = _sameT.concat(_otherT);
                         }
-                        ruleCandidates = ruleCandidates.slice(0, 6);
+                        // 【2026-09-22 阶段 0 实测调整】6 → 12：这里原本是**生产链路丢召回的主因** ——
+                        //   KB 已返回 8 条，却只留 6 条，而且是在「同专业优先」重排之后截断，
+                        //   不同专业的真条款会被挤到切线外（实测生产口径 Recall@10 48.8% 低于 KB 层 61.7%）。
+                        //   候选全量进 _globalCandidatesMap 供 AI 精排挑选，不存在二次截断，故放宽是纯增益。
+                        ruleCandidates = ruleCandidates.slice(0, 12);
                         kbRulesUsed = ruleCandidates.length > 0;
                         console.log('[对规召回] 统一检索层：规章', ruleCandidates.length, '条，检查信息', kbIssueHits.length, '条');
                         }
@@ -1896,21 +1903,21 @@
                     if (inferredTrade && allRules.length > 0) {
                         var sameTradeRules = allRules.filter(function (r) { return r.trade === inferredTrade; });
                         if (sameTradeRules.length > 0) {
-                            var _sameCand = localBM25RecallWithRules(expandedQuery, 6, sameTradeRules);
+                            var _sameCand = localBM25RecallWithRules(expandedQuery, 12, sameTradeRules);
                             ruleCandidates.push.apply(ruleCandidates, _sameCand);
                             console.log('[对规召回·专业优先] 同专业 ' + sameTradeRules.length + ' 条 → 召回 ' + _sameCand.length + ' 条');
-                        }
-                        if (ruleCandidates.length < 6) {
+                            }
+                            if (ruleCandidates.length < 12) {
                             var otherRules = allRules.filter(function (r) { return r.trade !== inferredTrade; });
                             if (otherRules.length > 0) {
-                                var _otherCand = localBM25RecallWithRules(expandedQuery, 6 - ruleCandidates.length, otherRules);
+                                var _otherCand = localBM25RecallWithRules(expandedQuery, 12 - ruleCandidates.length, otherRules);
                                 ruleCandidates.push.apply(ruleCandidates, _otherCand);
                                 console.log('[对规召回·补充] 其他专业补充 ' + _otherCand.length + ' 条');
                             }
-                        }
-                    } else {
-                        ruleCandidates = localBM25Recall(expandedQuery, 6);
-                    }
+                            }
+                            } else {
+                            ruleCandidates = localBM25Recall(expandedQuery, 12);
+                            }
                     console.log('[对规召回] 最终规章库召回（关键词回退）', ruleCandidates.length, '条');
                 }
 

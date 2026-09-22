@@ -74,6 +74,17 @@ const TOPK = 10;
     })()`, 180000).catch(() => null);
     h.F(!!kbStat, '② 规章源索引就绪（' + (kbStat ? kbStat.chunks + ' 块 / ' + kbStat.total + ' 篇' : '超时') + '）');
 
+    // ---------- 2b) 案例/汇编类是否已从 rules 拆到独立源 cases ----------
+    const split = await h.ev(`(async () => {
+      if (window.KB && KB.ensure) { try { await KB.ensure(['rules', 'cases']); } catch (e) {} }
+      var rows = (KB.stats ? KB.stats() : []);
+      var pick = function (k) { var r = rows.filter(function (x) { return x.key === k; })[0]; return r ? { total: r.total, chunks: r.chunks, built: !!r.built } : null; };
+      return { rules: pick('rules'), cases: pick('cases') };
+    })()`, 180000).catch(() => null);
+    const sp = split || {};
+    h.F(!!(sp.cases && sp.cases.total >= 1), '②b 案例/汇编类已拆成独立源 cases（' + (sp.cases ? sp.cases.total + ' 篇 / ' + sp.cases.chunks + ' 块' : '无')
+      + '；rules 现有 ' + (sp.rules ? sp.rules.total + ' 篇' : '?') + '）');
+
     // ---------- 3) 自动生成 ground truth（在页面里算完"重合率"，只带小数据出来）----------
     const gt = await h.ev(`(() => {
       var norm = function (s) { return String(s == null ? '' : s).replace(/[《》〈〉\\s　]/g, '').trim(); };
@@ -191,12 +202,12 @@ const TOPK = 10;
     //   "案例/汇编"类文档（如《全路事故案例（2006-2025）》）满是现场描述词，天然抢占"规章"候选位，
     //   挤掉真正的办法条款 —— 这是语料/排序问题，向量也救不了，得先排除掉才能看清语义鸿沟有多大。
     const abl = await h.ev(`(async () => {
-      var CASE_RE = /事故案例|案例|汇编|简报|纪要|通报|分析报告/;
+      var CASE_RE = /事故案例|典型案例|案例汇编|案例集|案例选编|案例库|法律法规.*汇编|规范性文件汇编/;   // 与 knowledge.js 的 CASE_DOC_RE 同口径（紧）
       // abl 模式没有生产循环产出的"扩展后查询" → 回退到 GT 样本（用原始 query 做同一套对比）
       var metas = (window.__expAll && window.__expAll.length)
         ? window.__expAll
         : (window.__gtSample || []).map(function (p) { return { q: p.q, target: p.target }; });
-      var TOP = 40;
+      var TOP = 20;   // 消融取 20 条足够（@20 是决策指标；取 40 会让 scan+lazy 的规章源扫 4 倍，跑一次 20 分钟）
       // hitsOf：注意 KB.search 返回的行字段是 **key**（不是 source）
       var hitsOf = function (q) {
         try {

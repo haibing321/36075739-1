@@ -542,6 +542,32 @@
                 return items;
             }
 
+            /**
+             * 【2026-09-22】资料统一"时间"取值。
+             *
+             * 为什么需要它：资料库列表原来只按 `importAt` 排序，而
+             *   · 由模块生成的资料（检查信息→资料、故障报告、通报文电、会议纪要…）带的是 `createdAt`/`date`；
+             *   · 迁移过来的旧记录同样没有 `importAt`。
+             * 这些记录的排序键是 `undefined`，`undefined - undefined = NaN`，而 `Array.sort` 遇到 NaN 比较结果
+             * **会保持原顺序** → 表现就是"没排序、顺序乱七八糟"。
+             * 这里按一套优先级取时间，字符串统一转时间戳；取不到就是 0（排到最后）。
+             */
+            function wrItemTime(o) {
+                if (!o) return 0;
+                var v = o.importAt || o.createdAt || o.date || o.datetime || o.timestamp || o.ts || o.updatedAt;
+                if (typeof v === 'string') { var t = Date.parse(v); return isNaN(t) ? 0 : t; }
+                return (typeof v === 'number' && isFinite(v)) ? v : 0;
+            }
+            /**
+             * 【2026-09-22】资料排序：**按生成/导入时间倒序，最近的在最上面**。
+             * 时间相同再按 id 倒序兜底 —— 保证同一批数据每次渲染顺序稳定（不然看起来会"自己跳"）。
+             */
+            function wrByTimeDesc(a, b) {
+                var d = wrItemTime(b) - wrItemTime(a);
+                if (d) return d;
+                return String((b && b.id) == null ? '' : b.id).localeCompare(String((a && a.id) == null ? '' : a.id));
+            }
+
             // 各来源 adapter：load() 取原始数组，norm() 映射为统一卡片项
             var WR_CENTER_SOURCES = {
                 material: {
@@ -555,6 +581,7 @@
                                    (m.fileSize ? Math.round(m.fileSize / 1024) + 'KB' : '') ].filter(Boolean).join(' · '),
                             summary: String(m.content || '').replace(/\n/g, ' ').slice(0, 90),
                             badge: (WR_MAT_TYPES[m.matType] || {}).label || '资料',
+                            ts: wrItemTime(m),
                             open: function() { wrViewMaterial(m.id); }
                         };
                     }
@@ -569,6 +596,7 @@
                             sub: [ it['性质'], it.category, it.unit, it.datetime ].filter(Boolean).join(' · '),
                             summary: String(it.content || '').replace(/\n/g, ' ').slice(0, 90),
                             badge: it['性质'] || '检查',
+                            ts: wrItemTime(it),
                             open: function() { if (window.switchTab) window.switchTab('issue'); }
                         };
                     }
@@ -588,6 +616,7 @@
                             sub: [ r.trade, r.category, r.source ].filter(Boolean).join(' · '),
                             summary: String(r.content || '').replace(/<[^>]+>/g, '').replace(/\n/g, ' ').slice(0, 90),
                             badge: r.trade || '规章',
+                            ts: wrItemTime(r),
                             open: function() { if (window.switchTab) window.switchTab('rule'); }
                         };
                     }
@@ -603,6 +632,7 @@
                                 sub: [ d.typeLabel, d.timestamp ? wrFmtDate(d.timestamp).slice(0, 10) : '' ].filter(Boolean).join(' · '),
                                 summary: '工作日志多媒体附件',
                                 badge: d.typeLabel,
+                                ts: wrItemTime(d),
                                 open: function() { if (window.switchTab) window.switchTab('diary'); }
                             };
                         }
@@ -612,6 +642,7 @@
                             sub: [ '日志', d.issueCount ? (d.issueCount + '条问题') : '' ].filter(Boolean).join(' · '),
                             summary: String(d.work || '').replace(/\n/g, ' ').slice(0, 90),
                             badge: '日志',
+                            ts: wrItemTime(d),
                             open: function() { if (window.switchTab) window.switchTab('diary'); }
                         };
                     }
@@ -626,6 +657,7 @@
                             sub: [ r.source, wrCatName(r.category), wrFmtDate(r.date).slice(0, 10) ].filter(Boolean).join(' · '),
                             summary: String(r.content || '').replace(/\n/g, ' ').slice(0, 90),
                             badge: wrCatName(r.category),
+                            ts: wrItemTime(r),
                             open: function() { wrViewReport(r.id); }
                         };
                     }
@@ -660,6 +692,9 @@
                         return (it.title || '').toLowerCase().includes(q) || (it.summary || '').toLowerCase().includes(q)
                             || (it.sub || '').toLowerCase().includes(q) || (it.badge || '').toLowerCase().includes(q);
                     });
+                    // 【2026-09-22】跨源统一按时间倒序（最近的在最上面）：原来完全没排序，只是把各来源数组
+                    //   首尾相接 → 看起来毫无规律；顺带让下面"只显示前 400 条"截到的是**最新**的 400 条。
+                    items.sort(wrByTimeDesc);
                     var total = items.length;
                     if (items.length > 400) items = items.slice(0, 400);
                     var countEl = document.getElementById('wr-mat-count');
@@ -961,7 +996,7 @@
                 .then(function(res) {
                     var allTpls = res[0] || [];
                     var mats = res[1] || [];
-                    window._wrAllMats = mats;    // 缓存：资料库参考资料（+模板），资料库选择层与确认都从这里取
+                    window._wrAllMats = mats.slice().sort(wrByTimeDesc);   // 【2026-09-22】最近的在最前；选择层直接用这个顺序
                     window._wrAllTpls = allTpls; // 缓存：资料库模板（含 WR_TPL_STORE + WR_MAT_STORE 里的模板）
                     // 修复C：预填上次选择的模板（本地模板也有 _src='local'，同一套状态即可）
                     if (!window._wrStepTplSel && window._wrSelectedTemplate) {
@@ -1149,7 +1184,7 @@
                         var res = await window.wrImportFiles(files, matType);
                         if (res.libFail) { alert('导入失败：\n· ' + (res.errors || []).join('\n· ')); return; }
                         // 刷新弹窗用的缓存（资料库列表/模板列表），保证新导入的立刻可选、可见
-                        try { window._wrAllMats = await wrDbGetAll(WR_MAT_STORE); } catch (e) {}
+                        try { window._wrAllMats = (await wrDbGetAll(WR_MAT_STORE)).sort(wrByTimeDesc); } catch (e) {}
                         try { window._wrAllTpls = await wrGetAllTemplates(); } catch (e) {}
                         if (kind === 'template' && res.saved.length) {
                             var it = res.saved[0];
@@ -4115,7 +4150,7 @@
                 const q = ((document.getElementById('wr-hist-search') || {}).value || '').toLowerCase();
                 const filtered = reports.filter(r =>
                     !q || (r.title||'').toLowerCase().includes(q) || (r.content||'').slice(0,200).toLowerCase().includes(q)
-                ).sort((a,b) => b.date - a.date);
+                ).sort(wrByTimeDesc);   // 【2026-09-22】统一倒序口径（时间相同按 id 兜底，顺序稳定不跳）
 
                 if (countEl) countEl.textContent = filtered.length + '/' + reports.length + ' 篇';
                 var setCount = document.getElementById('set-wrhist-count');
@@ -4740,7 +4775,9 @@
                     (m.fileName||'').toLowerCase().includes(q) ||
                     String(m.content||'').slice(0,500).toLowerCase().includes(q)
                 );
-                filtered.sort((a,b) => b.importAt - a.importAt);
+                // 【2026-09-22】按"生成/导入时间"倒序（最近的在最上面）。原来只按 importAt：
+                //   模块生成、迁移来的旧资料没有该字段 → 比较得 NaN → sort 保持原顺序（等于没排序）。
+                filtered.sort(wrByTimeDesc);
 
                 if (countEl) countEl.textContent = filtered.length + '/' + all.length + ' 条资料';
                 var setCount = document.getElementById('set-wr-count');
@@ -4768,7 +4805,7 @@
                             <div style="font-size:0.73rem;color:var(--text-secondary);margin:2px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
                                 <span style="background:${typeInfo.badge};color:${typeInfo.text};padding:1px 8px;border-radius:10px;">${typeInfo.label}</span>
                                 ${m.source ? '<span style="background:#e0e7ff;color:#3730a3;padding:1px 8px;border-radius:10px;">📍 ' + wrEsc(m.source) + '</span>' : ''}
-                                <span>${wrFmtDate(m.importAt).slice(0,10)}</span>
+                                ${wrItemTime(m) ? '<span>' + wrFmtDate(wrItemTime(m)).slice(0,10) + '</span>' : ''}
                                 ${sizeStr ? '<span>'+sizeStr+'</span>' : ''}
                                 ${rowStr ? '<span>'+rowStr+'</span>' : ''}
                             </div>

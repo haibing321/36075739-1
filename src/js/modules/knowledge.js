@@ -328,9 +328,26 @@
         return out;
     }
 
+    /**
+     * 【2026-09-22 真实数据修复】案例/汇编类文档单独成源。
+     *
+     * 背景（阶段 0 召回基线实测，`scripts/kb-recall-bench.js`）：用 43585 条真实检查信息里
+     *   "它引用的规章"做 ground truth，对规主链路 Recall@10 只有 48.8%；归因发现
+     *   **《全路事故案例（2006-2025）》这类汇编文档满是现场描述词**（"检查""未按规定""防护网"…），
+     *   在"规章制度"源里天然抢走真条款的候选位 —— 实测它抢到第 1 位 20%、进前 5 达 47%。
+     *   它们**不是"办法条款"**，不该参与"这条违规违反了哪个条款"的召回。
+     * 处理：按标题把它们拆到独立源 `cases`（对规只查 rules → 自然不受挤占；对话/写作可按需加入）。
+     *   判据只看标题（正文里"案例"两字太常见）；紧口径实测只命中 2 篇 / 66 万字（真规章一篇不动）。
+     */
+    var CASE_DOC_RE = /事故案例|典型案例|案例汇编|案例集|案例选编|案例库|法律法规.*汇编|规范性文件汇编/;
+    function isCaseDoc(r) { return CASE_DOC_RE.test(String((r && r.title) || '')); }
+    function nonCaseDocs(arr) { return (arr || EMPTY).filter(function (r) { return !isCaseDoc(r); }); }
+    function onlyCaseDocs(arr) { return (arr || EMPTY).filter(isCaseDoc); }
+
     // loader 返回 { list, async } ：sync 源就地取数；async 源由 KB.ensure() 预载
     var SOURCES = [
-        { key: 'rules', label: '规章制度', grain: '条款', accessor: 'getRulesData', chunk: chunkRules },
+        { key: 'rules', label: '规章制度', grain: '条款', accessor: 'getRulesData', pick: nonCaseDocs, chunk: chunkRules },
+        { key: 'cases', label: '案例/汇编', grain: '条款', accessor: 'getRulesData', pick: onlyCaseDocs, chunk: chunkRules },
         { key: 'issues', label: '检查信息', grain: '条', accessor: 'getIssueData', chunk: chunkIssues, prepare: prepareIssues },
         { key: 'handbook', label: '检查手册', grain: '项点', accessor: 'getHandbookData', chunk: chunkHandbook },
         { key: 'materials', label: '写作资料库', grain: '段落', async: true, loader: '_wrGetAllMaterials', chunk: chunkMaterials },
@@ -349,7 +366,12 @@
         if (typeof window === 'undefined') return EMPTY;
         var fn = window[s.accessor];
         if (typeof fn !== 'function') return EMPTY;
-        try { return fn() || EMPTY; } catch (e) { return EMPTY; }
+        try {
+            var arr = fn() || EMPTY;
+            // 【2026-09-22】同一份原始数据的子集切分（如 rules / cases 共用 getRulesData）
+            if (s.pick) arr = s.pick(arr);
+            return arr;
+        } catch (e) { return EMPTY; }
     }
 
     function ensureSource(key) {

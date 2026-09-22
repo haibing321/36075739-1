@@ -2022,7 +2022,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.84</span> · 2026.09.21</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.90</span> · 2026.09.22</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2031,6 +2031,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v3.90 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v3.90 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚨 新增「事故案例」：与检查手册平行的第二份四级目录数据，导入原理完全一致（同套解析/去重/多文件追加合并、互不覆盖），大纲浏览栏三视图切换（检查手册/事故案例/规章制度），各自导入导出清空与计数、备份恢复、独立 KB 源 accidents；修大纲树空章崩溃（tree[undefined].children）与解析结果归一化；套件 accident-import-audit 16/16。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔎 知识库召回三项修复（向量不做）：对规 KB topK 8→20、ruleCandidates 截断 6→12（专业优先重排后）、案例/汇编类 2 篇/66 万字从 rules 拆成独立源 cases；生产口径 Recall@10 48.8%→61.7%、平均候选 5.6→11.4、漏检 51.3%→38.3%。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂️ 资料列表交互：顶部「按类型/按时间」切换（按时间=纯时间倒序不分块）、组头可点击折叠（状态落 localStorage）、块内默认只展开最新 10 条 + 展开全部；writer-list-audit 扩到 18/18。</span></div>
+                </div>
             </div>
 
             <!-- v3.84 近期更新 -->
@@ -2050,26 +2063,7 @@
                 </div>
             </div>
 
-            <!-- v3.76 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.76 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 工作写实「一键修改」的规章候选改为完全走智能对规同一套召回：先看检查信息里相似问题已引用过的条款，再补规章库。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚖️ 智能对规与一键修改共用同一套召回实现，条款正文与条号统一本地抽取，杜绝「第XX条」这类空壳当依据。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🤖 智能体新增「对规」能力：对话里直接问某条问题该引什么条款，给出可直接引用的结论式依据，引文逐字不改。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔒 未配置 API 接口时不显示「✨ 一键修改」按钮，配置好后自动出现。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧹 一键修改去掉顶部悬浮气泡，进度与结果收进「按钮旁文字 + 回执框」，界面更清爽。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ 智能对规不再跑深度思考（本地召回仅毫秒级，等待几乎全在模型），并新增「已等 Ns + 已召回 N 条候选」进度提示。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔔 检查更新判定修复：同版本号补丁改靠 SW 构建号识别（原仅比版本号导致检测不到），自动检查 30s→12s、节流 1h→10min，发补丁当天即可收到更新提示。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 智能体（目标/记忆/对规）、安全手册、智能写作、备份恢复、电话等 19 文件批量优化，整体稳定性与交互体验提升。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚖️ 风险研判事故案例改按相关度排序：按研判重点分词打分（标题+3/正文+1），不丢弃不相关案例、杜绝模型虚构，结论更贴合实际。</span></div>
-                </div>
-            </div>
-
-            <!-- v3.75 及以下已归档（最近 2 版本为 v3.84 / v3.76） -->
+            <!-- v3.76 及以下已归档（最近 2 版本为 v3.90 / v3.84） -->
 
             <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.76 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 

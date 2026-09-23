@@ -1446,6 +1446,9 @@
                     lines.push('⚠️ <b>未使用模板、也未选资料</b>：将只按下面的「写作需求」+ 台账统计成文，结构与事实依据由模型自行组织。建议至少选一个 —— <b>模板给骨架与写法，资料给问题分类与事实</b>。');
                 }
                 if (qShow) lines.push('📝 本次写作需求：' + wrEsc(qShow));
+                // 【2026-09-23】把"会截断"这件事讲明白（用户问过"前面内容过长会不会截断"）：
+                //   资料按预算分摊（24000/份数，单份 2500~9000 字），模板正文最多 6000 字。
+                if (hasMat) lines.push('📏 长度说明：资料按预算截取（单份 ' + Math.round(24000 / Math.max(1, (window._wrSelectedMaterialIds || []).filter(Boolean).length + (window._wrUploadedFiles || []).filter(Boolean).length)) + ' 字左右，最少 2500 / 最多 9000），模板正文最多 6000 字 —— <b>关键内容请放在资料开头</b>。');
                 host.innerHTML = lines.map(function(t) { return '<div>' + t + '</div>'; }).join('');
             };
 
@@ -2536,6 +2539,7 @@
             /**
              * 归类表提示词（两步生成的第一步）：只做"资料 → 模板章节"的归类与要点提炼，不写正文。
              */
+            window.wrBuildPlanPrompt = wrBuildPlanPrompt;   // 暴露给审计脚本（验证"只给代表性资料"的口径）
             function wrBuildPlanPrompt(query, sections, localMaterials, stats, opts) {
                 opts = opts || {};
                 const sys = [
@@ -2545,7 +2549,8 @@
                     '要求：',
                     '1. 只做归纳与归类，不写正文；要点必须来自资料或台账数据，不得编造。',
                     '2. sections 的 label 必须取自「模板骨架章节」清单；模板原有的问题分类不要出现在 sections 里。',
-                    '3. 每份资料都要落到某个问题类型或骨架章节；确实无关的放进 unused。',
+                    '3. **只归纳典型事例**：同一类里的相似事例合并成 1 条要点，**不要逐份罗列**（列出的资料要落到某个问题类型或骨架章节，确实无关的放进 unused）。',
+                    '3b. problemTypes 每条 points 最多 5 条、每条 ≤40 字；类型数按资料实际归纳（一般 3~8 类）。',
                     '4. 输出 JSON（不要代码块、不要解释）：{"problemTypes":[{"name":"信号设备类","section":"二、主要问题","materials":[1,3],"points":["3月信号机断丝故障2起","平均处理时长35分钟"]}],"sections":[{"label":"一、总体情况","uses":[1,2],"points":["要点"]}],"unused":[4]}'
                 ].join('\n');
                 const u = [];
@@ -2567,12 +2572,30 @@
                     u.push('【台账概况（仅供理解背景，不要写进归类结果）】共 ' + stats.total + ' 条' + (stats.dateLabel ? '（' + stats.dateLabel + '）' : ''));
                 }
                 u.push('');
-                u.push('【资料清单（编号即引用号，正文将用【资料N】标注出处）】');
-                (localMaterials || []).forEach(function (m, i) {
+                // 【2026-09-23 用户反馈】原来把**所有资料**逐份塞进归类表（每份 900 字）＋"每份都要落到某个类型"：
+                //   资料一多，这一步输入/输出都会很长，输出 JSON 还会撞上 maxTokens 被截断（→ 归类失败退回单步生成）。
+                //   现在：① 只给**代表性资料**（按现有相关度顺序前 N 份，等距取样保证覆盖面）；
+                //        ② 每份 700 字；③ 提示词要求"典型事例合并成要点、不逐份罗列"（见 sys 规则 3/3b）。
+                const matAll = localMaterials || [];
+                const WR_PLAN_MAT_MAX = 10;
+                let matPick;
+                if (matAll.length > WR_PLAN_MAT_MAX) {
+                    const step = matAll.length / WR_PLAN_MAT_MAX;
+                    matPick = [];
+                    for (let k = 0; k < WR_PLAN_MAT_MAX; k++) {
+                        const idx = Math.min(matAll.length - 1, Math.floor(k * step));
+                        matPick.push({ m: matAll[idx], no: idx + 1 });
+                    }
+                } else {
+                    matPick = matAll.map(function (m, i) { return { m: m, no: i + 1 }; });
+                }
+                u.push('【代表性资料（共 ' + matAll.length + ' 份；这里给 ' + matPick.length + ' 份最具代表性的，编号为正文引用号）】');
+                matPick.forEach(function (row) {
+                    const m = row.m;
                     const label = (typeof WR_MAT_TYPES !== 'undefined' && WR_MAT_TYPES[m.matType]) ? WR_MAT_TYPES[m.matType].label : (m.matType || '资料');
                     const c = String(m.content || '');
-                    u.push('资料' + (i + 1) + '【' + label + '】《' + (m.title || m.fileName) + '》');
-                    u.push(c.slice(0, 900) + (c.length > 900 ? '…' : ''));
+                    u.push('资料' + row.no + '【' + label + '】《' + (m.title || m.fileName) + '》');
+                    u.push(c.slice(0, 700) + (c.length > 700 ? '…' : ''));
                     u.push('');
                 });
                 u.push('请输出 JSON：');
@@ -3194,7 +3217,8 @@
                         if (streamBubbleContent) streamBubbleContent.innerHTML = '<div style="color:#64748b;font-size:0.85rem;">🧭 正在归类资料到模板章节…</div>';
                         try {
                             const planReq = wrBuildPlanPrompt(q, tplSectionsForPlan, materials.localMaterials, materials.stats, { ledgerAllowed: materials.ledgerAllowed });
-                            const planText = await wrCallOnce(planReq.sysPrompt, planReq.userPrompt, { maxTokens: 1500, temperature: 0.2, noThinking: true, timeoutMs: 60000 });
+                            // 【2026-09-23】maxTokens 1500 → 2200：资料多时归类 JSON 会被截断 → 解析失败退回单步
+                            const planText = await wrCallOnce(planReq.sysPrompt, planReq.userPrompt, { maxTokens: 2200, temperature: 0.2, noThinking: true, timeoutMs: 60000 });
                             const plan = wrParsePlan(planText);
                             if (plan) {
                                 materials.plan = plan;

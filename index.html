@@ -425,7 +425,19 @@
         window.__bootTimer = setTimeout(function () {
             setBootText('正在同步本地数据…');
         }, 2000);
-        var _bT2 = setTimeout(function () { setBootText('网络较慢，正在加载资源…'); }, 5000);
+        // 【2026-09-23】5s 文案要**如实归因**：以前不分青红皂白写"网络较慢，正在加载资源"，
+        //   而实测最慢的是本地数据预热（IndexedDB + 知识库建索引，远程资源一个都没有），
+        //   这句提示会让用户以为"又在偷偷联网"。现在按"是否真有跨域资源"区分。
+        var _bT2 = setTimeout(function () {
+            var remote = 0;
+            try {
+                (performance.getEntriesByType('resource') || []).forEach(function (r) {
+                    try { if (new URL(r.name, location.href).origin !== location.origin) remote++; } catch (e) {}
+                });
+            } catch (e) {}
+            setBootText(remote ? ('网络较慢，正在加载远程资源（' + remote + ' 项）…')
+                               : '正在预热本地数据（本机索引较大，首次稍慢，之后会快）…');
+        }, 5000);
         var _bT3 = setTimeout(function () {
             _forceShowPanel();
             clearBoot();

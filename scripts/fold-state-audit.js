@@ -174,6 +174,40 @@ const HELP = `(function(){
     h.F(afterB.readPos > 0, '⑩ 重建后列表**滚动位置**还原（' + afterB.readPos + 'px [' + afterB.readKind + ']）；修复前根滚动从不保存、归 0');
     h.F(afterB.modalScroll > 0, '⑪ 重建后弹窗**阅读位置**还原（' + afterB.modalScroll + 'px）；修复前归 0');
 
+    // ---------- ⑭ 重建后**不得有跨域资源加载**（用户要求：折叠开合不要远程加载，要用本地数据）----------
+    const afterRebuild = await h.ev(`(function () {
+      var res = performance.getEntriesByType('resource') || [];
+      var remote = res.filter(function (r) { try { return new URL(r.name, location.href).origin !== location.origin; } catch (e) { return false; } });
+      return { total: res.length, remote: remote.length,
+               remoteList: remote.slice(0, 5).map(function (r) { return r.name.slice(0, 60); }),
+               overlayGone: !document.getElementById('app-boot-overlay') };
+    })()`, 30000);
+    console.log('  ⑭ 重建后的资源：' + JSON.stringify(afterRebuild));
+    h.F(afterRebuild.remote === 0 && afterRebuild.overlayGone,
+      '⑭ 重建（折叠开合形态）后**零跨域资源**（本地 ' + afterRebuild.total + ' 项全部来自缓存），启动遮罩已清除'
+      + (afterRebuild.remote ? '；发现远程：' + JSON.stringify(afterRebuild.remoteList) : ''));
+
+    // ---------- ⑮ 豆包网页版：默认**不自动联网**，点击才加载 ----------
+    const webview = await h.ev(`(async () => {
+      if (window.switchTab) window.switchTab('doubao');
+      await new Promise(function (r) { setTimeout(r, 400); });
+      if (window.dsSwitchSub) window.dsSwitchSub('doubao');
+      await new Promise(function (r) { setTimeout(r, 500); });
+      var box = document.getElementById('ds-sub-doubao');
+      var iframe = box ? box.querySelector('iframe') : null;
+      var hold = box ? box.querySelector('.ds-webview-hold') : null;
+      var res = performance.getEntriesByType('resource') || [];
+      var doubaoReq = res.filter(function (r) { return /doubao\\.com/.test(r.name); }).length;
+      return { hasHold: !!hold, holdBtn: !!(hold && hold.querySelector('button')),
+               iframeSrc: iframe ? String(iframe.getAttribute('src') || '') : '(无iframe)',
+               iframeHidden: iframe ? iframe.style.display === 'none' : null,
+               doubaoRequests: doubaoReq };
+    })()`, 40000);
+    console.log('  ⑮ 豆包网页版占位：' + JSON.stringify(webview));
+    h.F(webview.hasHold && webview.holdBtn && webview.iframeSrc === 'about:blank' && webview.doubaoRequests === 0,
+      '⑮ 豆包网页版默认**不联网**：显示占位卡片 + 「点击加载豆包网页版」按钮，iframe 仍为 about:blank、全程零 doubao.com 请求'
+      + (webview.doubaoRequests ? '（实测有 ' + webview.doubaoRequests + ' 次）' : ''));
+
     // ---------- 智能助手：子视图保持（重建后回到智能写作而非智能对话）----------
     await h.ev(`(async () => {
       if (window.switchTab) window.switchTab('doubao');

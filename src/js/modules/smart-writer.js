@@ -625,7 +625,7 @@
             /** 「展开全部」按钮（data 属性供审计脚本定位） */
             function wrGroupMoreHtml(key, more) {
                 var k = String(key == null ? '' : key).replace(/[^A-Za-z0-9_-]/g, '');
-                return '<div style="text-align:center;padding:2px 0 4px;">'
+                return '<div class="wr-mat-group-more" style="text-align:center;padding:2px 0 4px;">'
                     + '<button class="wr-mat-btn" data-wr-expand="' + k + '" onclick="wrExpandGroup(\'' + k + '\')">'
                     + '▼ 展开全部（还有 ' + more + ' 条）</button></div>';
             }

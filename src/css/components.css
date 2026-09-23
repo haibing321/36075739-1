@@ -1558,3 +1558,33 @@ img.loaded { opacity: 1; }
 .ds-bubble-assistant tr:last-child td { border-bottom: none; }
 .ds-bubble-assistant td:last-child,
 .ds-bubble-assistant th:last-child { border-right: none; }
+
+/* ============================================================
+   【2026-09-23 折叠/展开自适应】大屏自动多列 —— 把展开后的宽度用起来
+   背景（实测）：展开到 900~1400 宽时容器**确实跟着视口变宽**（body/panel/列表都跟上了），
+     但卡片列表仍是单列 ⇒ 大屏"只有一列"，用户感知就是"没按屏幕自动扩展"。
+   注意：资料中心列表容器的 display:flex 是**内联样式**（且 JS 的筛选会反复重设），
+     所以这里必须 !important 才能在媒体查询里覆盖它。
+   ============================================================ */
+@media (min-width: 760px) {
+  .result-list,
+  #wr-mat-list {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 10px 12px;
+    align-items: start;
+  }
+  /* 组头与「展开全部」按钮不是卡片：横跨整行 */
+  #wr-mat-list > .wr-mat-group-head,
+  #wr-mat-list > .wr-mat-group-more,
+  #wr-mat-list > div[style*="text-align:center"] {
+    grid-column: 1 / -1;
+  }
+  /* 网格里卡片自适应，标题过长时不要撑破列 */
+  #wr-mat-list > .wr-mat-card,
+  .result-list > * { min-width: 0; }
+}
+@media (min-width: 1200px) {
+  .result-list,
+  #wr-mat-list { grid-template-columns: repeat(auto-fill, minmax(370px, 1fr)); }
+}

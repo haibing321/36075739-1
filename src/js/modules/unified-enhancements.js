@@ -391,7 +391,21 @@
     const data = (typeof window.getPhoneData === 'function') ? window.getPhoneData() : [];
     data.forEach(it => { [it.站名, it.单位, it.线名].forEach(f => { if (f) fields.push(f); }); });
     if (Array.isArray(window.queryWeatherStations)) fields.push.apply(fields, window.queryWeatherStations);
-    return _matchLongest(q, fields);
+    const hit = _matchLongest(q, fields);
+    if (hit) return hit;
+    // 【2026-09-23】电话簿与内置字典都没有的站名（县/镇级站，如"榆中"）原来直接返回 null，
+    //   于是"榆中今天天气"压根进不了天气链（只能靠模型自由发挥）。
+    //   这里在**确认是天气问句**的前提下，做一次保守的启发式抽取：
+    //   去掉口语前缀与时间词 → 取到天气关键词为止的 2~8 字地名 → 去掉"的/站"等尾巴。
+    //   抽得不准也无妨：后面查不到会原样退回普通对话（并强制联网），不会"抢答"。
+    if (!/天气|气温|温度|气象|多少度|下雨|下雪|有雨|有雪|降雨|降水|降雪|雨雪|风力|湿度/.test(String(q))) return null;
+    let s = String(q).replace(/^[\s，。、,.\u3000]*(?:帮我|请|麻烦|查一下|查查|查询|查|看看|看一下|看下|搜一下|搜索|我想知道|我要查|问一下|请问|今天|明天|后天|大后天|现在|目前|今日)+/, '');
+    const m = s.match(/^([^\s，。、,.\u3000]{2,8}?)(?:今天|明天|后天|大后天|现在|目前|今日|当天|的|当地|地区|一带|附近|站|车站)*(?:天气|气温|温度|气象|多少度|下雨|下雪|有雨|有雪|降雨|降水|降雪|雨雪|风力|湿度)/);
+    if (m && m[1]) {
+      const cand = m[1].replace(/(的|站|车站|地区|一带|附近)$/g, '').trim();
+      if (cand.length >= 2 && cand.length <= 8) return cand;
+    }
+    return null;
   }
 
   // 将 get_weather 返回的 7 天预报格式化为 Markdown 卡片（dsMarkdown 渲染为表格）
@@ -509,9 +523,10 @@
                 input.value = '';
                 if (input.style) input.style.height = '';
                 ph = _pushProgressBubble('🌐 正在联网检索「' + st + '」的天气…\n\n_（优先大模型联网；未接 API 或检索不到会自动改用免费数据源，一般 5~20 秒）_');
-                // 联网上限收窄到 15s：超时立刻走保底，不让用户干等
+                // 【2026-09-23 提速】联网取数上限 15s→8s：超时立刻走免费公开接口（实测 ~1.1s），
+                //   宁可数据源降级也不让用户干等十几秒（报告那一步还会再联网补空气质量等）。
                 const w = (typeof window.queryWeatherSmart === 'function')
-                  ? await window.queryWeatherSmart(st, { timeoutMs: 15000 })
+                  ? await window.queryWeatherSmart(st, { timeoutMs: 8000 })
                   : await window.queryWeather({ stationName: st });
                 if (w && w.ok) {
                   const card = formatWeather(w, st);
@@ -522,6 +537,14 @@
                   try { hasKey = !!localStorage.getItem('ds_api_key_v1'); } catch (e) {}
                   const pureWeather = !COMPOSITE_HINT.test(question);
                   if (hasKey && typeof window._dsRunStream === 'function') {
+                    // 缓存命中（仅纯天气报告）：直接秒回，不再跑"取数 + 写报告"两趟模型
+                    const ck = 'w|' + st;
+                    const hit = _wxAnsCache[ck];
+                    if (pureWeather && hit && (Date.now() - hit.t) < WX_ANS_TTL) {
+                      _dropBubble(ph);
+                      _pushAssistant(hit.text + '\n\n_📌 来自缓存（' + hit.clock + ' 查询，10 分钟内有效；如需最新可稍后重问）_');
+                      return;
+                    }
                     // 数据块：模型必须据此写表（数值不得改写），缺口（空气质量/日出日落）允许它联网补
                     const dataBlock = '[参考天气数据（请以此为准，数值不得改写）·' + st + ']\n'
                       + '数据来源与时效：' + (w.sourceName ? w.sourceName + (w.updated ? '，更新于 ' + w.updated : '')
@@ -572,6 +595,17 @@
                     if (_injectIntoLastUser(finalText)) {
                       if (typeof window.dsRenderAll === 'function') window.dsRenderAll();
                       await window._dsRunStream(finalText);
+                      // 报告写完后存进缓存（下一问秒回）；失败/空答案不缓存
+                      if (pureWeather) {
+                        try {
+                          const hh = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : null;
+                          const lastA = hh && [].concat(hh).reverse().find(function (m) { return m && m.role === 'assistant'; });
+                          if (lastA && lastA.content && String(lastA.content).length > 40 && !/^❌/.test(String(lastA.content))) {
+                            _wxAnsCache[ck] = { t: Date.now(), text: String(lastA.content),
+                              clock: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) };
+                          }
+                        } catch (e) {}
+                      }
                       return;
                     }
                     // 注入失败（历史不可用）→ 退回卡片，别让用户空等
@@ -650,6 +684,12 @@
       if (hist) hist.push({ role: 'user', content: text, displayText: displayText || text });
     }
   }
+
+  // ---------- 【2026-09-23 用户反馈"天气查询有点慢"】纯天气报告答案缓存 ----------
+  // 天气问答一次要两趟模型（取数 + 写报告），十几秒起步。10 分钟内同一车站重复提问完全没必要再跑一遍：
+  // 命中缓存直接贴出原答案（零模型调用、秒回），并在末尾标明缓存时间。
+  const _wxAnsCache = {};
+  const WX_ANS_TTL = 10 * 60 * 1000;
 
   // ---------- 【2026-09-23 用户反馈"发送后半天没反应"】等待期的可见反馈 ----------
   // 原来天气分支是「先 await 查天气（大模型联网 5~20s）→ 才推用户气泡」，

@@ -103,9 +103,36 @@ const STUB = `(function(){
   try {
     await h.nav('index.html?v=weather');
     await h.ev(STUB, 20000);
-    // 对话流统一 stub（记录被注入的文本，避免测试去打真流式接口）：改动接线时能直接看出注入了什么
-    await h.ev(`(() => { window.__wx.streams = []; window.__wx.origStream = window._dsRunStream;
-      window._dsRunStream = async function (t) { window.__wx.streams.push(String(t || '')); }; return 1; })()`, 20000);
+    // 对话流统一 stub。⚠️ 必须**等应用初始化完成后再装**：doubao.js 是异步初始化的，
+    //   `window._dsRunStream` 会在初始化里被赋值一次，抢在它之前装会被覆盖 ——
+    //   症状极隐蔽：历史里出现一条**空白助手气泡**、而 stub 一次都没被调到（本轮排查了很久）。
+    //   所以这里等就绪 → 装 → 并把安装动作暴露成 `__wxStubStream()`，每个对话用例开跑前重申一次。
+    const ready = await h.ev(`(async () => {
+      for (var i = 0; i < 60; i++) {
+        if (typeof window._dsRunStream === 'function' && typeof window.dsSendMsg === 'function'
+            && typeof window.getDsHistory === 'function' && typeof window.dsRenderAll === 'function') break;
+        await new Promise(function (r) { setTimeout(r, 250); });
+      }
+      window.__wx = window.__wx || {};
+      window.__wx.origStream = window._dsRunStream;
+      window.__wxStubStream = function () {
+        window.__wx.streams = window.__wx.streams || [];
+        window._dsRunStream = async function (t) {
+          window.__wx.streams.push(String(t || ''));
+          var hh = window.getDsHistory ? window.getDsHistory() : null;
+          if (hh) {
+            hh.push({ role: 'assistant', content: '（模拟报告）某站天气情况\\n数据来源：中央气象台\\n一、今日实况与预报\\n二、未来一周趋势\\n三、铁路安全监察提示' });
+            if (window.dsRenderAll) window.dsRenderAll();
+          }
+        };
+      };
+      window.__wxStubStream();
+      // 再等 1 秒确认没被应用覆盖（覆盖就重装）
+      await new Promise(function (r) { setTimeout(r, 1000); });
+      if (window._dsRunStream !== window.__wx.origStream && !/streams/.test(String(window._dsRunStream))) window.__wxStubStream();
+      return typeof window._dsRunStream;
+    })()`, 40000);
+    console.log('  对话流 stub 就绪检查：' + ready);
     await h.ev(`(() => { try { sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
 
     // ---------- ① 未接 API：直接走免费 ----------
@@ -175,16 +202,27 @@ const STUB = `(function(){
       var box = document.getElementById('ds-chat-box');
       var last = function () { var kids = box ? box.children : []; return kids.length ? (kids[kids.length-1].textContent || '') : ''; };
       // ⑦ 大模型正常：**改为单条报告**（不再单独渲染卡片，数据来源行由报告承载）
-      window.__wx.llmMode = 'ok'; window.__wx.streams = [];
+      window.__wx.llmMode = 'ok'; window.__wxStubStream(); window.__wx.streams = [];
       var hist1 = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
       if (hist1) { hist1.length = 0; if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); }
+      // 诊断：记录本轮 queryWeatherSmart 是否被调用、返回什么（失败时便于定位）
+      window.__wx.diag = [];
+      var _ow = window.queryWeatherSmart;
+      window.queryWeatherSmart = async function () {
+        try { var _r = await _ow.apply(this, arguments); window.__wx.diag.push('call→' + JSON.stringify({ ok: _r && _r.ok, source: _r && _r.source, err: _r && (_r.error || _r.llmError) })); return _r; }
+        catch (e) { window.__wx.diag.push('call→throw:' + (e && e.message)); throw e; }
+      };
       if (q) { q.value = '兰州今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1500); });
+      window.queryWeatherSmart = _ow;
       var whole1 = (box ? box.textContent : '') || '';
       var noCard = !/数据来源：大模型联网检索/.test(whole1);   // 卡片不再单独出现
       var streamed = window.__wx.streams.length === 1;         // 报告交给对话流
       var has1 = noCard && streamed;
+      var diag1 = 'diag=' + JSON.stringify(window.__wx.diag || []) + ' streams=' + window.__wx.streams.length
+                + ' key=' + (localStorage.getItem('ds_api_key_v1') || '(空)')
+                + ' hist=' + (function () { try { return JSON.stringify([].concat(hist1 || []).map(function (m) { return (m && m.role) + ':' + String((m && m.content) || '').slice(0, 30); })); } catch (e) { return 'dump失败:' + e.message; } })();
       // ⑧ 摘掉 Key → 免费
       localStorage.removeItem('ds_api_key_v1');
       window.__wx.free = 0;
@@ -193,9 +231,10 @@ const STUB = `(function(){
       await new Promise(function (r) { setTimeout(r, 1500); });
       var t2 = last();
       return { has1: has1, has2: /免费公开天气接口/.test(t2), len1: whole1.length, len2: t2.length,
-               tail1: whole1.slice(-90), tail2: t2.slice(-90), free2: window.__wx.free };
+               tail1: whole1.slice(-90), tail2: t2.slice(-90), free2: window.__wx.free, diag1: diag1 };
     })()`, 90000);
     console.log('  ⑦ 对话(大模型)：' + JSON.stringify(chat.tail1));
+    console.log('  ⑦ 诊断：' + chat.diag1);
     console.log('  ⑧ 对话(免费)：' + JSON.stringify(chat.tail2));
     h.F(chat.has1, '⑦ 有 Key 的纯天气问题 → 单条报告（不再单独渲染卡片；数据来源由报告首行承载）');
     h.F(chat.has2 && chat.free2 >= 1, '⑧ 对话问天气（无 Key）→ 标注「🛰 数据来源：免费公开天气接口」，且免费接口被调用 ' + chat.free2 + ' 次');
@@ -276,7 +315,7 @@ const STUB = `(function(){
     // ---------- ⑭ 纯天气问题（有 Key）：单条"报告体"由对话流产出（用户明确说"以前这种提示比较好"）----------
     const roleAns = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
-      window.__wx.llmMode = 'ok'; window.__wx.streams = [];   // 对话流用全局 stub（见开头）
+      window.__wx.llmMode = 'ok'; window.__wxStubStream(); window.__wx.streams = [];   // 对话流用全局 stub（见开头）
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       window.__wx.box = box;
@@ -298,17 +337,20 @@ const STUB = `(function(){
                injTable: /用\\*\\*表格\\*\\*列出/.test(s0) && /空气质量/.test(s0) && /日出日落/.test(s0),
                injNoFabricate: /严禁编造条款/.test(s0),
                injLocal: /规章制度 \\/ 检查信息 \\/ 检查手册/.test(s0),
-               injTail: /我可辅助研判/.test(s0) && /逐小时预报/.test(s0) };
+               injTail: /我可辅助研判/.test(s0) && /逐小时预报/.test(s0),
+               // 可见回答必须是"报告"（stub 写的模拟报告含"一、今日实况与预报"），而不是我们的天气卡片
+               reportOnly: /一、今日实况与预报/.test((box ? box.textContent : '') || '')
+                           && !/未来 7 天预报/.test((box ? box.textContent : '') || '') };
     })()`, 90000);
     console.log('  ⑭ 报告体接线：' + JSON.stringify(roleAns));
-    h.F(roleAns.streams === 1 && roleAns.assistantBubbles === 0 && roleAns.userBubbleShort
+    h.F(roleAns.streams === 1 && roleAns.assistantBubbles === 1 && roleAns.reportOnly && roleAns.userBubbleShort
         && roleAns.injData && roleAns.injTemplate && roleAns.injTable && roleAns.injNoFabricate && roleAns.injLocal && roleAns.injTail,
       '⑭ 有 Key 的纯天气问题 → 交给对话流产出**报告体**（单条回答、无多余卡片）：注入数据块（数值不得改写）+ 模板骨架（一、实况表格 / 二、一周趋势 / 三、监察提示）+ 本地检索要求 + 严禁编造 + 「我可辅助研判」结尾');
 
     // ---------- ⑮ 未接 API 时：不走对话流，退回"卡片 + 规则化保底提示" ----------
     const tipsRule = await h.ev(`(async () => {
       localStorage.removeItem('ds_api_key_v1');
-      window.__wx.tips = 0; window.__wx.streams = [];
+      window.__wx.tips = 0; window.__wxStubStream(); window.__wx.streams = [];
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       if (q) { q.value = '定西的天气情况怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -355,7 +397,7 @@ const STUB = `(function(){
     // ---------- ⑱ 复合问题（"…要注意什么"）：卡片先出 + 让模型围绕具体问题研判 ----------
     const compo = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
-      window.__wx.llmMode = 'ok'; window.__wx.streams = [];
+      window.__wx.llmMode = 'ok'; window.__wxStubStream(); window.__wx.streams = [];
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       // 同样先清空历史，避免复用上一条用例遗留的气泡（卡片判定必须只看本轮）
@@ -423,6 +465,97 @@ const STUB = `(function(){
     console.log('  ㉑ 全失败提示：' + JSON.stringify(noWay));
     h.F(noWay.actionable && !noWay.hasSrc,
       '㉑ 无 API 且无坐标时：提示"请在电话簿中为该站补充经纬度，或检查网络后重试"（可操作，不再只说"未找到坐标"）');
+
+    // ---------- ㉖ 站名不在电话簿/字典里（如"陇南"）也要能进天气链 ----------
+    const unknownStation = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok'; window.__wxStubStream(); window.__wx.streams = [];
+      var calls = [];
+      var _ow = window.queryWeatherSmart;
+      window.queryWeatherSmart = async function (st) { calls.push(String(st)); return _ow.apply(this, arguments); };
+      var q = document.getElementById('ds-user-input');
+      var hist = window.getDsHistory ? window.getDsHistory() : null;
+      if (hist) { hist.length = 0; if (window.dsRenderAll) window.dsRenderAll(); }
+      if (q) { q.value = '陇南今天天气'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      await window.dsSendMsg();
+      await new Promise(function (r) { setTimeout(r, 1200); });
+      window.queryWeatherSmart = _ow;
+      return { calls: calls, streams: window.__wx.streams.length,
+               s0head: String(window.__wx.streams[0] || '').slice(0, 46) };
+    })()`, 90000);
+    console.log('  ㉖ 未收录站名：' + JSON.stringify(unknownStation));
+    h.F(unknownStation.calls.length === 1 && unknownStation.calls[0] === '陇南' && unknownStation.streams === 1
+        && /陇南/.test(unknownStation.s0head),
+      '㉖ 站名不在电话簿/内置字典（"陇南今天天气"）→ 启发式抽取站名成功、进入天气链（取数+报告各 1 次）—— 修复前这类问法只走普通对话');
+
+    // ---------- ㉒㉓ 提速：模型调用次数（取数 1 + 报告 1）与"再问秒回"（答案缓存）----------
+    const speed1 = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok'; window.__wxStubStream(); window.__wx.streams = []; window.__wx.llm = 0;
+      var hh = window.getDsHistory ? window.getDsHistory() : null;
+      if (hh) { hh.length = 0; if (window.dsRenderAll) window.dsRenderAll(); }
+      var q = document.getElementById('ds-user-input');
+      var box = document.getElementById('ds-chat-box');
+      // 站名必须**没在前面查过**：天气数据有 10 分钟缓存，撞上就测不到"取数 1 次"了（本轮踩过）
+      if (q) { q.value = '金昌今天的天气'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      var t0 = Date.now();
+      await window.dsSendMsg();
+      await new Promise(function (r) { setTimeout(r, 1200); });
+      var first = { ms: Date.now() - t0, llm: window.__wx.llm, streams: window.__wx.streams.length };
+      // 同样的站再问一次
+      window.__wx.llm = 0; window.__wxStubStream(); window.__wx.streams = [];
+      var t1 = Date.now();
+      if (q) { q.value = '金昌天气'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      await window.dsSendMsg();
+      await new Promise(function (r) { setTimeout(r, 800); });
+      var whole = (box ? box.textContent : '') || '';
+      return { first: first, second: { ms: Date.now() - t1, llm: window.__wx.llm, streams: window.__wx.streams.length,
+               cached: /来自缓存/.test(whole) } };
+    })()`, 90000);
+    console.log('  ㉒㉓ 提速：' + JSON.stringify(speed1));
+    h.F(speed1.first.llm === 1 && speed1.first.streams === 1,
+      '㉒ 纯天气首次提问 = **2 趟模型**（1 趟联网取数 ' + speed1.first.llm + ' + 1 趟写报告 ' + speed1.first.streams + '），耗时 ' + speed1.first.ms + 'ms（stub 无延迟）');
+    h.F(speed1.second.llm === 0 && speed1.second.streams === 0 && speed1.second.cached,
+      '㉓ 同一车站 10 分钟内再问 → **0 趟模型**、' + speed1.second.ms + 'ms 命中「答案缓存」秒回');
+
+    // ---------- ㉔ 电话渐进式：有零成本坐标时先出免费数据，大模型回来再升级 ----------
+    const progressive = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'slow';      // 大模型 2.5s 才回
+      window.__wx.free = 0;
+      var d = document.createElement('div');
+      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox6"></div>';
+      document.body.appendChild(d);
+      // 用"兰州西"：在字典里（零成本坐标）但前面用例没查过 → 数据缓存是冷的，才能看到"先免费后升级"两段
+      var p = window.phoneGetWeather('兰州西', null, null, 'wxbox6', '');
+      await new Promise(function (r) { setTimeout(r, 700); });
+      var mid = (document.getElementById('wxbox6') || {}).textContent || '';
+      await p;
+      await new Promise(function (r) { setTimeout(r, 400); });
+      var end = (document.getElementById('wxbox6') || {}).textContent || '';
+      var midBox = document.getElementById('wxbox6');
+      return { at700ms: { hasData: /数据来源/.test(mid), src: (/🛰|🌐/.exec(mid) || [''])[0], updating: /正在用大模型联网更新/.test(mid) },
+               final: { src: (/🛰|🌐/.exec(end) || [''])[0], upgraded: /大模型联网检索/.test(end), noUpdating: !/正在用大模型联网更新/.test(end) } };
+    })()`, 90000);
+    console.log('  ㉔ 电话渐进式：' + JSON.stringify(progressive));
+    h.F(progressive.at700ms.hasData && progressive.at700ms.updating && progressive.final.upgraded && progressive.final.noUpdating,
+      '㉔ 应急电话（兰州·字典坐标）→ 700ms 内先出免费数据并标注"正在用大模型联网更新"，大模型回来后**原地升级**为「🌐 大模型联网检索」');
+
+    // ---------- ㉕ 坐标字典快查（dictOnly）：毫秒级、绝不联网 ----------
+    const dictFast = await h.ev(`(async () => {
+      window.__wx.coord = 0;
+      var t0 = Date.now();
+      var a = await window.queryStationCoord('兰州', { dictOnly: true });
+      var t1 = Date.now();
+      // ⚠️ 必须用"没被解析过"的站名：坐标结果有运行期缓存，前面用例查过"榆中"，
+      //    再查会直接命中缓存而返回 ok —— 那样测的就不是"字典未命中"了（本轮踩过）。
+      var b = await window.queryStationCoord('某字典外站名', { dictOnly: true });
+      var t2 = Date.now();
+      return { dictOk: a.ok, dictMs: t1 - t0, notOk: !b.ok, notMs: t2 - t1, netCalls: window.__wx.coord };
+    })()`, 30000);
+    console.log('  ㉕ dictOnly：' + JSON.stringify(dictFast));
+    h.F(dictFast.dictOk && dictFast.notOk && dictFast.netCalls === 0 && dictFast.dictMs < 100,
+      '㉕ 坐标字典快查：命中毫秒级（' + dictFast.dictMs + 'ms）、未命中立刻返回（' + dictFast.notMs + 'ms）、全程零联网');
 
     await h.ev(`(() => { try { localStorage.removeItem('ds_api_key_v1'); sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {

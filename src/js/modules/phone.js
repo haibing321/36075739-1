@@ -449,12 +449,18 @@
                         return pickResult(gd.results);
                     } catch (_) { return null; }
                 }
+                // 【2026-09-23 提速】负向缓存：这个地名接口是**前缀匹配**，县/镇级站（如"榆中"）
+                //   实测返回 0 条结果却要花 1.6s。记下"查不到"，同一次会话里不再重复白跑。
+                var negKey = String(geoName || '') + '|' + String(lineName || '');
+                if (_geoNegative[negKey]) return null;
                 // 直接用站名查询：拼上线路名（"徐兰高速 东岔"）这种组合名在做前缀匹配的
                 // geocoding 接口上几乎必然返回空，等于每次固定白跑一个请求。
                 var chosen = await searchOnce(geoName);
                 if (chosen) return { lat: chosen.latitude, lon: chosen.longitude };
+                _geoNegative[negKey] = 1;
                 return null;
             };
+            var _geoNegative = {};   // 地名接口"查不到"的记忆（仅在内存，页面刷新即清）
 
             // ── 连接配置（本地 file:// 走代理，网站部署直接调 API）──
             const isLocal = document.location.protocol === 'file:';
@@ -482,23 +488,57 @@
                     const _why = (k) => ({ 'no-key': '未接 API', 'no-websearch-api': '不可用', 'timeout': '超时', 'llm-not-found': '未查到该车站', 'llm-unparsed': '返回无法解析', 'llm-empty': '返回为空', 'network': '网络不可达', 'llm-failed': '调用失败' })[k] || '';
                     let w = null, srcLabel = '', srcNote = '', llmWhy = '';
 
-                    // ① 【第一优先】大模型联网检索 —— **不需要坐标**。
-                    //    用户反馈："榆中天气对话里能查到，应急电话却报'未找到坐标'"：
-                    //    榆中不在内置字典、Open-Meteo 地名接口也匹配不到，而原实现在坐标解析失败时**直接放弃**，
-                    //    连这条不需要坐标的路都没走。
-                    try {
-                        const llm = await window.queryWeatherSmart(stationName, { skipFree: true });
-                        if (llm && llm.ok && llm.current) {
-                            w = llm;
-                            srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
-                            srcNote = '';   // 不再挂常驻提示（只有真降级时才写原因）
-                        } else {
-                            llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
+                    // 【2026-09-23 提速·渐进式】两路并行：
+                    //   ① 零成本坐标（电话簿已存 / 内置字典，毫秒级）→ 立刻用免费公开接口（实测 ~1.1s）出数据；
+                    //   ② 同时后台问大模型（不需要坐标，服务端检索几秒起）。
+                    //   免费先到就先渲染（标注"正在联网更新"），大模型回来再**原地升级** ——
+                    //   用户不用盯着"⏳ 查询中…"干等十几秒。
+                    if ((!lat || !lon) && typeof window.queryStationCoord === 'function') {
+                        try {
+                            const dc = await window.queryStationCoord(stationName, { dictOnly: true });
+                            if (dc && dc.ok) { lat = dc.lat; lon = dc.lon; }
+                        } catch (_) {}
+                    }
+                    const _freeDirect = async function () {
+                        if (!lat || !lon) return null;
+                        try {
+                            const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
+                            if (!r.ok) return null;
+                            const raw = await r.json();
+                            return (raw && raw.current) ? raw : null;
+                        } catch (_) { return null; }
+                    };
+                    const _llmAsk = async function () {
+                        try { return await window.queryWeatherSmart(stationName, { skipFree: true, timeoutMs: 10000 }); }
+                        catch (e) { return null; }
+                    };
+                    const pFree = _freeDirect();
+                    const pLlm = _llmAsk();
+                    if (lat && lon) {
+                        // 免费接口若 1.5s 内回来就先渲染（再慢就不抢了，免得界面闪两次）
+                        const early = await Promise.race([
+                            pFree,
+                            new Promise(function (res) { setTimeout(function () { res('__slow__'); }, 1500); })
+                        ]);
+                        if (early && early !== '__slow__') {
+                            w = early;
+                            srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
+                            srcNote = '（正在用大模型联网更新…）';
+                            renderCard();
                         }
-                    } catch (e) { llmWhy = (e && e.message) || 'llm-error'; }
+                    }
+                    const llm = await pLlm;
+                    if (llm && llm.ok && llm.current) {
+                        w = llm;
+                        srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
+                        srcNote = '';   // 不再挂常驻提示（只有真降级时才写原因）
+                        renderCard();   // 升级为大模型结果
+                    } else {
+                        llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
+                    }
 
-                    // ② 只有需要免费公开接口时才解析坐标：
-                    //    已存经纬度(缓存) > 内置车站字典 / 大模型联网查坐标 > Open-Meteo 地名接口
+                    // ② 坐标还没拿到（字典没有）→ 现在才联网解析：
+                    //    大模型联网查坐标 > Open-Meteo 地名接口
                     if (!w && (!lat || !lon)) {
                         if (!lat && typeof window.queryStationCoord === 'function') {
                             try {
@@ -525,18 +565,14 @@
                         saveToStorage();
                     }
 
-                    // ③ 免费直连 —— 字段最全（湿度/气压/风向/降水），file:// 开发态走本地代理 PROXY
+                    // ③ 免费直连（复用上面那一路的请求，坐标是刚解析出来的话这里再发一次）
                     if (!w && lat) {
-                        try {
-                            const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
-                            if (!r.ok) throw new Error('服务暂时不可用');
-                            const raw = await r.json();
-                            if (raw && raw.current) {
-                                w = raw;
-                                srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
-                                srcNote = llmWhy ? '（大模型联网' + (_why(llmWhy) || '不可用') + '，已保底）' : '';
-                            }
-                        } catch (_) {}
+                        const raw = (await pFree) || await _freeDirect();
+                        if (raw) {
+                            w = raw;
+                            srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
+                            srcNote = llmWhy ? '（大模型联网' + (_why(llmWhy) || '不可用') + '，已保底）' : '';
+                        }
                     }
                     // ④ 共享保底（**不再重试大模型**：上面刚试过；preferLLM:false 只走免费层，带 10 分钟缓存）
                     if (!w) {
@@ -556,6 +592,8 @@
                             + '</span></div>';
                         return;
                     }
+                    // 渲染抽成函数：渐进式路径要"先渲染免费数据、大模型回来再原地升级"（同一段模板复用）
+                    function renderCard() {
                     const cur = w.current;
                     const daily = w.daily || { time: [] };   // 兜底路径可能只有实况，没有 7 天
                     const wmo = {
@@ -625,6 +663,8 @@
                             </div>
                         </div>
                     `;
+                    }
+                    renderCard();
                 } catch(e) {
                     box.innerHTML = `<span class="err">⚠️ 查询失败${e.message.includes('fetch')?(PROXY?'：请确认天气代理已启动':'：网络请求失败，请检查站点能否访问 Open-Meteo'):''}</span>`;
                 } finally {

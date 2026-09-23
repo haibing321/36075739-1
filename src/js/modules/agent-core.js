@@ -1327,6 +1327,16 @@
     var n = (typeof v === 'number') ? v : parseFloat(String(v == null ? '' : v).replace(/[^\d.\-+]/g, ''));
     return isFinite(n) ? n : (dflt === undefined ? null : dflt);
   }
+  /** 宽容取字段：模型可能写 temp/temperature/气温……（少一个字段就渲染成 '—'，不能让整条结果作废） */
+  function _pick(o, names) {
+    if (!o || typeof o !== 'object') return undefined;
+    for (var i = 0; i < names.length; i++) {
+      var v = o[names[i]];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return undefined;
+  }
+  function _pickNum(o, names, dflt) { return _num(_pick(o, names), dflt); }
 
   /**
    * 大模型 + 联网检索查车站天气（**不做免费保底**，只这一路；失败返回 ok:false）。
@@ -1351,26 +1361,53 @@
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'llm-failed' };
     var j = null;
     try { j = window.dsParseJsonLoose ? window.dsParseJsonLoose(r.text) : JSON.parse(r.text); } catch (e) { j = null; }
+    // 【2026-09-23 用户反馈"大模型联网返回无法解析"频发】联网检索后模型常把 JSON 混在说明里
+    //   （引用标记 / 前后解释 / 字段名不统一）。这里补一次**结构化修补**：把检索原文交给模型
+    //   （不带联网，快且便宜）按固定 schema 重新输出，再解析一次。
+    //   ⚠️ 门禁（防编造）：只有原文**确实含天气数据**时才修补。
+    //     模型明确说"查不到/未找到"时**不许**丢给整理助手 —— 那会凭空生成一份看似正常的天气
+    //     （实测：把"抱歉，我查不到这个车站的天气"整理成了完整 7 天预报）。这种情况应当如实降级到免费接口。
+    var _rawText = String(r.text || '');
+    var _saysNotFound = /(查不到|未查到|无法获取|没有找到|未找到|暂无数据|无法查询|没有相关)/.test(_rawText);
+    var _looksLikeData = /\d/.test(_rawText) && /(天气|气温|温度|℃|°C|晴|多云|阴|小雨|中雨|大雨|雪|风)/.test(_rawText);
+    if (!j && !_saysNotFound && _looksLikeData && typeof window.dsCallOnce === 'function') {
+      try {
+        var fix = await window.dsCallOnce(
+          '你是数据整理助手：把用户给的"天气检索结果"整理成**严格 JSON**，只输出 JSON 本身，不要解释、不要 Markdown 代码块。'
+          + '**只能使用原文中出现过的信息，绝对不许补充或推测任何数字**；原文里没有该车站的天气数据就输出 {"found":false}。',
+          '输出结构（字段名必须与示例一致）：' + JSON.stringify({
+            found: true, station: '站名',
+            current: { temp: 0, weather: '天气文字', feels: 0, wind: 0, windDir: '风向文字', humidity: 0, pressure: 0, precip: 0 },
+            daily: [{ date: 'YYYY-MM-DD', weather: '天气文字', tmax: 0, tmin: 0, precip: 0, wind: 0 }]
+          }) + '\n今天是 ' + today + '，未来 7 天。查不到该车站就输出 {"found":false}。\n\n天气检索结果：\n' + String(r.text || '').slice(0, 3000),
+          { maxTokens: 1400, timeoutMs: 30000 }
+        );
+        if (fix && fix.ok) {
+          try { j = window.dsParseJsonLoose ? window.dsParseJsonLoose(fix.text) : JSON.parse(fix.text); } catch (e2) { j = null; }
+          if (j) r.channel = String(r.channel || '') + '+repair';
+        }
+      } catch (e3) {}
+    }
     if (!j) return { ok: false, error: 'llm-unparsed', raw: String(r.text || '').slice(0, 500) };
     if (j.found === false) return { ok: false, error: 'llm-not-found' };
     var cur = null;
     if (j.current && typeof j.current === 'object') {
-      var code = _wmoFromText(j.current.weather);
+      var code = _wmoFromText(_pick(j.current, ['weather', '天气', 'condition', 'desc', 'text']));
       cur = {
-        temperature_2m: _num(j.current.temp),
-        apparent_temperature: _num(j.current.feels, _num(j.current.temp)),
-        relative_humidity_2m: _num(j.current.humidity),
-        wind_speed_10m: _num(j.current.wind),
-        wind_direction_10m: _num(j.current.windDeg),
-        precipitation: _num(j.current.precip, 0),
-        surface_pressure: _num(j.current.pressure),
+        temperature_2m: _pickNum(j.current, ['temp', 'temperature', '气温', '温度', 'temp_c', 'tempC']),
+        apparent_temperature: _pickNum(j.current, ['feels', 'apparent', 'feels_like', '体感', '体感温度'], _pickNum(j.current, ['temp', 'temperature'])),
+        relative_humidity_2m: _pickNum(j.current, ['humidity', '湿度', 'rh']),
+        wind_speed_10m: _pickNum(j.current, ['wind', 'windSpeed', 'wind_speed', '风速']),
+        wind_direction_10m: _pickNum(j.current, ['windDeg', 'wind_deg', 'windDegree', '风向角']),
+        precipitation: _pickNum(j.current, ['precip', 'precipitation', '降水', '降水量'], 0),
+        surface_pressure: _pickNum(j.current, ['pressure', '气压', 'press']),
         weather_code: code,
-        weather: String(j.current.weather || _WMO_TEXT[code] || ''),
+        weather: String(_pick(j.current, ['weather', '天气', 'condition', 'desc']) || _WMO_TEXT[code] || ''),
         weatherEmoji: _WMO_EMOJI[code] || '🌡️',
-        windDir: String(j.current.windDir || ''),
+        windDir: String(_pick(j.current, ['windDir', 'wind_dir', '风向']) || ''),
         // 短别名（temp/wind）：对话侧 formatWeather 读的是这一套（与工具版 queryWeather 的输出保持一致）
-        temp: (function () { var n = _num(j.current.temp); return n == null ? '' : (n + '°C'); })(),
-        wind: (function () { var n = _num(j.current.wind); return n == null ? '' : (n + 'm/s'); })()
+        temp: (function () { var n = _pickNum(j.current, ['temp', 'temperature', '气温', '温度']); return n == null ? '' : (n + '°C'); })(),
+        wind: (function () { var n = _pickNum(j.current, ['wind', 'windSpeed', '风速']); return n == null ? '' : (n + 'm/s'); })()
       };
     }
     var daily = null;
@@ -1378,14 +1415,14 @@
       daily = { time: [], weather_code: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [], wind_speed_10m_max: [], weatherText: [], emoji: [] };
       j.daily.slice(0, 7).forEach(function (d) {
         d = d || {};
-        var dc = _wmoFromText(d.weather);
-        daily.time.push(String(d.date || '').slice(0, 10));
+        var dc = _wmoFromText(_pick(d, ['weather', '天气', 'condition', 'desc']));
+        daily.time.push(String(_pick(d, ['date', '日期', 'time', 'day']) || '').slice(0, 10));
         daily.weather_code.push(dc);
-        daily.temperature_2m_max.push(_num(d.tmax));
-        daily.temperature_2m_min.push(_num(d.tmin));
-        daily.precipitation_probability_max.push(_num(d.precip));
-        daily.wind_speed_10m_max.push(_num(d.wind));
-        daily.weatherText.push(String(d.weather || _WMO_TEXT[dc] || ''));
+        daily.temperature_2m_max.push(_pickNum(d, ['tmax', 't_max', 'tempMax', 'high', '最高', '最高温']));
+        daily.temperature_2m_min.push(_pickNum(d, ['tmin', 't_min', 'tempMin', 'low', '最低', '最低温']));
+        daily.precipitation_probability_max.push(_pickNum(d, ['precip', 'pop', 'rain', '降水概率']));
+        daily.wind_speed_10m_max.push(_pickNum(d, ['wind', 'windSpeed', '风速']));
+        daily.weatherText.push(String(_pick(d, ['weather', '天气', 'condition']) || _WMO_TEXT[dc] || ''));
         daily.emoji.push(_WMO_EMOJI[dc] || '🌡️');
       });
       if (daily.time.filter(Boolean).length < 2) daily = null;   // 日期都拿不到 → 画不出表，交给保底

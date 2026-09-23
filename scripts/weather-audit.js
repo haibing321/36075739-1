@@ -30,7 +30,7 @@ const LLM_JSON = JSON.stringify({
 
 /** 页面内：拦掉真实网络（免费接口 + 大模型通道），并记录各自的调用次数与请求体 */
 const STUB = `(function(){
-  window.__wx = { free: 0, llm: 0, llmBodies: [], llmMode: 'ok' };
+  window.__wx = { free: 0, llm: 0, repair: 0, llmBodies: [], llmMode: 'ok' };
   var _of = window.fetch;
   window.fetch = function (url, opts) {
     var u = String((url && url.url) ? url.url : url);
@@ -54,7 +54,19 @@ const STUB = `(function(){
         if (window.__wx.llmMode === 'garbage') {
           return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text: '抱歉，我查不到这个车站的天气。' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
         }
+        // 联网后把 JSON 混在说明里的真实常见形态（无 JSON 块 → 触发结构化修补）
+        if (window.__wx.llmMode === 'prose') {
+          return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text: '根据联网检索，兰州今天多云，气温 18℃，体感 17℃，北风 3m/s；未来一周以多云到晴为主，周中有小雨。来源：中国天气网。' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
+        if (window.__wx.llmMode === 'slow') {
+          return new Promise(function (res) { setTimeout(function () { res(new Response(JSON.stringify({ content: [{ type: 'text', text: ${JSON.stringify(LLM_JSON)} }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })); }, 2500); });
+        }
         return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text: ${JSON.stringify(LLM_JSON)} }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      // 结构化修补：dsCallOnce 走 chat/completions（不带联网）
+      if (/chat\\/completions/.test(u)) {
+        window.__wx.repair++;
+        return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: ${JSON.stringify(LLM_JSON)} } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
     } catch (e) {}
     return _of.apply(this, arguments);
@@ -181,6 +193,55 @@ const STUB = `(function(){
     console.log('  ⑩ 电话(免费)：' + JSON.stringify(phone.t2));
     h.F(/大模型联网检索/.test(phone.t1) && /18°C/.test(phone.t1), '⑨ 应急电话卡片（有 Key）→ 用大模型结果并标注「🌐 大模型联网检索」（18°C 显示正确）');
     h.F(/免费公开接口/.test(phone.t2) && phone.free2 >= 1, '⑩ 应急电话卡片（无 Key）→ 保底免费并标注「🛰 免费公开接口（Open-Meteo）」');
+
+    // ---------- ⑪ 慢速联网时"点完立刻有反应"（用户反馈：发送按钮点完半天没反应）----------
+    const instant = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'slow';            // 大模型 2.5s 才回
+      var q = document.getElementById('ds-user-input');
+      var box = document.getElementById('ds-chat-box');
+      if (q) { q.value = '张掖现在的天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      var t0 = Date.now();
+      var p = window.dsSendMsg();               // 不 await：先看界面有没有反应
+      await new Promise(function (r) { setTimeout(r, 800); });
+      var txt = (box ? box.textContent : '') || '';
+      var snap = { ms: Date.now() - t0, hasUser: /张掖/.test(txt), hasHint: /正在联网检索/.test(txt) };
+      await p;
+      await new Promise(function (r) { setTimeout(r, 500); });
+      var after = (box ? box.textContent : '') || '';
+      snap.finalCard = /数据来源/.test(after);
+      return snap;
+    })()`, 90000);
+    console.log('  ⑪ 慢速联网即时反馈：' + JSON.stringify(instant));
+    h.F(instant.hasUser && instant.hasHint && instant.ms < 1500,
+      '⑪ 大模型联网 2.5s 期间，用户气泡与「🌐 正在联网检索…」占位在 ' + instant.ms + 'ms 内就已出现（原来要干等到查完）');
+
+    // ---------- ⑫ 联网返回散文（无 JSON）→ 结构化修补后仍用大模型结果 ----------
+    const repair = await h.ev(`(async () => {
+      window.__wx.llmMode = 'prose'; window.__wx.repair = 0; window.__wx.free = 0;
+      var r = await window.queryWeatherSmart('嘉峪关', { ttlMs: 0 });
+      return { ok: r.ok, source: r.source, channel: r.channel, repair: window.__wx.repair, free: window.__wx.free,
+               temp: r.current && r.current.temperature_2m };
+    })()`, 90000);
+    console.log('  ⑫ 散文→结构化修补：' + JSON.stringify(repair));
+    h.F(repair.ok && repair.source === 'llm' && /repair/.test(String(repair.channel)) && repair.repair >= 1 && repair.free === 0,
+      '⑫ 大模型返回散文（无 JSON）→ 自动做一次结构化修补，仍用大模型结果（不再轻易报"无法解析"）');
+
+    // ---------- ⑬ 大模型成功时，电话卡片不再挂那句"会自动改用免费数据源"的误导提示 ----------
+    const noMisleading = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok';
+      var d = document.createElement('div');
+      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox3"></div>';
+      document.body.appendChild(d);
+      await window.phoneGetWeather('测试站C', 36.07, 103.85, 'wxbox3', '');
+      await new Promise(function (r) { setTimeout(r, 600); });
+      var t = (document.getElementById('wxbox3') || {}).textContent || '';
+      return { hasSrc: /大模型联网检索/.test(t), misleading: /自动改用免费数据源/.test(t) || /已保底/.test(t) };
+    })()`, 60000);
+    console.log('  ⑬ 电话卡片提示：' + JSON.stringify(noMisleading));
+    h.F(noMisleading.hasSrc && !noMisleading.misleading,
+      '⑬ 大模型成功的卡片只标「🌐 数据来源：大模型联网检索」，不再挂"会自动改用免费数据源/已保底"的误导提示');
 
     await h.ev(`(() => { try { localStorage.removeItem('ds_api_key_v1'); sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {

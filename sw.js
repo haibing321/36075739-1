@@ -1,15 +1,17 @@
 /**
  * 安监智能辅助系统 - Service Worker v1
  * 策略: AppShell precache + 混合缓存。
- *   - 导航(HTML): 在线时「网络优先」(NetworkFirst)，确保已安装 PWA 不会一直使用
- *     旧的、含外部 CDN <script> 的缓存壳，从而避免移动端弱网/被墙时该脚本挂起、
- *     页面卡在启动图标界面(load 永不触发)。离线时直接返回缓存(秒开)。
+ *   - 导航(HTML): **离线优先(CacheFirst)**（v3.38 起，见下方 fetch 处理器）——打开/重载
+ *     （含折叠屏开合导致的页面重建）直接吃缓存，**不联网**；只有缓存缺失才联网兜底并写回。
+ *     新版本一律由用户在「设置 → 检查更新」里主动拉取激活。
+ *     ⚠️ 本注释原先写作「网络优先(NetworkFirst)」，与代码不符（已更正）——照它判断会误以为
+ *       每次打开都联网，排查"折叠屏开合像在连远程刷新"时会被带偏。
  *   - 本地模块/CSS/图片: CacheFirst(离线优先, 不轮询网络)。
  */
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260923194224';
+var CACHE_VERSION = '20260923195108';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -417,18 +419,23 @@ self.addEventListener('fetch', function(event) {
   //    仅当缓存缺失（如首次安装/清缓存）才联网兜底并写入缓存；离线且缓存缺失时返回内置启动页。
   if (req.mode === 'navigate') {
     event.respondWith(
-      caches.match(req, { cacheName: CACHE_NAME }).then(function(c) {
+      // 【2026-09-23 折叠屏反馈修复】原来只 `caches.match(req)`（**不忽略查询串**）：
+      //   带参数的入口 URL（分享链接 / ?v=xxx / ?from=…）与缓存的 './index.html' 不是同一个 key
+      //   → 每次都判为"缓存未命中"→ 联网 → 用户感知就是"一开合就连接远程刷新"。
+      //   现在：① 忽略查询串匹配；② 再兜底匹配 './index.html'（同样忽略查询串）——两者都没有才联网。
+      caches.match(req, { cacheName: CACHE_NAME, ignoreSearch: true }).then(function(c) {
         if (c) return c;                       // 离线优先：命中缓存直接返回，不联网
-        // 缓存未命中（首次安装/清缓存）才联网获取并写回缓存
-        return fetchWithTimeout(req, 3000).then(function(resp) {
-          if (resp.ok) {
-            var clone = resp.clone();
-            caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
-          }
-          return resp;
-        }).catch(function() {
-          return caches.match('./index.html', { cacheName: CACHE_NAME })
-            .then(function(c2) {
+        return caches.match('./index.html', { cacheName: CACHE_NAME, ignoreSearch: true }).then(function(cIdx) {
+          if (cIdx) return cIdx;               // 带参数的入口 URL 也能吃上缓存壳
+          // 缓存未命中（首次安装/清缓存）才联网获取并写回缓存
+          return fetchWithTimeout(req, 3000).then(function(resp) {
+            if (resp.ok) {
+              var clone = resp.clone();
+              caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
+            }
+            return resp;
+          }).catch(function() {
+            return caches.match('./index.html', { cacheName: CACHE_NAME, ignoreSearch: true }).then(function(c2) {
               if (c2) return c2;
               // 读取重试次数（fallback 页用 URL 参数传递），避免离线时无限自动刷新
               var n = 0;
@@ -438,6 +445,7 @@ self.addEventListener('fetch', function(event) {
               } catch (e) {}
               return _fallbackShell(n);
             });
+          });
         });
       })
     );

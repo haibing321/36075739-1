@@ -141,6 +141,59 @@ async function sendAndReadSub(h, text) {
       '⑫ 模板+资料（两步开）→ 提示"先按资料归纳问题类型并归入模板骨架章节 → 再按章节成文；问题分类以资料为准，模板只给骨架与写法"');
     h.F(/单步生成/.test(hint.single), '⑬ 关掉两步开关 → 提示切换为单步生成');
     h.F(/未使用模板/.test(hint.matOnly) && /资料归纳/.test(hint.matOnly), '⑭ 只选资料、不选模板 → 提示"按规范结构成文、问题类型以资料归纳为准"');
+    h.F(/长度说明/.test(hint.both) && /截取/.test(hint.both), '⑮ 选资料时给出**长度预算说明**（用户问过"前面内容过长会不会截断"）');
+
+    // ---------- ⑤ 归类表：只给代表性资料 + 只归纳典型事例 ----------
+    const plan = await h.ev(`(function () {
+      if (typeof window.wrBuildPlanPrompt !== 'function') return { err: 'not-exposed' };
+      var mats = [];
+      for (var i = 1; i <= 25; i++) mats.push({ matType: 'inspect', title: '资料' + i, content: ('内容' + i + '。').repeat(400) });
+      var r = window.wrBuildPlanPrompt('写一份月度通报', [{ level: 1, label: '一、总体情况' }, { level: 1, label: '二、主要问题' }], mats, { total: 0 }, {});
+      var p = r.userPrompt || '';
+      var nMat = (p.match(/资料\\d+【/g) || []).length;
+      return { nMat: nMat, hasTypical: /只归纳典型事例/.test(r.sysPrompt || ''), hasPointsCap: /points 最多 5 条/.test(r.sysPrompt || ''), len: p.length };
+    })()`, 40000);
+    h.F(!plan.err && plan.nMat <= 10, '⑯ 归类表只喂**代表性资料**（25 份输入 → ' + plan.nMat + ' 份；此前是 25 份全塞）');
+    h.F(plan.hasTypical && plan.hasPointsCap, '⑰ 归类要求已改为"只归纳典型事例、相似事例合并成要点、每条 ≤40 字"');
+
+    // ---------- ⑥ 折叠屏开合：不得整页重载/连远程 ----------
+    await h.ev(`(() => {
+      window.__boot = Date.now(); window.__net = [];
+      var of = window.fetch;
+      window.fetch = function () { try { window.__net.push(String((arguments[0] && arguments[0].url) || arguments[0]).slice(0, 60)); } catch (e) {} return of.apply(this, arguments); };
+      window.__res0 = performance.getEntriesByType('resource').length;
+      return 1;
+    })()`, 20000);
+    await h.cdp.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 760, deviceScaleFactor: 2, mobile: true }, h.sessionId);
+    await h.sleep(800);
+    await h.cdp.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 1380, deviceScaleFactor: 2, mobile: true, screenOrientation: { type: 'landscapePrimary', angle: 90 } }, h.sessionId);
+    await h.sleep(1200);
+    await h.cdp.send('Emulation.clearDeviceMetricsOverride', {}, h.sessionId);
+    await h.sleep(700);
+    const fold = await h.ev(`(() => ({
+      sameDoc: !!window.__boot,
+      res0: window.__res0, resNow: performance.getEntriesByType('resource').length,
+      net: (window.__net || []).filter(function (u) { return !/^data:/.test(u); }).length
+    }))()`, 30000);
+    h.F(fold.sameDoc && fold.resNow === fold.res0 && fold.net === 0,
+      '⑱ 折叠/展开不触发整页重载与远程请求（同一文档=' + fold.sameDoc + '，资源 ' + fold.res0 + '→' + fold.resNow + '，fetch ' + fold.net + ' 次）');
+
+    // ⚠️ 不能用 fetch 读 sw.js：上面为了测风险路由已经把 window.fetch 打成 stub 了（自伤过一次）
+    const swTxt = await h.ev(`(function () {
+      return new Promise(function (resolve) {
+        var x = new XMLHttpRequest();
+        x.open('GET', 'sw.js', true);
+        x.onload = function () {
+          var t = x.responseText || '';
+          resolve({ navIgnoreSearch: (t.match(/ignoreSearch: true/g) || []).length,
+                    navCacheFirst: /离线优先\\(CacheFirst\\)/.test(t) });
+        };
+        x.onerror = function () { resolve({ err: 'xhr-fail' }); };
+        x.send();
+      });
+    })()`, 30000);
+    h.F(swTxt.navIgnoreSearch >= 3 && swTxt.navCacheFirst,
+      '⑲ sw.js 导航缓存忽略查询串（ignoreSearch × ' + swTxt.navIgnoreSearch + '）→ 带参数入口也能吃缓存、不再连远程');
   } catch (e) {
     h.F(false, '套件异常：' + (e && e.message));
   }

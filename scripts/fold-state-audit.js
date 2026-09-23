@@ -284,7 +284,37 @@ const HELP = `(function(){
     h.F(afterC.panelActive === 'panel-material' && afterC.chipFault && afterC.readPos > 0,
       '⑬ 连续两轮开合后状态不累积错乱（仍在资料中心 + ⚡故障分类 + 阅读位置 ' + afterC.readPos + 'px [' + afterC.readKind + ']）');
 
-    await h.ev(`(() => { try { sessionStorage.clear(); localStorage.removeItem('wr_mat_filter'); } catch (e) {} return 1; })()`, 20000);
+    // ---------- ⑰ 折叠时被推迟的"新版本"更新：回到前台只提示、**绝不自动重载** ----------
+    const deferUpd = await h.ev(`(async () => {
+      window.__aliveMark = 'alive@' + Date.now();
+      localStorage.setItem('_apply_update_on_visible', '1');       // 模拟"隐藏在身时激活了新 SW"
+      try { Object.defineProperty(document, 'visibilityState', { get: function () { return 'visible'; }, configurable: true }); } catch (e) {}
+      document.dispatchEvent(new Event('visibilitychange'));
+      await new Promise(function (r) { setTimeout(r, 500); });
+      var tip = document.getElementById('_upd_ready_tip');
+      var out = { tip: !!tip, reloadBtn: !!(tip && document.getElementById('_upd_do')),
+                  laterBtn: !!(tip && document.getElementById('_upd_no')),
+                  text: tip ? String(tip.textContent).slice(0, 40) : '',
+                  stillAlive: window.__aliveMark };
+      if (tip && tip.parentNode) tip.parentNode.removeChild(tip);
+      return out;
+    })()`, 40000);
+    console.log('  ⑰ 推迟更新：' + JSON.stringify(deferUpd));
+    h.F(deferUpd.tip && deferUpd.reloadBtn && deferUpd.laterBtn && /^alive@/.test(deferUpd.stillAlive),
+      '⑰ 折叠中激活的新版本回到前台**只提示**「新版本已就绪 + 立即刷新/稍后」，页面仍存活（不自动重载）');
+
+    // ---------- ⑱ 源码级守卫：controllerchange 在页面隐藏时不得重载 ----------
+    let srcGuard = { hidden: false, toast: false };
+    try {
+      const appSrc = require('fs').readFileSync('src/js/app.js', 'utf8');
+      const cc = appSrc.match(/controllerchange[\s\S]{0,1200}?\}\);/);
+      srcGuard.hidden = !!(cc && /document\.hidden/.test(cc[0]));
+      srcGuard.toast = /_showUpdateReadyToast/.test(appSrc);
+    } catch (e) {}
+    h.F(srcGuard.hidden && srcGuard.toast,
+      '⑱ 源码守卫：SW `controllerchange` 分支里先判 `document.hidden`（隐藏时只标记待更新），并提供 `_showUpdateReadyToast` 由用户决定何时刷新');
+
+    await h.ev(`(() => { try { sessionStorage.clear(); localStorage.removeItem('wr_mat_filter'); localStorage.removeItem('_apply_update_on_visible'); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {
     h.F(false, '套件异常：' + (e && e.message));
   }

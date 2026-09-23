@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260923223433';
+var CACHE_VERSION = '20260923235501';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -509,6 +509,28 @@ self.addEventListener('fetch', function(event) {
           return resp;
         }).catch(function() {
           return new Response('', { status: 504, statusText: 'Gateway Timeout' });
+        });
+      })
+    );
+    return;
+  }
+
+  // 【2026-09-23】同源静态清单类文件（manifest.json 等）也走缓存：
+  //   它已在 PRECACHE_URLS 里，但原来落进下面"其他请求"分支直连网络 ——
+  //   浏览器每次加载都会拉一次 manifest（实测联网重建时唯一的真实网络请求），
+  //   导致"联网重建"在看板上仍是"有网络依赖"。**version.json 必须排除**：
+  //   更新检测就是要拿最新部署版本，读缓存会永远判不出新版本。
+  if (_sameOrigin && !/version\.json$/i.test(url.split('?')[0]) && /\.(json|webmanifest)$/i.test(url.split('?')[0])) {
+    event.respondWith(
+      caches.match(req, { cacheName: CACHE_NAME, ignoreSearch: true }).then(function (cached) {
+        if (cached) return cached;
+        return fetchWithTimeout(req, FETCH_TIMEOUT).then(function (resp) {
+          if (resp.ok) {
+            caches.open(CACHE_NAME).then(function (cache) { cache.put(req, resp.clone()); });
+          }
+          return resp;
+        }).catch(function () {
+          return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
         });
       })
     );

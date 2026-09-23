@@ -628,6 +628,42 @@
                     if (!iframe) return;
                     var realSrc = iframe.getAttribute('data-src') || window.__DOUBAO_WEB_SRC;
                     if (iframe.getAttribute('src') !== realSrc) iframe.src = realSrc;
+                    iframe.style.display = '';                       // 由占位态转正式加载时恢复显示
+                    var hold = container.querySelector('.ds-webview-hold');
+                    if (hold && hold.parentNode) hold.parentNode.removeChild(hold);
+                } catch (e) {}
+            };
+            /**
+             * 【2026-09-23 用户反馈"折叠开合时提示网络慢、还在远程加载"】
+             * 根因：豆包网页版 iframe 会在**建页/切 Tab/恢复上次子视图**时自动加载 doubao.com，
+             *   实测每次重建都会多出一次跨域请求（约 1.5s，弱网更久），把启动拖到 5s 之后
+             *   → 启动画面显示"网络较慢，正在加载资源…"。
+             * 现在改为**点击才加载**：默认显示占位卡片，用户主动点才注入真实地址；离线/弱网不会再有远程请求。
+             */
+            window.dsHoldDoubaoWebview = function(container) {
+                if (!container) return;
+                try {
+                    var iframe = container.querySelector('iframe');
+                    if (!iframe) return;
+                    var cur = iframe.getAttribute('src') || 'about:blank';
+                    if (cur && cur !== 'about:blank') return;                  // 已在加载或已加载，别打扰
+                    if (container.querySelector('.ds-webview-hold')) return;   // 占位已在
+                    var hold = document.createElement('div');
+                    hold.className = 'ds-webview-hold';
+                    hold.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;'
+                        + 'padding:30px 16px;text-align:center;color:var(--text-secondary);font-size:.86rem;height:82vh;';
+                    hold.innerHTML = '<div style="font-size:1.7rem">🌐</div>'
+                        + '<div style="font-weight:700;color:var(--text-primary);font-size:1rem">豆包网页版（需要联网）</div>'
+                        + '<div style="max-width:34em;line-height:1.8">为避免折叠屏开合、刷新、重建时出现远程加载拖慢启动，这里不再自动加载。</div>'
+                        + '<button class="btn-primary" style="padding:8px 18px;border-radius:8px;cursor:pointer;font-size:.9rem">点击加载豆包网页版</button>'
+                        + '<div style="font-size:.78rem;opacity:.85">离线或弱网时，建议直接用本地「智能对话」——数据都在本机，无需联网。</div>';
+                    var btn = hold.querySelector('button');
+                    if (btn) btn.onclick = function () {
+                        try { if (hold.parentNode) hold.parentNode.removeChild(hold); } catch (e) {}
+                        try { window.loadDoubaoWebview(container); } catch (e) {}
+                    };
+                    iframe.style.display = 'none';
+                    iframe.parentNode ? iframe.parentNode.insertBefore(hold, iframe) : container.appendChild(hold);
                 } catch (e) {}
             };
             window.unloadDoubaoWebview = function(container) {
@@ -660,7 +696,9 @@
                 var panel = panels[tab];
                 if (panel) panel.style.display = 'flex';
                 // 切到豆包网页版子视图时懒加载 iframe（联网）
-                if (tab === 'doubao' && typeof window.loadDoubaoWebview === 'function') window.loadDoubaoWebview(panel);
+                // 【2026-09-23】切到豆包网页版**不再自动联网加载**：先给占位卡片，用户点了才加载
+                //   （折叠屏开合/重建会走这条路，自动加载 doubao.com 会把启动拖到 5s 之后）
+                if (tab === 'doubao' && typeof window.dsHoldDoubaoWebview === 'function') window.dsHoldDoubaoWebview(panel);
                 _dsCurrentSub = tab;
                 if (tab === 'writer' && typeof wrInit === 'function') wrInit();
                 // 用户切到风险研判子视图时才刷新数据预览（启动路径不碰全库遍历）
@@ -697,10 +735,11 @@
                 if (typeof window.dsSyncSubFromDOM === 'function') {
                     try { window.dsSyncSubFromDOM(); } catch (e) { console.warn('[doubao] 子视图同步失败', e); }
                 }
-                // 还原后若豆包网页版是当前视图，确保联网加载（防御快照保存瞬间 iframe 尚未注入真实 src 的极端情况）
+                // 还原后若豆包网页版是当前视图：**只显示占位卡片**，不自动联网
+                //   （这条路径正是折叠开合/重建时被走的，自动加载 doubao.com 是"远程加载"的来源）
                 try {
-                    if (_dsCurrentSub === 'doubao' && typeof window.loadDoubaoWebview === 'function') {
-                        window.loadDoubaoWebview(document.getElementById('ds-sub-doubao'));
+                    if (_dsCurrentSub === 'doubao' && typeof window.dsHoldDoubaoWebview === 'function') {
+                        window.dsHoldDoubaoWebview(document.getElementById('ds-sub-doubao'));
                     }
                 } catch (e) {}
             });
@@ -993,12 +1032,12 @@
                 var subWriter = document.getElementById('ds-sub-writer');
                 var agentToolbar = document.getElementById('agent-toolbar');
 
-                // 豆包网页版：未配置 API 时显示（并懒加载 iframe）；已配置则隐藏并卸载（停止联网）
+                // 豆包网页版：未配置 API 时显示（**占位卡片，点击才联网加载**）；已配置则隐藏并卸载（停止联网）
                 if (webview) {
                     webview.style.display = hasApiKey ? 'none' : 'flex';
                     if (typeof window.unloadDoubaoWebview === 'function') {
                         if (hasApiKey) window.unloadDoubaoWebview(webview);
-                        else window.loadDoubaoWebview(webview);
+                        else if (typeof window.dsHoldDoubaoWebview === 'function') window.dsHoldDoubaoWebview(webview);
                     }
                 }
                 // 子模块 Tab 栏：配置 API 后显示

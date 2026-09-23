@@ -2026,7 +2026,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v3.90</span> · 2026.09.22</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.00</span> · 2026.09.23</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2035,6 +2035,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.00 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.00 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🌤️ 车站天气全面重构：大模型联网优先 + 免费公共接口保底（Open-Meteo），先出卡片再原地升级为「报告体」铁路安监研判（实况/一周趋势/安全提示），未接 API 也有规则化保底；应急电话坐标链修复（榆中等县镇级站不再漏天气）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ 天气查询提速：服务端检索预算压缩、纯天气答案缓存（同站再问 0 趟模型、实测 806ms）、地名接口负向缓存、字典毫秒级快查；应急电话渐进式（免费数据先出、大模型回来原地升级）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📱 折叠屏开合界面保持：资料中心筛选/阅读位置/根滚动落盘还原，开合不丢现场。</span></div>
+                </div>
             </div>
 
             <!-- v3.90 近期更新 -->
@@ -2050,26 +2063,8 @@
                 </div>
             </div>
 
-            <!-- v3.84 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.84 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚀 KB 检索大幅提速：索引惰性化（首检索 12.3s→0.96s、堆 -92MB）+ 检索算法提速 46~63×，对规审计 23/23 通过。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📥 检查信息/大 Excel 导入护栏与差量写入：5000 行 18.9s→1.9s、put 48586→5000 次，重复导入 0 写入；导入前释放解析中间产物降峰值堆。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧪 真实数据基准套件：端到端真数据回归 + 性能门禁（冷启动堆 &lt;350MB、检索 P50 &lt;1500ms），长句 911ms、短查询 114~175ms、二次会话 139ms。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>💾 备份恢复 + 数据导入导出两个审计套件入库（data-io 12/12、backup 8/8），执行器注册 11 套件；迭代回归支持断点续跑与自动部署计数。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 备忘录独立导入/导出/清空；诊断数据导出（错误日志/性能报告）；补齐电话模板下载/写作模板导入/资料 Excel 专用导入三个无 UI 入口。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 真实测试数据端到端回归，修复电话去重缺陷；v3.84 回退批量惰性 df（实测更慢），改回按需逐词计算（提速来自 df 缓存跨会话复用）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 对齐业界 LLM 评测：新增 mutation-check（注入 3 缺陷验证套件确实失败 + 字节级还原）、相对基线性能门禁与 Flaky 隔离、AUDIT_BASE_URL 部署后 smoke、结果绑定版本指纹（mutation 6/6）。</span></div>
-                </div>
-            </div>
-
-            <!-- v3.76 及以下已归档（最近 2 版本为 v3.90 / v3.84） -->
-
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.76 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <!-- v3.84 及以前已归档（最近 2 版本为 v4.00 / v3.90） -->
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.84 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

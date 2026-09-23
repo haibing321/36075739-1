@@ -1507,6 +1507,88 @@
     } finally { delete _wSmartInflight[st]; }
   };
 
+  // ================================================================
+  // 【2026-09-23 用户反馈"以前查询完天气还会根据天气进行工作提示，现在没了"】
+  // ================================================================
+  // 根因：那段提示**不是专门功能**，而是"天气问题落到模型手里时模型自己附上的"
+  //   —— v3.94 把取值链做可靠后，纯天气问题基本都命中静态卡片，模型的提示就随之消失了。
+  // 现在补成显式能力：卡片照给，**再补一段「工作提示」**（大模型优先 → 无 Key/失败用规则化保底）。
+  /** 把天气数据压成给模型看的一行行文本（只喂数据，不让它复述） */
+  function _weatherSummaryText(w, stationName) {
+    if (!w) return '';
+    var lines = ['车站：' + (stationName || w.station || '')];
+    var cur = w.current || {};
+    if (cur.weather || cur.temp) {
+      lines.push('实况：' + (cur.weather || '') + ' ' + (cur.temp || '') + (cur.wind ? ('，风力 ' + cur.wind) : ''));
+    }
+    var d = w.daily;
+    if (d && d.time && d.time.length) {
+      lines.push('未来预报：');
+      for (var i = 0; i < Math.min(d.time.length, 7); i++) {
+        var wt = (d.weatherText && d.weatherText[i]) || _WMO_TEXT[(d.weather_code || [])[i]] || '';
+        var hi = (d.temperature_2m_max || [])[i];
+        var lo = (d.temperature_2m_min || [])[i];
+        var pp = (d.precipitation_probability_max || [])[i] != null ? (d.precipitation_probability_max || [])[i] : (d.tmax ? (d.precip || [])[i] : null);
+        var wd = (d.wind_speed_10m_max || [])[i] != null ? (d.wind_speed_10m_max || [])[i] : (d.wind || [])[i];
+        lines.push('- ' + (d.time[i] || ('第' + (i + 1) + '天')) + ' ' + wt
+          + (hi != null ? (' ' + Math.round(hi) + '/' + Math.round(lo) + '℃') : '')
+          + (pp != null ? (' 降水概率' + Math.round(pp) + '%') : '')
+          + (wd != null ? (' 风' + Math.round(wd) + 'm/s') : ''));
+      }
+    }
+    return lines.length > 1 ? lines.join('\n') : '';
+  }
+  /** 规则化保底提示（未接 API / 大模型失败；离线也能给出可用提示） */
+  function _ruleTips(w) {
+    var tips = [];
+    var cur = (w && w.current) || {}, d = (w && w.daily) || {};
+    var texts = [];
+    if (cur.weather) texts.push(String(cur.weather));
+    (d.weatherText || []).forEach(function (t) { if (t) texts.push(String(t)); });
+    var codes = [];
+    if (cur.weather_code != null) codes.push(cur.weather_code);
+    (d.weather_code || []).forEach(function (c) { if (c != null) codes.push(c); });
+    var blob = texts.join(' ');
+    var has = function (re) { return re.test(blob) || codes.some(function (c) { return re.test(String(_WMO_TEXT[c] || '')); }); };
+    var wind = _num(cur.wind_speed_10m);
+    if (wind == null && d.wind_speed_10m_max && d.wind_speed_10m_max.length) wind = _num(d.wind_speed_10m_max[0]);
+    var tmax = _num(cur.temperature_2m);
+    if (tmax == null && d.temperature_2m_max && d.temperature_2m_max.length) tmax = _num(d.temperature_2m_max[0]);
+    var tmin = _num(d.temperature_2m_min && d.temperature_2m_min[0]);
+    if (has(/雷暴|雷电|冰雹/) || /雷/.test(blob)) tips.push('雷暴天气：暂停露天与登高作业，远离接触网、高杆灯等高大设备。');
+    if (has(/大雪|中雪|小雪|阵雪|雪粒|冻雨|雾凇/)) tips.push('雨雪冰冻：及时清除道岔与走行部位积雪结冰，加强防滑防冻。');
+    if (has(/雨/)) tips.push('降雨天气：加强线路与路基巡视，注意道床积水冲刷，作业防滑防触电。');
+    if (has(/雾|霾|浮尘|扬沙/)) tips.push('低能见度：加强瞭望、必要时限速，注意行车与人身安全。');
+    if (wind != null && wind >= 10) tips.push('大风天气：停止高空作业，清理轻飘物、加固临时设施，防止异物侵限。');
+    if (tmax != null && tmax >= 35) tips.push('高温天气：避开高温时段作业，做好防暑降温，关注钢轨与设备温度。');
+    if (tmin != null && tmin <= -5) tips.push('低温天气：做好设备防冻与人员保暖，注意金属件脆裂风险。');
+    if (!tips.length) tips.push('天气总体平稳：按标准作业，作业前关注现场天气变化，做好防护与应急准备。');
+    return tips.slice(0, 3).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
+  }
+  /**
+   * 根据天气生成「工作提示」。大模型优先（不带联网：只基于已拿到的天气做建议），
+   * 未接 API / 失败 → 规则化保底。返回 Markdown 文本（失败也不抛异常，最差也有保底文案）。
+   */
+  window.weatherWorkTips = async function (w, stationName, opts) {
+    opts = opts || {};
+    var summary = _weatherSummaryText(w, stationName);
+    if (!summary) return '';
+    try {
+      if (typeof window.dsCallOnce === 'function') {
+        var r = await window.dsCallOnce(
+          '你是铁路安监助手。根据给定的车站天气，输出**不超过 3 条**针对铁路现场作业的安全提示。'
+          + '要求：每条一行、以「序号. 」开头、每条不超过 40 字；必须紧扣给出的天气（降雨→道床/路基/电气化设备与防滑；'
+          + '大风→高空作业与轻飘物侵限；高温→防暑与设备温度；降雪结冰→防滑除冰；雷暴→停止露天登高作业；低能见度→瞭望与限速）。'
+          + '不要复述天气数据，不要客套话，不要输出标题。',
+          summary,
+          { maxTokens: 400, timeoutMs: 20000, temperature: 0.3 }
+        );
+        if (r && r.ok && r.text && String(r.text).trim()) return String(r.text).trim();
+      }
+    } catch (e) {}
+    return _ruleTips(w);
+  };
+
   // 暴露工具注册表与执行器，供「智能对话」模块 P1 Tool Calls 复用（与智能体共用同一套 schema 与本地实现，单点维护，避免重复定义）
   window._agentToolsParam = _toolsParam;
   window._agentExecuteTool = _executeTool;

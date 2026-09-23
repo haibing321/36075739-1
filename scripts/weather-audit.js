@@ -28,9 +28,12 @@ const LLM_JSON = JSON.stringify({
   })
 });
 
+// 假的"工作提示"（大模型基于天气给出的作业安全提示）
+const TIPS_TEXT = '1. 降雨天气：加强线路与路基巡视，作业防滑防触电。\n2. 大风时停止高空作业并清理轻飘物。\n3. 关注设备温度与防护用品佩戴。';
+
 /** 页面内：拦掉真实网络（免费接口 + 大模型通道），并记录各自的调用次数与请求体 */
 const STUB = `(function(){
-  window.__wx = { free: 0, llm: 0, repair: 0, llmBodies: [], llmMode: 'ok' };
+  window.__wx = { free: 0, llm: 0, repair: 0, tips: 0, llmBodies: [], llmMode: 'ok' };
   var _of = window.fetch;
   window.fetch = function (url, opts) {
     var u = String((url && url.url) ? url.url : url);
@@ -63,8 +66,13 @@ const STUB = `(function(){
         }
         return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text: ${JSON.stringify(LLM_JSON)} }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
-      // 结构化修补：dsCallOnce 走 chat/completions（不带联网）
+      // dsCallOnce 走 chat/completions（不带联网）：既用于"结构化修补"，也用于"工作提示"
       if (/chat\\/completions/.test(u)) {
+        var _b = String((opts && opts.body) || '');
+        if (/安全提示/.test(_b)) {
+          window.__wx.tips++;
+          return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: ${JSON.stringify(TIPS_TEXT)} } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
         window.__wx.repair++;
         return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: ${JSON.stringify(LLM_JSON)} } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
@@ -242,6 +250,58 @@ const STUB = `(function(){
     console.log('  ⑬ 电话卡片提示：' + JSON.stringify(noMisleading));
     h.F(noMisleading.hasSrc && !noMisleading.misleading,
       '⑬ 大模型成功的卡片只标「🌐 数据来源：大模型联网检索」，不再挂"会自动改用免费数据源/已保底"的误导提示');
+
+    // ---------- ⑭ 纯天气问题：卡片之后要补「工作提示」（大模型生成）----------
+    const tipsLlm = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok'; window.__wx.tips = 0;
+      var q = document.getElementById('ds-user-input');
+      var box = document.getElementById('ds-chat-box');
+      if (q) { q.value = '白银今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      await window.dsSendMsg();
+      await new Promise(function (r) { setTimeout(r, 1800); });
+      var t = (box ? box.children[box.children.length - 1].textContent : '') || '';
+      return { hasTips: /工作提示/.test(t), hasData: /数据来源/.test(t), tipsCalled: window.__wx.tips,
+               sample: (t.match(/工作提示[\\s\\S]{0,80}/) || [''])[0].replace(/\\s+/g, ' ') };
+    })()`, 90000);
+    console.log('  ⑭ 对话工作提示(大模型)：' + JSON.stringify(tipsLlm));
+    h.F(tipsLlm.hasData && tipsLlm.hasTips && tipsLlm.tipsCalled >= 1,
+      '⑭ 纯天气问题：天气卡片之后补出「🛡️ 工作提示」（由大模型按天气生成，调用 ' + tipsLlm.tipsCalled + ' 次）');
+
+    // ---------- ⑮ 未接 API 时：工作提示走规则化保底，仍然有 ----------
+    const tipsRule = await h.ev(`(async () => {
+      localStorage.removeItem('ds_api_key_v1');
+      window.__wx.tips = 0;
+      var q = document.getElementById('ds-user-input');
+      var box = document.getElementById('ds-chat-box');
+      if (q) { q.value = '定西的天气情况怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      await window.dsSendMsg();
+      await new Promise(function (r) { setTimeout(r, 1800); });
+      var t = (box ? box.children[box.children.length - 1].textContent : '') || '';
+      return { hasTips: /工作提示/.test(t), tipsCalled: window.__wx.tips,
+               ruleLike: /(降雨|大风|防滑|作业|巡视|防护)/.test(t) };
+    })()`, 90000);
+    console.log('  ⑮ 对话工作提示(规则保底)：' + JSON.stringify(tipsRule));
+    h.F(tipsRule.hasTips && tipsRule.tipsCalled === 0,
+      '⑮ 未接 API：工作提示走**规则化保底**（未调大模型 ' + tipsRule.tipsCalled + ' 次），提示照旧给出');
+
+    // ---------- ⑯ 规则保底本身能按天气给对提示 ----------
+    const rule = await h.ev(`(async () => {
+      localStorage.removeItem('ds_api_key_v1');
+      var w = { current: { weather: '雷阵雨', weather_code: 95, temperature_2m: 36, wind_speed_10m: 12 },
+                daily: { time: ['2026-09-23','2026-09-24'], weather_code: [95, 63], weatherText: ['雷阵雨','中雨'], temperature_2m_max: [36, 30], temperature_2m_min: [22, 19] } };
+      var t = await window.weatherWorkTips(w, '测试站');
+      // 高温单列一组：上组 雷暴+降雨+大风 已占满 3 条（优先级正确），高温会被挤掉，所以分开测
+      var w2 = { current: { weather: '晴', weather_code: 0, temperature_2m: 38, wind_speed_10m: 3 },
+                 daily: { time: ['2026-09-23','2026-09-24'], weather_code: [0, 1], weatherText: ['晴','少云'], temperature_2m_max: [38, 37], temperature_2m_min: [27, 26] } };
+      var t2 = await window.weatherWorkTips(w2, '测试站');
+      return { text: t.replace(/\\n/g, ' | '), lines: t.split('\\n').filter(Boolean).length,
+               hasThunder: /雷/.test(t), hasWind: /大风|高空/.test(t),
+               heatText: t2.replace(/\\n/g, ' | '), hasHeat: /高温|防暑|避开/.test(t2) };
+    })()`, 60000);
+    console.log('  ⑯ 规则保底：' + JSON.stringify(rule));
+    h.F(rule.lines >= 1 && rule.lines <= 3 && rule.hasThunder && rule.hasWind && rule.hasHeat,
+      '⑯ 规则化保底按天气给提示：雷暴+降雨+大风 → 命中雷暴/大风 共 ' + rule.lines + ' 条（≤3）；晴 38℃ → ' + (rule.hasHeat ? '命中高温防暑' : '未命中高温'));
 
     await h.ev(`(() => { try { localStorage.removeItem('ds_api_key_v1'); sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {

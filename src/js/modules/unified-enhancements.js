@@ -491,54 +491,62 @@
           if (st) {
             const STRONG_TASK = /写报告|生成.*报告|起草|撰写|月度总结|整改通知书|对规|违反|违章|不符合|哪条规章|风险|趋势|研判|预警/;
             const COMPOSITE_HINT = /分析|总结|说明|影响|安排|计划|方案|措施|建议|给我|帮我|评估|预测|制定|规划|梳理|整理|对比|检查|报告|通知|通报|安全|作业|施工|防洪|排查|注意|根据|结合|考虑|处理|应对|防范/;
-            try {
-              // 【2026-09-23】优先大模型联网检索，未接 API / 未查到 → 内部自动保底免费接口
-              //   （原来直接走本地免费接口，只有"查不到车站"时才让对话强制联网）
-              const w = (typeof window.queryWeatherSmart === 'function')
-                ? await window.queryWeatherSmart(st)
-                : await window.queryWeather({ stationName: st });
-              if (w && w.ok) {
-                if (STRONG_TASK.test(question)) {
-                  // 强任务：交给原路由（天气站名已随 question 带入任务文本，不抢答）
-                } else if (!COMPOSITE_HINT.test(question)) {
-                  // 纯天气询问：直接返回卡片
-                  _pushUser(question);
-                  _pushAssistant(formatWeather(w, st));
-                  input.value = '';
-                  if (input.style) input.style.height = '';
-                  return;
-                } else {
-                  // 复合问题：注入天气上下文，直接走 AI 流综合回答（气泡仍显示用户原话）
-                  let finalText = question + '\n\n[参考天气信息·' + st + ']\n' + formatWeather(w, st);
+            // 强任务（写报告/对规/风险/班组安排…）：完全交给原路由，**不预查天气**
+            //   （原来会先查一次天气再丢弃，纯浪费一次大模型联网）
+            if (!STRONG_TASK.test(question)) {
+              let ph = null;
+              try {
+                // 【2026-09-23 修复用户反馈"发送后半天没反应"】
+                //   先出用户气泡 + 一条"正在联网检索"占位，再去查天气；查到后把占位**原地替换**成卡片。
+                //   原来顺序反了（先 await 5~20s，界面上什么都不动）。
+                _pushUser(question);
+                input.value = '';
+                if (input.style) input.style.height = '';
+                ph = _pushProgressBubble('🌐 正在联网检索「' + st + '」的天气…\n\n_（优先大模型联网；未接 API 或检索不到会自动改用免费数据源，一般 5~20 秒）_');
+                // 联网上限收窄到 15s：超时立刻走保底，不让用户干等
+                const w = (typeof window.queryWeatherSmart === 'function')
+                  ? await window.queryWeatherSmart(st, { timeoutMs: 15000 })
+                  : await window.queryWeather({ stationName: st });
+                if (w && w.ok) {
+                  const card = formatWeather(w, st);
+                  if (!COMPOSITE_HINT.test(question)) {
+                    _updateBubble(ph, card);                       // 占位变卡片（不新开一条，避免闪烁）
+                    return;
+                  }
+                  // 复合问题：把天气并进最后一条用户消息，交给 AI 流综合回答（气泡仍只显示用户原话）
+                  let finalText = question + '\n\n[参考天气信息·' + st + ']\n' + card;
                   const validAttach = (window._dsAttachments || []).filter(Boolean);
                   if (validAttach.length) {
                     finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
                     window._dsAttachments = [];
                   }
-                  const hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : null;
-                  if (hist && typeof window.dsRenderAll === 'function') {
-                    hist.push({ role: 'user', content: finalText, displayText: question });
-                    window.dsRenderAll();
+                  _dropBubble(ph);
+                  if (_injectIntoLastUser(finalText) && typeof window._dsRunStream === 'function') {
+                    if (typeof window.dsRenderAll === 'function') window.dsRenderAll();
                     await window._dsRunStream(finalText);
                   } else {
-                    input.value = finalText;
-                    await _origSend.apply(this, arguments);
+                    _pushAssistant(finalText);                     // 极端降级：至少把结果给出来
                   }
-                  input.value = '';
-                  if (input.style) input.style.height = '';
                   return;
                 }
-              } else {
-                // 本地未查到该车站天气（不在电话簿/内置字典，或查询失败）→ 自动联网搜索，不返回"未找到"
-                // 流式阶段会显示「🌐 正在联网搜索…」作为降级提示
+                // 查不到（不在字典/电话簿，或大模型与免费接口都失败）→ 撤销占位与预推气泡、复位输入框，
+                // 再用原路由强制联网搜索（行为与改造前一致，且不会出现重复气泡）
+                _dropBubble(ph); ph = null;
+                _dropLastUser();
+                input.value = question;
                 window._dsForceWebSearch = true;
                 await _origSend.apply(this, arguments);
                 input.value = '';
                 if (input.style) input.style.height = '';
                 return;
+              } catch (e) {
+                // 出异常也要把界面复位，再落到下面的原路由（不能让占位气泡挂在那儿）
+                _dropBubble(ph);
+                _dropLastUser();
+                input.value = question;
+                try { if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); } catch (e2) {}
               }
-              // 天气查询失败 / 未找到车站 / 强任务 → 退化为普通对话或原路由（交给 AI，不再抢答天气）
-            } catch (e) {}
+            }
           }
         }
       }
@@ -576,11 +584,62 @@
   }
 
   // 将用户消息推入历史（不渲染，由随后的 _pushAssistant 统一触发 dsRenderAll）
-  function _pushUser(text) {
+  // displayText：气泡只显示这句话（content 里可以塞进天气上下文/附件等长内容）
+  function _pushUser(text, displayText) {
     if (typeof window.getDsHistory === 'function') {
       var hist = window.getDsHistory();
-      if (hist) hist.push({ role: 'user', content: text });
+      if (hist) hist.push({ role: 'user', content: text, displayText: displayText || text });
     }
+  }
+
+  // ---------- 【2026-09-23 用户反馈"发送后半天没反应"】等待期的可见反馈 ----------
+  // 原来天气分支是「先 await 查天气（大模型联网 5~20s）→ 才推用户气泡」，
+  // 点击后界面上什么都不动，用户以为卡住了。现在改为：先出用户气泡 + 一条占位提示，
+  // 查到结果再把占位**原地替换**成天气卡片（对象引用直接改 content 重渲染）。
+  function _pushProgressBubble(text) {
+    if (typeof window.getDsHistory !== 'function' || typeof window.dsRenderAll !== 'function') return null;
+    var hist = window.getDsHistory();
+    if (!hist) return null;
+    var msg = { role: 'assistant', content: text };
+    hist.push(msg);
+    try { window.dsRenderAll(); } catch (e) {}
+    return msg;
+  }
+  function _updateBubble(msg, text) {
+    if (!msg) return;
+    msg.content = text;
+    try { if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); } catch (e) {}
+  }
+  function _dropBubble(msg) {
+    try {
+      var hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : null;
+      if (hist && msg) { var i = hist.indexOf(msg); if (i >= 0) hist.splice(i, 1); }
+      if (typeof window.dsRenderAll === 'function') window.dsRenderAll();
+    } catch (e) {}
+  }
+  /** 撤销刚推入的那条用户消息（用于"改走原路由"前复位，避免气泡重复） */
+  function _dropLastUser() {
+    try {
+      var hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : null;
+      if (!hist || !hist.length) return;
+      var last = hist[hist.length - 1];
+      if (last && last.role === 'user') hist.pop();
+    } catch (e) {}
+  }
+  /** 复合问题：把天气上下文并进"最后一条用户消息"的 content（气泡仍只显示用户原话） */
+  function _injectIntoLastUser(finalText) {
+    try {
+      var hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : null;
+      if (!hist) return false;
+      for (var i = hist.length - 1; i >= 0; i--) {
+        if (hist[i] && hist[i].role === 'user') {
+          if (!hist[i].displayText) hist[i].displayText = hist[i].content;
+          hist[i].content = finalText;
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
   }
 
   // 将一条助手消息推入历史并触发渲染（复用已暴露的 dsRenderAll）

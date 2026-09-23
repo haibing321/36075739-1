@@ -1595,6 +1595,69 @@
     return _ruleTips(w);
   };
 
+  /**
+   * 【2026-09-23】解析车站坐标（供应急电话等模块使用）。
+   * 背景（用户反馈）："榆中天气在对话里查得到，应急电话却报'未找到坐标'" ——
+   *   榆中既不在内置字典里，Open-Meteo 的地名接口也匹配不到；而应急电话原来在坐标解析失败时**直接放弃**，
+   *   连"根本不需要坐标"的大模型联网那条路都没走。
+   * 顺序：① 内置车站字典（兰州局 100+ 站，离线可用、零成本）→ ② 大模型联网检索（县/镇级站）。
+   * 返回 { ok, lat, lon, name, admin, source:'dict'|'llm' }
+   */
+  var _coordCache = {};
+  window.queryStationCoord = async function (stationName, opts) {
+    opts = opts || {};
+    var st = String(stationName == null ? '' : stationName).trim();
+    if (!st) return { ok: false, error: 'no-station' };
+    if (_coordCache[st]) {
+      var cc = {}; for (var k in _coordCache[st]) if (Object.prototype.hasOwnProperty.call(_coordCache[st], k)) cc[k] = _coordCache[st][k];
+      cc.cached = true; return cc;
+    }
+    // ① 内置字典：精确 → 前缀 → 包含（包含匹配取最长 key，避免"西"误命中"兰州西"）
+    try {
+      if (_staticCoordCache) {
+        var hit = _staticCoordCache[st], best = '';
+        if (!hit) {
+          var keys = Object.keys(_staticCoordCache);
+          for (var i = 0; i < keys.length; i++) {
+            var kk = keys[i];
+            if (kk === st) { best = kk; break; }
+            if ((st.indexOf(kk) === 0 || kk.indexOf(st) === 0 || st.indexOf(kk) > 0) && kk.length > best.length) best = kk;
+          }
+          if (best) hit = _staticCoordCache[best];
+        }
+        if (hit && hit[0] && hit[1]) {
+          var r0 = { ok: true, lat: hit[0], lon: hit[1], name: st, source: 'dict' };
+          _coordCache[st] = r0; return r0;
+        }
+      }
+    } catch (e) {}
+    // ② 大模型联网查坐标（字典没有的车站/县镇）
+    if (typeof window.dsWebSearchOnce === 'function') {
+      try {
+        var r = await window.dsWebSearchOnce(
+          '你是地理信息助手。请联网检索用户给出的中国铁路车站（或县/镇）的经纬度。'
+          + '严格只输出一个 JSON 对象：{"found":true,"name":"规范名称","admin":"省·市·县","lat":纬度数字,"lon":经度数字}；'
+          + '查不到就输出 {"found":false}。不要解释、不要代码块。',
+          '地点：' + st + '（中国铁路车站或县镇名，请给出其中心点经纬度）',
+          { timeoutMs: opts.timeoutMs || 15000, maxTokens: 400 }
+        );
+        if (r && r.ok) {
+          var j = window.dsParseJsonLoose ? window.dsParseJsonLoose(r.text) : null;
+          var lat = j ? _num(_pick(j, ['lat', 'latitude', '纬度'])) : null;
+          var lon = j ? _num(_pick(j, ['lon', 'lng', 'longitude', '经度'])) : null;
+          if (j && j.found !== false && lat != null && lon != null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+            var r1 = { ok: true, lat: lat, lon: lon,
+                       name: String(_pick(j, ['name', '名称']) || st),
+                       admin: String(_pick(j, ['admin', '行政区划', 'address']) || ''),
+                       source: 'llm' };
+            _coordCache[st] = r1; return r1;
+          }
+        }
+      } catch (e2) {}
+    }
+    return { ok: false, error: 'coord-not-found' };
+  };
+
   // 暴露工具注册表与执行器，供「智能对话」模块 P1 Tool Calls 复用（与智能体共用同一套 schema 与本地实现，单点维护，避免重复定义）
   window._agentToolsParam = _toolsParam;
   window._agentExecuteTool = _executeTool;

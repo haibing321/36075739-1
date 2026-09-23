@@ -479,15 +479,41 @@
                 if (btn) btn.disabled = true;
 
                 try {
-                    // 坐标优先级：已存经纬度(缓存命中) > 联网 geocode
-                    // 这样离线/file:// 无代理时也能查已存坐标的天气，且避免每次多余请求
-                    if (!lat || !lon) {
-                        try {
-                            const coords = await window.phoneGeocode(stationName, lineName);
-                            if (coords) { lat = coords.lat; lon = coords.lon; }
-                        } catch (_) {}
+                    const _why = (k) => ({ 'no-key': '未接 API', 'no-websearch-api': '不可用', 'timeout': '超时', 'llm-not-found': '未查到该车站', 'llm-unparsed': '返回无法解析', 'llm-empty': '返回为空', 'network': '网络不可达', 'llm-failed': '调用失败' })[k] || '';
+                    let w = null, srcLabel = '', srcNote = '', llmWhy = '';
+
+                    // ① 【第一优先】大模型联网检索 —— **不需要坐标**。
+                    //    用户反馈："榆中天气对话里能查到，应急电话却报'未找到坐标'"：
+                    //    榆中不在内置字典、Open-Meteo 地名接口也匹配不到，而原实现在坐标解析失败时**直接放弃**，
+                    //    连这条不需要坐标的路都没走。
+                    try {
+                        const llm = await window.queryWeatherSmart(stationName, { skipFree: true });
+                        if (llm && llm.ok && llm.current) {
+                            w = llm;
+                            srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
+                            srcNote = '';   // 不再挂常驻提示（只有真降级时才写原因）
+                        } else {
+                            llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
+                        }
+                    } catch (e) { llmWhy = (e && e.message) || 'llm-error'; }
+
+                    // ② 只有需要免费公开接口时才解析坐标：
+                    //    已存经纬度(缓存) > 内置车站字典 / 大模型联网查坐标 > Open-Meteo 地名接口
+                    if (!w && (!lat || !lon)) {
+                        if (!lat && typeof window.queryStationCoord === 'function') {
+                            try {
+                                const c = await window.queryStationCoord(stationName);
+                                if (c && c.ok) { lat = c.lat; lon = c.lon; }
+                            } catch (_) {}
+                        }
+                        if (!lat) {
+                            try {
+                                const coords = await window.phoneGeocode(stationName, lineName);
+                                if (coords) { lat = coords.lat; lon = coords.lon; }
+                            } catch (_) {}
+                        }
                     }
-                    // 把（geocode 得到的）坐标补回数据，便于下次离线直接查
+                    // 把解析到的坐标补回电话簿：下次（含离线）可直接查
                     if (lat) {
                         for (let i = 0; i < phoneData.length; i++) {
                             if (phoneData[i].站名 === stationName) {
@@ -499,31 +525,8 @@
                         saveToStorage();
                     }
 
-                    if (!lat) {
-                        box.innerHTML = `<div style="background:#450a0a;border-radius:8px;padding:10px;color:#fca5a5;font-size:.82rem;text-align:center;">⚠️ 未找到坐标，暂无法查天气。<br><span style="opacity:.7;font-size:.78rem">联网搜索不可用时请手动补充</span></div>`;
-                        return;
-                    }
-
-                    // 【2026-09-23】数据来源优先级（用户要求：**优先大模型联网，未接 API / 未查到再保底免费**）
-                    //   ① 大模型联网检索（skipFree：这一路只问大模型，失败立刻往下走）；
-                    //   ② 本模块直连免费公开接口 —— 字段最全（湿度/气压/风向/降水），file:// 开发态走本地代理 PROXY；
-                    //   ③ 共享天气层 queryWeatherSmart（大模型 + 免费公开接口，带 10 分钟缓存）—— ② 都拿不到时的最后兜底；
-                    //   ④ 全失败 → 报错。
-                    const _why = (k) => ({ 'no-key': '未接 API', 'no-websearch-api': '不可用', 'timeout': '超时', 'llm-not-found': '未查到该车站', 'llm-unparsed': '返回无法解析', 'llm-empty': '返回为空', 'network': '网络不可达', 'llm-failed': '调用失败' })[k] || '';
-                    let w = null, srcLabel = '', srcNote = '', llmWhy = '';
-                    try {
-                        const llm = await window.queryWeatherSmart(stationName, { skipFree: true });
-                        if (llm && llm.ok && llm.current) {
-                            w = llm;
-                            srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
-                            // 这里不再挂"未接 API 会自动改用免费数据源"的常驻提示：
-                            //   用户反馈看着像是"本次已经降级了"。真正降级时下面那条会写明原因。
-                            srcNote = '';
-                        } else {
-                            llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
-                        }
-                    } catch (e) { llmWhy = (e && e.message) || 'llm-error'; }
-                    if (!w) {
+                    // ③ 免费直连 —— 字段最全（湿度/气压/风向/降水），file:// 开发态走本地代理 PROXY
+                    if (!w && lat) {
                         try {
                             const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
                             if (!r.ok) throw new Error('服务暂时不可用');
@@ -535,15 +538,24 @@
                             }
                         } catch (_) {}
                     }
+                    // ④ 共享保底（**不再重试大模型**：上面刚试过；preferLLM:false 只走免费层，带 10 分钟缓存）
                     if (!w) {
-                        const smart = await window.queryWeatherSmart(stationName);
+                        const smart = await window.queryWeatherSmart(stationName, { preferLLM: false });
                         if (smart && smart.ok && smart.current) {
                             w = smart;
                             srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
                             srcNote = '（大模型联网' + (_why(smart.degraded || llmWhy) || '不可用') + '，已保底）';
                         }
                     }
-                    if (!w) throw new Error('天气查询失败，请稍后重试');
+                    // ⑤ 全失败 → 给出**可操作**的提示（别再只说"未找到坐标"）
+                    if (!w) {
+                        box.innerHTML = '<div style="background:#450a0a;border-radius:8px;padding:10px;color:#fca5a5;font-size:.82rem;text-align:center;">⚠️ 天气查询失败<br>'
+                            + '<span style="opacity:.7;font-size:.78rem">'
+                            + (lat ? ('大模型联网与免费接口都拿不到数据（' + (_why(llmWhy) || '网络受限') + '），请检查网络后重试')
+                                   : '该站既没有坐标、联网也没查到：请在电话簿中为该站补充经纬度，或检查网络后重试')
+                            + '</span></div>';
+                        return;
+                    }
                     const cur = w.current;
                     const daily = w.daily || { time: [] };   // 兜底路径可能只有实况，没有 7 天
                     const wmo = {

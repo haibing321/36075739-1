@@ -34,7 +34,7 @@ const TIPS_TEXT = '1. 降雨天气：加强线路与路基巡视，作业防滑�
 
 /** 页面内：拦掉真实网络（免费接口 + 大模型通道），并记录各自的调用次数与请求体 */
 const STUB = `(function(){
-  window.__wx = { free: 0, llm: 0, repair: 0, tips: 0, llmBodies: [], llmMode: 'ok' };
+  window.__wx = { free: 0, llm: 0, repair: 0, tips: 0, coord: 0, llmBodies: [], llmMode: 'ok' };
   var _of = window.fetch;
   window.fetch = function (url, opts) {
     var u = String((url && url.url) ? url.url : url);
@@ -50,6 +50,16 @@ const STUB = `(function(){
         }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
       if (/anthropic|\\/responses|\\/messages/.test(u)) {
+        // 坐标检索（queryStationCoord 走联网通道）：按请求体里的"经纬度"区分，
+        //   并支持 __wx.coordFail 模拟"联网也查不到坐标"
+        var _ab = String((opts && opts.body) || '');
+        if (/经纬度/.test(_ab)) {
+          window.__wx.coord++;
+          if (window.__wx.coordFail) {
+            return Promise.resolve(new Response('{"error":"not found"}', { status: 400, headers: { 'Content-Type': 'application/json' } }));
+          }
+          return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ found: true, name: '榆中', admin: '甘肃省兰州市榆中县', lat: 36.05, lon: 104.15 }) }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
         window.__wx.llm++;
         try { window.__wx.llmBodies.push(String(opts && opts.body || '')); } catch (e) {}
         if (window.__wx.llmMode === 'http400') {
@@ -70,6 +80,11 @@ const STUB = `(function(){
       // dsCallOnce 走 chat/completions（不带联网）：既用于"结构化修补"，也用于"工作提示"
       if (/chat\\/completions/.test(u)) {
         var _b = String((opts && opts.body) || '');
+        // 坐标检索（queryStationCoord）：按提问内容区分
+        if (/经纬度/.test(_b)) {
+          window.__wx.coord++;
+          return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ found: true, name: '榆中', admin: '甘肃省兰州市榆中县', lat: 36.05, lon: 104.15 }) } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
         if (/安全提示/.test(_b)) {
           window.__wx.tips++;
           return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: ${JSON.stringify(TIPS_TEXT)} } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -358,6 +373,56 @@ const STUB = `(function(){
     console.log('  ⑱ 复合问题：' + JSON.stringify(compo));
     h.F(compo.streams === 1 && compo.cardKept && compo.injAnswer && compo.injLocal && compo.notReport,
       '⑱ 复合问题（含"要注意什么"）→ 保留天气卡片 + 交给对话流**围绕用户的具体问题**研判（不套报告模板）');
+
+    // ---------- ⑲ 应急电话 · 无坐标站（用户反馈的"榆中"场景）----------
+    //   "榆中"不在内置字典、Open-Meteo 地名接口也匹配不到 ⇒ 原实现直接报"未找到坐标"，
+    //   而大模型联网那条路**不需要坐标**。这里断言：不再出现"未找到坐标"，且天气正常渲染。
+    const noCoordPhone = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok';
+      var d = document.createElement('div');
+      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox4"></div>';
+      document.body.appendChild(d);
+      await window.phoneGetWeather('榆中', null, null, 'wxbox4', '');
+      await new Promise(function (r) { setTimeout(r, 600); });
+      var t = (document.getElementById('wxbox4') || {}).textContent || '';
+      return { noCoordError: /未找到坐标/.test(t), hasWeather: /数据来源/.test(t),
+               tempShown: /18/.test(t), src: (/🌐[^（]*/.exec(t) || [''])[0].replace(/\\s+/g, '') };
+    })()`, 90000);
+    console.log('  ⑲ 电话·无坐标站：' + JSON.stringify(noCoordPhone));
+    h.F(!noCoordPhone.noCoordError && noCoordPhone.hasWeather && noCoordPhone.tempShown,
+      '⑲ 应急电话查"榆中"（不在字典、地名接口也查不到）→ 走**不需要坐标**的大模型联网，不再报"未找到坐标"');
+
+    // ---------- ⑳ 坐标解析：字典优先，字典没有才联网 ----------
+    const coord = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.coord = 0;
+      var a = await window.queryStationCoord('兰州');
+      var b = await window.queryStationCoord('榆中');
+      return { dictSrc: a.source, dictLat: a.lat, llmSrc: b.source, llmLat: b.lat, llmAdmin: b.admin, coordCalls: window.__wx.coord };
+    })()`, 60000);
+    console.log('  ⑳ 坐标解析：' + JSON.stringify(coord));
+    h.F(coord.dictSrc === 'dict' && Math.abs(coord.dictLat - 36.06) < 0.05 && coord.llmSrc === 'llm'
+        && Math.abs(coord.llmLat - 36.05) < 0.05 && /榆中/.test(String(coord.llmAdmin)) && coord.coordCalls >= 1,
+      '⑳ 坐标解析顺序：字典命中（兰州 36.06）零成本 → 字典没有才联网查（榆中 36.05，' + coord.llmAdmin + '）');
+
+    // ---------- ㉑ 完全查不到时：提示要可操作（不再只说"未找到坐标"）----------
+    const noWay = await h.ev(`(async () => {
+      localStorage.removeItem('ds_api_key_v1');           // 没 API
+      window.__wx.llmMode = 'http400';
+      window.__wx.coordFail = true;                        // 且联网也查不到坐标
+      var d = document.createElement('div');
+      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox5"></div>';
+      document.body.appendChild(d);
+      await window.phoneGetWeather('某未收录测试站', null, null, 'wxbox5', '');
+      await new Promise(function (r) { setTimeout(r, 800); });
+      window.__wx.coordFail = false;
+      var t = (document.getElementById('wxbox5') || {}).textContent || '';
+      return { text: t.replace(/\\s+/g, ' ').slice(0, 120), actionable: /补充经纬度/.test(t), hasSrc: /数据来源/.test(t) };
+    })()`, 90000);
+    console.log('  ㉑ 全失败提示：' + JSON.stringify(noWay));
+    h.F(noWay.actionable && !noWay.hasSrc,
+      '㉑ 无 API 且无坐标时：提示"请在电话簿中为该站补充经纬度，或检查网络后重试"（可操作，不再只说"未找到坐标"）');
 
     await h.ev(`(() => { try { localStorage.removeItem('ds_api_key_v1'); sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {

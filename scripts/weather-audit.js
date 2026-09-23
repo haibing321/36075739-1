@@ -22,6 +22,7 @@ const PORT = 8194, CDP = 9394;
 // 假的大模型联网答案（Anthropic 通道 content[].text 里塞 JSON）
 const LLM_JSON = JSON.stringify({
   found: true, station: '兰州',
+  source: '中央气象台', updated: '2026-09-23 20:00',
   current: { temp: 18, weather: '多云', feels: 17, wind: 3, windDir: '北', humidity: 45, pressure: 850, precip: 0 },
   daily: [0, 1, 2, 3, 4, 5, 6].map(function (i) {
     return { date: '2026-09-' + (23 + i), weather: i % 3 === 0 ? '小雨' : (i % 3 === 1 ? '多云' : '晴'), tmax: 20 + i, tmin: 10 + i, precip: 10 + i, wind: 3 };
@@ -87,6 +88,9 @@ const STUB = `(function(){
   try {
     await h.nav('index.html?v=weather');
     await h.ev(STUB, 20000);
+    // 对话流统一 stub（记录被注入的文本，避免测试去打真流式接口）：改动接线时能直接看出注入了什么
+    await h.ev(`(() => { window.__wx.streams = []; window.__wx.origStream = window._dsRunStream;
+      window._dsRunStream = async function (t) { window.__wx.streams.push(String(t || '')); }; return 1; })()`, 20000);
     await h.ev(`(() => { try { sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
 
     // ---------- ① 未接 API：直接走免费 ----------
@@ -160,9 +164,10 @@ const STUB = `(function(){
       if (q) { q.value = '兰州今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1500); });
-      // ⚠️ 来源行在整张表格**之后**：必须对全文判定，不能截前 N 字（本轮曾因此误报失败）
-      var t1 = last();
-      var has1 = /数据来源：大模型联网检索/.test(t1);
+      // ⚠️ 判断范围：要对**整个对话区**判定 —— 有 Key 时"卡片"与"流式研判"是两条气泡，
+      //   来源行在卡片那条里，只看最后一条会误报（本轮曾因此误报失败）。
+      var whole1 = (box ? box.textContent : '') || '';
+      var has1 = /数据来源：大模型联网检索/.test(whole1);
       // ⑧ 摘掉 Key → 免费
       localStorage.removeItem('ds_api_key_v1');
       window.__wx.free = 0;
@@ -170,8 +175,8 @@ const STUB = `(function(){
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1500); });
       var t2 = last();
-      return { has1: has1, has2: /免费公开天气接口/.test(t2), len1: t1.length, len2: t2.length,
-               tail1: t1.slice(-90), tail2: t2.slice(-90), free2: window.__wx.free };
+      return { has1: has1, has2: /免费公开天气接口/.test(t2), len1: whole1.length, len2: t2.length,
+               tail1: whole1.slice(-90), tail2: t2.slice(-90), free2: window.__wx.free };
     })()`, 90000);
     console.log('  ⑦ 对话(大模型)：' + JSON.stringify(chat.tail1));
     console.log('  ⑧ 对话(免费)：' + JSON.stringify(chat.tail2));
@@ -251,39 +256,59 @@ const STUB = `(function(){
     h.F(noMisleading.hasSrc && !noMisleading.misleading,
       '⑬ 大模型成功的卡片只标「🌐 数据来源：大模型联网检索」，不再挂"会自动改用免费数据源/已保底"的误导提示');
 
-    // ---------- ⑭ 纯天气问题：卡片之后要补「工作提示」（大模型生成）----------
-    const tipsLlm = await h.ev(`(async () => {
+    // ---------- ⑭ 纯天气问题（有 Key）：卡片先出，随后交给**对话流**产出角色化研判 ----------
+    const roleAns = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
-      window.__wx.llmMode = 'ok'; window.__wx.tips = 0;
+      window.__wx.llmMode = 'ok'; window.__wx.streams = [];   // 对话流用全局 stub（见开头）
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
+      window.__wx.box = box;
       if (q) { q.value = '白银今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
-      await new Promise(function (r) { setTimeout(r, 1800); });
-      var t = (box ? box.children[box.children.length - 1].textContent : '') || '';
-      return { hasTips: /工作提示/.test(t), hasData: /数据来源/.test(t), tipsCalled: window.__wx.tips,
-               sample: (t.match(/工作提示[\\s\\S]{0,80}/) || [''])[0].replace(/\\s+/g, ' ') };
+      await new Promise(function (r) { setTimeout(r, 1500); });
+      var hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
+      var lastUser = null;
+      for (var i = hist.length - 1; i >= 0; i--) { if (hist[i] && hist[i].role === 'user') { lastUser = hist[i]; break; } }
+      var all = (box ? box.textContent : '') || '';
+      var s0 = window.__wx.streams[0] || '';
+      return { streams: window.__wx.streams.length, cardShown: /数据来源/.test(all),
+               userBubbleShort: !!(lastUser && lastUser.displayText === '白银今天天气怎么样'),
+               injHasWeather: /\\[参考天气信息·/.test(s0),
+               injNoRepeat: /不要重复罗列数据表格/.test(s0),
+               injAskLocal: /规章制度条款|检查信息隐患|检查手册项点/.test(s0) };
     })()`, 90000);
-    console.log('  ⑭ 对话工作提示(大模型)：' + JSON.stringify(tipsLlm));
-    h.F(tipsLlm.hasData && tipsLlm.hasTips && tipsLlm.tipsCalled >= 1,
-      '⑭ 纯天气问题：天气卡片之后补出「🛡️ 工作提示」（由大模型按天气生成，调用 ' + tipsLlm.tipsCalled + ' 次）');
+    console.log('  ⑭ 角色化研判接线：' + JSON.stringify(roleAns));
+    h.F(roleAns.cardShown && roleAns.streams === 1 && roleAns.injHasWeather && roleAns.injNoRepeat && roleAns.injAskLocal && roleAns.userBubbleShort,
+      '⑭ 有 Key 的纯天气问题：卡片先出，随后交给对话流产出**角色化研判**（注入天气上下文 + 要求引用本地隐患/条款/手册 + 不重复罗列数据；用户气泡仍只显示原话）');
 
-    // ---------- ⑮ 未接 API 时：工作提示走规则化保底，仍然有 ----------
+    // ---------- ⑮ 未接 API 时：不走对话流，退回"卡片 + 规则化保底提示" ----------
     const tipsRule = await h.ev(`(async () => {
       localStorage.removeItem('ds_api_key_v1');
-      window.__wx.tips = 0;
+      window.__wx.tips = 0; window.__wx.streams = [];
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       if (q) { q.value = '定西的天气情况怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1800); });
       var t = (box ? box.children[box.children.length - 1].textContent : '') || '';
-      return { hasTips: /工作提示/.test(t), tipsCalled: window.__wx.tips,
+      return { hasTips: /工作提示/.test(t), tipsCalled: window.__wx.tips, streams: window.__wx.streams.length,
                ruleLike: /(降雨|大风|防滑|作业|巡视|防护)/.test(t) };
     })()`, 90000);
-    console.log('  ⑮ 对话工作提示(规则保底)：' + JSON.stringify(tipsRule));
-    h.F(tipsRule.hasTips && tipsRule.tipsCalled === 0,
-      '⑮ 未接 API：工作提示走**规则化保底**（未调大模型 ' + tipsRule.tipsCalled + ' 次），提示照旧给出');
+    console.log('  ⑮ 对话(无 Key)规则保底：' + JSON.stringify(tipsRule));
+    h.F(tipsRule.hasTips && tipsRule.tipsCalled === 0 && tipsRule.streams === 0,
+      '⑮ 未接 API：不调用模型（大模型 0 次、对话流 0 次），退回**规则化保底提示**，提示照旧给出');
+
+    // ---------- ⑰ 数据出处与时效：卡片要写清"哪个来源、什么时候" ----------
+    const srcInfo = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok';
+      var r = await window.queryWeatherSmart('武威', { ttlMs: 0 });
+      var md = (typeof window.formatWeather === 'function') ? window.formatWeather(r, '武威') : '';
+      return { sourceName: r.sourceName, updated: r.updated, inCard: /中央气象台/.test(md), hasTime: /更新于 2026-09-23 20:00/.test(md) };
+    })()`, 60000);
+    console.log('  ⑰ 数据出处：' + JSON.stringify(srcInfo));
+    h.F(srcInfo.sourceName === '中央气象台' && srcInfo.inCard && srcInfo.hasTime,
+      '⑰ 天气卡片写明**具体数据出处与时效**（大模型联网检索（中央气象台，更新于 2026-09-23 20:00）），不再是笼统的"大模型联网检索"');
 
     // ---------- ⑯ 规则保底本身能按天气给对提示 ----------
     const rule = await h.ev(`(async () => {

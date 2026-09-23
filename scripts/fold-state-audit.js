@@ -377,6 +377,58 @@ const HELP = `(function(){
       '㉑ 外壳先行：首个绘制帧即放行界面（时间线：外壳 ' + bootTl.shell + 'ms ≤ 模块就绪 ' + bootTl.dcl
       + 'ms，SW 接管=' + bootTl.sw + '），就绪后进度条/提示收起、交互恢复、无全屏遮罩');
 
+    // ---------- ㉒ 断网（无任何网络）下重建文档：必须完全从离线数据加载 ----------
+    //   用户诉求原话："清缓存慢正常（真在重新加载），但折叠开合不该慢，至少应该从离线数据加载。"
+    //   这里把网络彻底关掉再重建 —— 能起来就证明走的是本机缓存（SW + IndexedDB 快照），不依赖网络。
+    const errBefore = h.pageErrors.length;
+    await h.cdp.send('Network.enable', {}, h.sessionId);
+    await h.cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 }, h.sessionId);
+    await h.sleep(300);
+    let offlineNavErr = '';
+    try { await h.nav('index.html?v=foldstate_offline'); } catch (e) { offlineNavErr = (e && e.message) || 'nav-failed'; }
+    await h.sleep(2600);
+    const offlineBoot = await h.ev(`(function () {
+      var nav = (performance.getEntriesByType('navigation') || [])[0] || {};
+      var panel = document.querySelector('.panel.active');
+      var t = null; try { t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null'); } catch (e) {}
+      return { dcl: Math.round(nav.domContentLoadedEventEnd || 0), shell: t ? t.shell : null, sw: t ? t.sw : null,
+               panelActive: panel ? panel.id : '', panelHtml: panel ? panel.innerHTML.length : 0,
+               scriptsOk: typeof window.switchTab === 'function' && typeof window.dsSendMsg === 'function',
+               overlayGone: !document.getElementById('app-boot-overlay') };
+    })()`, 40000);
+    await h.cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }, h.sessionId);
+    await h.sleep(200);
+    console.log('  ㉒ 断网重建：navErr=' + offlineNavErr + ' ' + JSON.stringify(offlineBoot));
+    h.F(!offlineNavErr && offlineBoot.scriptsOk && offlineBoot.panelActive && offlineBoot.panelHtml > 0
+        && offlineBoot.overlayGone && offlineBoot.dcl < 2000 && offlineBoot.shell != null && offlineBoot.shell < 1000
+        && h.pageErrors.length === errBefore,
+      '㉒ **断网**（零网络）下重建文档 → 完全从离线数据加载：外壳 ' + offlineBoot.shell + 'ms 放行、模块就绪 '
+      + offlineBoot.dcl + 'ms、界面已还原（' + offlineBoot.panelActive + ' ' + offlineBoot.panelHtml + ' 字节）、零页面错误');
+
+    // 断网boot后恢复在线，避免影响后续用例
+    await h.nav('index.html?v=foldstate_online');
+    await h.ev(HELP, 20000);
+    await h.sleep(1500);
+
+    // ---------- ㉓ 联网重建也必须走离线数据：不得重新从网络下载应用自身 ----------
+    //   用户反馈原话："断网后瞬间加载，联网后就和清除缓存一样了"。
+    //   根因：静默更新检查判定"有新版本"时自动 triggerApplyUpdate() → 新 SW install 把 51 项
+    //   预缓存**全部重新下载**（断网时该路径被跳过，所以反而秒开）。现已改为静默检查只提示、
+    //   不自动下载。这里用"真实网络资源数 = 0"把它钉死：SW 命中缓存时 transferSize 为 0。
+    await h.ev(`(async () => { var b=''; for (var i=0;i<40;i++){ var n=performance.getEntriesByType('resource').length; if(n===b) break; b=n; await new Promise(function(r){setTimeout(r,150);}); } return b; })()`, 30000);
+    await h.nav('index.html?v=foldstate_net');
+    await h.sleep(2600);
+    const netUsage = await h.ev(`(function () {
+      var res = performance.getEntriesByType('resource') || [];
+      var net = res.filter(function (r) { return r.transferSize > 0; });
+      return { total: res.length, net: net.length,
+               netList: net.map(function (r) { return String(r.name).split('/').pop().slice(0, 30) + '|' + r.transferSize + 'B'; }).slice(0, 8) };
+    })()`, 40000);
+    console.log('  ㉓ 联网重建网络用量：' + JSON.stringify(netUsage));
+    h.F(netUsage.net === 0,
+      '㉓ 联网状态下重建文档同样**全部读本机离线数据**（' + netUsage.total + ' 个资源，真实走网络 '
+      + netUsage.net + ' 个' + (netUsage.netList.length ? '：' + JSON.stringify(netUsage.netList) : '') + '）');
+
     await h.ev(`(() => { try { sessionStorage.clear(); localStorage.removeItem('wr_mat_filter'); localStorage.removeItem('_apply_update_on_visible'); localStorage.removeItem('_boot_timeline'); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {
     h.F(false, '套件异常：' + (e && e.message));

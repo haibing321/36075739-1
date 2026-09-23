@@ -1093,6 +1093,53 @@ window.clearAllCache = function() {
 window.showAboutPanel = function() {
     var p = document.getElementById('about-panel');
     if (p) p.style.display = 'flex';
+    try { window.stFillAboutOffline(); } catch (e) {}
+};
+
+/**
+ * 【2026-09-23】填写「离线状态」。
+ * 用户关心的是：折叠开合/刷新到底是**从本机离线数据加载**，还是又在联网加载。
+ * 这里如实显示：① Service Worker 是否已接管（＝折叠重建时所有脚本/样式都走本机缓存）；
+ * ② 缓存了多少项；③ 上次启动的外壳/模块就绪耗时与 SW 接管状态（来自 `_boot_timeline`）。
+ * 未离线化时给出可操作提示（联网打开一次即自动完成），不糊弄用户。
+ */
+window.stFillAboutOffline = async function () {
+    var el = document.getElementById('about-offline');
+    if (!el) return;
+    var parts = [];
+    try {
+        var reg = (navigator.serviceWorker && navigator.serviceWorker.getRegistration)
+            ? await navigator.serviceWorker.getRegistration() : null;
+        var controlled = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+        var count = 0;
+        try {
+            var keys = await caches.keys();
+            for (var i = 0; i < keys.length; i++) {
+                var c = await caches.open(keys[i]);
+                count += (await c.keys()).length;
+            }
+        } catch (e) {}
+        if (reg && reg.active && controlled) {
+            parts.push('<span style="color:#34d399;font-weight:600;">✓ 已离线化</span>（本机缓存 ' + count + ' 项）'
+                + '<br>折叠开合 / 刷新重建时全部走本机离线数据，不联网；离线也能打开。');
+        } else if (reg && reg.active) {
+            parts.push('<span style="color:#fbbf24;font-weight:600;">⚠ 离线缓存已就绪但尚未接管</span>'
+                + '<br>再刷新一次（或重开应用）即生效。');
+        } else {
+            parts.push('<span style="color:#f87171;font-weight:600;">⚠ 未离线化</span>'
+                + '<br>本浏览器未安装/未启用离线缓存（隐私模式或旧内核），折叠开合会走网络。'
+                + '联网状态正常打开一次即可自动完成离线化。');
+        }
+    } catch (e) {
+        parts.push('离线状态：无法检测（' + ((e && e.message) || '') + '）');
+    }
+    try {
+        var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
+        if (t && t.dcl != null) {
+            parts.push('上次启动：外壳 ' + t.shell + 'ms · 模块就绪 ' + t.dcl + 'ms · SW 接管=' + (t.sw ? '是' : '否'));
+        }
+    } catch (e) {}
+    el.innerHTML = parts.join('<br>');
 };
 
 // ==================== 主题模式（跟随系统 / 亮色 / 暗黑） ====================
@@ -1469,8 +1516,13 @@ async function performUpdateCheck(url, showStatus) {
                 statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteLabel + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已就绪，点击上方「🔄 立即更新」应用新版本';
                 statusEl.style.color = '#dc2626';
             }
-            // 自动预备 SW 更新（离线优先策略下，更新仅在此触发）
-            if (window.triggerApplyUpdate) window.triggerApplyUpdate();
+            // 【2026-09-23 用户反馈修复】静默检查（showStatus=false）**不再自动预下载整个应用**。
+            //   原来只要判定"有新版本"就 triggerApplyUpdate() → reg.update() → 新 SW 的 install
+            //   会把 51 项预缓存**全部重新从远程下载**。用户实测：断网打开秒开（这条路径被跳过），
+            //   联网打开却"和清除缓存一样慢"—— 就是它整包重下造成的。
+            //   现在静默检查只做提示（红点 + 顶部横幅），真正的下载交给用户点「🔄 立即更新」，
+            //   保证折叠开合 / 刷新始终只读本机离线数据。手动检查（showStatus=true）保持原有预下载行为。
+            if (showStatus && window.triggerApplyUpdate) window.triggerApplyUpdate();
             // 页面顶部弹出更新提示条（手动/静默检查均生效），点击即应用
             if (window.showUpdateBanner) window.showUpdateBanner(remoteLabel);
         } else {

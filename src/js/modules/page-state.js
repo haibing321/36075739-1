@@ -149,12 +149,25 @@
     'ds-chat-box'         // 智能助手 · 对话区
   ];
   var _MAX_SNAPSHOT_BYTES = 1.5 * 1024 * 1024; // 单个容器上限
+  /**
+   * 【2026-09-23 折叠提速】该容器是否属于**当前激活面板**。
+   * 为什么要判：快照里 9 个容器横跨全部模块，而折叠开合时只有当前模块是用户看得到的；
+   *   其它模块的内容在切回去时本来就会由各自模块从 IndexedDB 重新渲染 ⇒ 存它们纯属浪费
+   *   （真数据下"检查信息 4 万条"那种列表一序列化就是几百 KB~MB，正好卡在折叠动作上）。
+   */
+  function _inActivePanel(el) {
+    try {
+      var p = el && el.closest ? el.closest('.panel') : null;
+      return !p || p.classList.contains('active');   // 不在任何 .panel 内（全局容器）照旧处理
+    } catch (e) { return true; }
+  }
   function _collectPanelHTML() {
     var map = {};
     for (var i = 0; i < DYNAMIC_SNAPSHOT_IDS.length; i++) {
       var id = DYNAMIC_SNAPSHOT_IDS[i];
       var el = document.getElementById(id);
       if (!el) continue;
+      if (!_inActivePanel(el)) continue;                   // 非当前模块：交给模块自己重渲染
       var html = '';
       try { html = el.innerHTML; } catch (e) { continue; }
       if (!html || !html.trim()) continue;                 // 空的没必要存
@@ -325,6 +338,7 @@
       if (DYNAMIC_SNAPSHOT_IDS.indexOf(id) === -1) return;
       var el = document.getElementById(id);
       if (!el) return;
+      if (!_inActivePanel(el)) return;   // 【2026-09-23】只还原当前模块：其余交给各自模块从本地库重渲染
       try {
         // 快照内容混有规章名、检查信息字段等用户输入。任一渲染路径存在转义遗漏时，
         // 内联 onclick 就可能被原样还原 → DOM XSS。用 _scrubOnAttrs 过滤（安全调用式保留）。
@@ -519,8 +533,25 @@
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') _flushSave();
   });
-  // 兜底：页面 resize 结束（折叠/旋转完成）防抖存一次，确保最新滚动位置不丢
-  window.addEventListener('resize', function () { _scheduleSave(300); });
+  // 【2026-09-23 折叠提速】不再在 resize 结束时存快照。
+  //   原因：折叠/开合会连着触发多次 resize，每次都序列化面板 innerHTML —— 而这些动作
+  //   正好落在开合动画期间，和系统动画抢主线程；更关键的是**它是冗余的**：
+  //   合上时 visibilitychange→hidden 会立刻存一次（最先触发、且在页面被冻结/丢弃之前），
+  //   离开/卸载时 pagehide 还会再存一次 ⇒ 最新状态本就不会丢。
+  //   这里只保留一件便宜的事：把因高度变小而越界的滚动位置夹回边界内（避免出现"空白区"）。
+  var _resizeClampTimer = null;
+  window.addEventListener('resize', function () {
+    if (_resizeClampTimer) clearTimeout(_resizeClampTimer);
+    _resizeClampTimer = setTimeout(function () {
+      _resizeClampTimer = null;
+      try {
+        var panel = document.querySelector('.panel.active');
+        if (!panel) return;
+        var el = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area') || _findScroller(panel);
+        if (el && el.scrollHeight < el.scrollTop) el.scrollTop = el.scrollHeight;
+      } catch (e) {}
+    }, 300);
+  });
 
   // 折叠屏专用：visualViewport 尺寸变化（折叠/展开动作本身）防抖处理。
   // 仅做轻量布局重算 + 防抖存快照，不触发任何业务重渲染，避免折叠抖动导致页面重构。
@@ -537,7 +568,8 @@
             if (el && el.scrollHeight < el.scrollTop) el.scrollTop = el.scrollHeight;
           }
         } catch (e) {}
-        _scheduleSave(250);
+        // 【2026-09-23】原来这里还会再存一次快照 —— 折叠时可能连存 3~4 次，
+        //   全部压在主线程上（正好是开合动画期间）。状态由 hidden/pagehide 两次保存兜住，这里不再存。
       }, 250);
     });
   }

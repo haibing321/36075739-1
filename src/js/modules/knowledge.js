@@ -1311,6 +1311,16 @@
     //   范围：只预热同步业务源（检查信息/规章/手册/电话/日志）。资料库/历史报告是 async 源、
     //        块数与内存占用大得多，仍保持"首次真正用到时才载入"，不在这里预热。
     function _idleRun(cb) {
+        // 【2026-09-23 折叠平滑】隐藏（合盖/切后台）时**不继续跑预热**。
+        //   预热是重活（建索引/分词），在合盖瞬间跑会与系统折叠动画抢主线程；更重要的是
+        //   页面"正在重活 + 内存高"时更可能被系统回收 ⇒ 展开后就变成"重新加载"，用户感知为卡顿。
+        //   隐藏期间每 1.5s 探一次，可见后立刻继续，只是把重活挪到用户看得到的时候（不影响最终就绪）。
+        try {
+            if (typeof document !== 'undefined' && document.hidden) {
+                setTimeout(function () { _idleRun(cb); }, 1500);
+                return;
+            }
+        } catch (e) {}
         if (typeof requestIdleCallback === 'function') {
             try { requestIdleCallback(cb, { timeout: 4000 }); return; } catch (e) {}
         }

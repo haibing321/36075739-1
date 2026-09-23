@@ -208,6 +208,40 @@ const HELP = `(function(){
       '⑮ 豆包网页版默认**不联网**：显示占位卡片 + 「点击加载豆包网页版」按钮，iframe 仍为 about:blank、全程零 doubao.com 请求'
       + (webview.doubaoRequests ? '（实测有 ' + webview.doubaoRequests + ' 次）' : ''));
 
+    // ---------- ⑯ 折叠开合期间"少做事"：一个开合周期只写 1 次快照，且只含当前模块的容器 ----------
+    const lean = await h.ev(`(async () => {
+      window.__w = { saves: [], keys: [] };
+      var _si = sessionStorage.setItem.bind(sessionStorage);
+      sessionStorage.setItem = function (k, v) {
+        if (/page_state_snapshot/.test(String(k))) {
+          window.__w.saves.push(String(v || '').length);
+          try { window.__w.keys.push(Object.keys((JSON.parse(v).panelHTML) || {})); } catch (e) {}
+        }
+        return _si(k, v);
+      };
+      window.__w.evt = 0;
+      window.addEventListener('resize', function () { window.__w.evt = performance.now(); });
+      document.addEventListener('visibilitychange', function () { window.__w.evt = performance.now(); });
+      return 1;
+    })()`, 30000);
+    await h.cdp.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 760, deviceScaleFactor: 2, mobile: true }, h.sessionId);
+    await h.sleep(400);
+    await h.ev(`(() => { try { Object.defineProperty(document, 'visibilityState', { get: function () { return 'hidden'; }, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); } catch (e) {} return 1; })()`, 20000);
+    await h.sleep(600);
+    await h.cdp.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 1380, deviceScaleFactor: 2, mobile: true }, h.sessionId);
+    await h.sleep(1200);
+    await h.cdp.send('Emulation.clearDeviceMetricsOverride', {}, h.sessionId);
+    await h.sleep(900);
+    const leanRes = await h.ev(`(function () {
+      var ov = document.querySelector('.panel.active');
+      return { saves: window.__w.saves.length, keys: window.__w.keys.length ? window.__w.keys[window.__w.keys.length - 1] : [],
+               activePanel: ov ? ov.id : '', evt: window.__w.evt };
+    })()`, 30000);
+    console.log('  ⑯ 折叠一周期做事量：' + JSON.stringify(leanRes));
+    h.F(leanRes.saves <= 1 && leanRes.keys.length <= 2,
+      '⑯ 折叠/开合一整个周期只写 ' + leanRes.saves + ' 次快照（原来 4 次）、且只含当前模块的容器 '
+      + JSON.stringify(leanRes.keys) + '（原来 9 个容器全序列化）；隐藏时不跑预热（见 knowledge.js _idleRun）');
+
     // ---------- 智能助手：子视图保持（重建后回到智能写作而非智能对话）----------
     await h.ev(`(async () => {
       if (window.switchTab) window.switchTab('doubao');

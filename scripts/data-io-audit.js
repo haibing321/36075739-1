@@ -142,6 +142,34 @@ const H = require('./audit-harness');
       h.F(!!got && re.test(got) && !/失败|缺 BOM/.test(detail), '⑤ ' + label + ' 真实落盘且格式正确 → ' + (got || '(未生成)') + (detail ? '（' + detail + '）' : ''));
     }
 
+    // ---------- ⑤.5 下载通路（用户反馈"华为浏览器全量导出不弹确认框、无法下载"）----------
+    const dlPaths = await h.ev(`(async () => {
+      var out = {};
+      // ① 支持 File System Access API 时：优先弹「另存为」确认框（实测被调用后立即取消，不再偷偷下载）
+      var _orig = window.showSaveFilePicker;
+      var called = 0;
+      window.showSaveFilePicker = async function () { called++; var e = new Error('cancel'); e.name = 'AbortError'; throw e; };
+      await window.downloadBlob(new Blob(['x'], { type: 'application/json' }), '策略测试_1.json');
+      out.pickerCalled = called;
+      window.showSaveFilePicker = _orig;
+      // ② 不支持时：走锚点，并且**必须**挂出不自动消失的兜底面板（否则用户只看到"没反应"）
+      try { delete window.showSaveFilePicker; } catch (e) { window.showSaveFilePicker = undefined; }
+      await window.downloadBlob(new Blob(['y'], { type: 'application/json' }), '策略测试_2.json');
+      var tip = document.getElementById('_mb_dl_tip');
+      out.hasTip = !!tip;
+      out.hasLink = !!(tip && tip.querySelector('a[download]'));
+      out.hasTabBtn = !!(tip && document.getElementById('_mb_dl_tab'));
+      out.manualClose = /已保存，关闭/.test(tip ? tip.textContent : '');
+      // 桌面与移动文案不同：桌面「若浏览器拦截了下载…」/移动「华为、国产浏览器…」，两者都算给出指引
+      out.huaweiHint = /华为|下载文件|拦截/.test(tip ? tip.textContent : '');
+      if (tip && tip.parentNode) tip.parentNode.removeChild(tip);
+      return out;
+    })()`, 40000);
+    console.log('  ⑤.5 下载通路：' + JSON.stringify(dlPaths));
+    h.F(dlPaths.pickerCalled === 1, '⑤.5 支持 File System Access API 时优先弹「另存为」确认框（实测调用 ' + dlPaths.pickerCalled + ' 次；用户取消则不再偷偷下载）');
+    h.F(dlPaths.hasTip && dlPaths.hasLink && dlPaths.hasTabBtn && dlPaths.manualClose && dlPaths.huaweiHint,
+      '⑤.5 不支持时给出**不自动消失**的兜底面板：直接保存链接 + 「在新标签页打开」+ 手动关闭 + 华为/国产浏览器设置提示');
+
     // ---------- 无阻塞弹窗 & 无页面异常 ----------
     h.F(h.dialogs.length === 0, '全程无阻塞式 alert/confirm（实测会挂死页面 JS）');
     h.F(h.pageErrors.length === 0, '页面无未捕获异常（' + (h.pageErrors[0] || '') + '）');

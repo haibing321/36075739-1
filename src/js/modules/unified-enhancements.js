@@ -433,9 +433,13 @@
         md += '| ' + mmdd + ' ' + dow + ' | ' + emo + ' ' + wtxt + ' | ' + hi + '° | ' + lo + '° | ' + pr + '% | ' + wd + 'km/h |\n';
       }
     }
-    // 数据来源必须写明：用户要的是"优先大模型联网，兜底免费"，那就得看得出这一条到底走了哪条路
+    // 数据来源必须写明：用户要的是"优先大模型联网，兜底免费"，那就得看得出这一条到底走了哪条路。
+    // 【2026-09-23 用户反馈】只写"大模型联网检索"看不出**具体出处与时效** —— 补上模型检索到的站点名与更新时间
+    //   （对齐用户印象里的"数据来源：中国气象局·中央气象台，更新于 …"）。
+    const _srcDetail = (w.sourceName ? '（' + w.sourceName + (w.updated ? '，更新于 ' + w.updated : '') + '）'
+                                     : (w.updated ? '（更新于 ' + w.updated + '）' : ''));
     if (w.source === 'llm') {
-      md += '\n\n_🌐 数据来源：大模型联网检索_';
+      md += '\n\n_🌐 数据来源：大模型联网检索' + _srcDetail + '_';
     } else if (w.source === 'free') {
       md += '\n\n_🛰 数据来源：免费公开天气接口（Open-Meteo）'
           + (w.degraded ? '；大模型联网' + (_WS_DEGRADE[w.degraded] || '不可用') + '，已自动保底' : '') + '_';
@@ -509,33 +513,38 @@
                   : await window.queryWeather({ stationName: st });
                 if (w && w.ok) {
                   const card = formatWeather(w, st);
-                  if (!COMPOSITE_HINT.test(question)) {
-                    _updateBubble(ph, card);                       // 占位先变卡片：天气数据先给出来
-                    // 【2026-09-23 用户反馈"以前查完天气还会根据天气进行工作提示，现在没了"】
-                    //   那段提示原本是"天气问题落到模型手里时模型自己附上的"，取值链变可靠后就消失了。
-                    //   现在显式补上：大模型基于天气生成（不带联网，快），未接 API 用规则化保底。
-                    try {
-                      if (typeof window.weatherWorkTips === 'function') {
-                        const tips = await window.weatherWorkTips(w, st);
-                        if (tips) _updateBubble(ph, card + '\n\n**🛡️ 工作提示**\n\n' + tips);
-                      }
-                    } catch (e) {}
-                    return;
+                  _updateBubble(ph, card);                          // ① 天气数据先给出来（可靠数据，独立一条）
+                  // ② 【2026-09-23 用户反馈"感觉与角色脱离了"】纯天气问题**不再**只回"卡片 + 通用小提示"：
+                  //    有 API Key 时把"问题 + 天气上下文"交给**对话流**（同一套角色系统提示 + 本地检索工具
+                  //    （规章制度/检查信息/检查手册））→ 产出结合本地数据的铁路安监研判：
+                  //    数据出处与时效、现场风险与检查要点（能引本地隐患/条款就引用）、对作业安排的建议。
+                  //    未接 API 时才退回"卡片 + 规则化保底提示"（离线可用）。
+                  let hasKey = false;
+                  try { hasKey = !!localStorage.getItem('ds_api_key_v1'); } catch (e) {}
+                  if (hasKey && typeof window._dsRunStream === 'function') {
+                    let finalText = question + '\n\n[参考天气信息·' + st + ']\n' + card
+                      + '\n\n（上面这份天气数据已单独展示给用户，**不要重复罗列数据表格**。请以"铁路安监助手"的身份给出研判：'
+                      + '① 数据出处与时效（多源是否一致）；② 该天气下的现场风险与检查要点 —— **本地库里若有相关的检查信息隐患、'
+                      + '规章制度条款或检查手册项点，请引用具体条目**，本地库未覆盖就明确说明；③ 对作业、巡查、值守安排的处置建议。'
+                      + '同时回答用户问句中的具体诉求。篇幅适中、不要客套。）';
+                    const validAttach = (window._dsAttachments || []).filter(Boolean);
+                    if (validAttach.length) {
+                      finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
+                      window._dsAttachments = [];
+                    }
+                    if (_injectIntoLastUser(finalText)) {
+                      if (typeof window.dsRenderAll === 'function') window.dsRenderAll();
+                      await window._dsRunStream(finalText);
+                      return;
+                    }
                   }
-                  // 复合问题：把天气并进最后一条用户消息，交给 AI 流综合回答（气泡仍只显示用户原话）
-                  let finalText = question + '\n\n[参考天气信息·' + st + ']\n' + card;
-                  const validAttach = (window._dsAttachments || []).filter(Boolean);
-                  if (validAttach.length) {
-                    finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
-                    window._dsAttachments = [];
-                  }
-                  _dropBubble(ph);
-                  if (_injectIntoLastUser(finalText) && typeof window._dsRunStream === 'function') {
-                    if (typeof window.dsRenderAll === 'function') window.dsRenderAll();
-                    await window._dsRunStream(finalText);
-                  } else {
-                    _pushAssistant(finalText);                     // 极端降级：至少把结果给出来
-                  }
+                  // 未接 API（或流式不可用）：卡片 + 规则化保底提示
+                  try {
+                    if (typeof window.weatherWorkTips === 'function') {
+                      const tips = await window.weatherWorkTips(w, st);
+                      if (tips) _updateBubble(ph, card + '\n\n**🛡️ 工作提示**\n\n' + tips);
+                    }
+                  } catch (e) {}
                   return;
                 }
                 // 查不到（不在字典/电话簿，或大模型与免费接口都失败）→ 撤销占位与预推气泡、复位输入框，
@@ -660,6 +669,9 @@
       window.dsAppendMsg('assistant', text);
     }
   }
+
+  // 【2026-09-23】天气卡片渲染器挂到 window：单点维护，其它模块（应急电话等）与审计套件都可复用
+  window.formatWeather = formatWeather;
 
   log('Unified enhancements loaded (adapted to real APIs)');
 })();

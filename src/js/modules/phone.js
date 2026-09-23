@@ -515,7 +515,7 @@
                         const llm = await window.queryWeatherSmart(stationName, { skipFree: true });
                         if (llm && llm.ok && llm.current) {
                             w = llm;
-                            srcLabel = '🌐 数据来源：大模型联网检索';
+                            srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
                             // 这里不再挂"未接 API 会自动改用免费数据源"的常驻提示：
                             //   用户反馈看着像是"本次已经降级了"。真正降级时下面那条会写明原因。
                             srcNote = '';

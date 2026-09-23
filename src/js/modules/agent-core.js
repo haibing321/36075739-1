@@ -1352,9 +1352,11 @@
     var today = new Date().toLocaleDateString('zh-CN');
     var sys = '你是铁路气象保障助手。请**联网检索**指定车站所在位置的实时天气与未来 7 天预报。'
       + '严格只输出一个 JSON 对象（不要解释、不要 Markdown 代码块、不要多余文字），结构：'
-      + '{"found":true,"station":"站名","current":{"temp":数字,"weather":"天气文字","feels":数字,"wind":数字,"windDir":"风向文字","humidity":数字,"pressure":数字,"precip":数字},'
+      + '{"found":true,"station":"站名","source":"数据来源，如 中央气象台/中国天气网","updated":"更新时间，如 2026-09-23 20:00",'
+      + '"current":{"temp":数字,"weather":"天气文字","feels":数字,"wind":数字,"windDir":"风向文字","humidity":数字,"pressure":数字,"precip":数字},'
       + '"daily":[{"date":"YYYY-MM-DD","weather":"天气文字","tmax":数字,"tmin":数字,"precip":降水概率数字,"wind":数字}]}'
       + '。规则：温度单位℃，风速单位 m/s，气压 hPa，降水概率 %；数值不要带单位；日期用当地时间；'
+      + '**source 必须写你实际检索到的来源站点名**，updated 写该来源的更新时间（拿不到写 null）；'
       + '查不到该车站就输出 {"found":false}；个别字段不确定写 null，但不要编造未来 7 天之外的日期。';
     var usr = '车站：' + st + coord + '（今天是 ' + today + '，请给出今天起 7 天）';
     var r = await window.dsWebSearchOnce(sys, usr, { timeoutMs: opts.timeoutMs || 20000, maxTokens: opts.maxTokens || 1200 });
@@ -1436,7 +1438,11 @@
       }
     }
     if (!cur && !daily) return { ok: false, error: 'llm-empty' };
-    return { ok: true, station: st, source: 'llm', channel: r.channel, current: cur, daily: daily, raw: String(r.text || '').slice(0, 4000) };
+    // 数据出处与时效：用户反馈"答案里看不出数据哪来的、什么时候的"（以前的答案会写中央气象台 + 更新时间）
+    var srcName = String(_pick(j, ['source', '来源', '数据来源', 'sourceName']) || '').trim();
+    var updAt = String(_pick(j, ['updated', '更新时间', 'updateTime', 'time']) || '').trim();
+    return { ok: true, station: st, source: 'llm', channel: r.channel, sourceName: srcName, updated: updAt,
+             current: cur, daily: daily, raw: String(r.text || '').slice(0, 4000) };
   };
 
   /**

@@ -1107,6 +1107,9 @@
                         + '<div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><label style="font-weight:600;">📚 参考资料（可多选）</label>'
                         + '<button type="button" class="wr-step-addbtn" onclick="wrStepAddMenu(\'reference\', this)" style="' + _addBtnCss + '">＋ 添加 ▾</button></div>'
                         + '<div id="wr-step-ref-line" class="wr-step-line" style="margin-top:6px;padding:8px 10px;border:1px dashed var(--border);border-radius:8px;background:#f8fafc;min-height:38px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;"></div></div>'
+                        // 【2026-09-23 用户反馈"模板/资料用不用的逻辑有点乱"】常显一块"将如何生成"说明：
+                        //   不同选择（有/无模板 × 有/无资料）会走哪条链路、以什么为准，全部写清楚，并显示本次写作需求
+                        + '<div id="wr-step-hint" style="font-size:0.78rem;line-height:1.7;color:#475569;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px 10px;"></div>'
                         + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="wrConfirmSelection()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;">确认并生成</button><button onclick="this.closest(\'.wr-step-modal\').remove()" style="padding:8px 16px;">取消</button></div></div>';
                     var modal = document.createElement('div');
                     modal.className = 'wr-step-modal';
@@ -1357,7 +1360,7 @@
                 if (tplHost) {
                     var cur = window._wrStepTplSel;
                     if (!cur) {
-                        tplHost.innerHTML = '<span class="wr-step-empty" style="' + emptyCss + '">暂未选择（可不使用模板，直接按规范结构生成）</span>';
+                        tplHost.innerHTML = '<span class="wr-step-empty" style="' + emptyCss + '">暂未选择 · 不使用模板（按规范结构成文：总体情况 → 主要问题 → 原因分析 → 整改要求）</span>';
                     } else {
                         var localTpl = (cur.src === 'local');
                         var tplObj = ((localTpl ? (window._wrLocalTpls || []) : (window._wrAllTpls || [])).filter(function(t) { return String(t.id) === String(cur.id); })[0]);
@@ -1384,8 +1387,11 @@
                         return '<span class="wr-step-chip is-local" style="' + chipCss + '">💻 ' + wrEsc(f.name)
                             + '<button type="button" style="' + xCss + '" data-k="local-ref" data-i="' + i + '">×</button></span>';
                     }).join('');
-                    refHost.innerHTML = html || '<span class="wr-step-empty" style="' + emptyCss + '">暂未选择（生成时会自动检索台账与历史报告）</span>';
+                    refHost.innerHTML = html || '<span class="wr-step-empty" style="' + emptyCss + '">暂未选择 · 不使用资料（仅按写作需求 + 台账统计成文；选了资料则问题分类以资料为准）</span>';
                 }
+
+                // ③ 【2026-09-23】同步"将如何生成"说明（有/无模板 × 有/无资料 四种链路讲清楚）
+                try { if (typeof window.wrStepUpdateHint === 'function') window.wrStepUpdateHint(); } catch (e) {}
 
                 // 绑定 × 移除
                 ['wr-step-tpl-line', 'wr-step-ref-line'].forEach(function(hostId) {
@@ -1408,6 +1414,40 @@
                 });
             }
             window.wrStepRenderChips = wrStepRenderChips;
+
+            /**
+             * 【2026-09-23】弹窗内的"将如何生成"说明（随选择实时更新）。
+             *   规则（与「两步生成」开关文案一致）：
+             *     · 有模板 + 有资料 + 两步开 → 先按资料归纳问题类型并归入模板骨架章节 → 再按章节成文；
+             *       **问题分类以资料为准，模板只给骨架与写法**
+             *     · 有模板 + 有资料 + 两步关 → 单步：模板骨架 + 资料要点一次成文
+             *     · 有模板 + 无资料 → 按模板骨架逐节成文，事实来自台账统计
+             *     · 无模板（"+ 有/无资料"）→ 按规范结构成文；**不使用模板时不做归类表那一步**
+             */
+            window.wrStepUpdateHint = function() {
+                var host = document.getElementById('wr-step-hint');
+                if (!host) return;
+                var hasTpl = !!window._wrStepTplSel;
+                var hasMat = ((window._wrSelectedMaterialIds || []).filter(Boolean).length > 0)
+                    || ((window._wrUploadedFiles || []).filter(Boolean).length > 0);
+                var twoStep = (typeof wrTwoStepEnabled === 'function') ? wrTwoStepEnabled() : true;
+                var q = ((document.getElementById('wr-query-input') || {}).value || '').trim();
+                var qShow = q.length > 40 ? q.slice(0, 40) + '…' : q;
+                var lines = [];
+                if (hasTpl && hasMat && twoStep) {
+                    lines.push('🧭 <b>两步生成</b>：先按资料归纳问题类型并归入模板骨架章节 → 再按章节成文（<b>问题分类以资料为准，模板只给骨架与写法</b>）。');
+                } else if (hasTpl && hasMat) {
+                    lines.push('⚡ <b>单步生成</b>：按模板骨架 + 资料要点一次性成文（两步开关已关；<b>问题分类仍以资料为准</b>）。');
+                } else if (hasTpl) {
+                    lines.push('📋 <b>有模板、无资料</b>：按模板骨架逐节成文，数据与事实来自台账统计（不做资料归类那一步）。');
+                } else if (hasMat) {
+                    lines.push('⚠️ <b>未使用模板</b>：将按规范结构（总体情况 → 主要问题 → 原因分析 → 整改要求）成文，问题类型以<b>资料归纳</b>为准；若需固定章节与写法，请点「选择模板 ▾」。');
+                } else {
+                    lines.push('⚠️ <b>未使用模板、也未选资料</b>：将只按下面的「写作需求」+ 台账统计成文，结构与事实依据由模型自行组织。建议至少选一个 —— <b>模板给骨架与写法，资料给问题分类与事实</b>。');
+                }
+                if (qShow) lines.push('📝 本次写作需求：' + wrEsc(qShow));
+                host.innerHTML = lines.map(function(t) { return '<div>' + t + '</div>'; }).join('');
+            };
 
             window.wrConfirmSelection = function() {
                 // 【二改】不再从下拉读值：模板来源＝弹窗里的"当前模板"状态（📄 资料库 or 💻 本地），
@@ -2482,6 +2522,7 @@
             }
             window.wrSetTwoStep = function (on) {
                 try { localStorage.setItem('wr_two_step', on ? '1' : '0'); } catch (e) {}
+                try { if (typeof window.wrStepUpdateHint === 'function') window.wrStepUpdateHint(); } catch (e) {}   // 【2026-09-23】切换后立刻更新"将如何生成"说明
             };
             function wrSyncTwoStepChk() {
                 var chk = document.getElementById('wr-two-step-chk');

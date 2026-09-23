@@ -1101,8 +1101,12 @@
                                         <path d="M21.4 11.05 12.2 20.2a5.4 5.4 0 0 1-7.65-7.64l9.2-9.2a3.6 3.6 0 1 1 5.1 5.1l-9.2 9.2a1.8 1.8 0 1 1-2.55-2.55l8.5-8.48"/>
                                     </svg>
                                 </button>
+                                <!-- 【2026-09-23】原来用 display:none —— iOS Safari / 部分安卓 WebView 下
+                                     display:none 的文件输入**点不出选择器**（表现为"点了没反应、时好时坏"）。
+                                     改成"视觉隐藏但仍在布局中"的标准写法，各端都能稳定唤起。 -->
                                 <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.xls,.xlsx,.pdf,.csv,.json,image/*"
-                                    style="display:none;" onchange="dsHandleAttach(this)">
+                                    style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;"
+                                    aria-hidden="true" tabindex="-1" onchange="dsHandleAttach(this)">
                                 <div id="ds-attach-menu" class="ds-attach-menu-pop">
                                     <div onclick="dsToggleAttachMenu();document.getElementById('ds-attach-file').click();">📁 本地文件</div>
                                     <div onclick="dsToggleAttachMenu();dsOpenMaterialPicker();">📚 写作资料</div>
@@ -1851,6 +1855,8 @@
                             <span class="st-row-label">✍️ 写作资料 <span class="st-row-sub" id="set-wr-count">—</span></span>
                             <span class="st-actions">
                                 <button onclick="wrMaterialImportUnified()" class="st-mini btn-data-blue">导入</button>
+                                <!-- 【2026-09-23】原「🧩 写作模板」独立行并入本行（写作模板就是"类型=模板"的写作资料） -->
+                                <button onclick="wrImportTemplates()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">模板导入</button>
                                 <!-- 【2026-09-21】Excel 专用导入（含多 Sheet 与列名映射引导）此前无 UI 入口 -->
                                 <button onclick="wrMaterialImportExcel()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">Excel 导入</button>
                                 <button onclick="wrMaterialExportAll()" class="st-mini btn-data-green">导出</button>
@@ -1884,21 +1890,10 @@
                                 <button onclick="memoShowClear()" class="st-mini btn-data-red">清空</button>
                             </span>
                         </div>
-                        <!-- 【2026-09-21】写作模板：wrImportTemplates() 此前无 UI 引用；配套一个诊断导出区 -->
-                        <div class="st-row st-row-data">
-                            <span class="st-row-label">🧩 写作模板 <span class="st-row-sub">导入 JSON</span></span>
-                            <span class="st-actions">
-                                <button onclick="wrImportTemplates()" class="st-mini btn-data-blue">导入</button>
-                            </span>
-                        </div>
-                        <div class="st-row st-row-data">
-                            <span class="st-row-label">🧪 诊断数据 <span class="st-row-sub">错误日志 / 性能采样</span></span>
-                            <span class="st-actions">
-                                <button onclick="exportErrorLog()" class="st-mini btn-data-green">错误日志</button>
-                                <button onclick="exportPerfReport()" class="st-mini btn-data-green">性能报告</button>
-                                <button onclick="clearDiagData()" class="st-mini btn-data-red">清空</button>
-                            </span>
-                        </div>
+                        <!-- 【2026-09-23 用户反馈"有些项目应该合并"】
+                             · 🧩 写作模板 → 并入上面的「✍️ 写作资料」行（同为写作模块数据，模板即"资料类型=模板"）
+                             · 🧪 诊断数据 → 移入下面「🧠 知识库」运维区（错误日志/性能采样不是用户数据）
+                        -->
 
                         <button onclick="toggleSettingsPanel();switchTab('material');" class="st-btn">📚 资料中心 <span class="st-btn-arrow">→</span></button>
                         <div class="st-hint" style="margin:0;">检查手册、规章制度、写作资料等文档的统一入口。</div>
@@ -1915,6 +1910,15 @@
                                     <button onclick="KB.panelRebuild()" class="st-mini">一键重建</button>
                                     <button onclick="KB.panelRender()" class="st-mini btn-data-blue">刷新状态</button>
                                 </span>
+                                <!-- 【2026-09-23】原「🧪 诊断数据」独立行并入本区：错误日志/性能采样属于运维诊断，不是用户数据 -->
+                                <div class="st-row" style="margin-top:6px;">
+                                    <span class="st-row-label">🧪 诊断 <span class="st-row-sub">错误日志 / 性能采样</span></span>
+                                    <span class="st-actions">
+                                        <button onclick="exportErrorLog()" class="st-mini btn-data-green">错误日志</button>
+                                        <button onclick="exportPerfReport()" class="st-mini btn-data-green">性能报告</button>
+                                        <button onclick="clearDiagData()" class="st-mini btn-data-red">清空</button>
+                                    </span>
+                                </div>
                                 <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                                     <input type="checkbox" id="kb-autoload-chk" onchange="KB.setAutoLoad(this.checked)" style="cursor:pointer;">
                                     <span>启动后自动载入索引（低配手机可关）</span>

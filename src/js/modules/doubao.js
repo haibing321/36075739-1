@@ -2112,13 +2112,26 @@
                         if (acInput) { acInput.value = rawUserText; setTimeout(function() { if (typeof window.autoCheckLocal === 'function') window.autoCheckLocal(); }, 200); }
                         input.value = ''; return;
                     }
+                    // 【2026-09-23 用户反馈修复】原来命中 /风险|趋势|研判|预警/ 就把整句话抢走、切到「风险研判」
+                    //   子视图 —— 于是"这个风险点怎么整改""安全风险有哪些"这类**普通提问**也得不到回答。
+                    //   现在只在**明确要求出研判/分析**时才跳转；其余照常在对话里回答（回答末尾仍会给出
+                    //   「📊 生成风险研判报告」建议按钮，用户想跳再点，见 dsRenderAll 的建议生成逻辑）。
+                    //   ⚠️ 这条判定必须排在「写作」规则**之前**：否则"生成风险分析报告"会被
+                    //   `/生成.*报告/` 先抢去智能写作（实测就是这么错的）。
+                    var _riskTxt = rawUserText.trim();
+                    var _riskAsk = (/^(帮我|请|麻烦|给我)?(生成|出具|出个|出一份|做一份|写一份|写个|来一份|汇总|分析|研判|评估|总结)/.test(_riskTxt)
+                                    && /(风险|趋势|预警|研判)[^，。！？；]{0,4}$/.test(_riskTxt)
+                                    && _riskTxt.length <= 30)
+                        || /^(风险研判|风险分析|趋势分析|预警分析)$/.test(_riskTxt);
                     if (/写报告|生成.*报告|起草|撰写|月度总结|整改通知书/.test(lower)) {
-                        dsSwitchSub('writer');
-                        const wrInput = document.getElementById('wr-query-input');
-                        if (wrInput) { wrInput.value = rawUserText; setTimeout(function() { if (typeof window.wrWrite === 'function') window.wrWrite(); }, 300); }
-                        input.value = ''; return;
+                        if (!_riskAsk) {
+                            dsSwitchSub('writer');
+                            const wrInput = document.getElementById('wr-query-input');
+                            if (wrInput) { wrInput.value = rawUserText; setTimeout(function() { if (typeof window.wrWrite === 'function') window.wrWrite(); }, 300); }
+                            input.value = ''; return;
+                        }
                     }
-                    if (/风险|趋势|研判|预警/.test(lower)) {
+                    if (_riskAsk) {
                         dsSwitchSub('risk');
                         const focusInput = document.getElementById('risk-focus');
                         if (focusInput) { focusInput.value = rawUserText; setTimeout(function() { if (typeof window.runRiskAnalysis === 'function') window.runRiskAnalysis(); }, 300); }

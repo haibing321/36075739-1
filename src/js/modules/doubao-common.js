@@ -105,10 +105,22 @@
     // ---- 附件处理 ----
     window._dsAttachments = []; // [{name, text}]
 
+    var _dsAttaching = false;   // 【2026-09-23】解析互斥：解析中再选同一批文件不再叠加处理
     window.dsHandleAttach = async function(input) {
         const files = Array.from(input.files || []);
+        // 【2026-09-23】选完立刻复位 input.value：否则**再次选择同一个文件**不会触发 change
+        //   （用户感知就是"点了没反应、时好时坏"）。files 已复制成数组，复位不影响本次处理。
+        try { input.value = ''; } catch (e) {}
         if (!files.length) return;
+        if (_dsAttaching) { if (window.showToast) window.showToast('上一批附件还在解析中，请稍候…', true, 4000); return; }
+        _dsAttaching = true;
         const inputEl = document.getElementById('ds-user-input');
+        // 【2026-09-23】解析期立刻给反馈：pdf/docx 解析要几秒，此前界面**毫无变化**，看起来像没反应
+        const prevHost = document.getElementById('ds-attach-preview');
+        if (prevHost) {
+            prevHost.innerHTML = '<span class="ds-attach-chip" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px dashed var(--border,#e2e8f0);border-radius:14px;font-size:0.78rem;color:#64748b;">⏳ 正在解析附件 ' + files.length + ' 个…</span>';
+        }
+        try {
 
         for (const file of files) {
             let text = '';
@@ -175,7 +187,12 @@
                 alert('文件 "' + file.name + '" 解析失败：' + err.message);
             }
         }
-        input.value = '';
+        } finally {
+            // 【2026-09-23】无论成功/失败都解锁；若"解析中…"占位还在（没有任何文件成功）就清掉
+            _dsAttaching = false;
+            var _hp = document.getElementById('ds-attach-preview');
+            if (_hp && /正在解析附件/.test(_hp.textContent || '')) _hp.innerHTML = '';
+        }
     };
 
     // ---- +号附件菜单 ----

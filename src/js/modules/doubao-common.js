@@ -863,5 +863,100 @@
         return null;
     };
 
+    // ============ 跨模块共享：非流式「联网搜索一次性调用」(2026-09-23) ============
+    // 为什么要有它：联网检索此前只存在于「智能对话」的流式链路里（doubao.js 内联实现），
+    //   别的模块（应急电话·车站天气）想"先问一次联网"只能自己裸写 fetch + 自己处理鉴权/通道。
+    //   这里抽出最小可用版本：无 UI、非流式、**绝不抛异常**，失败一律返回 { ok:false, error } 由调用方降级。
+    // 通道顺序与对话侧保持一致（见 doubao.js「Anthropic 兼容层才是真正执行服务端检索的通道」注释）：
+    //   ① Anthropic 兼容层 POST /messages + tools:[{type:'web_search_20250305'}] —— DeepSeek 唯一真正联网的通道；
+    //   ② Responses API + tools:[{type:'web_search'}] —— 其它供应商（OpenAI 等）用，DeepSeek 下官方会忽略检索。
+    // 约定：**没有 Key / 通道不可用 / 未检索到内容 → 都返回 ok:false**，由调用方走保底。
+    window.dsWebSearchOnce = async function (sysPrompt, userPrompt, opts) {
+        opts = opts || {};
+        var apiKey = '';
+        try { apiKey = localStorage.getItem('ds_api_key_v1') || ''; } catch (e) {}
+        if (!apiKey) return { ok: false, error: 'no-key' };
+        var base = '';
+        try { base = window.dsGetApiUrl ? window.dsGetApiUrl() : (localStorage.getItem('ds_api_url_v1') || ''); } catch (e) {}
+        var model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
+        var maxTokens = opts.maxTokens || 1200;
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timedOut = false;
+        var to = ctrl ? setTimeout(function () { timedOut = true; try { ctrl.abort(); } catch (e) {} }, opts.timeoutMs || 20000) : null;
+        /** 从两种通道的响应里取正文（Anthropic: content[].text；Responses: output_text / output[].content[].text） */
+        function pickText(j, kind) {
+            try {
+                if (kind === 'anthropic') {
+                    var out = [];
+                    ((j && j.content) || []).forEach(function (b) { if (b && b.type === 'text' && b.text) out.push(String(b.text)); });
+                    return out.join('\n').trim();
+                }
+                if (j && j.output_text) return String(j.output_text).trim();
+                var res = [];
+                ((j && j.output) || []).forEach(function (it) {
+                    (((it || {}).content) || []).forEach(function (c) {
+                        if (c && (c.type === 'output_text' || c.type === 'text') && c.text) res.push(String(c.text));
+                    });
+                });
+                return res.join('\n').trim();
+            } catch (e) { return ''; }
+        }
+        try {
+            var channels = [];
+            try {
+                (window.dsAnthropicUrlCandidates ? window.dsAnthropicUrlCandidates(base) : []).forEach(function (u) { if (u) channels.push({ kind: 'anthropic', url: u }); });
+            } catch (e) {}
+            try {
+                (window.dsResponsesUrlCandidates ? window.dsResponsesUrlCandidates(base) : []).forEach(function (u) { if (u) channels.push({ kind: 'responses', url: u }); });
+            } catch (e) {}
+            if (!channels.length) return { ok: false, error: 'no-channel' };
+            var lastErr = 'no-channel';
+            for (var i = 0; i < channels.length; i++) {
+                var ch = channels[i];
+                var body = (ch.kind === 'anthropic')
+                    ? {
+                        model: model, max_tokens: maxTokens,
+                        system: String(sysPrompt == null ? '' : sysPrompt),
+                        messages: [{ role: 'user', content: String(userPrompt == null ? '' : userPrompt) }],
+                        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+                        stream: false, temperature: 0.3
+                    }
+                    : {
+                        model: model,
+                        instructions: String(sysPrompt == null ? '' : sysPrompt),
+                        input: String(userPrompt == null ? '' : userPrompt),
+                        tools: [{ type: 'web_search' }],
+                        stream: false, temperature: 0.3, max_output_tokens: maxTokens
+                    };
+                var hdrs = { 'Content-Type': 'application/json' };
+                if (ch.kind === 'anthropic') { hdrs['x-api-key'] = apiKey; hdrs['anthropic-version'] = '2023-06-01'; }
+                else hdrs['Authorization'] = 'Bearer ' + apiKey;
+                var r = null;
+                try {
+                    r = await fetch(ch.url, { method: 'POST', headers: hdrs, body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined });
+                } catch (e) {
+                    return { ok: false, error: (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) || 'network') };
+                }
+                if (!r.ok) {
+                    var det = '';
+                    try { det = await r.text(); } catch (e2) {}
+                    lastErr = (window.dsAiHttpError ? window.dsAiHttpError(r.status, det) : ('HTTP ' + r.status + (det ? '：' + String(det).slice(0, 160) : '')));
+                    // 只有"端点/请求不被接受"才换下一个通道；鉴权(401)/余额(402)/限流(429)/5xx 换通道无意义
+                    if (r.status === 400 || r.status === 404 || r.status === 405) continue;
+                    return { ok: false, status: r.status, error: lastErr };
+                }
+                var j = null;
+                try { j = await r.json(); } catch (e3) { lastErr = 'bad-json'; continue; }
+                if (timedOut) return { ok: false, error: 'timeout' };
+                var txt = pickText(j, ch.kind);
+                if (txt) return { ok: true, text: txt, channel: ch.kind };
+                lastErr = 'empty';
+            }
+            return { ok: false, error: lastErr };
+        } catch (e) {
+            return { ok: false, error: (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) || 'network') };
+        } finally { if (to) clearTimeout(to); }
+    };
+
     console.log('✅ doubao-common.js 已加载');
 })();

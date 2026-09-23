@@ -359,7 +359,25 @@ const HELP = `(function(){
       '⑲ 展开后**容器自动扩展**：面板宽 ' + wideL.panelW + '≈视口 ' + wideL.innerW + '、卡片列表自动变 '
       + wideL.cols + ' 列（窄屏 ' + narrow.cols + ' 列）、无横向溢出，且同一文档未重载');
 
-    await h.ev(`(() => { try { sessionStorage.clear(); localStorage.removeItem('wr_mat_filter'); localStorage.removeItem('_apply_update_on_visible'); } catch (e) {} return 1; })()`, 20000);
+    // ---------- ㉑ 外壳先行：启动画面不再是"等脚本"的全屏遮罩，且留下可诊断的时间线 ----------
+    const bootTl = await h.ev(`(function () {
+      var raw = null; try { raw = localStorage.getItem('_boot_timeline'); } catch (e) {}
+      var t = null; try { t = raw ? JSON.parse(raw) : null; } catch (e) {}
+      var bar = document.getElementById('app-boot-bar');
+      var tip = document.getElementById('app-boot-tip');
+      return { has: !!t, shell: t ? t.shell : null, dcl: t ? t.dcl : null, sw: t ? t.sw : null,
+               barHidden: !bar || getComputedStyle(bar).display === 'none',
+               tipHidden: !tip || getComputedStyle(tip).display === 'none',
+               splashGone: !document.getElementById('app-boot-overlay'),
+               loadingOff: !document.body.classList.contains('boot-loading') };
+    })()`, 30000);
+    console.log('  ㉑ 启动时间线：' + JSON.stringify(bootTl));
+    h.F(bootTl.has && bootTl.shell != null && bootTl.dcl != null && bootTl.shell <= bootTl.dcl
+        && bootTl.barHidden && bootTl.tipHidden && bootTl.splashGone && bootTl.loadingOff,
+      '㉑ 外壳先行：首个绘制帧即放行界面（时间线：外壳 ' + bootTl.shell + 'ms ≤ 模块就绪 ' + bootTl.dcl
+      + 'ms，SW 接管=' + bootTl.sw + '），就绪后进度条/提示收起、交互恢复、无全屏遮罩');
+
+    await h.ev(`(() => { try { sessionStorage.clear(); localStorage.removeItem('wr_mat_filter'); localStorage.removeItem('_apply_update_on_visible'); localStorage.removeItem('_boot_timeline'); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {
     h.F(false, '套件异常：' + (e && e.message));
   }

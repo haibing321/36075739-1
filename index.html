@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN" class="flat-mode">
 <head>
     <meta charset="UTF-8">
@@ -322,7 +322,18 @@
         border-top-color:#ffd700; border-radius:50%; animation:bootspin .8s linear infinite; }
       #app-boot-overlay .boot-text { color:#e2e8f0; font-size:.9rem; letter-spacing:1px; }
       @keyframes bootspin { to { transform:rotate(360deg); } }
+      /* 【2026-09-23 折叠/慢网】外壳先行：全屏遮罩在首个绘制帧后让位给细进度条，界面骨架立即可用，
+         模块脚本在背后继续加载。为什么要这样：24 个模块脚本都是 defer ⇒ DOMContentLoaded 要等它们全部下完，
+         慢网 / SW 未生效时就是几秒钟的"启动画面"（用户反馈：折叠开合与清缓存加载一样慢）。 */
+      #app-boot-bar { position:fixed; left:0; right:0; top:0; z-index:2147483646; height:3px; background:rgba(148,163,184,.25); overflow:hidden; display:none; }
+      #app-boot-bar > i { display:block; height:100%; width:35%; background:#ffd700; animation: bootbar 1.1s ease-in-out infinite; }
+      @keyframes bootbar { 0% { transform:translateX(-100%); } 100% { transform:translateX(320%); } }
+      #app-boot-tip { position:fixed; right:10px; top:10px; z-index:2147483646; display:none; background:rgba(15,23,42,.86); color:#cbd5e1; font-size:.72rem; padding:4px 10px; border-radius:999px; }
+      body.boot-loading { pointer-events:none; }   /* 模块就绪前挡住误点，避免"点了没反应" */
+      @keyframes bootspin { to { transform:rotate(360deg); } }
     </style>
+    <div id="app-boot-bar"><i></i></div>
+    <div id="app-boot-tip">正在加载模块…</div>
     <div id="app-boot-overlay">
         <svg class="boot-logo" viewBox="-12 -12 124 124" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -399,6 +410,8 @@
         function setBootText(t) {
             var el = document.querySelector('#app-boot-overlay .boot-text');
             if (el) el.textContent = t;
+            var tip = document.getElementById('app-boot-tip');   // 外壳先行的提示条同步更新
+            if (tip) tip.textContent = t;
         }
         window.__setBootText = setBootText;
 
@@ -422,6 +435,31 @@
         //   7s → 再做一次 panel 显示尝试并清掉遮罩。
         // 注：7s 这个 timer 只是「加速通道」，真正保证不卡死的是上面 CSS 的
         // bootAutoHide 8s 动画 —— 它由合成器驱动，不受主线程阻塞与后台 timer 节流影响。
+        // ===== 【2026-09-23 外壳先行】=====
+        // 背景：24 个模块脚本都是 defer ⇒ DOMContentLoaded 要等它们**全部下完**才触发，
+        //   而启动画面原来一直挂在那一刻 ⇒ 慢网 / SW 未生效 / 折叠后被重建时，用户看到的就是
+        //   "和清缓存加载一样慢"的启动画面（与缓存无关：瓶颈在等脚本 + 本地初始化）。
+        // 现在：首个绘制帧就把全屏遮罩换成顶部细进度条，**界面骨架立即可见**；
+        //   模块在背后继续加载，就绪前用 body.boot-loading 挡住误点（避免"点了没反应"）。
+        //   同时把启动时间线写进 localStorage._boot_timeline，便于定位"到底卡在哪一段"。
+        window.__bootT = { t0: Date.now(), shell: 0, dcl: 0, sw: null };
+        try { window.__bootT.sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller); } catch (e) {}
+        function _releaseShell() {
+            if (window.__bootShellReleased) return;
+            window.__bootShellReleased = true;
+            try { window.__bootT.shell = Date.now() - window.__bootT.t0; } catch (e) {}
+            try { _forceShowPanel(); } catch (e) {}
+            var bar = document.getElementById('app-boot-bar'); if (bar) bar.style.display = 'block';
+            var tip = document.getElementById('app-boot-tip'); if (tip) tip.style.display = 'block';
+            try { document.body.classList.add('boot-loading'); } catch (e) {}
+            clearBoot();
+        }
+        window.__releaseShell = _releaseShell;
+        try {
+            if (document.readyState === 'loading') requestAnimationFrame(function () { requestAnimationFrame(_releaseShell); });
+            else _releaseShell();
+        } catch (e) { _releaseShell(); }
+
         window.__bootTimer = setTimeout(function () {
             setBootText('正在同步本地数据…');
         }, 2000);
@@ -2300,12 +2338,23 @@
                 if (_def) _def.classList.add('active');
             }
 
-            // 启动成功：清除启动遮罩与看门狗（避免 Edge 偶发卡在 LOGO）
+            // 启动成功：清除启动遮罩/进度条与看门狗（避免 Edge 偶发卡在 LOGO）
             try {
                 if (window.__bootTimer) clearTimeout(window.__bootTimer);
                 if (Array.isArray(window.__bootTimers)) window.__bootTimers.forEach(function (t) { clearTimeout(t); });
             } catch (e) {}
             if (window.__clearBoot) window.__clearBoot();
+            // 外壳先行收尾：模块就绪 → 收掉细进度条、恢复交互、记下时间线
+            try {
+                var _bar = document.getElementById('app-boot-bar'); if (_bar) _bar.style.display = 'none';
+                var _tip = document.getElementById('app-boot-tip'); if (_tip) _tip.style.display = 'none';
+                document.body.classList.remove('boot-loading');
+                if (window.__bootT) {
+                    window.__bootT.dcl = Date.now() - window.__bootT.t0;
+                    try { localStorage.setItem('_boot_timeline', JSON.stringify(window.__bootT)); } catch (e) {}
+                    try { console.info('[boot] 外壳 ' + window.__bootT.shell + 'ms · 模块就绪 ' + window.__bootT.dcl + 'ms · SW 接管=' + window.__bootT.sw); } catch (e) {}
+                }
+            } catch (e) {}
         }
 
         // 如果 DOM 已就绪，立即执行；否则等待 DOMContentLoaded

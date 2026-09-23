@@ -314,6 +314,51 @@ const HELP = `(function(){
     h.F(srcGuard.hidden && srcGuard.toast,
       '⑱ 源码守卫：SW `controllerchange` 分支里先判 `document.hidden`（隐藏时只标记待更新），并提供 `_showUpdateReadyToast` 由用户决定何时刷新');
 
+    // ---------- ⑲ 折叠/展开＝**按屏幕自动扩展容器**（而不是重新加载）----------
+    //   用户诉求："折叠时根据屏幕大小自动扩展容器，而不是重新加载。"
+    //   实测结论：容器本来就跟得上（body/panel/列表都随视口变宽），缺的是"大屏只用一列"；
+    //   这里同时断言两件事——① 布局跟着视口走且宽屏自动多列（无需重载）② 全程没有重载。
+    const layout = await h.ev(`(async () => {
+      if (window.switchTab) window.switchTab('material');
+      await new Promise(function (r) { setTimeout(r, 500); });
+      if (window.wrMaterialFilter) window.wrMaterialFilter('all');
+      await new Promise(function (r) { setTimeout(r, 600); });
+      window.__docMark = window.__docMark || ('doc@' + Date.now());
+      return window.__docMark;
+    })()`, 40000);
+    await h.cdp.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 760, deviceScaleFactor: 2, mobile: true }, h.sessionId);
+    await h.sleep(700);
+    const narrow = await h.ev(`(function () {
+      var l = document.getElementById('wr-mat-list');
+      var cards = l ? l.querySelectorAll('.wr-mat-card') : [];
+      var c0 = cards[0] ? cards[0].getBoundingClientRect().width : 0;
+      return { innerW: window.innerWidth, listW: Math.round(l ? l.getBoundingClientRect().width : 0),
+               display: l ? getComputedStyle(l).display : '', cardW: Math.round(c0),
+               cols: (l && c0) ? Math.max(1, Math.round(l.getBoundingClientRect().width / c0)) : 0,
+               hOverflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
+    })()`, 30000);
+    await h.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1400, deviceScaleFactor: 2, mobile: true }, h.sessionId);
+    await h.sleep(900);
+    const wideL = await h.ev(`(function () {
+      var l = document.getElementById('wr-mat-list');
+      var cards = l ? l.querySelectorAll('.wr-mat-card') : [];
+      var c0 = cards[0] ? cards[0].getBoundingClientRect().width : 0;
+      var p = document.querySelector('.panel.active');
+      return { innerW: window.innerWidth, panelW: Math.round(p ? p.getBoundingClientRect().width : 0),
+               listW: Math.round(l ? l.getBoundingClientRect().width : 0), cardW: Math.round(c0),
+               display: l ? getComputedStyle(l).display : '',
+               cols: (l && c0) ? Math.max(1, Math.round(l.getBoundingClientRect().width / c0)) : 0,
+               hOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+               docMark: window.__docMark, cards: cards.length };
+    })()`, 30000);
+    await h.cdp.send('Emulation.clearDeviceMetricsOverride', {}, h.sessionId);
+    console.log('  ⑲ 窄(380) → ' + JSON.stringify(narrow));
+    console.log('  ⑲ 展开(1000) → ' + JSON.stringify(wideL));
+    h.F(wideL.panelW >= wideL.innerW - 80 && wideL.cols >= 2 && wideL.display === 'grid' && !wideL.hOverflow
+        && !narrow.hOverflow && wideL.docMark === layout,
+      '⑲ 展开后**容器自动扩展**：面板宽 ' + wideL.panelW + '≈视口 ' + wideL.innerW + '、卡片列表自动变 '
+      + wideL.cols + ' 列（窄屏 ' + narrow.cols + ' 列）、无横向溢出，且同一文档未重载');
+
     await h.ev(`(() => { try { sessionStorage.clear(); localStorage.removeItem('wr_mat_filter'); localStorage.removeItem('_apply_update_on_visible'); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {
     h.F(false, '套件异常：' + (e && e.message));

@@ -510,7 +510,16 @@
                 if (w && w.ok) {
                   const card = formatWeather(w, st);
                   if (!COMPOSITE_HINT.test(question)) {
-                    _updateBubble(ph, card);                       // 占位变卡片（不新开一条，避免闪烁）
+                    _updateBubble(ph, card);                       // 占位先变卡片：天气数据先给出来
+                    // 【2026-09-23 用户反馈"以前查完天气还会根据天气进行工作提示，现在没了"】
+                    //   那段提示原本是"天气问题落到模型手里时模型自己附上的"，取值链变可靠后就消失了。
+                    //   现在显式补上：大模型基于天气生成（不带联网，快），未接 API 用规则化保底。
+                    try {
+                      if (typeof window.weatherWorkTips === 'function') {
+                        const tips = await window.weatherWorkTips(w, st);
+                        if (tips) _updateBubble(ph, card + '\n\n**🛡️ 工作提示**\n\n' + tips);
+                      }
+                    } catch (e) {}
                     return;
                   }
                   // 复合问题：把天气并进最后一条用户消息，交给 AI 流综合回答（气泡仍只显示用户原话）

@@ -840,7 +840,25 @@
                 }
                 var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 
-                // 桌面端：标准下载
+                // 【2026-09-23 用户反馈"华为浏览器全量导出不弹下载确认框、无法下载"】
+                //   ① 优先 File System Access API：**真正弹出"另存为"确认框**（部分国产浏览器会静默拦截 a.download）
+                //   ② 不支持 / 报错 → 继续走下面的分享 / 锚点，并且**桌面端也挂兜底指引**（以前只有移动端有）
+                if (window.showSaveFilePicker) {
+                    try {
+                        var _ext = (String(filename).split('.').pop() || '').toLowerCase();
+                        var _types = _ext ? [{ description: _ext.toUpperCase() + ' 文件', accept: (function () { var o = {}; o['application/' + (_ext === 'zip' ? 'zip' : 'octet-stream')] = ['.' + _ext]; return o; })() }] : undefined;
+                        var handle = await window.showSaveFilePicker({ suggestedName: filename, types: _types });
+                        var w = await handle.createWritable();
+                        await w.write(blob);
+                        await w.close();
+                        return;                                  // 用户已在系统对话框里确认，结束
+                    } catch (e) {
+                        if (e && e.name === 'AbortError') return;  // 用户点了取消：尊重，不再偷偷下载
+                        // 其它错误（浏览器不支持该 API 的文件类型等）→ 继续走下面的兜底
+                    }
+                }
+
+                // 桌面端：标准下载 + 轻量兜底提示（"没开始下载？点这里"，15 秒后自隐）
                 if (!isMobile) {
                     var dlUrl = URL.createObjectURL(blob);
                     var a = document.createElement('a');
@@ -850,6 +868,7 @@
                         if (a.parentNode) a.parentNode.removeChild(a);
                         setTimeout(function () { URL.revokeObjectURL(dlUrl); }, 60000);
                     }, 500);
+                    _showDownloadHint(filename, dlUrl, false);
                     return;
                 }
 
@@ -871,6 +890,43 @@
                 _showMobileRetryBtn(filename);
             };
 
+            /**
+             * 下载兜底面板：**桌面端与移动端共用**。
+             * 【2026-09-23】原来只有移动端有兜底，桌面/折叠屏遇到"浏览器静默拦截 a.download"
+             *   （华为浏览器等）就完全没提示、用户以为功能坏了。
+             * 面板里给三条可操作出路：① 直接点链接 ② 新标签页打开（可长按/右键保存）③ 浏览器设置提示。
+             * ⚠️ 不再自动消失（下载受阻时用户需要时间操作），只能手动关闭。
+             */
+            function _showDownloadHint(filename, href, isMobile) {
+                try {
+                    var old = document.getElementById('_mb_dl_tip');
+                    if (old && old.parentNode) old.parentNode.removeChild(old);
+                    var tip = document.createElement('div');
+                    tip.id = '_mb_dl_tip';
+                    tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:12px 14px;border-radius:12px;font-size:0.85rem;max-width:92vw;width:auto;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
+                    var shortName = filename.length > 26 ? filename.slice(0, 23) + '…' : filename;
+                    tip.innerHTML = '<div style="margin-bottom:8px;">没弹出下载/保存对话框？用下面任一方式保存：</div>'
+                        + '<a id="_mb_dl_link" href="' + href + '" download="' + window.safeFileName(filename) + '" '
+                        + 'style="display:inline-block;background:#10b981;color:#fff;border-radius:8px;padding:10px 18px;font-size:0.9rem;font-weight:600;text-decoration:none;">📥 点此保存：' + shortName + '</a>'
+                        + '<div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;">'
+                        + '<button id="_mb_dl_tab" style="background:#374151;color:#e5e7eb;border:none;border-radius:8px;padding:7px 12px;font-size:0.78rem;cursor:pointer;">在新标签页打开</button>'
+                        + '<button id="_mb_dl_close" style="background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:8px;padding:7px 12px;font-size:0.78rem;cursor:pointer;">已保存，关闭</button>'
+                        + '</div>'
+                        + '<div style="margin-top:8px;font-size:0.72rem;opacity:.85;">'
+                        + (isMobile ? '华为/国产浏览器：请在菜单里允许本站「下载文件」，或改用系统浏览器打开本页；'
+                                    : '若浏览器拦截了下载，请在地址栏允许「下载多个文件」，或改用系统浏览器；')
+                        + '也可在新标签页打开后长按/右键另存。</div>';
+                    document.body.appendChild(tip);
+                    var _tab = document.getElementById('_mb_dl_tab');
+                    if (_tab) _tab.addEventListener('click', function () {
+                        try { window.open(href, '_blank', 'noopener'); } catch (e) {}
+                    });
+                    var _close = document.getElementById('_mb_dl_close');
+                    if (_close) _close.addEventListener('click', function () { try { tip.remove(); } catch (e) {} });
+                } catch (e) {}
+            }
+            window._showDownloadHint = _showDownloadHint;
+
             function _showMobileRetryBtn(filename) {
                 var old = document.getElementById('_mb_dl_tip');
                 if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -885,6 +941,13 @@
                 document.getElementById('_mb_dl_retry').addEventListener('click', async function () {
                     tip.remove();
                     var d = window.__lastDownload; if (!d) return;
+                    // 新手势内先试"另存为对话框"（Chromium 内核支持时最可靠）
+                    if (window.showSaveFilePicker) {
+                        try {
+                            var _h = await window.showSaveFilePicker({ suggestedName: d.filename });
+                            var _w = await _h.createWritable(); await _w.write(d.blob); await _w.close(); return;
+                        } catch (e) { if (e && e.name === 'AbortError') return; }
+                    }
                     // 新手势内再尝试系统分享
                     if (navigator.share && typeof navigator.canShare === 'function') {
                         try {
@@ -899,6 +962,7 @@
                         a.href = url; a.download = d.filename; a.style.display = 'none';
                         document.body.appendChild(a); a.click();
                         setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); }, 1500);
+                        _showDownloadHint(d.filename, url, true);      // 仍挂着"没成？"的兜底（不再自动消失）
                     } catch (e2) {
                         alert('自动下载失败，请复制文件名并用电脑访问本页下载：\n' + d.filename);
                     }

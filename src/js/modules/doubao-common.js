@@ -918,7 +918,9 @@
                         model: model, max_tokens: maxTokens,
                         system: String(sysPrompt == null ? '' : sysPrompt),
                         messages: [{ role: 'user', content: String(userPrompt == null ? '' : userPrompt) }],
-                        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+                        // 【2026-09-23 提速】max_uses 3→1：服务端检索是"每多搜一次多等几秒"，
+                        //   问单个车站的天气一次检索足够（实测 3 次会把响应拖到十几秒）。
+                        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: opts.maxUses || 1 }],
                         stream: false, temperature: 0.3
                     }
                     : {

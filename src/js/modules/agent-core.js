@@ -1359,7 +1359,14 @@
       + '**source 必须写你实际检索到的来源站点名**，updated 写该来源的更新时间（拿不到写 null）；'
       + '查不到该车站就输出 {"found":false}；个别字段不确定写 null，但不要编造未来 7 天之外的日期。';
     var usr = '车站：' + st + coord + '（今天是 ' + today + '，请给出今天起 7 天）';
-    var r = await window.dsWebSearchOnce(sys, usr, { timeoutMs: opts.timeoutMs || 20000, maxTokens: opts.maxTokens || 1200 });
+    // 【2026-09-23 提速】超时 20s→10s、maxTokens 1200→900、检索 1 次：
+    //   调用方（应急电话/对话）会在这条超时后立刻走免费公开接口（实测 ~1.1s），
+    //   不让用户为了"等联网"干站十几秒。
+    var r = await window.dsWebSearchOnce(sys, usr, {
+      timeoutMs: opts.timeoutMs || 10000,
+      maxTokens: opts.maxTokens || 900,
+      maxUses: 1
+    });
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'llm-failed' };
     var j = null;
     try { j = window.dsParseJsonLoose ? window.dsParseJsonLoose(r.text) : JSON.parse(r.text); } catch (e) { j = null; }
@@ -1613,6 +1620,8 @@
       cc.cached = true; return cc;
     }
     // ① 内置字典：精确 → 前缀 → 包含（包含匹配取最长 key，避免"西"误命中"兰州西"）
+    //   opts.dictOnly：只查字典（**零成本、毫秒级**）——应急电话用它做"先出免费数据"的快速判断，
+    //   字典没有就立刻返回，绝不去等联网那几秒。
     try {
       if (_staticCoordCache) {
         var hit = _staticCoordCache[st], best = '';
@@ -1631,6 +1640,7 @@
         }
       }
     } catch (e) {}
+    if (opts.dictOnly) return { ok: false, error: 'not-in-dict' };
     // ② 大模型联网查坐标（字典没有的车站/县镇）
     if (typeof window.dsWebSearchOnce === 'function') {
       try {

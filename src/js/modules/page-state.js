@@ -186,6 +186,75 @@
     return map;
   }
 
+  // ===== 【2026-09-23 折叠屏界面保持】内层阅读位置 =====
+  //   原来只存「当前面板的主滚动容器」：折叠/重建后，用户**正在读的地方**（弹窗正文第 30 行、
+  //   聊天记录、列表第 200 条）会回到顶部 —— 这是"界面没保持住"里体感最强的一条。
+  //   这里额外记录：① 若干常驻容器的滚动位置；② 打开中的弹窗内部所有可滚动元素的位置
+  //     （按 DOM 顺序对齐 —— 弹窗内容会用同一份 innerHTML 还原，顺序稳定）。
+  var SNAPSHOT_SCROLLER_IDS = [
+    'ds-chat-box',        // 智能助手 · 对话区
+    'wr-mat-list',        // 资料中心 · 资料列表
+    'wr-history-list',    // 资料中心 · 历史报告
+    'rule-resultsList',   // 规章制度 · 搜索结果
+    'issue-results',      // 检查信息 · 搜索结果
+    'phone-results',      // 应急电话 · 查询结果
+    'memo-list',          // 备忘提醒 · 列表
+    'hb-content-text',    // 检查手册 · 正文
+    'diary-history-view'  // 工作日志 · 历史视图
+  ];
+  /** 容器内所有「可滚动」元素（按 DOM 顺序，不做"是否已滚动"的过滤 —— 否则存/取两侧下标会错位） */
+  function _scrollablesIn(root) {
+    var out = [], all;
+    try { all = root.querySelectorAll('*'); } catch (e) { return out; }
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      try {
+        var cs = getComputedStyle(el);
+        if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 4) out.push(el);
+      } catch (e) {}
+    }
+    return out;
+  }
+  function _collectScrollers() {
+    var ids = {}, modals = {};
+    SNAPSHOT_SCROLLER_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && (el.scrollTop || el.scrollLeft)) ids[id] = [el.scrollTop, el.scrollLeft];
+    });
+    document.querySelectorAll('.modal.active, .panel-modal.active').forEach(function (m) {
+      if (!m.id) return;
+      var arr = _scrollablesIn(m).map(function (el) { return [el.scrollTop, el.scrollLeft]; });
+      if (arr.length) modals[m.id] = arr;
+    });
+    return (Object.keys(ids).length || Object.keys(modals).length) ? { ids: ids, modals: modals } : null;
+  }
+  /** 回填内层滚动位置；仅在元素还停在顶部时写（不跟用户刚做的滚动打架） */
+  function _restoreScrollers(snap) {
+    var sc = snap && snap.scrollers;
+    if (!sc) return;
+    try {
+      if (sc.ids) {
+        Object.keys(sc.ids).forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          if (!el.scrollTop) el.scrollTop = sc.ids[id][0] || 0;
+          if (!el.scrollLeft) el.scrollLeft = sc.ids[id][1] || 0;
+        });
+      }
+      if (sc.modals) {
+        Object.keys(sc.modals).forEach(function (mid) {
+          var m = document.getElementById(mid);
+          if (!m) return;
+          var els = _scrollablesIn(m), saved = sc.modals[mid] || [];
+          for (var i = 0; i < els.length && i < saved.length; i++) {
+            if (!els[i].scrollTop) els[i].scrollTop = saved[i][0] || 0;
+            if (!els[i].scrollLeft) els[i].scrollLeft = saved[i][1] || 0;
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
   function savePageState() {
     try {
       var snap = {
@@ -195,6 +264,14 @@
         modals: _openModals(),
         drafts: _collectDrafts(),
         editSession: _editSession,
+        // v3.32：内层阅读位置（弹窗正文/聊天区/列表容器）
+        scrollers: _collectScrollers(),
+        // v3.32：根滚动位置 —— 多数机型上"页面"其实滚在 documentElement 上（内层容器 overflow 可见），
+        //   而 _findScroller 明确跳过 documentElement ⇒ 这类布局下阅读位置从来没被保存过。
+        rootScroll: (function () {
+          try { return { top: window.scrollY || window.pageYOffset || 0, left: window.scrollX || window.pageXOffset || 0 }; }
+          catch (e) { return null; }
+        })(),
         // v3.13：整页 DOM（含已渲染数据）。为 null 表示超配额降级。
         panelHTML: _collectPanelHTML(),
         // v3.29：打开的弹窗内容（查看全文正文等，不随 panel 快照保存）
@@ -370,6 +447,13 @@
           if (m && typeof m.classList !== 'undefined') m.classList.add('active');
         });
       }
+      // v3.32：内层阅读位置回填 —— 必须放在**弹窗内容回填之后**（_scrollablesIn 依赖已还原的 DOM）
+      _restoreScrollers(snap);
+      // v3.32：根滚动回填（内层容器不滚动时，阅读位置落在这里）
+      if (snap.rootScroll && (snap.rootScroll.top || snap.rootScroll.left)) {
+        try { window.scrollTo(snap.rootScroll.left || 0, snap.rootScroll.top || 0); } catch (e) {}
+      }
+
       // 派发「快照已还原」事件（v3.28 优化：与滚动/草稿同帧，关键词计数同步更早完成）
       // 通知各模块按还原后的 DOM 重新同步内部状态
       //    （如规章制度/检查信息的关键词计数器，init 时容器为空已加 1 行，此处按还原后的 N 行纠正，避免多一个框）
@@ -386,6 +470,11 @@
           var hook = window['onShow_' + snap.module];
           if (typeof hook === 'function') hook();
         } catch (e) {}
+        // v3.32：模块重渲染会重置列表滚动 → 这里再补一次阅读位置
+        _restoreScrollers(snap);
+        if (snap.rootScroll && (snap.rootScroll.top || snap.rootScroll.left)) {
+          try { window.scrollTo(snap.rootScroll.left || 0, snap.rootScroll.top || 0); } catch (e) {}
+        }
       }, 300);
     });
 

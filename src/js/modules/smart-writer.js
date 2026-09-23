@@ -495,9 +495,26 @@
                 if (gen) gen.style.display = 'flex';
             };
 
+            /**
+             * 【2026-09-23 折叠屏界面保持】资料中心"当前分类"落盘 + 还原。
+             *   原来 `_wrMatFilter` 只存在内存，而 onShow_material 每次都强制 `wrMaterialFilter('all')`；
+             *   折叠屏开合（浏览器重建文档）后 page-state 会调用 `switchTab('material')` → 又走一遍
+             *   onShow_ → 用户正在看的「⚡ 故障报告」分类被打回「全部」，看起来就像"界面没保持住"。
+             */
+            var WR_MAT_FILTER_KEY = 'wr_mat_filter';
+            function wrSaveMatFilter(type) { try { localStorage.setItem(WR_MAT_FILTER_KEY, String(type || 'all')); } catch (e) {} }
+            function wrRestoreMatFilter() {
+                var t = 'all';
+                try { t = localStorage.getItem(WR_MAT_FILTER_KEY) || 'all'; } catch (e) {}
+                if (t === 'history') { window.wrMatFilterHistory(); return; }
+                if (!document.getElementById('wr-mat-filter-' + t)) t = 'all';   // 旧值/脏值兜底
+                window.wrMaterialFilter(t);
+            }
+
             // 资料中心标签被打开时刷新列表（由 utils.js 中 switchTab 的 onShow 钩子调用）
             window.onShow_material = function() {
-                try { wrMaterialFilter('all'); } catch (e) {}
+                // 【2026-09-23】不再无条件打回"全部"：还原上次的分类（含折叠/刷新场景）
+                try { wrRestoreMatFilter(); } catch (e) { try { wrMaterialFilter('all'); } catch (e2) {} }
                 try { wrRenderHistory(); } catch (e) {}
             };
 
@@ -4907,6 +4924,7 @@
              */
             window.wrMaterialFilter = function(type) {
                 _wrMatFilter = type;
+                wrSaveMatFilter(type);   // 【2026-09-23】落盘：折叠/重建后仍回到这个分类
                 _wrSyncFilterChip(type);
                 const histZone = document.getElementById('wr-mat-history-zone');
                 const matList  = document.getElementById('wr-mat-list');
@@ -4935,6 +4953,7 @@
 
             // 历史报告 Tab 点击：显示历史报告子区域，隐藏普通资料列表
             window.wrMatFilterHistory = function() {
+                wrSaveMatFilter('history');   // 【2026-09-23】同上
                 _wrSyncFilterChip('history');
                 // 必须同步筛选状态：否则 wrMaterialSearch() 在历史报告页会走进
                 // else 分支去刷新一个被隐藏的资料列表，表现为「搜索没反应」

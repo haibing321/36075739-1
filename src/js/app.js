@@ -606,12 +606,58 @@ window.onclick = function(e) {
             _pendingReloadAt = 0;
         }
         if (_pendingReload) {
+            // 【2026-09-23 折叠平滑】**页面隐藏时绝不自动重载**。
+            //   浏览器会在页面转入隐藏（合盖 / 切后台）的那一刻激活"等待中"的新 SW ⇒ controllerchange
+            //   恰好落在折叠瞬间；若此时 reload，用户感知就是"合上再打开 = 重新加载"，
+            //   与"折叠应当是无感过渡"完全相反（对照：轻量站点折叠时连音频都不中断）。
+            //   改为：记下"新版本已就绪"，回到前台后**由用户点一下**再刷新（见 _showUpdateReadyToast），
+            //   不点就等下次冷启动自然生效 —— 全程零意外重载。
+            if (document.hidden) {
+                try { localStorage.setItem('_apply_update_on_visible', '1'); } catch (e) {}
+                _pendingReload = false;
+                _pendingReloadAt = 0;
+                return;
+            }
             _pendingReload = false;
             _pendingReloadAt = 0;
             window.location.reload();
         }
     });
     }   // ← 守卫块结束（见上方 if (navigator.serviceWorker && ...)）
+
+    /**
+     * 【2026-09-23】"新版本已就绪"提示（**只在用户主动点时才刷新**）。
+     * 为什么不在回到前台时自动刷新：那会把"折叠/切回"变成"又重启一次"，正是用户抱怨的体感。
+     */
+    function _showUpdateReadyToast() {
+        try {
+            var old = document.getElementById('_upd_ready_tip');
+            if (old && old.parentNode) old.parentNode.removeChild(old);
+            var t = document.createElement('div');
+            t.id = '_upd_ready_tip';
+            t.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99998;'
+                + 'background:#1f2937;color:#fff;padding:10px 14px;border-radius:12px;font-size:.84rem;'
+                + 'box-shadow:0 6px 24px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center;max-width:92vw;';
+            t.innerHTML = '<span>新版本已就绪（不影响当前使用）</span>'
+                + '<button id="_upd_do" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.84rem;">立即刷新</button>'
+                + '<button id="_upd_no" style="background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.84rem;">稍后</button>';
+            document.body.appendChild(t);
+            var b1 = document.getElementById('_upd_do');
+            if (b1) b1.onclick = function () { try { window.location.reload(); } catch (e) {} };
+            var b2 = document.getElementById('_upd_no');
+            if (b2) b2.onclick = function () { try { t.remove(); } catch (e) {} };
+            setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 20000);
+        } catch (e) {}
+    }
+    // 回到前台：若之前在隐藏状态下推迟过更新，只**提示**，不自动刷新
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        var pending = '';
+        try { pending = localStorage.getItem('_apply_update_on_visible') || ''; } catch (e) {}
+        if (!pending) return;
+        try { localStorage.removeItem('_apply_update_on_visible'); } catch (e) {}
+        _showUpdateReadyToast();
+    });
 
     // 暴露给「检查更新」按钮：拉取并预备最新版本（离线优先下更新唯一入口）
     function triggerApplyUpdate() {

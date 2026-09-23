@@ -1287,6 +1287,189 @@
   // 预热：填充 window.queryWeatherStations（车站字典），使智能对话无需先调天气即可解析站名；__init__ 不在字典中，handler 于 fetch 前即返回，无网络开销
   try { if (window.queryWeather) window.queryWeather({ stationName: '__init__' }); } catch (e) {}
 
+  // ================================================================
+  // 【2026-09-23】车站天气：**大模型联网检索优先 → 免费公开接口保底**
+  // ================================================================
+  // 需求（用户原话）：应急电话里的车站天气、以及智能对话里问天气，都要"优先以大模型联网搜索
+  //   为主；未接 API 或没查到，再做保底免费查询"。
+  // 实现要点：
+  //   ① 大模型结果**归一化成 Open-Meteo 同构结构**（current/daily 字段名一致）——
+  //      这样应急电话的漂亮卡片、对话的 Markdown 表两处渲染器零改动即可复用；
+  //   ② 免费层直接复用既有的 window.queryWeather（Open-Meteo），不存在"两套免费实现"；
+  //   ③ 10 分钟缓存 + 同站并发去重：连点按钮 / 折叠重开 / 对话多问不会重复烧联网检索。
+  var _WMO_TEXT = { 0:'晴',1:'少云',2:'多云',3:'阴',45:'雾',48:'雾凇',51:'毛毛雨',53:'小雨',55:'中雨',56:'冻毛雨',57:'冻雨',61:'小雨',63:'中雨',65:'大雨',66:'冻小雨',67:'冻中雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'阵雨',81:'强阵雨',82:'暴雨',85:'阵雪',86:'强阵雪',95:'雷暴',96:'雷暴伴冰雹',99:'强雷暴伴冰雹' };
+  var _WMO_EMOJI = { 0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',56:'🌧️',57:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',77:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️' };
+  /** 天气文字 → WMO 代码（模型的自由文本要落回渲染器认得的代码；匹配不到的按"多云"处理，绝不报错） */
+  function _wmoFromText(t) {
+    var s = String(t == null ? '' : t);
+    if (/冰雹/.test(s)) return 96;
+    if (/雷暴|雷阵雨|雷电/.test(s)) return 95;
+    if (/暴雨|强阵雨/.test(s)) return 82;
+    if (/阵雨|雷雨/.test(s)) return 80;
+    if (/强阵雪/.test(s)) return 86;
+    if (/阵雪/.test(s)) return 85;
+    if (/大雨/.test(s)) return 65;
+    if (/中雨/.test(s)) return 63;
+    if (/小雨|毛毛雨|细雨|微雨/.test(s)) return 61;
+    if (/冻雨|冻毛/.test(s)) return 66;
+    if (/大雪/.test(s)) return 75;
+    if (/中雪/.test(s)) return 73;
+    if (/小雪|雪粒|米雪|零星小雪/.test(s)) return 71;
+    if (/雾凇/.test(s)) return 48;
+    if (/雾|霾|浮尘|扬沙/.test(s)) return 45;
+    if (/阴/.test(s)) return 3;
+    if (/多云/.test(s)) return 2;
+    if (/少云|晴间多云|晴转多云/.test(s)) return 1;
+    if (/晴/.test(s)) return 0;
+    return 2;
+  }
+  function _num(v, dflt) {
+    var n = (typeof v === 'number') ? v : parseFloat(String(v == null ? '' : v).replace(/[^\d.\-+]/g, ''));
+    return isFinite(n) ? n : (dflt === undefined ? null : dflt);
+  }
+
+  /**
+   * 大模型 + 联网检索查车站天气（**不做免费保底**，只这一路；失败返回 ok:false）。
+   * 返回结构与 queryWeather 一致，另有 source:'llm' / raw（模型原文，便于排查）。
+   */
+  window.queryWeatherLLM = async function (stationName, opts) {
+    opts = opts || {};
+    var st = String(stationName == null ? '' : stationName).trim();
+    if (!st) return { ok: false, error: 'no-station' };
+    if (typeof window.dsWebSearchOnce !== 'function') return { ok: false, error: 'no-websearch-api' };
+    var coord = '';
+    try { var c = staticCoords[st]; if (c && c[0] && c[1]) coord = '（车站坐标 ' + c[0] + ',' + c[1] + '）'; } catch (e) {}
+    var today = new Date().toLocaleDateString('zh-CN');
+    var sys = '你是铁路气象保障助手。请**联网检索**指定车站所在位置的实时天气与未来 7 天预报。'
+      + '严格只输出一个 JSON 对象（不要解释、不要 Markdown 代码块、不要多余文字），结构：'
+      + '{"found":true,"station":"站名","current":{"temp":数字,"weather":"天气文字","feels":数字,"wind":数字,"windDir":"风向文字","humidity":数字,"pressure":数字,"precip":数字},'
+      + '"daily":[{"date":"YYYY-MM-DD","weather":"天气文字","tmax":数字,"tmin":数字,"precip":降水概率数字,"wind":数字}]}'
+      + '。规则：温度单位℃，风速单位 m/s，气压 hPa，降水概率 %；数值不要带单位；日期用当地时间；'
+      + '查不到该车站就输出 {"found":false}；个别字段不确定写 null，但不要编造未来 7 天之外的日期。';
+    var usr = '车站：' + st + coord + '（今天是 ' + today + '，请给出今天起 7 天）';
+    var r = await window.dsWebSearchOnce(sys, usr, { timeoutMs: opts.timeoutMs || 20000, maxTokens: opts.maxTokens || 1200 });
+    if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'llm-failed' };
+    var j = null;
+    try { j = window.dsParseJsonLoose ? window.dsParseJsonLoose(r.text) : JSON.parse(r.text); } catch (e) { j = null; }
+    if (!j) return { ok: false, error: 'llm-unparsed', raw: String(r.text || '').slice(0, 500) };
+    if (j.found === false) return { ok: false, error: 'llm-not-found' };
+    var cur = null;
+    if (j.current && typeof j.current === 'object') {
+      var code = _wmoFromText(j.current.weather);
+      cur = {
+        temperature_2m: _num(j.current.temp),
+        apparent_temperature: _num(j.current.feels, _num(j.current.temp)),
+        relative_humidity_2m: _num(j.current.humidity),
+        wind_speed_10m: _num(j.current.wind),
+        wind_direction_10m: _num(j.current.windDeg),
+        precipitation: _num(j.current.precip, 0),
+        surface_pressure: _num(j.current.pressure),
+        weather_code: code,
+        weather: String(j.current.weather || _WMO_TEXT[code] || ''),
+        weatherEmoji: _WMO_EMOJI[code] || '🌡️',
+        windDir: String(j.current.windDir || ''),
+        // 短别名（temp/wind）：对话侧 formatWeather 读的是这一套（与工具版 queryWeather 的输出保持一致）
+        temp: (function () { var n = _num(j.current.temp); return n == null ? '' : (n + '°C'); })(),
+        wind: (function () { var n = _num(j.current.wind); return n == null ? '' : (n + 'm/s'); })()
+      };
+    }
+    var daily = null;
+    if (Object.prototype.toString.call(j.daily) === '[object Array]' && j.daily.length) {
+      daily = { time: [], weather_code: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [], wind_speed_10m_max: [], weatherText: [], emoji: [] };
+      j.daily.slice(0, 7).forEach(function (d) {
+        d = d || {};
+        var dc = _wmoFromText(d.weather);
+        daily.time.push(String(d.date || '').slice(0, 10));
+        daily.weather_code.push(dc);
+        daily.temperature_2m_max.push(_num(d.tmax));
+        daily.temperature_2m_min.push(_num(d.tmin));
+        daily.precipitation_probability_max.push(_num(d.precip));
+        daily.wind_speed_10m_max.push(_num(d.wind));
+        daily.weatherText.push(String(d.weather || _WMO_TEXT[dc] || ''));
+        daily.emoji.push(_WMO_EMOJI[dc] || '🌡️');
+      });
+      if (daily.time.filter(Boolean).length < 2) daily = null;   // 日期都拿不到 → 画不出表，交给保底
+      else {
+        // 短别名同步一份：对话侧表格读 tmax/tmin/precip/wind（与工具版 queryWeather 输出一致），
+        // 电话卡片读 Open-Meteo 原名 —— 一套数据同时喂两个渲染器，谁都不用改字段口径。
+        daily.tmax = daily.temperature_2m_max.slice();
+        daily.tmin = daily.temperature_2m_min.slice();
+        daily.precip = daily.precipitation_probability_max.slice();
+        daily.wind = daily.wind_speed_10m_max.slice();
+      }
+    }
+    if (!cur && !daily) return { ok: false, error: 'llm-empty' };
+    return { ok: true, station: st, source: 'llm', channel: r.channel, current: cur, daily: daily, raw: String(r.text || '').slice(0, 4000) };
+  };
+
+  /**
+   * 【对外统一入口】车站天气：大模型联网优先，未接 API / 未查到 / 失败 → 免费公开接口保底。
+   * 返回：{ ok, source:'llm'|'free', degraded?:失败原因, current, daily, cached? }
+   */
+  /** 免费层（工具版 queryWeather，字段是 tmax/tmin/…）→ 补上 Open-Meteo 原名字段，
+   *  这样"应急电话卡片"与"对话表格"两个渲染器都能直接吃同一份数据（缺失项渲染成 '—'）。 */
+  function _openMeteoShape(c) {
+    if (!c) return null;
+    var code = (c.weather_code != null) ? c.weather_code : _wmoFromText(c.weather);
+    return {
+      temperature_2m: _num(c.temp),
+      apparent_temperature: null, relative_humidity_2m: null, wind_speed_10m: _num(c.wind),
+      wind_direction_10m: null, precipitation: null, surface_pressure: null,
+      weather_code: code, weather: String(c.weather || ''), weatherEmoji: c.weatherEmoji || _WMO_EMOJI[code] || '🌡️',
+      temp: String(c.temp || ''), wind: String(c.wind || '')
+    };
+  }
+  function _openMeteoDaily(d) {
+    if (!d || !d.time) return null;
+    var t = d.tmax || [], n = d.tmin || [], p = d.precip || [], w = d.wind || [];
+    return {
+      time: d.time.slice(), weather_code: (d.weather_code || []).slice(),
+      temperature_2m_max: t.slice(), temperature_2m_min: n.slice(),
+      precipitation_probability_max: p.slice(), wind_speed_10m_max: w.slice(),
+      tmax: t.slice(), tmin: n.slice(), precip: p.slice(), wind: w.slice()
+    };
+  }
+
+  var _wSmartCache = {}, _wSmartInflight = {};
+  window.queryWeatherSmart = async function (stationName, opts) {
+    opts = opts || {};
+    var st = String(stationName == null ? '' : stationName).trim();
+    if (!st) return { ok: false, error: 'no-station' };
+    var ttl = (opts.ttlMs != null) ? opts.ttlMs : 10 * 60 * 1000;
+    var hit = _wSmartCache[st];
+    if (hit && (Date.now() - hit.t) < ttl) {
+      var cv = {}; for (var kk in hit.v) if (Object.prototype.hasOwnProperty.call(hit.v, kk)) cv[kk] = hit.v[kk];
+      cv.cached = true; return cv;
+    }
+    if (_wSmartInflight[st]) { try { return await _wSmartInflight[st]; } catch (e) {} }
+    var task = (async function () {
+      var llmErr = '';
+      if (opts.preferLLM !== false) {
+        try {
+          var r = await window.queryWeatherLLM(st, opts);
+          if (r && r.ok) return r;
+          llmErr = (r && r.error) || 'llm-failed';
+        } catch (e) { llmErr = (e && e.message) || 'llm-error'; }
+      } else {
+        llmErr = 'llm-skipped';
+      }
+      // opts.skipFree：只要大模型这一路。应急电话用它做"第一优先"——它自己有一条字段更全的
+      //   免费直连（湿度/气压/风向/降水），拿它当第二优先比这里的精简版更好（见 phone.js）
+      if (opts.skipFree) return { ok: false, error: llmErr || 'llm-failed', llmError: llmErr };
+      // 保底：免费公开接口（未接 API / 大模型未查到 / 超时 / 解析失败 都走这里）
+      var f = null;
+      try { f = await window.queryWeather({ stationName: st }); } catch (e) { f = { ok: false, error: (e && e.message) || 'free-error' }; }
+      if (f && f.ok) return { ok: true, station: st, source: 'free', degraded: llmErr, current: _openMeteoShape(f.current), daily: _openMeteoDaily(f.daily) };
+      return { ok: false, error: (f && f.error) || 'query-failed', llmError: llmErr };
+    })();
+    _wSmartInflight[st] = task;
+    try {
+      var v = await task;
+      if (v && v.ok) _wSmartCache[st] = { t: Date.now(), v: v };
+      return v;
+    } finally { delete _wSmartInflight[st]; }
+  };
+
   // 暴露工具注册表与执行器，供「智能对话」模块 P1 Tool Calls 复用（与智能体共用同一套 schema 与本地实现，单点维护，避免重复定义）
   window._agentToolsParam = _toolsParam;
   window._agentExecuteTool = _executeTool;

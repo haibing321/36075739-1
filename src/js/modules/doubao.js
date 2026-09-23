@@ -4337,6 +4337,9 @@
         window.dsWebChip              = typeof dsWebChip !== 'undefined' ? dsWebChip : function(){ return ''; };
         // 联网通道辅助（自检/测试用）：Anthropic 端点推导 + 消息体转换
         window.dsAnthropicUrlCandidates = typeof dsAnthropicUrlCandidates !== 'undefined' ? dsAnthropicUrlCandidates : function(){ return []; };
+// 【2026-09-23】同样暴露 Responses 候选端点：`dsWebSearchOnce`（无 UI 联网一问一答，见 doubao-common.js）
+//   在 Anthropic 通道不可用时要能换到 Responses 通道（其它供应商场景）。
+window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined' ? dsResponsesUrlCandidates : function(){ return []; };
         window.dsBuildAnthropicMessages = typeof dsBuildAnthropicMessages !== 'undefined' ? dsBuildAnthropicMessages : function(){ return []; };
 
     })();

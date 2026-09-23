@@ -397,32 +397,51 @@
   // 将 get_weather 返回的 7 天预报格式化为 Markdown 卡片（dsMarkdown 渲染为表格）
   const _WMO_TEXT = { 0:'晴',1:'少云',2:'多云',3:'阴',45:'雾',48:'雾凇',51:'毛毛雨',53:'小雨',55:'中雨',56:'冻毛雨',57:'冻雨',61:'小雨',63:'中雨',65:'大雨',66:'冻小雨',67:'冻中雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'阵雨',81:'强阵雨',82:'暴雨',85:'阵雪',86:'强阵雪',95:'雷暴',96:'雷暴伴冰雹',99:'强雷暴伴冰雹' };
   const _WMO_EMOJI = { 0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',56:'🌧️',57:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',77:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️' };
+  // 【2026-09-23】降级原因文案（大模型联网不可用时，如实告诉用户为什么退到免费接口）
+  const _WS_DEGRADE = {
+    'no-key': '未接 API', 'no-websearch-api': '当前配置不可用', 'timeout': '超时',
+    'llm-not-found': '未查到该车站', 'llm-unparsed': '返回无法解析', 'llm-empty': '返回为空',
+    'network': '网络不可达', 'llm-skipped': '已关闭'
+  };
+  /** 数值兜底：null/NaN 一律 '—'（大模型路径个别字段可能没给） */
+  const _numOr = (v, suf) => (v == null || v === '' || !isFinite(Number(v))) ? '—' : (Math.round(Number(v)) + (suf || ''));
   function formatWeather(w, st) {
     const name = w.station || st;
     let md = '🌤️ **' + name + ' 天气**';
     if (w.current) {
-      md += '\n\n当前：' + (w.current.weatherEmoji || '') + ' ' + w.current.weather + '，' + w.current.temp + (w.current.wind ? '，风力 ' + w.current.wind : '');
+      md += '\n\n当前：' + (w.current.weatherEmoji || '') + ' ' + (w.current.weather || '')
+          + (w.current.temp ? ('，' + w.current.temp) : '')
+          + (w.current.wind ? ('，风力 ' + w.current.wind) : '');
     }
     if (w.daily && w.daily.time && w.daily.time.length) {
       md += '\n\n**未来 7 天预报**\n\n';
       md += '| 日期 | 天气 | 最高 | 最低 | 降水 | 风力 |\n| --- | --- | --- | --- | --- | --- |\n';
       const weekday = ['周日','周一','周二','周三','周四','周五','周六'];
       for (let i = 0; i < w.daily.time.length; i++) {
-        const d = w.daily.time[i];
+        const d = w.daily.time[i] || '';
         const mmdd = d.slice(5);
         let dow = '';
-        try { dow = weekday[new Date(d + 'T00:00:00').getDay()]; } catch (_) {}
+        try { dow = weekday[new Date(d + 'T00:00:00').getDay()] || ''; } catch (_) {}
         const code = w.daily.weather_code[i];
-        const wtxt = _WMO_TEXT[code] || ('代码' + code);
-        const emo = _WMO_EMOJI[code] || '🌡️';
-        const hi = Math.round(w.daily.tmax[i]);
-        const lo = Math.round(w.daily.tmin[i]);
-        const pr = (w.daily.precip[i] != null ? w.daily.precip[i] : 0);
-        const wd = (w.daily.wind[i] != null ? Math.round(w.daily.wind[i]) : '-');
+        // 大模型路径带的是天气原文/表情，优先用原文（更贴近检索到的实况）
+        const wtxt = (w.daily.weatherText && w.daily.weatherText[i]) || _WMO_TEXT[code] || ('代码' + code);
+        const emo = (w.daily.emoji && w.daily.emoji[i]) || _WMO_EMOJI[code] || '🌡️';
+        const hi = _numOr(w.daily.tmax[i], '');
+        const lo = _numOr(w.daily.tmin[i], '');
+        const pr = _numOr(w.daily.precip[i], '');
+        const wd = _numOr(w.daily.wind[i], '');
         md += '| ' + mmdd + ' ' + dow + ' | ' + emo + ' ' + wtxt + ' | ' + hi + '° | ' + lo + '° | ' + pr + '% | ' + wd + 'km/h |\n';
       }
     }
-    md += '\n\n_数据来源：Open-Meteo 公开天气 API_';
+    // 数据来源必须写明：用户要的是"优先大模型联网，兜底免费"，那就得看得出这一条到底走了哪条路
+    if (w.source === 'llm') {
+      md += '\n\n_🌐 数据来源：大模型联网检索_';
+    } else if (w.source === 'free') {
+      md += '\n\n_🛰 数据来源：免费公开天气接口（Open-Meteo）'
+          + (w.degraded ? '；大模型联网' + (_WS_DEGRADE[w.degraded] || '不可用') + '，已自动保底' : '') + '_';
+    } else {
+      md += '\n\n_数据来源：Open-Meteo 公开天气 API_';
+    }
     return md;
   }
 
@@ -473,7 +492,11 @@
             const STRONG_TASK = /写报告|生成.*报告|起草|撰写|月度总结|整改通知书|对规|违反|违章|不符合|哪条规章|风险|趋势|研判|预警/;
             const COMPOSITE_HINT = /分析|总结|说明|影响|安排|计划|方案|措施|建议|给我|帮我|评估|预测|制定|规划|梳理|整理|对比|检查|报告|通知|通报|安全|作业|施工|防洪|排查|注意|根据|结合|考虑|处理|应对|防范/;
             try {
-              const w = await window.queryWeather({ stationName: st });
+              // 【2026-09-23】优先大模型联网检索，未接 API / 未查到 → 内部自动保底免费接口
+              //   （原来直接走本地免费接口，只有"查不到车站"时才让对话强制联网）
+              const w = (typeof window.queryWeatherSmart === 'function')
+                ? await window.queryWeatherSmart(st)
+                : await window.queryWeather({ stationName: st });
               if (w && w.ok) {
                 if (STRONG_TASK.test(question)) {
                   // 强任务：交给原路由（天气站名已随 question 带入任务文本，不抢答）

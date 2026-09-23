@@ -504,11 +504,46 @@
                         return;
                     }
 
-                    const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
-                    if (!r.ok) throw new Error('服务暂时不可用');
-                    const w = await r.json();
+                    // 【2026-09-23】数据来源优先级（用户要求：**优先大模型联网，未接 API / 未查到再保底免费**）
+                    //   ① 大模型联网检索（skipFree：这一路只问大模型，失败立刻往下走）；
+                    //   ② 本模块直连免费公开接口 —— 字段最全（湿度/气压/风向/降水），file:// 开发态走本地代理 PROXY；
+                    //   ③ 共享天气层 queryWeatherSmart（大模型 + 免费公开接口，带 10 分钟缓存）—— ② 都拿不到时的最后兜底；
+                    //   ④ 全失败 → 报错。
+                    const _why = (k) => ({ 'no-key': '未接 API', 'no-websearch-api': '不可用', 'timeout': '超时', 'llm-not-found': '未查到该车站', 'llm-unparsed': '返回无法解析', 'llm-empty': '返回为空', 'network': '网络不可达', 'llm-failed': '调用失败' })[k] || '';
+                    let w = null, srcLabel = '', srcNote = '', llmWhy = '';
+                    try {
+                        const llm = await window.queryWeatherSmart(stationName, { skipFree: true });
+                        if (llm && llm.ok && llm.current) {
+                            w = llm;
+                            srcLabel = '🌐 数据来源：大模型联网检索';
+                            srcNote = '（未接 API 或检索不到时自动改用免费数据源）';
+                        } else {
+                            llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
+                        }
+                    } catch (e) { llmWhy = (e && e.message) || 'llm-error'; }
+                    if (!w) {
+                        try {
+                            const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
+                            if (!r.ok) throw new Error('服务暂时不可用');
+                            const raw = await r.json();
+                            if (raw && raw.current) {
+                                w = raw;
+                                srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
+                                srcNote = llmWhy ? '（大模型联网' + (_why(llmWhy) || '不可用') + '，已保底）' : '';
+                            }
+                        } catch (_) {}
+                    }
+                    if (!w) {
+                        const smart = await window.queryWeatherSmart(stationName);
+                        if (smart && smart.ok && smart.current) {
+                            w = smart;
+                            srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
+                            srcNote = '（大模型联网' + (_why(smart.degraded || llmWhy) || '不可用') + '，已保底）';
+                        }
+                    }
+                    if (!w) throw new Error('天气查询失败，请稍后重试');
                     const cur = w.current;
-                    const daily = w.daily;
+                    const daily = w.daily || { time: [] };   // 兜底路径可能只有实况，没有 7 天
                     const wmo = {
                         0:['☀️','晴','sunny'],1:['🌤️','少云','sunny'],2:['⛅','多云','cloudy'],3:['☁️','阴','cloudy'],
                         45:['🌫️','雾','foggy'],48:['🌫️','雾凇','foggy'],
@@ -521,9 +556,13 @@
                         85:['🌨️','阵雪','snowy'],86:['🌨️','强阵雪','snowy'],
                         95:['⛈️','雷暴','stormy'],96:['⛈️','雷暴伴冰雹','stormy'],99:['⛈️','强雷暴伴冰雹','stormy'],
                     };
-                    const [icon, desc] = wmo[cur.weather_code] || ['🌡️','未知天气'];
+                    // LLM 路径下个别数值可能为 null（模型没给）→ 统一显示 "—"，绝不能出现 0 / NaN
+                    const fmt = (v, suf) => (v == null || v === '' || !isFinite(Number(v))) ? '—' : (Math.round(Number(v)) + (suf || ''));
+                    const [icon0, desc0] = wmo[cur.weather_code] || ['🌡️','未知天气'];
+                    const icon = cur.weatherEmoji || icon0;
+                    const desc = cur.weather || desc0;                 // 大模型给的是文字，优先用原文
                     const dirs = ['北','东北','东','东南','南','西南','西','西北'];
-                    const windDir = dirs[Math.round(cur.wind_direction_10m / 45) % 8];
+                    const windDir = cur.windDir || (isFinite(Number(cur.wind_direction_10m)) ? dirs[Math.round(Number(cur.wind_direction_10m) / 45) % 8] : '—');
 
                     const now = new Date();
                     const timeStr = now.toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});
@@ -537,12 +576,12 @@
 
                     let forecastHtml = '';
                     for (let i = 0; i < daily.time.length; i++) {
-                        const [fi] = wmo[daily.weather_code[i]] || ['🌡️',''];
-                        const dayLabel = wd(daily.time[i], i);
+                        const fi = (daily.emoji && daily.emoji[i]) || (wmo[daily.weather_code[i]] || ['🌡️'])[0];
+                        const dayLabel = daily.time[i] ? wd(daily.time[i], i) : ('第' + (i + 1) + '天');
                         forecastHtml += `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;min-width:40px;font-size:.78rem;color:#e2e8f0">
                             <span style="color:#94a3b8;font-weight:500">${dayLabel}</span>
                             <span style="font-size:1.2rem">${fi}</span>
-                            <span><span style="color:#f87171;font-weight:600">${Math.round(daily.temperature_2m_max[i])}°</span> <span style="color:#93c5fd">${Math.round(daily.temperature_2m_min[i])}°</span></span>
+                            <span><span style="color:#f87171;font-weight:600">${fmt(daily.temperature_2m_max[i],'°')}</span> <span style="color:#93c5fd">${fmt(daily.temperature_2m_min[i],'°')}</span></span>
                         </span>`;
                     }
 
@@ -552,20 +591,23 @@
                                 <div style="font-size:4rem;line-height:1;animation:weatherFloat 3s ease-in-out infinite;">${icon}</div>
                                 <div style="flex:1">
                                     <div style="display:flex;align-items:baseline;gap:6px;">
-                                        <span style="font-size:2.2rem;font-weight:700;color:#fff">${Math.round(cur.temperature_2m)}°C</span>
+                                        <span style="font-size:2.2rem;font-weight:700;color:#fff">${fmt(cur.temperature_2m,'°C')}</span>
                                         <span style="font-size:.85rem;color:#94a3b8">${desc}</span>
                                     </div>
-                                    <div style="font-size:.78rem;color:#94a3b8;margin-top:2px;">🤚 体感 ${Math.round(cur.apparent_temperature)}°C · ⏱ ${timeStr}</div>
+                                    <div style="font-size:.78rem;color:#94a3b8;margin-top:2px;">🤚 体感 ${fmt(cur.apparent_temperature,'°C')} · ⏱ ${timeStr}</div>
                                 </div>
                             </div>
                             <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:.82rem;color:#cbd5e1;border-top:1px solid #475569;padding-top:8px;">
-                                <span>💧 湿度 ${cur.relative_humidity_2m}%</span>
-                                <span>🌬️ ${windDir} ${cur.wind_speed_10m}m/s</span>
-                                <span>🌧️ 降水 ${cur.precipitation}mm</span>
-                                <span>📊 气压 ${Math.round(cur.surface_pressure)}hPa</span>
+                                <span>💧 湿度 ${fmt(cur.relative_humidity_2m,'%')}</span>
+                                <span>🌬️ ${windDir} ${fmt(cur.wind_speed_10m,'m/s')}</span>
+                                <span>🌧️ 降水 ${fmt(cur.precipitation,'mm')}</span>
+                                <span>📊 气压 ${fmt(cur.surface_pressure,'hPa')}</span>
                             </div>
                             <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid #475569;flex-wrap:wrap;justify-content:space-between;">
                                 ${forecastHtml}
+                            </div>
+                            <div class="phone-weather-src" style="margin-top:8px;padding-top:6px;border-top:1px solid #475569;font-size:.7rem;color:#94a3b8;display:flex;justify-content:space-between;gap:8px;">
+                                <span>${srcLabel}</span><span style="opacity:.8">${srcNote}</span>
                             </div>
                         </div>
                     `;

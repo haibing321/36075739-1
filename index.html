@@ -2038,7 +2038,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.00</span> · 2026.09.23</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.04</span> · 2026.09.23</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2047,6 +2047,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.04 近期更新 -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.04 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 折叠展开按屏幕自动扩展容器：≥760px 时资料中心/搜索结果转多列 grid（auto-fill minmax(330px,1fr)）、≥1200px 加宽，组头与「展开全部」横跨整行；实测展开到 900~1400 无横向溢出、同一文档不重载（折叠套件 19/19）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔄 折叠绝不自动重载：SW 激活恰在页面转入隐藏时只标记待更新，回到前台弹「新版本已就绪 + 立即刷新/稍后」由用户决定；折叠开合顺滑、音乐 0 接续（折叠套件 18/18）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📡 折叠开合零远程加载：重建全走 SW 缓存（~110ms），去掉每次重建多出的豆包网页版跨域请求；豆包网页版改为点击才加载、离线用本地对话（fold-state-audit 15/15）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📥 折叠更平滑 + 修华为浏览器导出不弹下载：折叠快照 4→1 次、仅序列化当前激活面板容器；下载优先 File System Access API 弹「另存为」，不支持时桌面端也挂兜底面板不自动消失（data-io 15/15）。</span></div>
+                </div>
             </div>
 
             <!-- v4.00 近期更新 -->
@@ -2062,21 +2076,8 @@
                 </div>
             </div>
 
-            <!-- v3.90 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v3.90 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚨 新增「事故案例」：与检查手册平行的第二份四级目录数据，导入原理完全一致（同套解析/去重/多文件追加合并、互不覆盖），大纲浏览栏三视图切换（检查手册/事故案例/规章制度），各自导入导出清空与计数、备份恢复、独立 KB 源 accidents；修大纲树空章崩溃（tree[undefined].children）与解析结果归一化；套件 accident-import-audit 16/16。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔎 知识库召回三项修复（向量不做）：对规 KB topK 8→20、ruleCandidates 截断 6→12（专业优先重排后）、案例/汇编类 2 篇/66 万字从 rules 拆成独立源 cases；生产口径 Recall@10 48.8%→61.7%、平均候选 5.6→11.4、漏检 51.3%→38.3%。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂️ 资料列表交互：顶部「按类型/按时间」切换（按时间=纯时间倒序不分块）、组头可点击折叠（状态落 localStorage）、块内默认只展开最新 10 条 + 展开全部；writer-list-audit 扩到 18/18。</span></div>
-                </div>
-            </div>
-
-            <!-- v3.84 及以前已归档（最近 2 版本为 v4.00 / v3.90） -->
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.84 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <!-- v3.90 及以前已归档（最近 2 版本为 v4.04 / v4.00） -->
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v3.90 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

@@ -489,7 +489,9 @@
       //   纯天气询问（无其它任务意图）→ 直接返回天气卡片（保留快速体验）
       //   复合问题（含分析/总结/说明/安排等）→ 将天气作为上下文注入，交给 AI 综合回答，不再忽略其它内容
       //   强任务（写报告/对规/风险等）→ 不拦截，交给原路由（不打断用户对这些功能的预期）
-      if (/天气|气温|温度|气象|多少度|下雨|下雪|风力|湿度/.test(question)) {
+      // 【2026-09-23】关键词补全：原来只有"下雨/下雪"，"明天有雨吗""会降雨吗""降雪"这类口语问法
+      //   压根进不来（会走普通对话）—— 补上 有雨/降雨/降水/有雪/降雪/雨雪/变天。
+      if (/天气|气温|温度|气象|多少度|下雨|下雪|有雨|有雪|降雨|降水|降雪|雨雪|风力|湿度/.test(question)) {
         if (typeof window.queryWeather === 'function') {
           const st = extractWeatherStation(question);
           if (st) {
@@ -513,20 +515,55 @@
                   : await window.queryWeather({ stationName: st });
                 if (w && w.ok) {
                   const card = formatWeather(w, st);
-                  _updateBubble(ph, card);                          // ① 天气数据先给出来（可靠数据，独立一条）
-                  // ② 【2026-09-23 用户反馈"感觉与角色脱离了"】纯天气问题**不再**只回"卡片 + 通用小提示"：
-                  //    有 API Key 时把"问题 + 天气上下文"交给**对话流**（同一套角色系统提示 + 本地检索工具
-                  //    （规章制度/检查信息/检查手册））→ 产出结合本地数据的铁路安监研判：
-                  //    数据出处与时效、现场风险与检查要点（能引本地隐患/条款就引用）、对作业安排的建议。
-                  //    未接 API 时才退回"卡片 + 规则化保底提示"（离线可用）。
+                  // 有 API Key：交给对话流写**报告体**（用户明确表示"以前的这种提示比较好"）
+                  //   纯天气问题 → 只出一条报告（不再多一张卡片，避免同一份数据出现两次）
+                  //   复合问题   → 卡片先出，再让模型围绕用户的问题展开研判
                   let hasKey = false;
                   try { hasKey = !!localStorage.getItem('ds_api_key_v1'); } catch (e) {}
+                  const pureWeather = !COMPOSITE_HINT.test(question);
                   if (hasKey && typeof window._dsRunStream === 'function') {
-                    let finalText = question + '\n\n[参考天气信息·' + st + ']\n' + card
-                      + '\n\n（上面这份天气数据已单独展示给用户，**不要重复罗列数据表格**。请以"铁路安监助手"的身份给出研判：'
-                      + '① 数据出处与时效（多源是否一致）；② 该天气下的现场风险与检查要点 —— **本地库里若有相关的检查信息隐患、'
-                      + '规章制度条款或检查手册项点，请引用具体条目**，本地库未覆盖就明确说明；③ 对作业、巡查、值守安排的处置建议。'
-                      + '同时回答用户问句中的具体诉求。篇幅适中、不要客套。）';
+                    // 数据块：模型必须据此写表（数值不得改写），缺口（空气质量/日出日落）允许它联网补
+                    const dataBlock = '[参考天气数据（请以此为准，数值不得改写）·' + st + ']\n'
+                      + '数据来源与时效：' + (w.sourceName ? w.sourceName + (w.updated ? '，更新于 ' + w.updated : '')
+                                                          : '大模型联网检索' + (w.updated ? '（更新于 ' + w.updated + '）' : ''))
+                      + (w.source === 'free' ? '（免费公开接口 Open-Meteo）' : '') + '\n'
+                      + (w.current ? ('当前实况：' + (w.current.weather || '') + ' ' + (w.current.temp || '')
+                                      + (w.current.wind ? ('，风力 ' + w.current.wind) : '')
+                                      + (w.current.relative_humidity_2m != null ? ('，湿度 ' + Math.round(w.current.relative_humidity_2m) + '%') : '') + '\n') : '')
+                      + (w.daily && w.daily.time && w.daily.time.length
+                          ? ('未来预报：' + w.daily.time.map(function (d, i) {
+                              const wt = (w.daily.weatherText && w.daily.weatherText[i]) || '';
+                              const hi = (w.daily.temperature_2m_max || [])[i], lo = (w.daily.temperature_2m_min || [])[i];
+                              const pp = (w.daily.precipitation_probability_max || [])[i];
+                              const wd = (w.daily.wind_speed_10m_max || [])[i];
+                              return d + ' ' + wt + (hi != null ? (' ' + Math.round(hi) + '/' + Math.round(lo) + '℃') : '')
+                                + (pp != null ? (' 降水' + Math.round(pp) + '%') : '') + (wd != null ? (' 风' + Math.round(wd) + 'm/s') : '');
+                            }).join('；'))
+                          : '') + '\n';
+                    let finalText = question + '\n\n' + dataBlock;
+                    if (pureWeather) {
+                      // 【模板骨架】用户给的样板：标题 → 数据来源 → 一、今日实况（表格）→ 二、一周趋势 → 三、铁路安全监察提示 → 结尾
+                      finalText += '\n【输出要求】请按下面这个固定结构输出一份「<车站>（所在省·市/县）天气情况」报告（Markdown；分节标题用「一、」「二、」「三、」）：\n'
+                        + '首行：数据来源：<你检索到的来源站点名>，更新于 <时间>（多源时列出佐证与差异说明，并说明差异原因）\n'
+                        + '一、今日实况与预报（<日期> 星期X）—— 用**表格**列出：天气 / 气温 / 风力 / 湿度 / 空气质量 / 日出日落。'
+                        + '气温、天气、风力、湿度**必须与我提供的数据一致，不得改写数值**（可写区间与夜间变化）；'
+                        + '「空气质量」「日出日落」我这里没有，请你联网补充，确实查不到就写"暂无"。\n'
+                        + '二、未来一周趋势 —— 逐日一行「日期（周X）：天气，最高/最低℃」（用我提供的数据），'
+                        + '末尾另起一段「总体判断」：天气格局、气温变化趋势、昼夜温差、对山区/低温的提示。\n'
+                        + '三、铁路安全监察提示（结合本地数据）—— 分 3~4 条写（如：防洪与线路巡查 / 供电设备 / 人身安全 / 车辆检查）。'
+                        + '**每条都要落到本地库的具体依据**：用检索工具查本地「规章制度 / 检查信息 / 检查手册」，'
+                        + '引用时写明出处（规章名称或条款；检查信息的日期与类别；手册项点名称）；'
+                        + '本地库没有相关条目就如实写"本地库未见相关条目"，**严禁编造条款、日期或隐患**。\n'
+                        + '最后一行：说明还可以进一步查什么（如逐小时预报、站区精细化气象、对行车组织与作业安排的影响研判），并以「我可辅助研判……」收尾。\n'
+                        + '不要客套，不要重复我给你的原始数据块。';
+                    } else {
+                      finalText += '\n（上面这份天气数据已单独展示给用户，别重复罗列整张数据表。）'
+                        + '请以"铁路安监助手"的身份回答用户的具体问题，并给出研判：数据出处与时效；该天气下的现场风险与检查要点 —— '
+                        + '**用检索工具查本地「规章制度/检查信息/检查手册」，能引用具体条目就引用，本地库未覆盖就明确说明**；'
+                        + '对作业、巡查、值守安排的处置建议。篇幅适中、不要客套。';
+                    }
+                    // 纯天气：撤掉"正在联网检索"占位，让报告成为唯一回答；复合问题：保留卡片（先数据后研判）
+                    if (pureWeather) _dropBubble(ph); else _updateBubble(ph, card);
                     const validAttach = (window._dsAttachments || []).filter(Boolean);
                     if (validAttach.length) {
                       finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) { return '--- 文件：' + a.name + ' ---\n' + a.text; }).join('\n\n');
@@ -537,8 +574,12 @@
                       await window._dsRunStream(finalText);
                       return;
                     }
+                    // 注入失败（历史不可用）→ 退回卡片，别让用户空等
+                    _updateBubble(ph, card);
+                    return;
                   }
-                  // 未接 API（或流式不可用）：卡片 + 规则化保底提示
+                  // 未接 API（或流式不可用）：卡片 + 规则化保底提示（离线可用）
+                  _updateBubble(ph, card);
                   try {
                     if (typeof window.weatherWorkTips === 'function') {
                       const tips = await window.weatherWorkTips(w, st);

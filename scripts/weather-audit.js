@@ -159,15 +159,17 @@ const STUB = `(function(){
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       var last = function () { var kids = box ? box.children : []; return kids.length ? (kids[kids.length-1].textContent || '') : ''; };
-      // ⑦ 大模型正常
-      window.__wx.llmMode = 'ok';
+      // ⑦ 大模型正常：**改为单条报告**（不再单独渲染卡片，数据来源行由报告承载）
+      window.__wx.llmMode = 'ok'; window.__wx.streams = [];
+      var hist1 = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
+      if (hist1) { hist1.length = 0; if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); }
       if (q) { q.value = '兰州今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1500); });
-      // ⚠️ 判断范围：要对**整个对话区**判定 —— 有 Key 时"卡片"与"流式研判"是两条气泡，
-      //   来源行在卡片那条里，只看最后一条会误报（本轮曾因此误报失败）。
       var whole1 = (box ? box.textContent : '') || '';
-      var has1 = /数据来源：大模型联网检索/.test(whole1);
+      var noCard = !/数据来源：大模型联网检索/.test(whole1);   // 卡片不再单独出现
+      var streamed = window.__wx.streams.length === 1;         // 报告交给对话流
+      var has1 = noCard && streamed;
       // ⑧ 摘掉 Key → 免费
       localStorage.removeItem('ds_api_key_v1');
       window.__wx.free = 0;
@@ -180,7 +182,7 @@ const STUB = `(function(){
     })()`, 90000);
     console.log('  ⑦ 对话(大模型)：' + JSON.stringify(chat.tail1));
     console.log('  ⑧ 对话(免费)：' + JSON.stringify(chat.tail2));
-    h.F(chat.has1, '⑦ 对话问天气（有 Key）→ 卡片尾部标注「🌐 数据来源：大模型联网检索」');
+    h.F(chat.has1, '⑦ 有 Key 的纯天气问题 → 单条报告（不再单独渲染卡片；数据来源由报告首行承载）');
     h.F(chat.has2 && chat.free2 >= 1, '⑧ 对话问天气（无 Key）→ 标注「🛰 数据来源：免费公开天气接口」，且免费接口被调用 ' + chat.free2 + ' 次');
 
     // ---------- ⑨⑩ 应急电话卡片：两种来源的标注 ----------
@@ -256,30 +258,37 @@ const STUB = `(function(){
     h.F(noMisleading.hasSrc && !noMisleading.misleading,
       '⑬ 大模型成功的卡片只标「🌐 数据来源：大模型联网检索」，不再挂"会自动改用免费数据源/已保底"的误导提示');
 
-    // ---------- ⑭ 纯天气问题（有 Key）：卡片先出，随后交给**对话流**产出角色化研判 ----------
+    // ---------- ⑭ 纯天气问题（有 Key）：单条"报告体"由对话流产出（用户明确说"以前这种提示比较好"）----------
     const roleAns = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
       window.__wx.llmMode = 'ok'; window.__wx.streams = [];   // 对话流用全局 stub（见开头）
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       window.__wx.box = box;
+      // ⚠️ 隔离：清空历史再测，否则前面用例的气泡会让"卡片/气泡数"之类断言失真（本轮踩过）
+      var hist0 = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
+      if (hist0) { hist0.length = 0; if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); }
       if (q) { q.value = '白银今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1500); });
       var hist = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
-      var lastUser = null;
+      var lastUser = null, assistantCount = 0;
       for (var i = hist.length - 1; i >= 0; i--) { if (hist[i] && hist[i].role === 'user') { lastUser = hist[i]; break; } }
-      var all = (box ? box.textContent : '') || '';
+      for (var j = 0; j < hist.length; j++) { if (hist[j] && hist[j].role === 'assistant') assistantCount++; }
       var s0 = window.__wx.streams[0] || '';
-      return { streams: window.__wx.streams.length, cardShown: /数据来源/.test(all),
+      return { streams: window.__wx.streams.length, assistantBubbles: assistantCount, head: s0.slice(0, 60),
                userBubbleShort: !!(lastUser && lastUser.displayText === '白银今天天气怎么样'),
-               injHasWeather: /\\[参考天气信息·/.test(s0),
-               injNoRepeat: /不要重复罗列数据表格/.test(s0),
-               injAskLocal: /规章制度条款|检查信息隐患|检查手册项点/.test(s0) };
+               injData: /\\[参考天气数据（请以此为准，数值不得改写）·白银\\]/.test(s0) && /18/.test(s0),
+               injTemplate: /一、今日实况与预报/.test(s0) && /二、未来一周趋势/.test(s0) && /三、铁路安全监察提示/.test(s0),
+               injTable: /用\\*\\*表格\\*\\*列出/.test(s0) && /空气质量/.test(s0) && /日出日落/.test(s0),
+               injNoFabricate: /严禁编造条款/.test(s0),
+               injLocal: /规章制度 \\/ 检查信息 \\/ 检查手册/.test(s0),
+               injTail: /我可辅助研判/.test(s0) && /逐小时预报/.test(s0) };
     })()`, 90000);
-    console.log('  ⑭ 角色化研判接线：' + JSON.stringify(roleAns));
-    h.F(roleAns.cardShown && roleAns.streams === 1 && roleAns.injHasWeather && roleAns.injNoRepeat && roleAns.injAskLocal && roleAns.userBubbleShort,
-      '⑭ 有 Key 的纯天气问题：卡片先出，随后交给对话流产出**角色化研判**（注入天气上下文 + 要求引用本地隐患/条款/手册 + 不重复罗列数据；用户气泡仍只显示原话）');
+    console.log('  ⑭ 报告体接线：' + JSON.stringify(roleAns));
+    h.F(roleAns.streams === 1 && roleAns.assistantBubbles === 0 && roleAns.userBubbleShort
+        && roleAns.injData && roleAns.injTemplate && roleAns.injTable && roleAns.injNoFabricate && roleAns.injLocal && roleAns.injTail,
+      '⑭ 有 Key 的纯天气问题 → 交给对话流产出**报告体**（单条回答、无多余卡片）：注入数据块（数值不得改写）+ 模板骨架（一、实况表格 / 二、一周趋势 / 三、监察提示）+ 本地检索要求 + 严禁编造 + 「我可辅助研判」结尾');
 
     // ---------- ⑮ 未接 API 时：不走对话流，退回"卡片 + 规则化保底提示" ----------
     const tipsRule = await h.ev(`(async () => {
@@ -327,6 +336,28 @@ const STUB = `(function(){
     console.log('  ⑯ 规则保底：' + JSON.stringify(rule));
     h.F(rule.lines >= 1 && rule.lines <= 3 && rule.hasThunder && rule.hasWind && rule.hasHeat,
       '⑯ 规则化保底按天气给提示：雷暴+降雨+大风 → 命中雷暴/大风 共 ' + rule.lines + ' 条（≤3）；晴 38℃ → ' + (rule.hasHeat ? '命中高温防暑' : '未命中高温'));
+
+    // ---------- ⑱ 复合问题（"…要注意什么"）：卡片先出 + 让模型围绕具体问题研判 ----------
+    const compo = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.llmMode = 'ok'; window.__wx.streams = [];
+      var q = document.getElementById('ds-user-input');
+      var box = document.getElementById('ds-chat-box');
+      // 同样先清空历史，避免复用上一条用例遗留的气泡（卡片判定必须只看本轮）
+      var hist0 = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
+      if (hist0) { hist0.length = 0; if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); }
+      if (q) { q.value = '白银明天有雨吗？现场作业要注意什么'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
+      await window.dsSendMsg();
+      await new Promise(function (r) { setTimeout(r, 1500); });
+      var all = (box ? box.textContent : '') || '';
+      var s0 = window.__wx.streams[0] || '';
+      return { streams: window.__wx.streams.length, cardKept: /数据来源/.test(all), head: s0.slice(0, 60),
+               injAnswer: /回答用户的具体问题/.test(s0), injLocal: /规章制度\\/检查信息\\/检查手册/.test(s0),
+               notReport: !/一、今日实况与预报/.test(s0) };
+    })()`, 90000);
+    console.log('  ⑱ 复合问题：' + JSON.stringify(compo));
+    h.F(compo.streams === 1 && compo.cardKept && compo.injAnswer && compo.injLocal && compo.notReport,
+      '⑱ 复合问题（含"要注意什么"）→ 保留天气卡片 + 交给对话流**围绕用户的具体问题**研判（不套报告模板）');
 
     await h.ev(`(() => { try { localStorage.removeItem('ds_api_key_v1'); sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
   } catch (e) {

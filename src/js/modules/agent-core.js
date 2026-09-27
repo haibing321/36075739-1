@@ -1516,9 +1516,19 @@
     }
     if (_wSmartInflight[st]) { try { return await _wSmartInflight[st]; } catch (e) {} }
     var task = (async function () {
+      // 【2026-09-27】免费层也带一次重试：偶发限流/网络抖动不该被当成"免费接口不可用"而直接升级到大模型
+      //   （用户反馈"兰州明明能查到免费数据，却提示免费接口没取到"）。
       var _freeCall = async function () {
-        try { return await window.queryWeather({ stationName: st }); }
-        catch (e) { return { ok: false, error: (e && e.message) || 'free-error' }; }
+        var lastErr = null;
+        for (var i = 0; i < 2; i++) {
+          try {
+            var r = await window.queryWeather({ stationName: st });
+            if (r && r.ok) return r;
+            lastErr = r || lastErr;
+          } catch (e) { lastErr = { ok: false, error: (e && e.message) || 'free-error' }; }
+          if (i === 0) await new Promise(function (res) { setTimeout(res, 400); });
+        }
+        return lastErr || { ok: false, error: 'free-error' };
       };
       var _llmCall = async function () {
         try { return await window.queryWeatherLLM(st, opts); }

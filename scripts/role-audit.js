@@ -420,8 +420,11 @@ const STUB = `(function(){
       const tplUsesRole = /按当前所选专业角色/.test(un) && /window\.dsRoleFocus/.test(un) && /本专业关注点/.test(un);
       const tplNoGeneric = !/如：防洪与线路巡查/.test(un) && !/人身安全 \/ 车辆检查/.test(un);
       const focusApiOk = /window\.dsRoleFocus = function/.test(ag);
-      console.log('  E4 报告体模板：取角色=' + tplUsesRole + ' 去掉写死清单=' + tplNoGeneric + ' 关注点接口存在=' + focusApiOk);
-      h.F(tplUsesRole && tplNoGeneric && focusApiOk,
+      // 依据口径守卫（用户 2026-09-27）：只引规章制度条款；检查手册个别引用；**不引检查信息**（历史案例）
+      const tplCiteRule = /不要引用检查信息/.test(un) && /个别引用/.test(un);
+      console.log('  E4 报告体模板：取角色=' + tplUsesRole + ' 去掉写死清单=' + tplNoGeneric
+        + ' 关注点接口存在=' + focusApiOk + ' 依据口径=' + tplCiteRule);
+      h.F(tplUsesRole && tplNoGeneric && focusApiOk && tplCiteRule,
         'E4 天气报告体「三、铁路安全监察提示」按当前角色写：模板取 dsGetRole/dsRoleFocus 与"本专业关注点"，'
         + '不再出现写死的通用四项清单；关注点接口 window.dsRoleFocus 已暴露（唯一来源）');
 

@@ -62,3 +62,8 @@ scripts/_tmp*
 # Local real test data (~90MB) - never commit; scripts/realdata-e2e.js skips when absent
 安监系统测试数据.zip
 scripts/_tmp_zipdata/
+
+# 开发工具与文档（不进运行时/公开仓库，本地保留即可）
+scripts/
+README.md
+智能体功能审查与改进建议.md

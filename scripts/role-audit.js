@@ -424,6 +424,18 @@ const STUB = `(function(){
       h.F(tplUsesRole && tplNoGeneric && focusApiOk,
         'E4 天气报告体「三、铁路安全监察提示」按当前角色写：模板取 dsGetRole/dsRoleFocus 与"本专业关注点"，'
         + '不再出现写死的通用四项清单；关注点接口 window.dsRoleFocus 已暴露（唯一来源）');
+
+      // ---------- E5：天气提示由**实测数值与等级**推导（源码守卫）----------
+      //   用户要求："提示要根据天气具体情况等级（气温、温差、湿度、雨量、风速等）进行合理提示，
+      //   提示不能脱离天气具体情况，否则就乱提示。"
+      const agHasFacts = /function _wxFacts\(/.test(ag) && /function _wxLevel\(/.test(ag);
+      const agRoleByWx = /var _ROLE_WX = \{/.test(ag) && /function _roleWxLine\(/.test(ag)
+        && /_roleWxLine\(roleKey, roleLabel, roleFocus, F, L\)/.test(ag);
+      const tplNeedsValue = /每条都必须由我提供的数据推出/.test(un) && /数据不突出的项不要硬编提示/.test(un);
+      console.log('  E5 提示数值化：事实层=' + agHasFacts + ' 角色行随天气=' + agRoleByWx + ' 报告模板要求挂数值=' + tplNeedsValue);
+      h.F(agHasFacts && agRoleByWx && tplNeedsValue,
+        'E5 天气提示由实测数值与等级推导：存在 _wxFacts（实测事实）/_wxLevel（主等级）与专业×等级表 _ROLE_WX + _roleWxLine'
+        + '（角色行随天气变），报告模板要求"每条都必须点出触发它的数值、数据不突出不要硬编提示"');
     }
 
     // ================= E2：作业提示与角色有关（规则保底路径） =================

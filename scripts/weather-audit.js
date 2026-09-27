@@ -478,6 +478,68 @@ const STUB = `(function(){
       '⑯ 规则化保底按天气给提示：雷暴+降雨+大风 → 命中雷暴/大风 共 ' + rule.lines
       + ' 行（1 条角色关注点 + 最多 3 条天气，≤4）；晴 38℃ → ' + (rule.hasHeat ? '命中高温防暑' : '未命中高温'));
 
+    // ---------- ⑯c/⑯d 提示必须由实测数值与等级推出（用户："不能脱离天气具体情况，否则就乱提示"）----------
+    const tipsByWx = await h.ev(`(async () => {
+      try { localStorage.removeItem('ds_api_key_v1'); } catch (e) {}   // 走规则保底（大模型路径另有断言）
+      var sel = document.getElementById('expertRole');
+      if (sel) { sel.value = 'gongdian'; try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+      try { localStorage.setItem('ds_role_v1', 'gongdian'); } catch (e) {}
+      var calm = { ok: true,
+        current: { temperature_2m: 20, weather_code: 2, weather: '多云', wind_speed_10m: 3, relative_humidity_2m: 50 },
+        daily: { time: ['2026-09-27'], weather_code: [2], temperature_2m_max: [20], temperature_2m_min: [14],
+                 precipitation_probability_max: [10], wind_speed_10m_max: [4], weatherText: ['多云'] } };
+      var ext = { ok: true,
+        current: { temperature_2m: 38, weather_code: 95, weather: '雷暴', wind_speed_10m: 18,
+                   relative_humidity_2m: 95, precipitation: 12 },
+        daily: { time: ['2026-09-27'], weather_code: [95], temperature_2m_max: [38], temperature_2m_min: [23],
+                 precipitation_probability_max: [90], wind_speed_10m_max: [20], weatherText: ['雷暴'] } };
+      // 只突出"高温 + 潮湿"的天气：验证这两个等级也能独立命中（上面那条被更严重的等级占满了名额）
+      var hotWet = { ok: true,
+        current: { temperature_2m: 38, weather_code: 1, weather: '晴', wind_speed_10m: 3, relative_humidity_2m: 95 },
+        daily: { time: ['2026-09-27'], weather_code: [1], temperature_2m_max: [38], temperature_2m_min: [30],
+                 precipitation_probability_max: [10], wind_speed_10m_max: [4], weatherText: ['晴'] } };
+      var tCalm = String(await window.weatherWorkTips(calm, '兰州') || '');
+      var tExt = String(await window.weatherWorkTips(ext, '兰州') || '');
+      var tHotWet = String(await window.weatherWorkTips(hotWet, '兰州') || '');
+      var firstLine = function (t) { return String(t).split('\\n')[0] || ''; };
+      return { calm: tCalm, ext: tExt, hotWet: tHotWet, calmRole: firstLine(tCalm), extRole: firstLine(tExt) };
+    })()`, 90000);
+    console.log('  ⑯c 平稳天气提示：' + JSON.stringify(tipsByWx.calm.replace(/\n/g, ' | ').slice(0, 220)));
+    console.log('  ⑯d 极端天气提示：' + JSON.stringify(tipsByWx.ext.replace(/\n/g, ' | ').slice(0, 260)));
+    const calmTxt = tipsByWx.calm || '';
+    const _badCalm = ['高温', '大风', '强风', '雷暴', '严寒', '防冻', '防洪', '潮湿', '干燥'].filter(function (k) { return calmTxt.indexOf(k) >= 0; });
+    h.F(calmTxt.indexOf('平稳') >= 0 && /20/.test(calmTxt) && _badCalm.length === 0,
+      '⑯c **平稳天气不乱提示**（多云 20℃、温差 6℃、湿度 50%、风 3m/s、降水概率 10%）→ 只出"天气平稳"且带上数值，'
+      + '不含高温/大风/雷暴/防冻/防洪/潮湿等与实况不符的提示'
+      + (_badCalm.length ? '（**误报：' + _badCalm.join('、') + '**）' : ''));
+
+    const extTxt = tipsByWx.ext || '';
+    // 用 indexOf 判定（避免正则转义坑；提示里应当出现"触发它的数值"）
+    const _has = function (t, arr) { return arr.some(function (s) { return t.indexOf(s) >= 0; }); };
+    const _hitExt = [
+      ['雷暴', _has(extTxt, ['雷暴'])],
+      ['大风/强风 18m/s', _has(extTxt, ['强风 18', '大风 18', '18m/s', '18 m/s'])],
+      ['高温 38℃', _has(extTxt, ['38'])],
+      ['降水概率 90%', _has(extTxt, ['降水概率 90'])],
+      ['潮湿 95%', _has(extTxt, ['95'])]
+    ].filter(function (x) { return x[1]; }).map(function (x) { return x[0]; });
+    // ⚠️ 口径：提示最多 4 行（1 条角色 + 3 条天气）且按严重程度排序 —— 所以"最严重的 3 项"必须命中；
+    //   高温/潮湿在雷暴+强降水+强风的场景里被挤出名额是**正确**的排序行为，不能据此判失败（第一版断言就是这样误报的）。
+    h.F(_hitExt.length >= 3,
+      '⑯d **极端天气按数值命中并写清触发数值**（雷暴、风 18m/s、降水概率 90% 必须进前 3 条）→ 命中 '
+      + _hitExt.length + ' 项：' + _hitExt.join('、'));
+
+    const hotTxt = tipsByWx.hotWet || '';
+    const _hitHot = [['高温 38℃', _has(hotTxt, ['38'])], ['潮湿 95%', _has(hotTxt, ['95'])]]
+      .filter(function (x) { return x[1]; }).map(function (x) { return x[0]; });
+    console.log('  ⑯d2 高温+潮湿：' + JSON.stringify(hotTxt.replace(/\n/g, ' | ').slice(0, 200)));
+    h.F(_hitHot.length === 2,
+      '⑯d2 只突出"高温 + 潮湿"的天气（38℃、湿度 95%、无风无雨）→ 这两项等级独立命中且带数值：'
+      + _hitHot.join('、'));
+    h.F(tipsByWx.calmRole !== tipsByWx.extRole && /雷暴/.test(tipsByWx.extRole) && /平稳/.test(tipsByWx.calmRole),
+      '⑯e **角色提示行也随天气变**（同一「供电」角色）：平稳天气 → ' + tipsByWx.calmRole.slice(0, 42)
+      + ' ／ 雷暴天 → ' + tipsByWx.extRole.slice(0, 42) + ' —— 不再是与本日天气无关的固定一句');
+
     // ---------- ⑱ 复合问题（"…要注意什么"）：卡片先出 + 让模型围绕具体问题研判 ----------
     const compo = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');

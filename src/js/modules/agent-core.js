@@ -1551,8 +1551,23 @@
     }
     return lines.length > 1 ? lines.join('\n') : '';
   }
+  /** 【2026-09-27】各专业角色在天气场景的关注点（角色作用审计：天气提示不能千篇一律） */
+  var _W_ROLE_FOCUS = {
+    dianwu: '信号设备与道岔转辙的防潮防雷、轨道电路绝缘、电缆沟排水',
+    gongwu: '线路路基与桥涵、道床排水、防胀防断与巡查周期',
+    gongdian: '接触网与牵引变电、绝缘与防雷接地、异物侵限',
+    keyun: '旅客乘降组织、站台防滑、雨雪天客流引导',
+    chewu: '接发列车与调车作业、限速与瞭望确认',
+    jiwu: '机车运用与操纵、雨雪天防空转与制动机使用',
+    cheliang: '5T 检测与轮轴制动、防滑与走行部检查',
+    tongxin: 'GSM-R 与光电缆、通信设备防水防雷',
+    fangjian: '站房雨棚与限界、屋面排水与渗漏',
+    huoyun: '装载加固与危货运输、货物防湿损',
+    tongyong: '双重预防与跨专业协同、隐患整改闭环',
+    riskanalyst: '把天气条件转为风险等级与预警建议'
+  };
   /** 规则化保底提示（未接 API / 大模型失败；离线也能给出可用提示） */
-  function _ruleTips(w) {
+  function _ruleTips(w, roleLabel, roleFocus) {
     var tips = [];
     var cur = (w && w.current) || {}, d = (w && w.daily) || {};
     var texts = [];
@@ -1576,6 +1591,8 @@
     if (tmax != null && tmax >= 35) tips.push('高温天气：避开高温时段作业，做好防暑降温，关注钢轨与设备温度。');
     if (tmin != null && tmin <= -5) tips.push('低温天气：做好设备防冻与人员保暖，注意金属件脆裂风险。');
     if (!tips.length) tips.push('天气总体平稳：按标准作业，作业前关注现场天气变化，做好防护与应急准备。');
+    // 角色行放最前（用户所选专业优先），整体仍限制 3 条
+    if (roleFocus) tips.unshift('【' + (roleLabel || '本专业') + '】重点关注：' + roleFocus + '。');
     return tips.slice(0, 3).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
   }
   /**
@@ -1586,12 +1603,20 @@
     opts = opts || {};
     var summary = _weatherSummaryText(w, stationName);
     if (!summary) return '';
+    // 【2026-09-27 角色审计】工作提示也按当前角色给：用户选了「供电」却收到通用提示，
+    //   等于角色白选（用户原话："天气查询各种角色是否影响对话内容"）。取不到角色时按通用。
+    var _rk = 'default', _rl = '';
+    try {
+      if (typeof window.dsGetRole === 'function') { var _ri = window.dsGetRole(); _rk = _ri.key; _rl = _ri.label; }
+    } catch (e) {}
+    var _focus = _W_ROLE_FOCUS[_rk] || '';
     try {
       if (typeof window.dsCallOnce === 'function') {
         var r = await window.dsCallOnce(
           '你是铁路安监助手。根据给定的车站天气，输出**不超过 3 条**针对铁路现场作业的安全提示。'
           + '要求：每条一行、以「序号. 」开头、每条不超过 40 字；必须紧扣给出的天气（降雨→道床/路基/电气化设备与防滑；'
           + '大风→高空作业与轻飘物侵限；高温→防暑与设备温度；降雪结冰→防滑除冰；雷暴→停止露天登高作业；低能见度→瞭望与限速）。'
+          + (_focus ? ('当前使用者身份：' + (_rl || _rk) + '，提示**优先从该专业角度**给出（' + _focus + '），但仍须紧扣实际天气。') : '')
           + '不要复述天气数据，不要客套话，不要输出标题。',
           summary,
           { maxTokens: 400, timeoutMs: 20000, temperature: 0.3 }
@@ -1599,7 +1624,7 @@
         if (r && r.ok && r.text && String(r.text).trim()) return String(r.text).trim();
       }
     } catch (e) {}
-    return _ruleTips(w);
+    return _ruleTips(w, _focus ? (_rl || _rk) : '', _focus);
   };
 
   /**

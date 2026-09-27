@@ -54,6 +54,7 @@ const SUITES = [
   { name: 'chat-fixes-audit',      file: 'scripts/chat-fixes-audit.js',      kind: 'audit', desc: '对话/写作反馈：附件按钮可唤起+即时反馈、风险误跳、设置项合并、写作"用不用模板/资料"提示', timeout: 900000 },
   { name: 'fold-state-audit',      file: 'scripts/fold-state-audit.js',      kind: 'audit', desc: '折叠屏开合界面保持：不重载路径 + 文档重建路径（模块/滚动/阅读位置/草稿/弹窗/子视图/分类筛选）', timeout: 900000 },
   { name: 'weather-audit',         file: 'scripts/weather-audit.js',         kind: 'audit', desc: '车站天气来源优先级：大模型联网优先 + 未接API/失败/未查到自动保底免费（电话与对话共用同一逻辑）', timeout: 900000 },
+  { name: 'role-audit',            file: 'scripts/role-audit.js',            kind: 'audit', desc: '智能对话角色作用：14 角色的人设注入/串味/豁免、切换与重建保持、读取鲁棒性、天气×角色（卡片不变·提示与身份随角色）', timeout: 1200000 },
   { name: 'kb-recall-bench',       file: 'scripts/kb-recall-bench.js',       kind: 'audit', desc: '知识库召回基线：真实"检查描述→其引用规章"ground truth，Recall@K/MRR + 归因消融（缺数据自动 SKIP）', timeout: 1800000 },
   { name: 'mutation-check',        file: 'scripts/mutation-check.js',        kind: 'audit', desc: '测试敏感度自检：注入已知缺陷验证套件确实会失败', timeout: 900000 },
   { name: 'boot-bench',            file: 'scripts/boot-bench.js',            kind: 'bench', desc: '冷启动性能基线',                            timeout: 900000 },

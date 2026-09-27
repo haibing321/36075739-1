@@ -2076,7 +2076,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.09</span> · 2026.09.27</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.10</span> · 2026.09.27</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2088,6 +2088,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.10 近期更新（应急电话免费接口修复） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.10 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>☎️ 修「应急电话兰州走不到免费接口」：免费直连加一次 400ms 退避重试（原来失败一枪就升级大模型，兰州坐标本在内置字典，只可能是偶发 429/抖动）；顺序改为「电话自带免费直连 → 共享免费层 → 最后才联网大模型」，落实「先本地/免费后联网」原则。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 共享免费层 _freeCall 同样加一次重试；卡片备注写明具体失败原因（429 被限流 / 网络失败 / 数据异常 / 无坐标），便于用户在手机上直接定位；套件 weather 35/35（新增 ⑨c：兰州+免费首枪 429→重试成功→仍用免费、大模型 0 次）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 回归全绿：role 17/17、autocheck 23/23、chat-fixes 20/20；SW 与 version.json 同步 bump。</span></div>
+                </div>
             </div>
 
             <!-- v4.09 近期更新（涵盖 v4.06–v4.09 天气报告质量重构） -->
@@ -2104,21 +2117,7 @@
                 </div>
             </div>
 
-            <!-- v4.04 近期更新 -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.04 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 折叠展开按屏幕自动扩展容器：≥760px 时资料中心/搜索结果转多列 grid（auto-fill minmax(330px,1fr)）、≥1200px 加宽，组头与「展开全部」横跨整行；实测展开到 900~1400 无横向溢出、同一文档不重载（折叠套件 19/19）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔄 折叠绝不自动重载：SW 激活恰在页面转入隐藏时只标记待更新，回到前台弹「新版本已就绪 + 立即刷新/稍后」由用户决定；折叠开合顺滑、音乐 0 接续（折叠套件 18/18）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📡 折叠开合零远程加载：重建全走 SW 缓存（~110ms），去掉每次重建多出的豆包网页版跨域请求；豆包网页版改为点击才加载、离线用本地对话（fold-state-audit 15/15）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📥 折叠更平滑 + 修华为浏览器导出不弹下载：折叠快照 4→1 次、仅序列化当前激活面板容器；下载优先 File System Access API 弹「另存为」，不支持时桌面端也挂兜底面板不自动消失（data-io 15/15）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.04 及以前已归档（最近 2 版本为 v4.09 / v4.05） -->
+            <!-- v4.04 及以前已归档（最近 2 版本为 v4.10 / v4.09） -->
             <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.04 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 

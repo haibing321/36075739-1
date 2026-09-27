@@ -2283,8 +2283,12 @@
                 await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
 
                 // ---- 4.4 角色注入 ----
-                var roleSelect = document.getElementById('expertRole');
-                var selectedRole = roleSelect ? roleSelect.value : 'default';
+                // 【2026-09-27】改走 window.dsGetRole()：DOM 读不到时回落 localStorage 里记的角色，
+                //   不再静默变成 default（此前"选了角色却不生效"的根因之一）。
+                var _roleInfo = (typeof window.dsGetRole === 'function')
+                    ? window.dsGetRole()
+                    : { key: 'default', label: '通用', prompt: '', isCode: false };
+                var selectedRole = _roleInfo.key;
                 // 【v3.76】代码角色标记：下面凡是"铁路业务规范"类的注入都对它跳过 ——
                 //   它是写代码用的角色，注入"以本地铁路数据为权威""人机环管""问题性质 A/B/C/红线"
                 //   既浪费 token，也会让模型把业务框架套进代码回答里。
@@ -5728,6 +5732,36 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
       window.ROLE_PROMPTS = ROLE_PROMPTS;
       window.ROLE_OUTPUT_NORMS = ROLE_OUTPUT_NORMS;   // v3.76：专业角色统一输出规范（frontend 不追加）
+
+      /**
+       * 【2026-09-27 角色作用审计】统一的「当前角色」读取口 —— 单一事实来源。
+       * 为什么要有它：此前各处（对话主通道、天气报告模板…）都直接 `document.getElementById('expertRole').value`，
+       *   一旦 DOM 读不到（尚未初始化、被重建、面板未渲染）就**静默回落 default** ——
+       *   用户表现为"我选了电务角色，可它答得像通用助手"，却没有任何提示。
+       * 顺序：① 下拉框当前值 → ② localStorage `ds_role_v1`（持久化选择）→ ③ 'default'；
+       *   角色键不存在（脏值/旧版本残留）也回落 default，绝不返回空人设。
+       * 返回 { key, label, prompt, isCode }。
+       */
+      var ROLE_LABELS = {
+        default: '通用', dianwu: '电务', gongwu: '工务', gongdian: '供电', keyun: '客运', chewu: '车务',
+        jiwu: '机务', cheliang: '车辆', tongxin: '通信', fangjian: '房建', huoyun: '货运',
+        tongyong: '综合', frontend: '前端开发', riskanalyst: '风险分析'
+      };
+      window.dsGetRole = function () {
+        var key = '';
+        try {
+          var sel = document.getElementById('expertRole');
+          if (sel && sel.value) key = String(sel.value);
+        } catch (e) {}
+        if (!key) { try { key = String(localStorage.getItem('ds_role_v1') || ''); } catch (e) {} }
+        if (!key || !ROLE_PROMPTS[key]) key = 'default';
+        return {
+          key: key,
+          label: ROLE_LABELS[key] || key,
+          prompt: ROLE_PROMPTS[key] || '',
+          isCode: key === 'frontend'
+        };
+      };
       window._originalSendMsg = window.dsSendMsg;
 
       // 角色注入和长期记忆已内置到 dsSendMsg 中，此处保留暴露 ROLE_PROMPTS

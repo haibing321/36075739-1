@@ -499,15 +499,36 @@
                             if (dc && dc.ok) { lat = dc.lat; lon = dc.lon; }
                         } catch (_) {}
                     }
-                    const _freeDirect = async function () {
-                        if (!lat || !lon) return null;
-                        try {
-                            const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
-                            if (!r.ok) return null;
-                            const raw = await r.json();
-                            return (raw && raw.current) ? raw : null;
-                        } catch (_) { return null; }
+                    /**
+                     * 免费公开接口直连（含**一次重试**）。
+                     * 为什么加重试：用户反馈"兰州明明能查到免费数据，却提示'免费接口没取到，已联网补取'" ——
+                     *   兰州坐标就在内置字典里，"取不到"只可能是这一枪偶发失败（Open-Meteo 限流 429 / 网络抖动），
+                     *   原实现失败一次就立刻升级到大模型，观感像是"免费接口用不了"。
+                     * 同时记录失败原因（_freeWhy），写进卡片备注，便于下次在手机上直接定位。
+                     */
+                    var _freeWhy = '';
+                    const _freeDirect = async function (tries) {
+                        if (!lat || !lon) { _freeWhy = 'no-coord'; return null; }
+                        const n = tries || 2;
+                        for (let attempt = 0; attempt < n; attempt++) {
+                            try {
+                                const r = await fetch(PROXY ? `${PROXY}/weather?lat=${lat}&lon=${lon}` : weatherUrl(lat, lon));
+                                if (r && r.ok) {
+                                    const raw = await r.json();
+                                    if (raw && raw.current) return raw;
+                                    _freeWhy = 'bad-payload';
+                                } else {
+                                    _freeWhy = 'http-' + ((r && r.status) || '?');
+                                }
+                            } catch (e) { _freeWhy = 'network'; }
+                            if (attempt < n - 1) await new Promise(function (res) { setTimeout(res, 400); });
+                        }
+                        return null;
                     };
+                    /** 免费接口失败原因 → 人话（写进卡片备注） */
+                    const _whyFree = (k) => ({
+                        'no-coord': '没有坐标', 'bad-payload': '返回数据异常', 'network': '网络失败'
+                    })[k] || (/^http-(\d+)$/.test(k) ? ('返回 ' + k.slice(5) + (/^429$/.test(k.slice(5)) ? '（被限流）' : '')) : '');
                     // ① 本地就有坐标 → 直接用免费公开接口出数据（最快、免费、不需要 Key）
                     if (lat && lon) {
                         const early = await _freeDirect();
@@ -551,7 +572,20 @@
                         }
                         saveToStorage();
                     }
-                    // ③ 本地/免费都拿不到 → 才走联网大模型（不需要坐标，服务端检索）
+                    // ③ **共享免费层**（`queryWeatherSmart` 免费那一路：走工具版坐标+Open-Meteo，带 10 分钟缓存）
+                    //   ⚠️ 顺序修正：原来这里先放大模型、把共享免费层当"最后兜底"，等于"电话自带的免费直连一失败
+                    //   就直接联网"，违反了用户要求的"先本地/免费，后联网"。共享免费层也是免费通道，必须先试。
+                    if (!w) {
+                        try {
+                            const smart = await window.queryWeatherSmart(stationName, { freeOnly: true });
+                            if (smart && smart.ok && smart.current) {
+                                w = smart;
+                                srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
+                                srcNote = '（电话直连未取到，已改用共享免费通道）';
+                            }
+                        } catch (_) {}
+                    }
+                    // ④ 所有免费通道都拿不到 → 才走联网大模型（不需要坐标，服务端检索）
                     if (!w) {
                         let llm = null;
                         try { llm = await window.queryWeatherSmart(stationName, { skipFree: true, timeoutMs: 10000 }); }
@@ -559,19 +593,10 @@
                         if (llm && llm.ok && llm.current) {
                             w = llm;
                             srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
-                            srcNote = '（免费接口没取到，已联网补取）';
+                            // 如实写明免费接口为什么没取到（重试后仍失败），便于用户在手机上直接判断
+                            srcNote = '（免费接口' + (_whyFree(_freeWhy) || '重试后仍未取到') + '，已联网补取）';
                         } else {
                             llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
-                        }
-                    }
-                    // ④ 兜底：共享天气层（只走免费层，带 10 分钟缓存）
-                    if (!w) {
-                        // freeOnly：这一步只当"免费兜底"，不再重试大模型（③ 刚试过）
-                        const smart = await window.queryWeatherSmart(stationName, { freeOnly: true });
-                        if (smart && smart.ok && smart.current) {
-                            w = smart;
-                            srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
-                            srcNote = llmWhy ? '（大模型联网' + (_why(llmWhy) || '不可用') + '，已保底）' : '';
                         }
                     }
                     // ⑤ 全失败 → 给出**可操作**的提示（别再只说"未找到坐标"）

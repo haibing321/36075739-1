@@ -45,6 +45,13 @@ const STUB = `(function(){
         if (window.__wx.freeFail) {
           return Promise.resolve(new Response('{"error":"upstream down"}', { status: 503, headers: { 'Content-Type': 'application/json' } }));
         }
+        // freeFailOnce：**只让第一次失败**（模拟偶发 429/网络抖动）→ 验证重试后仍用免费、不升级大模型
+        if (window.__wx.freeFailOnce) {
+          var _f1 = (window.__wx.freeSeen = (window.__wx.freeSeen || 0) + 1);
+          if (_f1 === 1) {
+            return Promise.resolve(new Response('{"error":"too many requests"}', { status: 429, headers: { 'Content-Type': 'application/json' } }));
+          }
+        }
         return Promise.resolve(new Response(JSON.stringify({
           // 【2026-09-27】字段与真实免费层一致（本地/免费优先后它就是主力数据源）：
           //   体感/湿度/风向/降水/气压都要有，卡片才不会满屏"—"
@@ -309,6 +316,28 @@ const STUB = `(function(){
       '⑨b 应急电话卡片（有 Key，免费接口失败）→ **才**联网用大模型并如实标注「🌐 大模型联网检索」');
     h.F(/免费公开接口/.test(phone.t2) && phone.free2 >= 1, '⑩ 应急电话卡片（无 Key）→ 免费公开接口并标注「🛰 免费公开接口（Open-Meteo）」');
 
+    // ---------- ⑨c 用户反馈场景：兰州（内置字典里有坐标）免费接口**偶发失败** → 重试后仍用免费，不该升级大模型 ----------
+    //   用户原话："在应急电话中查询兰州天气，显示数据来源：大模型联网检索（免费接口没取到，已联网补取），
+    //             兰州应该免费接口能查到" —— 兰州坐标就在字典里，"取不到"只可能是那一枪偶发失败（429/抖动）。
+    const lzRetry = await h.ev(`(async () => {
+      localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');    // 有 Key：若误升级就会真的走大模型
+      window.__wx.freeFail = false; window.__wx.freeFailOnce = true; window.__wx.freeSeen = 0;
+      window.__wx.llmMode = 'ok'; window.__wx.free = 0; window.__wx.llm = 0;
+      var d = document.createElement('div');
+      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox7"></div>';
+      document.body.appendChild(d);
+      await window.phoneGetWeather('兰州', 36.06, 103.83, 'wxbox7', '');
+      await new Promise(function (r) { setTimeout(r, 1200); });
+      var t = (document.getElementById('wxbox7') || {}).textContent || '';
+      window.__wx.freeFailOnce = false;
+      return { text: t.replace(/\\s+/g, ' ').slice(0, 190), free: window.__wx.free, llm: window.__wx.llm,
+               isFree: /免费公开接口/.test(t), isLLM: /大模型联网检索/.test(t), why: /免费接口[^，]*，已联网补取/.test(t) };
+    })()`, 90000);
+    console.log('  ⑨c 兰州（免费首枪失败）：' + JSON.stringify(lzRetry));
+    h.F(lzRetry.isFree && !lzRetry.isLLM && lzRetry.free >= 2 && lzRetry.llm === 0,
+      '⑨c **兰州（内置字典有坐标）**：免费接口第一枪返回 429 → 自动重试成功 → 仍用「🛰 免费公开接口」、'
+      + '**不升级大模型**（免费请求 ' + lzRetry.free + ' 次、大模型 ' + lzRetry.llm + ' 次）—— 正是用户反馈的场景');
+
     // ---------- ⑪ 慢速联网时"点完立刻有反应"（用户反馈：发送按钮点完半天没反应）----------
     const instant = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
@@ -360,7 +389,8 @@ const STUB = `(function(){
       await window.phoneGetWeather('测试站D', 36.07, 103.85, 'wxbox4', '');
       await new Promise(function (r) { setTimeout(r, 800); });
       var t = (document.getElementById('wxbox4') || {}).textContent || '';
-      return { hasSrc: /大模型联网检索/.test(t), hasWhy: /免费接口没取到/.test(t),
+      // 备注文案改为**写明具体原因**（如"免费接口返回 503，已联网补取"），便于在手机上定位
+      return { hasSrc: /大模型联网检索/.test(t), hasWhy: /免费接口[^）]*，已联网补取/.test(t),
                misleading: /自动改用免费数据源|已保底/.test(t) };
     })()`, 60000);
     console.log('  ⑬ 电话卡片提示：' + JSON.stringify(noMisleading));

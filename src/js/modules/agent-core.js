@@ -1615,6 +1615,19 @@
     tongyong: '双重预防与跨专业协同、隐患整改闭环',
     riskanalyst: '把天气条件转为风险等级与预警建议'
   };
+  /**
+   * 【2026-09-27】对外暴露「本专业在天气场景的关注点」——**唯一来源**。
+   * 用户反馈：智能对话里天气报告的「铁路安全监察提示」是通用口气，没按所选角色走。
+   *   根因是报告模板把示例写死成"防洪与线路巡查 / 供电设备 / 人身安全 / 车辆检查"。
+   * 现在报告模板与工作提示都从这里取，选「供电」就写供电的事，选「工务」就写工务的事。
+   */
+  window.dsRoleFocus = function (roleKey) {
+    try {
+      var k = roleKey || (window.dsGetRole ? window.dsGetRole().key : 'default');
+      return _W_ROLE_FOCUS[k] || '';
+    } catch (e) { return ''; }
+  };
+
   /** 规则化保底提示（未接 API / 大模型失败；离线也能给出可用提示） */
   function _ruleTips(w, roleLabel, roleFocus) {
     var tips = [];
@@ -1640,9 +1653,11 @@
     if (tmax != null && tmax >= 35) tips.push('高温天气：避开高温时段作业，做好防暑降温，关注钢轨与设备温度。');
     if (tmin != null && tmin <= -5) tips.push('低温天气：做好设备防冻与人员保暖，注意金属件脆裂风险。');
     if (!tips.length) tips.push('天气总体平稳：按标准作业，作业前关注现场天气变化，做好防护与应急准备。');
-    // 角色行放最前（用户所选专业优先），整体仍限制 3 条
+    // 角色行放最前（用户所选专业优先）。⚠️ 它是**额外一条**，不占天气条数：
+    //   原来统一 slice(0,3)，加了角色行后会把"大风"这类天气提示挤掉（实测雷暴+降雨+大风 → 大风消失）。
+    //   所以有角色时最多 4 行（1 条角色关注点 + 3 条天气提示），无角色时仍是 3 行。
     if (roleFocus) tips.unshift('【' + (roleLabel || '本专业') + '】重点关注：' + roleFocus + '。');
-    return tips.slice(0, 3).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
+    return tips.slice(0, roleFocus ? 4 : 3).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
   }
   /**
    * 根据天气生成「工作提示」。大模型优先（不带联网：只基于已拿到的天气做建议），

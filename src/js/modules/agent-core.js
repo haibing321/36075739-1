@@ -1628,36 +1628,123 @@
     } catch (e) { return ''; }
   };
 
-  /** 规则化保底提示（未接 API / 大模型失败；离线也能给出可用提示） */
-  function _ruleTips(w, roleLabel, roleFocus) {
-    var tips = [];
+  // ===================== 【2026-09-27】天气提示的「事实层」+「专业 × 等级」表 =====================
+  // 用户要求："提示要根据天气具体情况等级（气温、温差、湿度、雨量、风速等）进行合理提示，
+  //   提示不能脱离天气具体情况，否则就乱提示。"
+  // 落法：① 先把天气抽成**带数值的事实**（_wxFacts）；② 判定**唯一主等级**（_wxLevel）；
+  //   ③ 规则提示与角色行都由这两者推导，且每条都写上触发它的数值 —— 用户可自行核对，
+  //   不会再出现"7 天预报里第 5 天有雨，今天就提示降雨防冲刷"这类脱离实况的提示。
+  function _wxFacts(w) {
     var cur = (w && w.current) || {}, d = (w && w.daily) || {};
-    var texts = [];
-    if (cur.weather) texts.push(String(cur.weather));
-    (d.weatherText || []).forEach(function (t) { if (t) texts.push(String(t)); });
-    var codes = [];
-    if (cur.weather_code != null) codes.push(cur.weather_code);
-    (d.weather_code || []).forEach(function (c) { if (c != null) codes.push(c); });
-    var blob = texts.join(' ');
-    var has = function (re) { return re.test(blob) || codes.some(function (c) { return re.test(String(_WMO_TEXT[c] || '')); }); };
-    var wind = _num(cur.wind_speed_10m);
-    if (wind == null && d.wind_speed_10m_max && d.wind_speed_10m_max.length) wind = _num(d.wind_speed_10m_max[0]);
-    var tmax = _num(cur.temperature_2m);
-    if (tmax == null && d.temperature_2m_max && d.temperature_2m_max.length) tmax = _num(d.temperature_2m_max[0]);
-    var tmin = _num(d.temperature_2m_min && d.temperature_2m_min[0]);
-    if (has(/雷暴|雷电|冰雹/) || /雷/.test(blob)) tips.push('雷暴天气：暂停露天与登高作业，远离接触网、高杆灯等高大设备。');
-    if (has(/大雪|中雪|小雪|阵雪|雪粒|冻雨|雾凇/)) tips.push('雨雪冰冻：及时清除道岔与走行部位积雪结冰，加强防滑防冻。');
-    if (has(/雨/)) tips.push('降雨天气：加强线路与路基巡视，注意道床积水冲刷，作业防滑防触电。');
-    if (has(/雾|霾|浮尘|扬沙/)) tips.push('低能见度：加强瞭望、必要时限速，注意行车与人身安全。');
-    if (wind != null && wind >= 10) tips.push('大风天气：停止高空作业，清理轻飘物、加固临时设施，防止异物侵限。');
-    if (tmax != null && tmax >= 35) tips.push('高温天气：避开高温时段作业，做好防暑降温，关注钢轨与设备温度。');
-    if (tmin != null && tmin <= -5) tips.push('低温天气：做好设备防冻与人员保暖，注意金属件脆裂风险。');
-    if (!tips.length) tips.push('天气总体平稳：按标准作业，作业前关注现场天气变化，做好防护与应急准备。');
-    // 角色行放最前（用户所选专业优先）。⚠️ 它是**额外一条**，不占天气条数：
-    //   原来统一 slice(0,3)，加了角色行后会把"大风"这类天气提示挤掉（实测雷暴+降雨+大风 → 大风消失）。
-    //   所以有角色时最多 4 行（1 条角色关注点 + 3 条天气提示），无角色时仍是 3 行。
-    if (roleFocus) tips.unshift('【' + (roleLabel || '本专业') + '】重点关注：' + roleFocus + '。');
-    return tips.slice(0, roleFocus ? 4 : 3).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
+    var n = function (v) { return (v == null || v === '' || isNaN(Number(v))) ? null : Number(v); };
+    var pick = function (a, b) { var s = (d[a] != null ? d[a] : d[b]) || []; return Array.isArray(s) ? s.map(n).filter(function (x) { return x != null; }) : []; };
+    var tmaxS = pick('temperature_2m_max', 'tmax'), tminS = pick('temperature_2m_min', 'tmin');
+    var windS = pick('wind_speed_10m_max', 'wind'), popS = pick('precipitation_probability_max', 'precip');
+    var codeTxt = String(_WMO_TEXT[(cur.weather_code != null) ? cur.weather_code : ((d.weather_code || [])[0])] || '');
+    var todayTxt = String(cur.weather || (d.weatherText || [])[0] || codeTxt || '');
+    var weekTxt = [todayTxt].concat(d.weatherText || []).map(function (t) { return String(t || ''); }).join(' ')
+      + ' ' + (d.weather_code || []).map(function (c) { return String(_WMO_TEXT[c] || ''); }).join(' ');
+    var tmax = n(cur.temperature_2m); if (tmax == null && tmaxS.length) tmax = tmaxS[0];
+    var tmin = tminS.length ? tminS[0] : null;
+    return {
+      weather: todayTxt,
+      tmax: tmax, tmin: tmin,
+      swing: (tmax != null && tmin != null) ? Math.round((tmax - tmin) * 10) / 10 : null,   // 今日日较差
+      tmax7: tmaxS.length ? Math.max.apply(null, tmaxS) : null,
+      tmin7: tminS.length ? Math.min.apply(null, tminS) : null,
+      hum: n(cur.relative_humidity_2m),
+      wind: n(cur.wind_speed_10m),
+      wind7: windS.length ? Math.max.apply(null, windS) : null,
+      pop: popS.length ? Math.max.apply(null, popS) : null,
+      precip: n(cur.precipitation),
+      thunderToday: /雷|冰雹/.test(todayTxt + codeTxt), thunderWeek: /雷|冰雹/.test(weekTxt),
+      snowToday: /雪|冻雨|雾凇|雨凇/.test(todayTxt + codeTxt), snowWeek: /雪|冻雨|雾凇|雨凇/.test(weekTxt),
+      fogToday: /雾|霾|扬沙|浮尘|沙尘/.test(todayTxt + codeTxt),
+      rainToday: /雨/.test(todayTxt + codeTxt)
+    };
+  }
+  /**
+   * 判定"主等级"：提示以它为主线，避免把与本日天气无关的风险硬塞进来。
+   * 返回 { key, cond }：cond 是**带数值的条件描述**（会写进提示里，便于核对）。
+   */
+  function _wxLevel(F) {
+    var m = Math.round;
+    if (F.thunderToday) return { key: 'storm', cond: '雷暴（' + (F.weather || '') + '）' };
+    if (F.snowToday) return { key: 'snow', cond: '雨雪冰冻（' + (F.weather || '') + (F.tmin != null ? ('，' + m(F.tmin) + '℃') : '') + '）' };
+    if (F.pop != null && F.pop >= 80) return { key: 'rain', cond: '降水概率 ' + m(F.pop) + '%' + (F.precip != null ? ('（实时 ' + F.precip + 'mm）') : '') };
+    if (F.wind != null && F.wind >= 10) return { key: 'wind', cond: '大风 ' + m(F.wind) + 'm/s' };
+    if (F.wind7 != null && F.wind7 >= 17) return { key: 'wind', cond: '未来一周最大风速 ' + m(F.wind7) + 'm/s' };
+    if (F.pop != null && F.pop >= 50) return { key: 'rain', cond: '降水概率 ' + m(F.pop) + '%' };
+    if (F.tmax != null && F.tmax >= 33) return { key: 'hot', cond: '高温 ' + m(F.tmax) + '℃' };
+    if (F.tmin != null && F.tmin <= -3) return { key: 'cold', cond: '低温 ' + m(F.tmin) + '℃' };
+    if (F.swing != null && F.swing >= 15) return { key: 'swing', cond: '昼夜温差 ' + m(F.swing) + '℃' };
+    if (F.hum != null && F.hum >= 90) return { key: 'humid', cond: '湿度 ' + m(F.hum) + '%' };
+    if (F.hum != null && F.hum <= 25) return { key: 'dry', cond: '湿度 ' + m(F.hum) + '%（干燥）' };
+    if (F.fogToday) return { key: 'fog', cond: '低能见度（' + (F.weather || '') + '）' };
+    return { key: 'calm', cond: '天气平稳' + (F.weather ? ('（' + F.weather + '）') : '') + (F.tmax != null ? ('，' + m(F.tmax) + '℃') : '') };
+  }
+  /**
+   * 各专业 × 天气等级的专业要点（角色提示行由这里 + 主等级生成 —— 所以它**也随天气变**，
+   *   不再是一句与本日天气无关的静态关注点）。
+   */
+  var _ROLE_WX = {
+    dianwu: { storm: '检查信号设备防雷接地与轨道电路绝缘，暂停室外测试', snow: '清扫道岔积雪结冰并试验转辙，检查箱盒密封', rain: '检查电缆沟排水与箱盒密封，防轨道电路绝缘下降', wind: '检查信号机与电缆槽盖板固定，防异物侵限', hot: '关注信号机灯泡与设备箱温度，避开高温时段检修', cold: '检查转辙机与液压件低温动作，注意金属脆裂', swing: '复测轨道电路与转辙设备状态', humid: '加强轨道电路绝缘与箱盒密封检查', dry: '注意静电与临时用电防火', fog: '作业加强防护与瞭望配合，穿反光防护', calm: '按标准检查信号设备与道岔转辙' },
+    gongwu: { storm: '避免露天高处作业，检查防护设施与临时围挡', snow: '清除线路与道床积雪结冰，防断防胀', rain: '加强线路路基与桥涵巡查，重点看道床积水与冲刷', wind: '清理线路轻飘物与临时设施，防止异物侵限', hot: '防胀：检查钢轨温度与轨缝，避开高温时段作业', cold: '检查钢轨与扣件低温状态，注意断轨风险', swing: '关注轨道几何与钢轨应力变化', humid: '检查路基排水与边坡稳定', dry: '注意施工用火与防火', fog: '上道作业必须设防护、加强瞭望', calm: '按标准巡查线路、路基与桥涵' },
+    gongdian: { storm: '检查避雷器与接地装置，暂停接触网高处作业', snow: '清除接触网与绝缘子积雪冰挂，防绝缘击穿', rain: '检查接触网与牵引变电绝缘，注意电缆沟排水', wind: '检查接触网悬挂与支柱状态，清理轻飘物防风偏侵限', hot: '监测接触网导线弛度与设备温度', cold: '检查接触网张力与补偿装置，防线索脆断', swing: '关注接触网张力补偿与导线弛度变化', humid: '加强绝缘子清扫与污闪防护', dry: '注意防火与静电，检查接地', fog: '作业加强防护与瞭望', calm: '按标准检查接触网与牵引变电设备' },
+    keyun: { storm: '做好旅客候车引导，暂缓露天作业', snow: '站台及时清雪除冰、撒防滑料，做好旅客引导', rain: '站台防滑与客流引导，注意站台边缘安全', wind: '加固站台轻飘物，提示旅客远离站台边缘', hot: '做好旅客服务与防暑降温', cold: '站台防滑与旅客保暖提示', swing: '关注站台结露湿滑', humid: '站台与通道防滑', dry: '站内用火用电安全', fog: '加强站台组织与广播引导', calm: '按标准做好旅客乘降组织' },
+    chewu: { storm: '暂停调车作业，做好防溜与防护', snow: '道岔除雪除冰，接发列车加强确认', rain: '调车作业防滑、加强瞭望与限速确认', wind: '注意车辆防溜与轻飘物侵限', hot: '室外作业防暑，注意防溜措施', cold: '加强停留车辆防溜与制动检查', swing: '注意制动系统与防溜状态', humid: '注意道岔与作业面防滑', dry: '注意防火与静电', fog: '加强调车信号确认与限速', calm: '按标准办理接发列车与调车作业' },
+    jiwu: { storm: '注意弓网与设备防护，谨慎操纵', snow: '注意空转与制动机使用，提前制动', rain: '注意轮轨粘着下降，防止空转滑行', wind: '注意受电弓状态与异物侵限', hot: '关注机车冷却系统与轮轨温度', cold: '加强机车防冻与风源系统检查', swing: '注意制动系统与轮轨状态', humid: '检查机车电气绝缘', dry: '注意防火与静电', fog: '加强瞭望、必要时减速运行', calm: '按标准做好机车运用与操纵' },
+    cheliang: { storm: '暂停露天轮轴作业', snow: '加强走行部与制动防滑检查', rain: '注意走行部积水与制动性能检查', wind: '注意车辆轻飘物与防护设施', hot: '关注轮轴温度与制动闸瓦', cold: '检查制动管路与走行部脆裂风险', swing: '关注轮轴与制动部件状态', humid: '检查电气连接与绝缘', dry: '注意防火与静电', fog: '作业加强防护与瞭望', calm: '按标准做好 5T 检测与走行部检查' },
+    tongxin: { storm: '检查通信设备防雷接地与光电缆防护', snow: '检查光电缆覆冰与杆路状态', rain: '检查设备防水与电缆沟排水', wind: '检查杆塔线路并加固设备', hot: '关注机房与设备散热', cold: '注意设备与电池低温性能', swing: '关注设备密封与接头', humid: '加强机房除湿与绝缘检查', dry: '注意防火与静电', fog: '作业加强防护', calm: '按标准巡检 GSM-R 与光电缆设备' },
+    fangjian: { storm: '检查屋面与雨棚，暂停屋面作业', snow: '清除屋面与雨棚积雪，防超载', rain: '检查屋面排水与渗漏，注意限界侵入', wind: '检查雨棚与屋面固定件，防坠物', hot: '注意屋面材料与作业防暑', cold: '检查管道防冻与屋面结冰坠落风险', swing: '关注屋面材料伸缩与固定', humid: '检查渗漏与结构受潮', dry: '注意防火', fog: '作业加强防护', calm: '按标准检查站房雨棚与限界' },
+    huoyun: { storm: '暂停露天装卸与危货作业', snow: '货物与车辆防滑防冻，加固装载', rain: '检查装载加固与防湿损，危货防潮', wind: '加固篷布与装载，防异物侵限', hot: '注意危货温控与装卸作业防暑', cold: '注意货物与加固材料低温性能', swing: '检查加固绳索与索具状态', humid: '加强货物防潮与危货包装检查', dry: '危货与仓库防火防静电', fog: '装卸作业加强防护与信号确认', calm: '按标准做好装载加固与危货运输' },
+    tongyong: { storm: '组织跨专业停工与隐患排查', snow: '组织除雪除冰与防滑防冻联合检查', rain: '组织防洪隐患排查与整改闭环', wind: '组织轻飘物清理与设施加固', hot: '组织防暑降温与设备降温检查', cold: '组织防冻保暖与设备检查', swing: '组织设备状态与人员防护检查', humid: '组织电气绝缘与防潮检查', dry: '组织防火防静电检查', fog: '组织作业防护与限速检查', calm: '按双重预防机制组织日常检查' },
+    riskanalyst: { storm: '按"露天作业人群 + 电气设备"两条线评估风险等级并给预警', snow: '评估道岔/走行部/登高作业风险并给预警', rain: '评估防洪、路基与作业滑倒风险并给预警', wind: '评估高处作业、异物侵限与限速风险并给预警', hot: '评估人员中暑与设备超温风险并给预警', cold: '评估设备脆裂与人员冻伤风险并给预警', swing: '评估设备应力与人员健康风险并给预警', humid: '评估电气绝缘与作业面湿滑风险并给预警', dry: '评估火灾与静电风险并给预警', fog: '评估行车与作业安全风险并给预警', calm: '维持常规风险监测' }
+  };
+  /** 角色提示行：**条件 + 该专业在此等级下的要点**（条件带数值，所以永远与天气挂钩） */
+  function _roleWxLine(roleKey, roleLabel, roleFocus, F, L) {
+    var label = roleLabel || '';
+    var focus = roleFocus || '';
+    if (!label && !focus) return '';
+    var map = _ROLE_WX[roleKey] || null;
+    var txt = (map && (map[L.key] || '')) || '';
+    if (!txt) txt = focus ? ('按本专业关注点执行：' + focus) : '按标准作业并关注现场天气变化';
+    return '【' + (label || '本专业') + '】' + L.cond + '：' + txt + '。';
+  }
+
+  /**
+   * 规则化保底提示（未接 API / 大模型失败；离线也能给出可用提示）。
+   * 【2026-09-27 重写】用户要求"提示要按天气具体情况等级（气温、温差、湿度、雨量、风速等）来，
+   *   不能脱离天气，否则就是乱提示"。所以：
+   *   ① 全部判据都基于 _wxFacts 的**实测数值**（不再"见到雨字就提示降雨冲刷"，那会把 7 天里
+   *      第 5 天的雨算到今天的账上）；② 每条提示都**写出触发它的数值**（如"降水概率 85%、实时 12mm"）；
+   *   ③ 按严重程度排序后截断，保证留下的是最要紧的几条；④ 角色行同样由主等级生成（见 _roleWxLine）。
+   */
+  function _ruleTips(w, roleKey, roleLabel, roleFocus) {
+    var F = _wxFacts(w), L = _wxLevel(F), m = Math.round;
+    var tips = [];
+    if (F.thunderToday) tips.push('雷暴（' + (F.weather || '') + '）：暂停露天与登高作业，远离接触网、高杆灯等高大设备。');
+    if (F.snowToday) tips.push('雨雪冰冻（' + (F.weather || '') + (F.tmin != null ? ('，最低 ' + m(F.tmin) + '℃') : '') + '）：及时清除道岔与走行部位积雪结冰，加强防滑防冻。');
+    if (F.pop != null && F.pop >= 80) tips.push('降水概率 ' + m(F.pop) + '%' + (F.precip != null ? ('、实时降水 ' + F.precip + 'mm') : '') + '：按防洪重点巡查，注意道床积水与路基冲刷，作业防滑防触电。');
+    else if (F.pop != null && F.pop >= 50) tips.push('降水概率 ' + m(F.pop) + '%：备好雨具，检查排水与作业面防滑防触电。');
+    if (F.wind != null && F.wind >= 17) tips.push('强风 ' + m(F.wind) + 'm/s（8 级以上）：停止高空与吊装作业，加固临时设施、清理轻飘物。');
+    else if (F.wind != null && F.wind >= 10) tips.push('大风 ' + m(F.wind) + 'm/s：停止高空作业，清理轻飘物、加固临时设施，防止异物侵限。');
+    if (F.tmax != null && F.tmax >= 37) tips.push('极端高温 ' + m(F.tmax) + '℃：避开高温时段作业，强化防暑降温，重点监测钢轨与设备温度。');
+    else if (F.tmax != null && F.tmax >= 33) tips.push('高温 ' + m(F.tmax) + '℃：避开高温时段作业，做好防暑降温，关注钢轨与设备温度。');
+    if (F.tmin != null && F.tmin <= -15) tips.push('严寒 ' + m(F.tmin) + '℃：设备防冻与人员保暖并重，注意金属件脆裂风险。');
+    else if (F.tmin != null && F.tmin <= -3) tips.push('低温 ' + m(F.tmin) + '℃：做好设备防冻与人员保暖，注意金属件脆裂风险。');
+    if (F.swing != null && F.swing >= 15) tips.push('昼夜温差 ' + m(F.swing) + '℃：注意设备热胀冷缩与轨道几何变化，人员适时增减防护用品。');
+    if (F.hum != null && F.hum >= 90) tips.push('湿度 ' + m(F.hum) + '%（潮湿）：检查电气设备绝缘与箱盒密封，防潮防漏电。');
+    else if (F.hum != null && F.hum <= 25) tips.push('湿度 ' + m(F.hum) + '%（干燥）：注意防火与静电，检查易燃物与临时用电。');
+    if (F.fogToday) tips.push('低能见度（' + (F.weather || '') + '）：加强瞭望、必要时限速，注意行车与人身安全。');
+    if (!tips.length) {
+      tips.push('天气总体平稳（' + (F.weather || '') + (F.tmax != null ? ('，' + m(F.tmax) + '℃') : '')
+        + (F.wind != null ? ('，风 ' + m(F.wind) + 'm/s') : '') + '）：按标准作业，作业前关注现场天气变化，做好防护与应急准备。');
+    }
+    // 角色行放最前（用户所选专业优先），且**带触发条件与数值**（不再是与本日天气无关的静态关注点）
+    var roleLine = _roleWxLine(roleKey, roleLabel, roleFocus, F, L);
+    if (roleLine) tips.unshift(roleLine);
+    return tips.slice(0, roleLine ? 4 : 3).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
   }
   /**
    * 根据天气生成「工作提示」。大模型优先（不带联网：只基于已拿到的天气做建议），
@@ -1674,21 +1761,32 @@
       if (typeof window.dsGetRole === 'function') { var _ri = window.dsGetRole(); _rk = _ri.key; _rl = _ri.label; }
     } catch (e) {}
     var _focus = _W_ROLE_FOCUS[_rk] || '';
+    // 【2026-09-27 用户要求】提示必须**由下面这份实测数据推出**，不许脱离天气乱提示。
+    //   做法：先把事实与主等级算出来，把"条件+数值"一并交给模型，并要求每条提示挂靠具体数值。
+    var _F = _wxFacts(w), _L = _wxLevel(_F);
     try {
       if (typeof window.dsCallOnce === 'function') {
         var r = await window.dsCallOnce(
-          '你是铁路安监助手。根据给定的车站天气，输出**不超过 3 条**针对铁路现场作业的安全提示。'
-          + '要求：每条一行、以「序号. 」开头、每条不超过 40 字；必须紧扣给出的天气（降雨→道床/路基/电气化设备与防滑；'
-          + '大风→高空作业与轻飘物侵限；高温→防暑与设备温度；降雪结冰→防滑除冰；雷暴→停止露天登高作业；低能见度→瞭望与限速）。'
-          + (_focus ? ('当前使用者身份：' + (_rl || _rk) + '，提示**优先从该专业角度**给出（' + _focus + '），但仍须紧扣实际天气。') : '')
+          '你是铁路安监助手。根据给定的车站天气数据，输出**不超过 3 条**针对铁路现场作业的安全提示。'
+          + '要求：每条一行、以「序号. 」开头、每条不超过 45 字。'
+          + '**必须紧扣我给出的具体数值与等级**：'
+          + '气温（≥33℃ 防暑/设备超温、≤-3℃ 防冻、≤-15℃ 严寒脆裂）、昼夜温差（≥15℃ 热胀冷缩与轨道几何）、'
+          + '湿度（≥90% 潮湿绝缘与箱盒密封、≤25% 干燥防火防静电）、'
+          + '降水（概率 ≥50% 备防滑、≥80% 或实时量大 → 防洪与道床路基冲刷）、'
+          + '风速（≥10m/s 停高空作业清轻飘物、≥17m/s 强风加固）、'
+          + '以及雷暴（停露天登高作业）、雨雪冰冻（除雪除冰防滑）、低能见度（瞭望与限速）。'
+          + '**每条都要写出触发它的数值**（如"降水概率 85%"、"风速 12m/s"、"温差 16℃"），便于核对。'
+          + '若某项数值不突出，**不要**为它编风险提示；不要出现与本次天气无关的通用提示。'
+          + (_focus ? ('当前使用者身份：' + (_rl || _rk) + '，提示**优先从该专业角度**给出（' + _focus + '），但仍须紧扣上面的数值。') : '')
           + '不要复述天气数据，不要客套话，不要输出标题。',
-          summary,
-          { maxTokens: 400, timeoutMs: 20000, temperature: 0.3 }
+          summary + '\n\n【本次数据的主等级判定】' + _L.cond
+            + '（供你确定重点；若你发现别的数值更突出，以数值为准）',
+          { maxTokens: 460, timeoutMs: 20000, temperature: 0.3 }
         );
         if (r && r.ok && r.text && String(r.text).trim()) return String(r.text).trim();
       }
     } catch (e) {}
-    return _ruleTips(w, _focus ? (_rl || _rk) : '', _focus);
+    return _ruleTips(w, _rk, _focus ? (_rl || _rk) : '', _focus);
   };
 
   /**

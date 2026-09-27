@@ -377,6 +377,10 @@ const STUB = `(function(){
       // ⚠️ 隔离：清空历史再测，否则前面用例的气泡会让"卡片/气泡数"之类断言失真（本轮踩过）
       var hist0 = (typeof window.getDsHistory === 'function') ? window.getDsHistory() : [];
       if (hist0) { hist0.length = 0; if (typeof window.dsRenderAll === 'function') window.dsRenderAll(); }
+      // 【2026-09-27】模拟用户在下拉里选了「供电」：报告体的"三、监察提示"必须按角色走
+      var sel = document.getElementById('expertRole');
+      if (sel) { sel.value = 'gongdian'; try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+      try { localStorage.setItem('ds_role_v1', 'gongdian'); } catch (e) {}
       if (q) { q.value = '白银今天天气怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1500); });
@@ -393,6 +397,10 @@ const STUB = `(function(){
                injNoFabricate: /严禁编造条款/.test(s0),
                injLocal: /规章制度 \\/ 检查信息 \\/ 检查手册/.test(s0),
                injTail: /我可辅助研判/.test(s0) && /逐小时预报/.test(s0),
+               // 角色口径：提示要写"按当前所选专业角色"，且带上供电的关注点；不得再出现写死的通用四项清单
+               injRole: /按当前所选专业角色/.test(s0) && /我是「供电」/.test(s0),
+               injRoleFocus: /接触网与牵引变电/.test(s0) && /绝缘与防雷接地/.test(s0),
+               noGenericList: !/如：防洪与线路巡查/.test(s0) && !/人身安全 \\/ 车辆检查/.test(s0),
                // 可见回答必须是"报告"（stub 写的模拟报告含"一、今日实况与预报"），而不是我们的天气卡片
                reportOnly: /一、今日实况与预报/.test((box ? box.textContent : '') || '')
                            && !/未来 7 天预报/.test((box ? box.textContent : '') || '') };
@@ -401,6 +409,9 @@ const STUB = `(function(){
     h.F(roleAns.streams === 1 && roleAns.assistantBubbles === 1 && roleAns.reportOnly && roleAns.userBubbleShort
         && roleAns.injData && roleAns.injTemplate && roleAns.injTable && roleAns.injNoFabricate && roleAns.injLocal && roleAns.injTail,
       '⑭ 有 Key 的纯天气问题 → 交给对话流产出**报告体**（单条回答、无多余卡片）：注入数据块（数值不得改写）+ 模板骨架（一、实况表格 / 二、一周趋势 / 三、监察提示）+ 本地检索要求 + 严禁编造 + 「我可辅助研判」结尾');
+    h.F(roleAns.injRole && roleAns.injRoleFocus && roleAns.noGenericList,
+      '⑭b 「三、铁路安全监察提示」**按当前所选角色走**：提示词写明"按当前所选专业角色 / 我是「供电」"并带上供电关注点'
+      + '（接触网与牵引变电、绝缘与防雷接地），且不再出现写死的通用清单（如"防洪与线路巡查…人身安全/车辆检查"）');
 
     // ---------- ⑮ 未接 API 时：不走对话流，退回"卡片 + 规则化保底提示" ----------
     const tipsRule = await h.ev(`(async () => {
@@ -462,8 +473,10 @@ const STUB = `(function(){
                heatText: t2.replace(/\\n/g, ' | '), hasHeat: /高温|防暑|避开/.test(t2) };
     })()`, 60000);
     console.log('  ⑯ 规则保底：' + JSON.stringify(rule));
-    h.F(rule.lines >= 1 && rule.lines <= 3 && rule.hasThunder && rule.hasWind && rule.hasHeat,
-      '⑯ 规则化保底按天气给提示：雷暴+降雨+大风 → 命中雷暴/大风 共 ' + rule.lines + ' 条（≤3）；晴 38℃ → ' + (rule.hasHeat ? '命中高温防暑' : '未命中高温'));
+    // 上限 4：第 1 行是"当前角色关注点"（额外一条，不占天气条数），其后最多 3 条天气提示
+    h.F(rule.lines >= 1 && rule.lines <= 4 && rule.hasThunder && rule.hasWind && rule.hasHeat,
+      '⑯ 规则化保底按天气给提示：雷暴+降雨+大风 → 命中雷暴/大风 共 ' + rule.lines
+      + ' 行（1 条角色关注点 + 最多 3 条天气，≤4）；晴 38℃ → ' + (rule.hasHeat ? '命中高温防暑' : '未命中高温'));
 
     // ---------- ⑱ 复合问题（"…要注意什么"）：卡片先出 + 让模型围绕具体问题研判 ----------
     const compo = await h.ev(`(async () => {

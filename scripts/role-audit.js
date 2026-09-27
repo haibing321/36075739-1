@@ -413,6 +413,17 @@ const STUB = `(function(){
         'E1b 天气**表达层**（weatherWorkTips）读角色 —— 同一份数据、不同角色给不同专业提示');
       h.F(uniRoleIdentity,
         'E1c 对话侧天气研判的**身份行取自当前角色**，不再硬编码"以铁路安监助手的身份"');
+
+      // ---------- E4：天气**报告体**的「三、铁路安全监察提示」也按角色（源码守卫）----------
+      //   用户反馈："智能对话中天气查询铁路安全监察提示未按角色走，感觉走的是通用的" ——
+      //   根因是该模板把示例写死成"防洪与线路巡查 / 供电设备 / 人身安全 / 车辆检查"。
+      const tplUsesRole = /按当前所选专业角色/.test(un) && /window\.dsRoleFocus/.test(un) && /本专业关注点/.test(un);
+      const tplNoGeneric = !/如：防洪与线路巡查/.test(un) && !/人身安全 \/ 车辆检查/.test(un);
+      const focusApiOk = /window\.dsRoleFocus = function/.test(ag);
+      console.log('  E4 报告体模板：取角色=' + tplUsesRole + ' 去掉写死清单=' + tplNoGeneric + ' 关注点接口存在=' + focusApiOk);
+      h.F(tplUsesRole && tplNoGeneric && focusApiOk,
+        'E4 天气报告体「三、铁路安全监察提示」按当前角色写：模板取 dsGetRole/dsRoleFocus 与"本专业关注点"，'
+        + '不再出现写死的通用四项清单；关注点接口 window.dsRoleFocus 已暴露（唯一来源）');
     }
 
     // ================= E2：作业提示与角色有关（规则保底路径） =================

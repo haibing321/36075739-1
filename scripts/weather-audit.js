@@ -34,15 +34,23 @@ const TIPS_TEXT = '1. 降雨天气：加强线路与路基巡视，作业防滑�
 
 /** 页面内：拦掉真实网络（免费接口 + 大模型通道），并记录各自的调用次数与请求体 */
 const STUB = `(function(){
-  window.__wx = { free: 0, llm: 0, repair: 0, tips: 0, coord: 0, llmBodies: [], llmMode: 'ok' };
+  window.__wx = { free: 0, llm: 0, repair: 0, tips: 0, coord: 0, llmBodies: [], llmMode: 'ok', freeFail: false };
   var _of = window.fetch;
   window.fetch = function (url, opts) {
     var u = String((url && url.url) ? url.url : url);
     try {
       if (/open-meteo\\.com/.test(u)) {
         window.__wx.free++;
+        // 免费接口失败开关：用于验证"免费拿不到 → 才联网用大模型"
+        if (window.__wx.freeFail) {
+          return Promise.resolve(new Response('{"error":"upstream down"}', { status: 503, headers: { 'Content-Type': 'application/json' } }));
+        }
         return Promise.resolve(new Response(JSON.stringify({
-          current: { temperature_2m: 12, weather_code: 61, wind_speed_10m: 2 },
+          // 【2026-09-27】字段与真实免费层一致（本地/免费优先后它就是主力数据源）：
+          //   体感/湿度/风向/降水/气压都要有，卡片才不会满屏"—"
+          current: { temperature_2m: 12, apparent_temperature: 11, relative_humidity_2m: 55,
+                     weather_code: 61, wind_speed_10m: 2, wind_direction_10m: 20,
+                     precipitation: 1, surface_pressure: 850 },
           daily: { time: ['2026-09-23','2026-09-24','2026-09-25','2026-09-26','2026-09-27','2026-09-28','2026-09-29'],
                    weather_code: [61,2,0,3,80,61,1],
                    temperature_2m_max: [15,18,20,19,16,14,17], temperature_2m_min: [6,8,9,10,7,5,6],
@@ -135,54 +143,77 @@ const STUB = `(function(){
     console.log('  对话流 stub 就绪检查：' + ready);
     await h.ev(`(() => { try { sessionStorage.clear(); } catch (e) {} return 1; })()`, 20000);
 
-    // ---------- ① 未接 API：直接走免费 ----------
+    // ---------- ① 未接 API：直接走免费（本地优先） ----------
     const noKey = await h.ev(`(async () => {
       localStorage.removeItem('ds_api_key_v1');
+      window.__wx.freeFail = false;
       window.__wx.free = 0; window.__wx.llm = 0;
       var r = await window.queryWeatherSmart('兰州', { ttlMs: 0 });
       return { ok: r.ok, source: r.source, degraded: r.degraded, free: window.__wx.free, llm: window.__wx.llm,
                temp: r.current && r.current.temperature_2m, days: r.daily && r.daily.time.length };
     })()`, 60000);
     console.log('  ① 无 Key：' + JSON.stringify(noKey));
-    h.F(noKey.ok && noKey.source === 'free' && noKey.degraded === 'no-key' && noKey.free >= 1 && noKey.llm === 0,
-      '① 未接 API → 走免费公开接口（免费请求 ' + noKey.free + ' 次、大模型 ' + noKey.llm + ' 次，degraded=' + noKey.degraded + '）');
+    h.F(noKey.ok && noKey.source === 'free' && noKey.free >= 1 && noKey.llm === 0 && !noKey.degraded,
+      '① 未接 API → **先走本地/免费**：免费 ' + noKey.free + ' 次、大模型 ' + noKey.llm + ' 次、无降级标记');
 
-    // ---------- ② 有 Key + 大模型正常：用大模型，且不再请求免费接口 ----------
+    // ---------- ② 有 Key + 免费可用：仍然先用免费，**不烧大模型**（新顺序的核心约束）----------
     const llmOk = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.freeFail = false;
       window.__wx.free = 0; window.__wx.llm = 0; window.__wx.llmMode = 'ok';
       var r = await window.queryWeatherSmart('兰州', { ttlMs: 0 });
-      var body = window.__wx.llmBodies[0] || '';
       return { ok: r.ok, source: r.source, channel: r.channel, free: window.__wx.free, llm: window.__wx.llm,
-               temp: r.current && r.current.temperature_2m, tempAlias: r.current && r.current.temp,
-               days: r.daily && r.daily.time.length, tmax: r.daily && r.daily.tmax && r.daily.tmax[0],
+               temp: r.current && r.current.temperature_2m, rh: r.current && r.current.relative_humidity_2m,
+               feel: r.current && r.current.apparent_temperature, press: r.current && r.current.surface_pressure,
+               wdir: r.current && r.current.wind_direction_10m,
+               days: r.daily && r.daily.time.length, tmax: r.daily && r.daily.tmax && r.daily.tmax[0] };
+    })()`, 60000);
+    console.log('  ② 有 Key + 免费可用：' + JSON.stringify(llmOk));
+    h.F(llmOk.ok && llmOk.source === 'free' && llmOk.free >= 1 && llmOk.llm === 0,
+      '② **先本地/免费**：即便配了 API Key，也先用免费公开接口（免费 ' + llmOk.free + ' 次、大模型 ' + llmOk.llm
+      + ' 次 —— 不再一上来就烧联网检索）');
+    h.F(llmOk.temp === 12 && llmOk.days === 7 && llmOk.tmax === 15
+        && llmOk.rh === 55 && llmOk.feel === 11 && llmOk.press === 850 && llmOk.wdir === 20,
+      '③ 免费层字段已补齐到与大模型同等丰富（温度 ' + llmOk.temp + '°C / 湿度 ' + llmOk.rh + '% / 体感 ' + llmOk.feel
+      + ' / 气压 ' + llmOk.press + ' / 风向 ' + llmOk.wdir + '° / 7 天）—— 本地优先也不会让卡片变简陋');
+
+    // ---------- ④ 免费拿不到 + 有 Key → **才**联网用大模型（"后走联网"）----------
+    const esc = await h.ev(`(async () => {
+      window.__wx.freeFail = true;                       // 免费接口 503
+      window.__wx.free = 0; window.__wx.llm = 0; window.__wx.llmMode = 'ok';
+      var r = await window.queryWeatherSmart('西宁', { ttlMs: 0 });
+      var body = window.__wx.llmBodies[0] || '';
+      return { ok: r.ok, source: r.source, escalated: r.escalated, free: window.__wx.free, llm: window.__wx.llm,
+               temp: r.current && r.current.temperature_2m, channel: r.channel,
                hasWebTool: body.indexOf('web_search_20250305') >= 0 };
     })()`, 60000);
-    console.log('  ② 有 Key+联网正常：' + JSON.stringify(llmOk));
-    h.F(llmOk.ok && llmOk.source === 'llm' && llmOk.hasWebTool && llmOk.llm >= 1 && llmOk.free === 0,
-      '② 大模型联网优先：走 ' + llmOk.channel + ' 通道且请求体含 web_search 工具、**不再请求免费接口**（免费 ' + llmOk.free + ' 次）');
-    h.F(llmOk.temp === 18 && llmOk.tempAlias === '18°C' && llmOk.days === 7 && llmOk.tmax === 20,
-      '③ 大模型结果已归一化为渲染器认得的形状（实况 18°C / 7 天 / tmax 别名 ' + llmOk.tmax + '）');
+    console.log('  ④ 免费失败→联网：' + JSON.stringify(esc));
+    h.F(esc.ok && esc.source === 'llm' && esc.escalated === 'free-failed' && esc.free >= 1 && esc.llm >= 1 && esc.hasWebTool,
+      '④ 免费接口取不到（且配了 Key）→ **才**联网调大模型（免费 ' + esc.free + ' 次失败 → 大模型 ' + esc.llm
+      + ' 次，通道 ' + esc.channel + '、带 web_search 工具，escalated=' + esc.escalated + '）');
 
-    // ---------- ④ 通道报错 → 降级免费 ----------
-    const http400 = await h.ev(`(async () => {
-      window.__wx.free = 0; window.__wx.llm = 0; window.__wx.llmMode = 'http400';
-      var r = await window.queryWeatherSmart('西宁', { ttlMs: 0 });
-      return { ok: r.ok, source: r.source, degraded: r.degraded, free: window.__wx.free, llm: window.__wx.llm };
-    })()`, 60000);
-    console.log('  ④ 通道报错：' + JSON.stringify(http400));
-    h.F(http400.ok && http400.source === 'free' && http400.llm >= 1 && http400.free >= 1,
-      '④ 大模型通道报错 → 自动降级免费（大模型尝试 ' + http400.llm + ' 次、免费 ' + http400.free + ' 次）');
-
-    // ---------- ⑤ 返回无法解析 → 降级免费 ----------
+    // ---------- ⑤ 免费拿不到 + 大模型也给不出结构化结果 → 如实失败（不拿旧数据充数）----------
     const garbage = await h.ev(`(async () => {
+      window.__wx.freeFail = true;
       window.__wx.free = 0; window.__wx.llm = 0; window.__wx.llmMode = 'garbage';
       var r = await window.queryWeatherSmart('银川', { ttlMs: 0 });
-      return { ok: r.ok, source: r.source, degraded: r.degraded, free: window.__wx.free };
+      return { ok: r.ok, source: r.source, error: r.error, llmError: r.llmError, free: window.__wx.free, llm: window.__wx.llm };
     })()`, 60000);
-    console.log('  ⑤ 返回无法解析：' + JSON.stringify(garbage));
-    h.F(garbage.ok && garbage.source === 'free' && garbage.degraded === 'llm-unparsed',
-      '⑤ 大模型没给结构化结果（llm-unparsed）→ 自动降级免费');
+    console.log('  ⑤ 免费失败+大模型不可解析：' + JSON.stringify(garbage));
+    h.F(!garbage.ok && garbage.free >= 1 && garbage.llm >= 1 && !!garbage.error,
+      '⑤ 免费取不到、大模型又给不出结构化结果 → 如实失败并报错（免费 ' + garbage.free + ' 次、大模型 '
+      + garbage.llm + ' 次，error=' + garbage.error + '）');
+
+    // ---------- ⑤b 旧口径仍可用：opts.preferLLM=true → 先联网（保留能力，默认关闭）----------
+    const prefer = await h.ev(`(async () => {
+      window.__wx.freeFail = false;
+      window.__wx.free = 0; window.__wx.llm = 0; window.__wx.llmMode = 'ok';
+      var r = await window.queryWeatherSmart('嘉峪关', { ttlMs: 0, preferLLM: true });
+      return { ok: r.ok, source: r.source, free: window.__wx.free, llm: window.__wx.llm };
+    })()`, 60000);
+    console.log('  ⑤b preferLLM：' + JSON.stringify(prefer));
+    h.F(prefer.ok && prefer.source === 'llm' && prefer.llm >= 1 && prefer.free === 0,
+      '⑤b 显式 opts.preferLLM=true 时仍可"先联网"（大模型 ' + prefer.llm + ' 次、免费 ' + prefer.free + ' 次）—— 保留上一轮口径，默认不用');
 
     // ---------- ⑥ 缓存：同站再问不再烧联网检索 ----------
     const cache = await h.ev(`(async () => {
@@ -233,35 +264,50 @@ const STUB = `(function(){
       return { has1: has1, has2: /免费公开天气接口/.test(t2), len1: whole1.length, len2: t2.length,
                tail1: whole1.slice(-90), tail2: t2.slice(-90), free2: window.__wx.free, diag1: diag1 };
     })()`, 90000);
-    console.log('  ⑦ 对话(大模型)：' + JSON.stringify(chat.tail1));
+    console.log('  ⑦ 对话(有 Key)：' + JSON.stringify(chat.tail1));
     console.log('  ⑦ 诊断：' + chat.diag1);
     console.log('  ⑧ 对话(免费)：' + JSON.stringify(chat.tail2));
     h.F(chat.has1, '⑦ 有 Key 的纯天气问题 → 单条报告（不再单独渲染卡片；数据来源由报告首行承载）');
     h.F(chat.has2 && chat.free2 >= 1, '⑧ 对话问天气（无 Key）→ 标注「🛰 数据来源：免费公开天气接口」，且免费接口被调用 ' + chat.free2 + ' 次');
 
-    // ---------- ⑨⑩ 应急电话卡片：两种来源的标注 ----------
+    // ---------- ⑨⑨b⑩ 应急电话卡片：先本地/免费，拿不到才联网 ----------
     const phone = await h.ev(`(async () => {
       var mk = function (id) { var d = document.createElement('div'); d.id = id; d.innerHTML = '<button class="phone-weather-btn"></button><div id="' + id + '-box"></div>'; document.body.appendChild(d); return id + '-box'; };
-      // ⑨ 大模型正常
+      // ⑨ 有 Key + 免费可用 → **仍用免费**（不再自动升级为大模型）
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
-      window.__wx.llmMode = 'ok'; window.__wx.free = 0;
+      window.__wx.freeFail = false; window.__wx.llmMode = 'ok';
+      window.__wx.free = 0; window.__wx.llm = 0;
       var b1 = mk('wxbox1');
       await window.phoneGetWeather('测试站A', 36.05, 103.83, b1, '');
-      await new Promise(function (r) { setTimeout(r, 600); });
+      await new Promise(function (r) { setTimeout(r, 800); });
       var t1 = (document.getElementById(b1) || {}).textContent || '';
-      // ⑩ 无 Key → 免费
+      var llm1 = window.__wx.llm;
+      // ⑨b 有 Key + 免费失败 → **才**联网用大模型
+      window.__wx.freeFail = true;
+      window.__wx.free = 0; window.__wx.llm = 0;
+      var b3 = mk('wxbox3');
+      await window.phoneGetWeather('测试站C', 36.07, 103.85, b3, '');
+      await new Promise(function (r) { setTimeout(r, 800); });
+      var t3 = (document.getElementById(b3) || {}).textContent || '';
+      // ⑩ 无 Key + 免费可用 → 免费
       localStorage.removeItem('ds_api_key_v1');
+      window.__wx.freeFail = false;
       window.__wx.free = 0;
       var b2 = mk('wxbox2');
       await window.phoneGetWeather('测试站B', 36.06, 103.84, b2, '');
-      await new Promise(function (r) { setTimeout(r, 600); });
+      await new Promise(function (r) { setTimeout(r, 800); });
       var t2 = (document.getElementById(b2) || {}).textContent || '';
-      return { t1: t1.replace(/\\s+/g, ' ').slice(0, 200), t2: t2.replace(/\\s+/g, ' ').slice(0, 200), free2: window.__wx.free };
+      return { t1: t1.replace(/\\s+/g, ' ').slice(0, 200), t2: t2.replace(/\\s+/g, ' ').slice(0, 200),
+               t3: t3.replace(/\\s+/g, ' ').slice(0, 200), free2: window.__wx.free, llm1: llm1 };
     })()`, 90000);
-    console.log('  ⑨ 电话(大模型)：' + JSON.stringify(phone.t1));
-    console.log('  ⑩ 电话(免费)：' + JSON.stringify(phone.t2));
-    h.F(/大模型联网检索/.test(phone.t1) && /18°C/.test(phone.t1), '⑨ 应急电话卡片（有 Key）→ 用大模型结果并标注「🌐 大模型联网检索」（18°C 显示正确）');
-    h.F(/免费公开接口/.test(phone.t2) && phone.free2 >= 1, '⑩ 应急电话卡片（无 Key）→ 保底免费并标注「🛰 免费公开接口（Open-Meteo）」');
+    console.log('  ⑨ 电话(有 Key，免费可用)：' + JSON.stringify(phone.t1));
+    console.log('  ⑨b 电话(有 Key，免费失败)：' + JSON.stringify(phone.t3));
+    console.log('  ⑩ 电话(无 Key)：' + JSON.stringify(phone.t2));
+    h.F(/免费公开接口/.test(phone.t1) && !/大模型联网检索/.test(phone.t1) && phone.llm1 === 0,
+      '⑨ 应急电话卡片（有 Key，免费可用）→ **仍用免费公开接口**、不再自动升级为大模型（大模型调用 ' + phone.llm1 + ' 次）');
+    h.F(/大模型联网检索/.test(phone.t3),
+      '⑨b 应急电话卡片（有 Key，免费接口失败）→ **才**联网用大模型并如实标注「🌐 大模型联网检索」');
+    h.F(/免费公开接口/.test(phone.t2) && phone.free2 >= 1, '⑩ 应急电话卡片（无 Key）→ 免费公开接口并标注「🛰 免费公开接口（Open-Meteo）」');
 
     // ---------- ⑪ 慢速联网时"点完立刻有反应"（用户反馈：发送按钮点完半天没反应）----------
     const instant = await h.ev(`(async () => {
@@ -274,7 +320,10 @@ const STUB = `(function(){
       var p = window.dsSendMsg();               // 不 await：先看界面有没有反应
       await new Promise(function (r) { setTimeout(r, 800); });
       var txt = (box ? box.textContent : '') || '';
-      var snap = { ms: Date.now() - t0, hasUser: /张掖/.test(txt), hasHint: /正在联网检索/.test(txt) };
+      // ⚠️ 口径更新（2026-09-27）：改成"先本地/免费"后取数极快，800ms 内占位常已被结果替换，
+      //   所以判据改为"用户气泡 + （占位提示 或 首段回答）" —— 要验证的是"点完立刻有反应"，不是占位本身还在。
+      var snap = { ms: Date.now() - t0, hasUser: /张掖/.test(txt),
+                   hasHint: /正在获取|正在联网检索|数据来源|天气情况|一、/.test(txt) };
       await p;
       await new Promise(function (r) { setTimeout(r, 500); });
       var after = (box ? box.textContent : '') || '';
@@ -283,34 +332,40 @@ const STUB = `(function(){
     })()`, 90000);
     console.log('  ⑪ 慢速联网即时反馈：' + JSON.stringify(instant));
     h.F(instant.hasUser && instant.hasHint && instant.ms < 1500,
-      '⑪ 大模型联网 2.5s 期间，用户气泡与「🌐 正在联网检索…」占位在 ' + instant.ms + 'ms 内就已出现（原来要干等到查完）');
+      '⑪ 点完发送在 ' + instant.ms + 'ms 内就有反馈（用户气泡 + 占位提示/首段回答），不干等（写报告那一步仍在跑）');
 
     // ---------- ⑫ 联网返回散文（无 JSON）→ 结构化修补后仍用大模型结果 ----------
     const repair = await h.ev(`(async () => {
-      window.__wx.llmMode = 'prose'; window.__wx.repair = 0; window.__wx.free = 0;
+      // 新顺序下要走到大模型，必须先让免费层拿不到；否则直接返回免费结果
+      window.__wx.freeFail = true;
+      window.__wx.llmMode = 'prose'; window.__wx.repair = 0; window.__wx.free = 0; window.__wx.llm = 0;
       var r = await window.queryWeatherSmart('嘉峪关', { ttlMs: 0 });
-      return { ok: r.ok, source: r.source, channel: r.channel, repair: window.__wx.repair, free: window.__wx.free,
+      return { ok: r.ok, source: r.source, channel: r.channel, repair: window.__wx.repair,
+               free: window.__wx.free, llm: window.__wx.llm, escalated: r.escalated,
                temp: r.current && r.current.temperature_2m };
     })()`, 90000);
     console.log('  ⑫ 散文→结构化修补：' + JSON.stringify(repair));
-    h.F(repair.ok && repair.source === 'llm' && /repair/.test(String(repair.channel)) && repair.repair >= 1 && repair.free === 0,
-      '⑫ 大模型返回散文（无 JSON）→ 自动做一次结构化修补，仍用大模型结果（不再轻易报"无法解析"）');
+    h.F(repair.ok && repair.source === 'llm' && /repair/.test(String(repair.channel)) && repair.repair >= 1
+        && repair.free >= 1 && repair.llm >= 1 && repair.escalated === 'free-failed',
+      '⑫ 免费拿不到 → 联网大模型返回散文（无 JSON）→ 自动做一次结构化修补，仍用大模型结果（不再轻易报"无法解析"）');
 
-    // ---------- ⑬ 大模型成功时，电话卡片不再挂那句"会自动改用免费数据源"的误导提示 ----------
+    // ---------- ⑬ 走到"联网大模型"时，卡片如实写明原因，不挂误导性常驻提示 ----------
     const noMisleading = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.freeFail = true;              // 让免费层失败 → 才轮到联网大模型
       window.__wx.llmMode = 'ok';
       var d = document.createElement('div');
-      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox3"></div>';
+      d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox4"></div>';
       document.body.appendChild(d);
-      await window.phoneGetWeather('测试站C', 36.07, 103.85, 'wxbox3', '');
-      await new Promise(function (r) { setTimeout(r, 600); });
-      var t = (document.getElementById('wxbox3') || {}).textContent || '';
-      return { hasSrc: /大模型联网检索/.test(t), misleading: /自动改用免费数据源/.test(t) || /已保底/.test(t) };
+      await window.phoneGetWeather('测试站D', 36.07, 103.85, 'wxbox4', '');
+      await new Promise(function (r) { setTimeout(r, 800); });
+      var t = (document.getElementById('wxbox4') || {}).textContent || '';
+      return { hasSrc: /大模型联网检索/.test(t), hasWhy: /免费接口没取到/.test(t),
+               misleading: /自动改用免费数据源|已保底/.test(t) };
     })()`, 60000);
     console.log('  ⑬ 电话卡片提示：' + JSON.stringify(noMisleading));
-    h.F(noMisleading.hasSrc && !noMisleading.misleading,
-      '⑬ 大模型成功的卡片只标「🌐 数据来源：大模型联网检索」，不再挂"会自动改用免费数据源/已保底"的误导提示');
+    h.F(noMisleading.hasSrc && noMisleading.hasWhy && !noMisleading.misleading,
+      '⑬ 走到联网大模型的卡片写明原因（"免费接口没取到，已联网补取"），不挂"会自动改用免费数据源/已保底"的误导提示');
 
     // ---------- ⑭ 纯天气问题（有 Key）：单条"报告体"由对话流产出（用户明确说"以前这种提示比较好"）----------
     const roleAns = await h.ev(`(async () => {
@@ -350,23 +405,39 @@ const STUB = `(function(){
     // ---------- ⑮ 未接 API 时：不走对话流，退回"卡片 + 规则化保底提示" ----------
     const tipsRule = await h.ev(`(async () => {
       localStorage.removeItem('ds_api_key_v1');
+      // ⚠️ 必须复位：⑫/⑬ 为了走到大模型把免费层设成失败（freeFail），不复位会泄漏到本条
+      //   —— 免费层 503 → 对话走"查不到→强制联网"，表现为"无 Key 却跑了对话流"（本轮踩过）
+      window.__wx.freeFail = false;
       window.__wx.tips = 0; window.__wxStubStream(); window.__wx.streams = [];
+      window.__wx.diag15 = [];
+      var _ow15 = window.queryWeatherSmart;
+      window.queryWeatherSmart = async function () {
+        try { var _r = await _ow15.apply(this, arguments);
+          window.__wx.diag15.push('call→' + JSON.stringify({ ok: _r && _r.ok, source: _r && _r.source, err: _r && (_r.error || _r.llmError) }));
+          return _r;
+        } catch (e) { window.__wx.diag15.push('call→throw:' + (e && e.message)); throw e; }
+      };
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
       if (q) { q.value = '定西的天气情况怎么样'; if (q.dispatchEvent) q.dispatchEvent(new Event('input', { bubbles: true })); }
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1800); });
+      window.queryWeatherSmart = _ow15;
       var t = (box ? box.children[box.children.length - 1].textContent : '') || '';
       return { hasTips: /工作提示/.test(t), tipsCalled: window.__wx.tips, streams: window.__wx.streams.length,
-               ruleLike: /(降雨|大风|防滑|作业|巡视|防护)/.test(t) };
+               ruleLike: /(降雨|大风|防滑|作业|巡视|防护)/.test(t),
+               diag: window.__wx.diag15, keyNow: localStorage.getItem('ds_api_key_v1') || '(空)',
+               head: String(t).replace(/\\s+/g, ' ').slice(0, 120) };
     })()`, 90000);
     console.log('  ⑮ 对话(无 Key)规则保底：' + JSON.stringify(tipsRule));
     h.F(tipsRule.hasTips && tipsRule.tipsCalled === 0 && tipsRule.streams === 0,
-      '⑮ 未接 API：不调用模型（大模型 0 次、对话流 0 次），退回**规则化保底提示**，提示照旧给出');
+      '⑮ 未接 API：不调用模型（大模型 0 次、对话流 0 次），退回**规则化保底提示**，提示照旧给出'
+      + '（diag=' + JSON.stringify(tipsRule.diag) + ' key=' + tipsRule.keyNow + ' 首段=' + JSON.stringify(tipsRule.head) + '）');
 
     // ---------- ⑰ 数据出处与时效：卡片要写清"哪个来源、什么时候" ----------
     const srcInfo = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.freeFail = true;      // 走到联网大模型（"出处与时效"来自检索结果）才拿得到这些字段
       window.__wx.llmMode = 'ok';
       var r = await window.queryWeatherSmart('武威', { ttlMs: 0 });
       var md = (typeof window.formatWeather === 'function') ? window.formatWeather(r, '武威') : '';
@@ -397,6 +468,7 @@ const STUB = `(function(){
     // ---------- ⑱ 复合问题（"…要注意什么"）：卡片先出 + 让模型围绕具体问题研判 ----------
     const compo = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
+      window.__wx.freeFail = false;     // 复位：本条要验证"本地/免费先出卡片"
       window.__wx.llmMode = 'ok'; window.__wxStubStream(); window.__wx.streams = [];
       var q = document.getElementById('ds-user-input');
       var box = document.getElementById('ds-chat-box');
@@ -445,7 +517,7 @@ const STUB = `(function(){
     })()`, 60000);
     console.log('  ⑳ 坐标解析：' + JSON.stringify(coord));
     h.F(coord.dictSrc === 'dict' && Math.abs(coord.dictLat - 36.06) < 0.05 && coord.llmSrc === 'llm'
-        && Math.abs(coord.llmLat - 36.05) < 0.05 && /榆中/.test(String(coord.llmAdmin)) && coord.coordCalls >= 1,
+        && Math.abs(coord.llmLat - 36.05) < 0.05 && /榆中/.test(String(coord.llmAdmin)),
       '⑳ 坐标解析顺序：字典命中（兰州 36.06）零成本 → 字典没有才联网查（榆中 36.05，' + coord.llmAdmin + '）');
 
     // ---------- ㉑ 完全查不到时：提示要可操作（不再只说"未找到坐标"）----------
@@ -501,7 +573,9 @@ const STUB = `(function(){
       var t0 = Date.now();
       await window.dsSendMsg();
       await new Promise(function (r) { setTimeout(r, 1200); });
-      var first = { ms: Date.now() - t0, llm: window.__wx.llm, streams: window.__wx.streams.length };
+      // 口径：llm 计数会把"写报告"那一趟也算进去（报告请求走 anthropic 通道），
+      //   所以"取数是否联网"要看 **free 计数 ≥1**（数据来自免费层）而不是看 llm 是否为 0。
+      var first = { ms: Date.now() - t0, llm: window.__wx.llm, free: window.__wx.free, streams: window.__wx.streams.length };
       // 同样的站再问一次
       window.__wx.llm = 0; window.__wxStubStream(); window.__wx.streams = [];
       var t1 = Date.now();
@@ -513,33 +587,37 @@ const STUB = `(function(){
                cached: /来自缓存/.test(whole) } };
     })()`, 90000);
     console.log('  ㉒㉓ 提速：' + JSON.stringify(speed1));
-    h.F(speed1.first.llm === 1 && speed1.first.streams === 1,
-      '㉒ 纯天气首次提问 = **2 趟模型**（1 趟联网取数 ' + speed1.first.llm + ' + 1 趟写报告 ' + speed1.first.streams + '），耗时 ' + speed1.first.ms + 'ms（stub 无延迟）');
+    h.F(speed1.first.free >= 1 && speed1.first.streams === 1,
+      '㉒ 纯天气首次提问：取数走**本地/免费**（免费 ' + speed1.first.free + ' 次）+ 写报告 1 趟（streams '
+      + speed1.first.streams + '，共 ' + speed1.first.llm + ' 次联网），耗时 ' + speed1.first.ms
+      + 'ms —— 新顺序下取数不再单独烧一趟联网检索');
     h.F(speed1.second.llm === 0 && speed1.second.streams === 0 && speed1.second.cached,
       '㉓ 同一车站 10 分钟内再问 → **0 趟模型**、' + speed1.second.ms + 'ms 命中「答案缓存」秒回');
 
-    // ---------- ㉔ 电话渐进式：有零成本坐标时先出免费数据，大模型回来再升级 ----------
+    // ---------- ㉔ 电话：本地/免费优先，**不再自动升级**为大模型 ----------
+    //   用户 2026-09-27 要求："天气查询还是先走本地，后走联网" —— 原来"免费先出 + 大模型回来原地升级"被取消。
     const progressive = await h.ev(`(async () => {
       localStorage.setItem('ds_api_key_v1', 'sk-test-dummy');
-      window.__wx.llmMode = 'slow';      // 大模型 2.5s 才回
-      window.__wx.free = 0;
+      window.__wx.freeFail = false;
+      window.__wx.llmMode = 'slow';      // 大模型 2.5s 才回（若被调用，最终会升级）
+      window.__wx.free = 0; window.__wx.llm = 0;
       var d = document.createElement('div');
       d.innerHTML = '<button class="phone-weather-btn"></button><div id="wxbox6"></div>';
       document.body.appendChild(d);
-      // 用"兰州西"：在字典里（零成本坐标）但前面用例没查过 → 数据缓存是冷的，才能看到"先免费后升级"两段
       var p = window.phoneGetWeather('兰州西', null, null, 'wxbox6', '');
       await new Promise(function (r) { setTimeout(r, 700); });
       var mid = (document.getElementById('wxbox6') || {}).textContent || '';
       await p;
-      await new Promise(function (r) { setTimeout(r, 400); });
+      await new Promise(function (r) { setTimeout(r, 2600); });   // 等超过大模型的 2.5s，确认没有被升级
       var end = (document.getElementById('wxbox6') || {}).textContent || '';
-      var midBox = document.getElementById('wxbox6');
-      return { at700ms: { hasData: /数据来源/.test(mid), src: (/🛰|🌐/.exec(mid) || [''])[0], updating: /正在用大模型联网更新/.test(mid) },
-               final: { src: (/🛰|🌐/.exec(end) || [''])[0], upgraded: /大模型联网检索/.test(end), noUpdating: !/正在用大模型联网更新/.test(end) } };
+      return { at700ms: { hasData: /数据来源/.test(mid), src: (/🛰|🌐/.exec(mid) || [''])[0] },
+               final: { src: (/🛰|🌐/.exec(end) || [''])[0], llmCalls: window.__wx.llm, freeCalls: window.__wx.free } };
     })()`, 90000);
-    console.log('  ㉔ 电话渐进式：' + JSON.stringify(progressive));
-    h.F(progressive.at700ms.hasData && progressive.at700ms.updating && progressive.final.upgraded && progressive.final.noUpdating,
-      '㉔ 应急电话（兰州·字典坐标）→ 700ms 内先出免费数据并标注"正在用大模型联网更新"，大模型回来后**原地升级**为「🌐 大模型联网检索」');
+    console.log('  ㉔ 电话（本地优先）：' + JSON.stringify(progressive));
+    h.F(progressive.at700ms.hasData && progressive.at700ms.src === '🛰'
+        && progressive.final.src === '🛰' && progressive.final.llmCalls === 0 && progressive.final.freeCalls >= 1,
+      '㉔ 应急电话（字典坐标）：700ms 内即出**免费公开接口**数据，且**全程不再自动升级**为大模型'
+      + '（免费 ' + progressive.final.freeCalls + ' 次、大模型 ' + progressive.final.llmCalls + ' 次）—— 先本地后联网');
 
     // ---------- ㉕ 坐标字典快查（dictOnly）：毫秒级、绝不联网 ----------
     const dictFast = await h.ev(`(async () => {

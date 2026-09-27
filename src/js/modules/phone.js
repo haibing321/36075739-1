@@ -488,11 +488,11 @@
                     const _why = (k) => ({ 'no-key': '未接 API', 'no-websearch-api': '不可用', 'timeout': '超时', 'llm-not-found': '未查到该车站', 'llm-unparsed': '返回无法解析', 'llm-empty': '返回为空', 'network': '网络不可达', 'llm-failed': '调用失败' })[k] || '';
                     let w = null, srcLabel = '', srcNote = '', llmWhy = '';
 
-                    // 【2026-09-23 提速·渐进式】两路并行：
-                    //   ① 零成本坐标（电话簿已存 / 内置字典，毫秒级）→ 立刻用免费公开接口（实测 ~1.1s）出数据；
-                    //   ② 同时后台问大模型（不需要坐标，服务端检索几秒起）。
-                    //   免费先到就先渲染（标注"正在联网更新"），大模型回来再**原地升级** ——
-                    //   用户不用盯着"⏳ 查询中…"干等十几秒。
+                    // 【2026-09-27 按用户要求改顺序：**先走本地，后走联网**】
+                    //   ① 本地坐标（电话簿已存 / 内置字典，毫秒级）
+                    //   ② 免费公开接口（不需要 API Key、实测 ~1.1s）——**拿到即用，不再"后台升级"为大模型**
+                    //   ③ 本地/免费都拿不到，才联网：坐标联网解析 → 再试免费 → 最后才问大模型联网检索
+                    //   原实现是"免费先出 + 大模型回来后原地升级"，用户明确要求改为本地优先、联网靠后。
                     if ((!lat || !lon) && typeof window.queryStationCoord === 'function') {
                         try {
                             const dc = await window.queryStationCoord(stationName, { dictOnly: true });
@@ -508,38 +508,17 @@
                             return (raw && raw.current) ? raw : null;
                         } catch (_) { return null; }
                     };
-                    const _llmAsk = async function () {
-                        try { return await window.queryWeatherSmart(stationName, { skipFree: true, timeoutMs: 10000 }); }
-                        catch (e) { return null; }
-                    };
-                    const pFree = _freeDirect();
-                    const pLlm = _llmAsk();
+                    // ① 本地就有坐标 → 直接用免费公开接口出数据（最快、免费、不需要 Key）
                     if (lat && lon) {
-                        // 免费接口若 1.5s 内回来就先渲染（再慢就不抢了，免得界面闪两次）
-                        const early = await Promise.race([
-                            pFree,
-                            new Promise(function (res) { setTimeout(function () { res('__slow__'); }, 1500); })
-                        ]);
-                        if (early && early !== '__slow__') {
+                        const early = await _freeDirect();
+                        if (early) {
                             w = early;
                             srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
-                            srcNote = '（正在用大模型联网更新…）';
-                            renderCard();
+                            srcNote = '';       // 本地/免费优先，没有降级可写
                         }
                     }
-                    const llm = await pLlm;
-                    if (llm && llm.ok && llm.current) {
-                        w = llm;
-                        srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
-                        srcNote = '';   // 不再挂常驻提示（只有真降级时才写原因）
-                        renderCard();   // 升级为大模型结果
-                    } else {
-                        llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
-                    }
-
-                    // ② 坐标还没拿到（字典没有）→ 现在才联网解析：
-                    //    大模型联网查坐标 > Open-Meteo 地名接口
-                    if (!w && (!lat || !lon)) {
+                    // ② 没坐标或免费失败 → 联网解析坐标（内置字典 → Open-Meteo 地名/大模型联网），再试免费
+                    if (!w) {
                         if (!lat && typeof window.queryStationCoord === 'function') {
                             try {
                                 const c = await window.queryStationCoord(stationName);
@@ -551,6 +530,14 @@
                                 const coords = await window.phoneGeocode(stationName, lineName);
                                 if (coords) { lat = coords.lat; lon = coords.lon; }
                             } catch (_) {}
+                        }
+                        if (lat) {
+                            const raw2 = await _freeDirect();
+                            if (raw2) {
+                                w = raw2;
+                                srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
+                                srcNote = '（坐标联网解析后取到）';
+                            }
                         }
                     }
                     // 把解析到的坐标补回电话簿：下次（含离线）可直接查
@@ -564,23 +551,27 @@
                         }
                         saveToStorage();
                     }
-
-                    // ③ 免费直连（复用上面那一路的请求，坐标是刚解析出来的话这里再发一次）
-                    if (!w && lat) {
-                        const raw = (await pFree) || await _freeDirect();
-                        if (raw) {
-                            w = raw;
-                            srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
-                            srcNote = llmWhy ? '（大模型联网' + (_why(llmWhy) || '不可用') + '，已保底）' : '';
+                    // ③ 本地/免费都拿不到 → 才走联网大模型（不需要坐标，服务端检索）
+                    if (!w) {
+                        let llm = null;
+                        try { llm = await window.queryWeatherSmart(stationName, { skipFree: true, timeoutMs: 10000 }); }
+                        catch (_) { llm = null; }
+                        if (llm && llm.ok && llm.current) {
+                            w = llm;
+                            srcLabel = '🌐 数据来源：大模型联网检索' + (w.sourceName ? '（' + w.sourceName + '）' : '');
+                            srcNote = '（免费接口没取到，已联网补取）';
+                        } else {
+                            llmWhy = (llm && (llm.llmError || llm.error)) || 'llm-failed';
                         }
                     }
-                    // ④ 共享保底（**不再重试大模型**：上面刚试过；preferLLM:false 只走免费层，带 10 分钟缓存）
+                    // ④ 兜底：共享天气层（只走免费层，带 10 分钟缓存）
                     if (!w) {
-                        const smart = await window.queryWeatherSmart(stationName, { preferLLM: false });
+                        // freeOnly：这一步只当"免费兜底"，不再重试大模型（③ 刚试过）
+                        const smart = await window.queryWeatherSmart(stationName, { freeOnly: true });
                         if (smart && smart.ok && smart.current) {
                             w = smart;
                             srcLabel = '🛰 数据来源：免费公开接口（Open-Meteo）';
-                            srcNote = '（大模型联网' + (_why(smart.degraded || llmWhy) || '不可用') + '，已保底）';
+                            srcNote = llmWhy ? '（大模型联网' + (_why(llmWhy) || '不可用') + '，已保底）' : '';
                         }
                     }
                     // ⑤ 全失败 → 给出**可操作**的提示（别再只说"未找到坐标"）

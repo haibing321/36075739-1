@@ -393,8 +393,11 @@
         try {
           var ctrl = new AbortController();
           var timer = setTimeout(function() { ctrl.abort(); }, 5000);
+          // 【2026-09-27】取值顺序改为"先本地/免费、后联网大模型"后，免费层就是**主力数据源**——
+          //   原来只取温度/天气码/风速，卡片上的体感、湿度、降水、气压、风向会全变"—"。
+          //   这里把字段补齐到与大模型路径同等丰富（Open-Meteo 免费提供，不增加成本）。
           var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + station.纬度 + '&longitude=' + station.经度
-            + '&current=temperature_2m,weather_code,wind_speed_10m'
+            + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation,surface_pressure'
             + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max'
             + '&forecast_days=7&timezone=Asia/Shanghai';
           var r = await fetch(url, { signal: ctrl.signal });
@@ -409,7 +412,10 @@
               temp: w.current.temperature_2m + '°C',
               weather: wmo[w.current.weather_code] || ('代码' + w.current.weather_code),
               weatherEmoji: wmoEmoji[w.current.weather_code] || '🌡️',
-              wind: w.current.wind_speed_10m + 'km/h'
+              wind: w.current.wind_speed_10m + 'km/h',
+              // 【2026-09-27】原始实况字段一并带出：取值顺序改为"先本地/免费、后联网"后，
+              //   免费层是主力数据源，卡片上的体感/湿度/降水/气压/风向都要用它（原来被丢掉了）。
+              raw: w.current
             };
           }
           var daily = null;
@@ -1453,18 +1459,35 @@
   };
 
   /**
-   * 【对外统一入口】车站天气：大模型联网优先，未接 API / 未查到 / 失败 → 免费公开接口保底。
-   * 返回：{ ok, source:'llm'|'free', degraded?:失败原因, current, daily, cached? }
+   * 【对外统一入口】车站天气取值顺序（**2026-09-27 按用户要求调整：先走本地，后走联网**）：
+   *   ① 本地缓存（同站 10 分钟内直接复用，含"刚查过的站"）；
+   *   ② 免费公开接口（本地坐标字典/电话簿 + Open-Meteo；快、免费、不需要 Key，字段已补齐到与大模型同等丰富）；
+   *   ③ 大模型联网检索（**兜底补位**：免费拿不到 / 需要联网补空气质量和日出日落等细节时才用）。
+   * 可选参数：
+   *   · opts.preferLLM === true → 反过来"先联网"（保留上一轮口径，默认关闭）；
+   *   · opts.skipFree === true  → 只走大模型那一路（应急电话内部需要时使用）。
+   * 返回：{ ok, source:'free'|'llm', degraded?, escalated?, current, daily, cached? }
+   *   degraded  = 先联网后降级到免费的原因；escalated = 先本地/免费失败后升级到联网的原因。
    */
   /** 免费层（工具版 queryWeather，字段是 tmax/tmin/…）→ 补上 Open-Meteo 原名字段，
    *  这样"应急电话卡片"与"对话表格"两个渲染器都能直接吃同一份数据（缺失项渲染成 '—'）。 */
   function _openMeteoShape(c) {
     if (!c) return null;
-    var code = (c.weather_code != null) ? c.weather_code : _wmoFromText(c.weather);
+    // c.raw = 免费层带回的 Open-Meteo 原始实况（体感/湿度/降水/气压/风向都在里面）
+    var r = c.raw || null;
+    var pick = function (k) { return (r && r[k] != null) ? r[k] : null; };
+    var code = (c.weather_code != null) ? c.weather_code
+      : ((r && r.weather_code != null) ? r.weather_code : _wmoFromText(c.weather));
+    var t2 = pick('temperature_2m');
+    var ws = pick('wind_speed_10m');
     return {
-      temperature_2m: _num(c.temp),
-      apparent_temperature: null, relative_humidity_2m: null, wind_speed_10m: _num(c.wind),
-      wind_direction_10m: null, precipitation: null, surface_pressure: null,
+      temperature_2m: (t2 != null) ? t2 : _num(c.temp),
+      apparent_temperature: pick('apparent_temperature'),
+      relative_humidity_2m: pick('relative_humidity_2m'),
+      wind_speed_10m: (ws != null) ? ws : _num(c.wind),
+      wind_direction_10m: pick('wind_direction_10m'),
+      precipitation: pick('precipitation'),
+      surface_pressure: pick('surface_pressure'),
       weather_code: code, weather: String(c.weather || ''), weatherEmoji: c.weatherEmoji || _WMO_EMOJI[code] || '🌡️',
       temp: String(c.temp || ''), wind: String(c.wind || '')
     };
@@ -1493,24 +1516,50 @@
     }
     if (_wSmartInflight[st]) { try { return await _wSmartInflight[st]; } catch (e) {} }
     var task = (async function () {
-      var llmErr = '';
-      if (opts.preferLLM !== false) {
-        try {
-          var r = await window.queryWeatherLLM(st, opts);
-          if (r && r.ok) return r;
-          llmErr = (r && r.error) || 'llm-failed';
-        } catch (e) { llmErr = (e && e.message) || 'llm-error'; }
-      } else {
-        llmErr = 'llm-skipped';
+      var _freeCall = async function () {
+        try { return await window.queryWeather({ stationName: st }); }
+        catch (e) { return { ok: false, error: (e && e.message) || 'free-error' }; }
+      };
+      var _llmCall = async function () {
+        try { return await window.queryWeatherLLM(st, opts); }
+        catch (e) { return { ok: false, error: (e && e.message) || 'llm-error' }; }
+      };
+      var _freePack = function (f) {
+        return { ok: true, station: st, source: 'free', current: _openMeteoShape(f.current), daily: _openMeteoDaily(f.daily) };
+      };
+      var _copy = function (o) { var n = {}; for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) n[k] = o[k]; return n; };
+
+      // 显式要求"先联网"（保留上一轮口径；默认不用）
+      if (opts.preferLLM === true) {
+        var r0 = await _llmCall();
+        if (r0 && r0.ok) return r0;
+        var llmErr0 = (r0 && r0.error) || 'llm-failed';
+        if (opts.skipFree) return { ok: false, error: llmErr0, llmError: llmErr0 };
+        var f0 = await _freeCall();
+        if (f0 && f0.ok) { var p0 = _freePack(f0); p0.degraded = llmErr0; return p0; }
+        return { ok: false, error: (f0 && f0.error) || llmErr0, llmError: llmErr0 };
       }
-      // opts.skipFree：只要大模型这一路。应急电话用它做"第一优先"——它自己有一条字段更全的
-      //   免费直连（湿度/气压/风向/降水），拿它当第二优先比这里的精简版更好（见 phone.js）
-      if (opts.skipFree) return { ok: false, error: llmErr || 'llm-failed', llmError: llmErr };
-      // 保底：免费公开接口（未接 API / 大模型未查到 / 超时 / 解析失败 都走这里）
-      var f = null;
-      try { f = await window.queryWeather({ stationName: st }); } catch (e) { f = { ok: false, error: (e && e.message) || 'free-error' }; }
-      if (f && f.ok) return { ok: true, station: st, source: 'free', degraded: llmErr, current: _openMeteoShape(f.current), daily: _openMeteoDaily(f.daily) };
-      return { ok: false, error: (f && f.error) || 'query-failed', llmError: llmErr };
+
+      // ① 免费公开接口（本地字典/电话簿坐标；快的先出）
+      var f1 = null;
+      if (!opts.skipFree) {
+        f1 = await _freeCall();
+        if (f1 && f1.ok) return _freePack(f1);      // ② 免费成功 → 直接返回，**不再烧大模型**
+      }
+      // opts.freeOnly：**只要免费这一路**（应急电话的最后兜底用；避免在这里又重试一遍大模型）
+      if (opts.freeOnly) {
+        return { ok: false, error: (f1 && f1.error) || 'free-failed', freeOnly: true };
+      }
+      // ③ 免费拿不到（无坐标/超时/接口异常）→ 才联网问大模型
+      var r1 = await _llmCall();
+      if (r1 && r1.ok) {
+        if (opts.skipFree) return r1;
+        var out = _copy(r1);
+        out.escalated = f1 ? 'free-failed' : 'free-skipped';
+        return out;
+      }
+      var llmErr1 = (r1 && r1.error) || 'llm-failed';
+      return { ok: false, error: (f1 && f1.error) || llmErr1, llmError: llmErr1 };
     })();
     _wSmartInflight[st] = task;
     try {

@@ -395,7 +395,10 @@ const STUB = `(function(){
                injTemplate: /一、今日实况与预报/.test(s0) && /二、未来一周趋势/.test(s0) && /三、铁路安全监察提示/.test(s0),
                injTable: /用\\*\\*表格\\*\\*列出/.test(s0) && /空气质量/.test(s0) && /日出日落/.test(s0),
                injNoFabricate: /严禁编造条款/.test(s0),
-               injLocal: /规章制度 \\/ 检查信息 \\/ 检查手册/.test(s0),
+               // 依据口径（2026-09-27 用户要求）：只引「规章制度」条款；检查手册可**个别引用**；
+               //   **不要引用检查信息**（属历史检查案例，内容冗长、与本次天气提示无直接关系）
+               injLocal: /规章制度/.test(s0) && /检查手册/.test(s0) && /不要引用检查信息/.test(s0)
+                         && /最多 1 条/.test(s0),
                injTail: /我可辅助研判/.test(s0) && /逐小时预报/.test(s0),
                // 角色口径：提示要写"按当前所选专业角色"，且带上供电的关注点；不得再出现写死的通用四项清单
                injRole: /按当前所选专业角色/.test(s0) && /我是「供电」/.test(s0),
@@ -412,6 +415,9 @@ const STUB = `(function(){
     h.F(roleAns.injRole && roleAns.injRoleFocus && roleAns.noGenericList,
       '⑭b 「三、铁路安全监察提示」**按当前所选角色走**：提示词写明"按当前所选专业角色 / 我是「供电」"并带上供电关注点'
       + '（接触网与牵引变电、绝缘与防雷接地），且不再出现写死的通用清单（如"防洪与线路巡查…人身安全/车辆检查"）');
+    h.F(roleAns.injLocal,
+      '⑭c 依据口径：只引「规章制度」具体条款；**检查手册**确有必要时个别引用（最多 1 条）；'
+      + '**不要引用检查信息**（属历史检查案例，内容冗长、对本次天气提示无实际意义）');
 
     // ---------- ⑮ 未接 API 时：不走对话流，退回"卡片 + 规则化保底提示" ----------
     const tipsRule = await h.ev(`(async () => {
@@ -556,7 +562,9 @@ const STUB = `(function(){
       var all = (box ? box.textContent : '') || '';
       var s0 = window.__wx.streams[0] || '';
       return { streams: window.__wx.streams.length, cardKept: /数据来源/.test(all), head: s0.slice(0, 60),
-               injAnswer: /回答用户的具体问题/.test(s0), injLocal: /规章制度\\/检查信息\\/检查手册/.test(s0),
+               injAnswer: /回答用户的具体问题/.test(s0),
+               // 同 ⑭：只引规章制度条款 + 不引检查信息（历史案例）
+               injLocal: /规章制度/.test(s0) && /不要引用检查信息/.test(s0),
                notReport: !/一、今日实况与预报/.test(s0) };
     })()`, 90000);
     console.log('  ⑱ 复合问题：' + JSON.stringify(compo));

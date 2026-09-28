@@ -655,35 +655,29 @@ window.onclick = function(e) {
                 console.warn('[PWA] SW 作用域不覆盖当前页，无法接管：scope=' + reg.scope + ' 当前页=' + location.href);
                 return;
             }
-            /** 本次加载是否走网络（是才值得刷新；已是缓存加载就不刷 → 不成环） */
-            function thisLoadWasNetwork() {
-                try {
-                    var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
-                    return !!(t && t.navRes > 0);
-                } catch (e) { return false; }
+            /**
+             * 记录救援结果（**不再自动刷新页面**）。
+             * 【2026-09-28 用户明确批评】上一版"接管成功后自动刷新一次"是掩耳盗铃：
+             *   它既把"这一次其实是整包网络加载"的证据覆盖掉（看板于是显示正常），
+             *   又用 location.reload() **绕过 HTTP 缓存**、反而强制全量重下（更慢）。
+             *   现在只做真实修复（激活/接管）并**如实记账**，把"要不要重开"交给用户决定。
+             */
+            function noteRepair(kind, extra) {
+                _patchBootTimeline({
+                    swRepair: kind,
+                    swCtlAfterRepair: !!navigator.serviceWorker.controller,
+                    swRepairNote: extra || ''
+                });
             }
-            /** controller 就位后刷新一次（每会话 3 次硬上限，杜绝任何意外成环） */
-            function reloadOnceIfNeeded() {
-                if (!navigator.serviceWorker.controller) return;
-                if (!thisLoadWasNetwork()) return;
-                var n = 0;
-                try {
-                    n = parseInt(sessionStorage.getItem('_sw_claim_reloaded') || '0', 10) || 0;
-                    if (n >= 3) return;
-                    sessionStorage.setItem('_sw_claim_reloaded', String(n + 1));
-                } catch (e) { return; }
-                _patchBootTimeline({ swReloaded: n + 1 });
-                console.log('[PWA] SW 已就位且本次加载走网络 → 刷新一次改走本机缓存（第 ' + (n + 1) + ' 次）');
-                try { location.reload(); } catch (e) {}
-            }
-            function waitControllerThenReload() {
-                if (navigator.serviceWorker.controller) return reloadOnceIfNeeded();
+            function watchController(kind) {
+                if (navigator.serviceWorker.controller) return noteRepair(kind, '立即就位');
                 var tries = 0;
                 var iv = setInterval(function () {
                     tries++;
-                    if (navigator.serviceWorker.controller) { clearInterval(iv); reloadOnceIfNeeded(); }
+                    if (navigator.serviceWorker.controller) { clearInterval(iv); noteRepair(kind, '约 ' + (tries * 250) + 'ms 后就位'); }
                     else if (tries > 16) {   // 约 4s
                         clearInterval(iv);
+                        noteRepair(kind, '4s 内未就位（可能作用域不覆盖 / 浏览器不持久保存 SW）');
                         console.warn('[PWA] 等 controller 就位超时（可能作用域不覆盖 / 浏览器不持久保存 SW）');
                     }
                 }, 250);
@@ -701,7 +695,7 @@ window.onclick = function(e) {
                     } catch (e) {}
                 }
                 console.log('[PWA] SW 未激活（' + (reg.waiting ? 'waiting' : 'installing') + '）→ 已请其立即激活');
-                waitControllerThenReload();
+                watchController('kick');
                 return;
             }
             // ① active 在但不接管：请它当场 claim
@@ -711,7 +705,7 @@ window.onclick = function(e) {
                 if (d.type !== 'CLAIM_DONE') return;
                 _patchBootTimeline({ swClaimed: !!d.controller, swClaimError: d.error || '' });
                 if (!d.controller) { console.warn('[PWA] SW 当场接管失败：' + (d.error || '')); return; }
-                waitControllerThenReload();
+                watchController('claim');
             };
             try { reg.active.postMessage({ type: 'CLAIM_NOW' }, [ch.port2]); } catch (e) {}
         } catch (e) {}
@@ -1299,7 +1293,8 @@ window.stFillAboutOffline = async function () {
                 if (bt0 && bt0.navRes > 0) {
                     parts.push('<span style="color:#fbbf24;">⚠ 本次加载早于接管</span>：这次打开的 HTML/资源（'
                         + bt0.navRes + ' 字节）是在 SW 接管**之前**发出的，所以这一趟仍走了网络。'
-                        + '新版遇到这种情况会自动接管并刷新一次 → 下次打开即从第一个请求起走本机缓存。');
+                        + '**不再自动刷新**（那会把这条记录盖掉，属于掩耳盗铃）—— 若反复如此，'
+                        + '请点下面的「🔧 重装离线缓存」。');
                 }
             } catch (e) {}
         } else if (reg && (reg.active || reg.installing || reg.waiting)) {
@@ -1359,7 +1354,63 @@ window.stFillAboutOffline = async function () {
             }
         }
     } catch (e) {}
+    // 【2026-09-28】加载历史：每一次打开都如实记账（**只追加**），任何"事后自动刷新"都盖不住它。
+    try {
+        var _h = JSON.parse(localStorage.getItem('_load_history') || '[]') || [];
+        if (_h.length) {
+            var _htxt = _h.slice(-4).map(function (x) {
+                return (x.ts || '') + ' ' + (x.navRes === 0 ? 'HTML 0B（缓存）' : 'HTML ' + (x.navRes || 0) + 'B')
+                    + ' · 联网资源 ' + (x.netRes || 0) + ' 项 · 接管' + (x.ctl ? '是' : '否');
+            }).join(' ｜ ');
+            parts.push('加载历史（最近 ' + Math.min(4, _h.length) + ' 次，只追加不覆盖）：' + _htxt);
+        }
+    } catch (e) {}
     el.innerHTML = parts.join('<br>');
+};
+
+/**
+ * 【2026-09-28】「🔧 重装离线缓存」：把"依赖本机数据加载"这件事**一次性做干净**。
+ * 为什么需要它：用户设备上 SW 始终不接管（每次打开都整包走网络），而反复"刷新"无效；
+ *   与其继续用自动刷新去掩盖现象，不如给用户一个**自己能按的真修复**。
+ * 顺序（最彻底）：注销所有 SW → 删掉所有缓存 → 重新注册 → 用 **location.replace** 正常导航。
+ *   ⚠️ 刻意**不用** location.reload()：reload 会**绕过 HTTP 缓存**，反而强制全量重下（上一版就吃了这个亏）。
+ * 代价与预期：下一次打开必然是网络加载（缓存刚清空），随后 SW 重新安装并接管；之后应纯本机加载。
+ */
+window.dsRepairOffline = function () {
+    try {
+        if (!('serviceWorker' in navigator)) { alert('本浏览器不支持 Service Worker，无法离线化。'); return; }
+        if (navigator.onLine === false) { alert('当前离线：重装离线缓存需要先联网一次。'); return; }
+        if (!confirm('重装离线缓存：会清空本机离线缓存并重新安装离线组件（不影响你的业务数据）。\n'
+            + '下一次打开需要联网一次，之后即为纯本机加载。继续？')) return;
+        var el = document.getElementById('about-offline');
+        if (el) el.innerHTML = '正在重装离线缓存…（下一页需要联网一次）';
+        try { sessionStorage.removeItem('_sw_claim_reloaded'); } catch (e) {}
+        var go = function () {
+            try {
+                localStorage.removeItem('_boot_timeline');
+                localStorage.removeItem('_load_history');
+            } catch (e) {}
+            // 正常导航（replace）而非 reload —— reload 会绕过 HTTP 缓存，反而全量重下
+            try { location.replace(location.href.split('#')[0] + '#offline-repair'); } catch (e) {}
+        };
+        var seq = Promise.resolve();
+        try {
+            seq = navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister().catch(function () {}); }));
+            });
+        } catch (e) {}
+        seq.then(function () {
+            try {
+                return caches.keys().then(function (ks) {
+                    return Promise.all(ks.map(function (k) { return caches.delete(k).catch(function () {}); }));
+                });
+            } catch (e) { return null; }
+        }).then(function () {
+            try { return navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (e) {}
+        }).then(go, go);
+    } catch (e) {
+        try { location.replace(location.href.split('#')[0]); } catch (e2) {}
+    }
 };
 
 // ==================== 主题模式（跟随系统 / 亮色 / 暗黑） ====================

@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260928210229';
+var CACHE_VERSION = '20260928211222';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -565,5 +565,57 @@ self.addEventListener('message', function(event) {
         });
       });
       break;
+    // ========== 【2026-09-28】离线完整性自检 + 补齐 ==========
+    // 背景（用户反馈）："离线打开秒开，联网时折叠开合每次都慢" —— 这正是**缓存里缺文件**的特征：
+    //   缺的那些文件在线时被真实下载（慢），离线时快速失败但不影响页面（所以显得快）。
+    // 成因：App Shell 的补齐（precacheRest）是在 SW activate 后 2.5s 才跑，而**折叠/关页面会终止 SW**，
+    //   于是它常常跑不完 —— 缺的部分就一直在每次加载时现下载。
+    // 这里让页面可以在空闲时主动问一次"还缺什么"，并当场补齐（在线时），下次折叠就纯缓存了。
+    case 'CHECK_MISSING':
+      checkMissing().then(function(missing) {
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ type: 'MISSING_RESULT', missing: missing.length, sample: missing.slice(0, 6) });
+        }
+      }).catch(function () {
+        if (event.ports && event.ports[0]) event.ports[0].postMessage({ type: 'MISSING_RESULT', missing: -1, sample: [] });
+      });
+      break;
+    case 'PRECACHE_REST':
+      // 立即补齐（不等 2.5s），补完回执还剩多少
+      event.waitUntil(
+        precacheRest()
+          .then(function() { return checkMissing(); })
+          .then(function(missing) {
+            if (event.ports && event.ports[0]) {
+              event.ports[0].postMessage({ type: 'PRECACHE_REST_DONE', missing: missing.length });
+            }
+          })
+          .catch(function () {
+            if (event.ports && event.ports[0]) event.ports[0].postMessage({ type: 'PRECACHE_REST_DONE', missing: -1 });
+          })
+      );
+      break;
   }
 });
+
+/**
+ * 离线完整性自检：列出"App Shell 里声明了、但**当前缓存里没有**"的 URL。
+ * 算法与 precacheRest 保持一致（同一份清单 buildPrecacheUrls），所以"missing=0"就等于
+ * "下次折叠/刷新不会再因为缺文件而联网"。
+ */
+function checkMissing() {
+  return buildPrecacheUrls().then(function(urls) {
+    return caches.open(CACHE_NAME).then(function(cache) {
+      return cache.keys().then(function(keys) {
+        var have = {};
+        keys.forEach(function(r) { have[r.url] = true; });
+        return urls.filter(function(u) {
+          if (u.replace(/^\.\//, '').indexOf('http') === 0) return false;
+          var abs;
+          try { abs = new URL(u, self.location.href).href; } catch (e) { return false; }
+          return !have[abs];
+        });
+      });
+    });
+  });
+}

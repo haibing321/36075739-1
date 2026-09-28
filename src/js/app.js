@@ -1368,8 +1368,22 @@ window.stFillAboutOffline = async function () {
             var _htxt = _h.slice(-4).map(function (x) {
                 return (x.ts || '') + ' ' + (x.navRes === 0 ? 'HTML 0B（缓存）' : 'HTML ' + (x.navRes || 0) + 'B')
                     + ' · 联网资源 ' + (x.netRes || 0) + ' 项 · 接管' + (x.ctl ? '是' : '否')
-                    + (x.regState ? (' · SW注册=' + x.regState) : '');   // 【2026-09-28】帮我们分辨"注册丢了"还是"注册在却不接管"
+                    + (x.regState ? (' · SW注册=' + x.regState) : '')
+                    + (x.url ? (' · 入口' + String(x.url).slice(0, 42)) : '')
+                    + (x.redir ? (' · 经 ' + x.redir + ' 次跳转') : '');
             }).join(' ｜ ');
+            // 【2026-09-28 定案】"少了结尾 / 的入口 = 不在 SW 作用域内"这一条要直说出来：
+            //   描述页的 /xxx 与作用域 /xxx/ 是**同级**关系（不是子路径）⇒ 那次导航不受 SW 保护 ⇒ 必然整包远程；
+            //   服务器随后 302 到 /xxx/，页面里看到的地址已是带 / 的 ⇒ 所以旧面板会显示"作用域覆盖=是"，极具误导性。
+            try {
+                var _re = _h.filter(function (x) { return x.redir > 0 && x.navRes > 0; });
+                if (_re.length && _re.length === _h.slice(-2).filter(function (x) { return x.redir > 0; }).length) {
+                    parts.push('<span style="color:#fbbf24;">本次是**经跳转**进入的</span>（入口地址少了结尾的 “/”，'
+                        + '例如 <code>/36075739-1</code>）：这种地址与离线组件的作用域 <code>/36075739-1/</code> 是<b>同级</b>，'
+                        + '不在保护范围内 ⇒ 这一次必然整包远程。'
+                        + '处理：<b>在应用内</b>（地址栏已是带 “/” 的正式地址）重新「添加到主屏幕」，删掉旧的桌面图标即可。');
+                }
+            } catch (e) {}
             // 连续两趟以上"走远程"时，直接给出可执行的下一步（不再让用户反复试）
             var _bad = _h.slice(-2).filter(function (x) { return x.navRes > 0; });
             if (_bad.length >= 2) {

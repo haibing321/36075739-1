@@ -1354,8 +1354,22 @@ window.stFillAboutOffline = async function () {
         if (_h.length) {
             var _htxt = _h.slice(-4).map(function (x) {
                 return (x.ts || '') + ' ' + (x.navRes === 0 ? 'HTML 0B（缓存）' : 'HTML ' + (x.navRes || 0) + 'B')
-                    + ' · 联网资源 ' + (x.netRes || 0) + ' 项 · 接管' + (x.ctl ? '是' : '否');
+                    + ' · 联网资源 ' + (x.netRes || 0) + ' 项 · 接管' + (x.ctl ? '是' : '否')
+                    + (x.regState ? (' · SW注册=' + x.regState) : '');   // 【2026-09-28】帮我们分辨"注册丢了"还是"注册在却不接管"
             }).join(' ｜ ');
+            // 连续两趟以上"走远程"时，直接给出可执行的下一步（不再让用户反复试）
+            var _bad = _h.slice(-2).filter(function (x) { return x.navRes > 0; });
+            if (_bad.length >= 2) {
+                var _last = _h[_h.length - 1] || {};
+                if (_last.regState === 'none') {
+                    parts.push('<span style="color:#f87171;">本浏览器把离线组件丢了</span>：每趟加载时都查不到 SW 注册'
+                        + '（regState=none）⇒ 这类浏览器（隐私模式 / 部分内置浏览器）不持久保存离线缓存。'
+                        + '建议：用系统自带浏览器打开并「添加到主屏幕」，再从桌面图标进入（这样 S​​W 才会常驻）。');
+                } else {
+                    parts.push('<span style="color:#fbbf24;">离线组件在，但加载仍走远程</span>：请点「🔧 重装离线缓存」'
+                        + '（它会把 SW 注销重装、下次打开即纯本机）；若仍无效，把这一行发我。');
+                }
+            }
             parts.push('加载历史（最近 ' + Math.min(4, _h.length) + ' 次，只追加不覆盖）：' + _htxt);
         }
     } catch (e) {}

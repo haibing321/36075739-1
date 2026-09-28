@@ -2390,6 +2390,27 @@
                         });
                         if (_hist.length > 6) _hist = _hist.slice(-6);
                         localStorage.setItem('_load_history', JSON.stringify(_hist));
+                        // 【2026-09-28 实测补强】回填"**在这一趟加载时** SW 注册到底是什么状态"。
+                        //   用户实测：连续两次 HTML 0B（完全离线）之后突然变回 46783B 远程 ——
+                        //   说明"接管"在两次加载之间被打断了。仅凭 ctl=否 分不清两种原因：
+                        //     · regState=none        ⇒ 浏览器把注册丢了（墓碑/隐私/内置浏览器不持久保存）
+                        //     · regState=active:activated ⇒ 注册还在却不接管（更可能是换了个入口地址/作用域）
+                        //   这里只**补充字段**到刚写入的那一条，不改动已有记录。
+                        try {
+                            navigator.serviceWorker.getRegistration().then(function (r) {
+                                var st = !r ? 'none'
+                                    : (r.active ? ('active:' + (r.active.state || '?'))
+                                        : (r.waiting ? 'waiting' : (r.installing ? 'installing' : 'none')));
+                                try {
+                                    var _h2 = JSON.parse(localStorage.getItem('_load_history') || '[]') || [];
+                                    if (_h2.length) {
+                                        _h2[_h2.length - 1].regState = st;
+                                        _h2[_h2.length - 1].scope = r ? r.scope : '';
+                                        localStorage.setItem('_load_history', JSON.stringify(_h2));
+                                    }
+                                } catch (e) {}
+                            }, function () {});
+                        } catch (e) {}
                     } catch (e) {}
                     try {
                         if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {

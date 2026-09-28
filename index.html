@@ -442,8 +442,11 @@
         // 现在：首个绘制帧就把全屏遮罩换成顶部细进度条，**界面骨架立即可见**；
         //   模块在背后继续加载，就绪前用 body.boot-loading 挡住误点（避免"点了没反应"）。
         //   同时把启动时间线写进 localStorage._boot_timeline，便于定位"到底卡在哪一段"。
-        window.__bootT = { t0: Date.now(), shell: 0, dcl: 0, sw: null };
+        window.__bootT = { t0: Date.now(), shell: 0, dcl: 0, sw: null, swNew: false };
         try { window.__bootT.sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller); } catch (e) {}
+        // 【2026-09-28】"本次启动是否在装新版本"：由 app.js 的 SW 注册块在 updatefound / 已有 waiting 时置位。
+        //   用户反复反馈"折叠开合像清缓存/更新系统"——若这里为 true，说明后台正在重新下发整套 App Shell。
+        try { if (window.__bootT) window.__bootT.swNew = false; } catch (e) {}
         function _releaseShell() {
             if (window.__bootShellReleased) return;
             window.__bootShellReleased = true;
@@ -2354,8 +2357,32 @@
                 document.body.classList.remove('boot-loading');
                 if (window.__bootT) {
                     window.__bootT.dcl = Date.now() - window.__bootT.t0;
+                    // 【2026-09-28】把"这次开机到底有没有走本地"记成**可核对的证据**（用户可在「关于」里直接读）：
+                    //   navRes = 导航文档本身的传输字节：SW/缓存命中为 0，真联网 >0
+                    //   netRes = 本次启动中真正走网络的资源条数（SW 命中时 transferSize 为 0）
+                    //   swNew  = 是否检测到/开始安装新版本（= 后台会重新下发整套 App Shell）
+                    try {
+                        var _nav = (performance.getEntriesByType('navigation') || [])[0] || {};
+                        window.__bootT.navRes = Math.round(_nav.transferSize || 0);
+                        var _res = performance.getEntriesByType('resource') || [];
+                        var _net = _res.filter(function (r) { return r.transferSize > 0; });
+                        window.__bootT.netRes = _net.length;
+                        window.__bootT.netList = _net.slice(0, 5).map(function (r) { return String(r.name).split('/').pop().slice(0, 24); });
+                    } catch (e) {}
+                    try {
+                        if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+                            navigator.serviceWorker.getRegistration().then(function (reg) {
+                                try {
+                                    if (!reg) return;
+                                    if (reg.waiting || reg.installing) window.__bootT.swNew = true;   // 有等待/正在安装的新版本
+                                    localStorage.setItem('_boot_timeline', JSON.stringify(window.__bootT));
+                                } catch (e) {}
+                            }, function () {});
+                        }
+                    } catch (e) {}
                     try { localStorage.setItem('_boot_timeline', JSON.stringify(window.__bootT)); } catch (e) {}
-                    try { console.info('[boot] 外壳 ' + window.__bootT.shell + 'ms · 模块就绪 ' + window.__bootT.dcl + 'ms · SW 接管=' + window.__bootT.sw); } catch (e) {}
+                    try { console.info('[boot] 外壳 ' + window.__bootT.shell + 'ms · 模块就绪 ' + window.__bootT.dcl + 'ms · SW 接管=' + window.__bootT.sw
+                        + ' · HTML传输=' + window.__bootT.navRes + 'B · 联网资源=' + window.__bootT.netRes + ' · 装新版=' + window.__bootT.swNew); } catch (e) {}
                 }
             } catch (e) {}
         }

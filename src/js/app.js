@@ -1290,6 +1290,19 @@ window.stFillAboutOffline = async function () {
     }
     try {
         var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
+        // 【2026-09-28】始终打印 SW 注册详情 —— 用于分辨"接管滞后一帧"究竟是哪一种：
+        //   ① activating 卡住（active.state 长期不是 activated）② 新版本 waiting 未应用
+        //   ③ 作用域不覆盖当前页 ④ 当场接管是否成功。有这行就不必再靠推测。
+        try {
+            var _regs = await navigator.serviceWorker.getRegistrations();
+            var _st = (reg && reg.active && reg.active.state) || '(无 active)';
+            parts.push('SW 详情：注册数 ' + _regs.length + ' · active=' + _st
+                + (reg && reg.waiting ? ' · waiting=有（新版本待应用 → 设置→检查更新→立即更新）' : '')
+                + (reg && reg.installing ? ' · installing=有' : '')
+                + ' · controller=' + (controlled ? '有' : '无')
+                + ' · 作用域覆盖=' + (t && t.swScopeOk === false ? '否' : '是')
+                + (t && t.swClaimed ? ' · 本次已当场接管' : ''));
+        } catch (e) {}
         if (t && t.dcl != null) {
             parts.push('上次启动：外壳 ' + t.shell + 'ms · 模块就绪 ' + t.dcl + 'ms · SW 接管=' + (t.sw ? '是' : '否'));
             // 【2026-09-28】"到底走没走本地"的三项硬证据（用户抱怨"折叠开合像清缓存/更新系统"，用它一锤定音）

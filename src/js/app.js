@@ -1251,6 +1251,18 @@ window.stFillAboutOffline = async function () {
         if (reg && reg.active && controlled) {
             parts.push('<span style="color:#34d399;font-weight:600;">✓ 已离线化</span>（本机缓存 ' + count + ' 项）'
                 + '<br>折叠开合 / 刷新重建时全部走本机离线数据，不联网；离线也能打开。');
+            // 【2026-09-28 用户实测场景】出现"✓ 已离线化"与"本次加载仍整包走网络"并存 —— 说明 SW 是
+            //   **在这次加载过程中**才接管成功的（页面已经在下载，那些请求没经过 fetch 处理器）。
+            //   这类"接管滞后一帧"的状态以前没人解释得了，导致"再刷新一次"成了无效建议。
+            //   这里如实点出来，并说明新版已在该情形下自动接管 + 刷新一次。
+            try {
+                var bt0 = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
+                if (bt0 && bt0.navRes > 0) {
+                    parts.push('<span style="color:#fbbf24;">⚠ 本次加载早于接管</span>：这次打开的 HTML/资源（'
+                        + bt0.navRes + ' 字节）是在 SW 接管**之前**发出的，所以这一趟仍走了网络。'
+                        + '新版遇到这种情况会自动接管并刷新一次 → 下次打开即从第一个请求起走本机缓存。');
+                }
+            } catch (e) {}
         } else if (reg && (reg.active || reg.installing || reg.waiting)) {
             // 【2026-09-28】原来是"再刷新一次（或重开应用）即生效"—— 用户实测刷新多次仍不接管，
             //   因为旧版 activate 的 claim 被清理任务连累而没跑（见 _swClaimRescue 注释）。

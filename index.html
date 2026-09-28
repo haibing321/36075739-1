@@ -2386,7 +2386,19 @@
                             shell: window.__bootT.shell, dcl: window.__bootT.dcl,
                             navRes: window.__bootT.navRes, netRes: window.__bootT.netRes,
                             ctl: window.__bootT.sw,                 // 加载那一刻是否已被 SW 接管
-                            swNew: !!window.__bootT.swNew
+                            swNew: !!window.__bootT.swNew,
+                            // 【2026-09-28 定案用】这一趟到底从哪个地址进来、是否经过跳转 —— 用来分辨
+                            //   "浏览器入口（…/36075739-1/，在 SW 作用域内 ✓）" 与
+                            //   "桌面图标入口（…/36075739-1 少了结尾 /，**不在作用域内** ✗ ⇒ 必然整包远程）"。
+                            url: (function () {
+                                try { return location.pathname + (location.search || ''); } catch (e) { return ''; }
+                            })(),
+                            redir: (function () {
+                                try {
+                                    var n = (performance.getEntriesByType('navigation') || [])[0] || {};
+                                    return Math.round(n.redirectCount || 0);
+                                } catch (e) { return 0; }
+                            })()
                         });
                         if (_hist.length > 6) _hist = _hist.slice(-6);
                         localStorage.setItem('_load_history', JSON.stringify(_hist));

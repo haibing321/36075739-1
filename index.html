@@ -2079,7 +2079,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.10</span> · 2026.09.27</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.12</span> · 2026.09.28</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2093,35 +2093,33 @@
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v4.10 近期更新（应急电话免费接口修复） -->
+            <!-- v4.12 近期更新（联网时折叠慢真因：App Shell 缓存缺文件自愈） -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.10 近期更新</span>
+                    <span>v4.12 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>☎️ 修「应急电话兰州走不到免费接口」：免费直连加一次 400ms 退避重试（原来失败一枪就升级大模型，兰州坐标本在内置字典，只可能是偶发 429/抖动）；顺序改为「电话自带免费直连 → 共享免费层 → 最后才联网大模型」，落实「先本地/免费后联网」原则。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 共享免费层 _freeCall 同样加一次重试；卡片备注写明具体失败原因（429 被限流 / 网络失败 / 数据异常 / 无坐标），便于用户在手机上直接定位；套件 weather 35/35（新增 ⑨c：兰州+免费首枪 429→重试成功→仍用免费、大模型 0 次）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 回归全绿：role 17/17、autocheck 23/23、chat-fixes 20/20；SW 与 version.json 同步 bump。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐢 定位并修「联网时折叠每次都很慢」真因：App Shell 缓存缺文件（离线秒开说明 SW 在接管，慢网才复现 ⇒ 联网慢只可能是缺文件在线被真下载）。根因是 precacheRest 挂在 SW activate 后 2.5s，折叠/关页面会终止 SW ⇒ 常跑不完，且 activate 每版本只跑一次 ⇒ 缺的长期不补。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 sw.js 新增 CHECK_MISSING（算出还缺哪些并回执数量+样例）与 PRECACHE_REST（当场补齐、回执剩余），均复用同一份 buildPrecacheUrls 清单；app.js 新增 _offlineSelfCheck（暴露 window.dsOfflineSelfCheck）启动 2.5s 后 + 每 3 分钟在线自检，缺则请 SW 补齐。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📴 关于→离线状态新增「离线完整性：✓ 缓存齐全 / ⚠ 缺 N 项（正在补齐）」，自检结果写进 _boot_timeline；套件 fold-state 扩到 26/26（含自愈验证：删缓存脚本→自检发现缺 2 项→补齐回 0）；回归 autocheck 23/23、chat-fixes 20/20、role 17/17。</span></div>
                 </div>
             </div>
 
-            <!-- v4.09 近期更新（涵盖 v4.06–v4.09 天气报告质量重构） -->
+            <!-- v4.11 近期更新（走没走本地做成可自证） -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.09 近期更新</span>
+                    <span>v4.11 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎭 v4.07 天气报告按角色走：铁路安全监察提示改为按当前专业角色写（agent-core 暴露 window.dsRoleFocus 作唯一来源），去掉写死通用清单；有角色时提示放宽到 4 行避免角色行挤掉天气提示（weather 29/29、role 16/16）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 v4.08 数值推导：天气提示由实测数值与等级推导，新增事实层 _wxFacts + 主等级 _wxLevel（雷暴&gt;雨雪冰冻&gt;降水≥80%&gt;风≥10m/s…），规则保底每条写出触发数值、按严重度排序截断；角色行随天气变（weather 33/33、role 17/17）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📚 v4.09 依据口径：监察提示依据只引规章制度条款并写明名称+条款，检查手册确有必要时个别引用（≤1 条），不再引用检查信息（历史案例冗长无直接关系）；未覆盖如实写「本地库未见相关条目」（weather 34/34、role 17/17）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 回归全绿：autocheck 23/23、chat-fixes 20/20、fold-state 22/22；SW 与 version.json 同步 bump。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 折叠开合「仍走联网/像清缓存」逐条排查：启动/折叠期网络动作（version.json 静默检查、sw.js 条件重验、SW 安装预缓存逐条容错、precacheRest 只补缺、warmCdnLibs 串行静默、豆包 iframe=about:blank、无 CDN 外链）与自动重载路径（location.reload 全部为 用户主动或备份导入；可见性回调只弹提示、controllerchange 隐藏时只标记）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 新增启动埋点 _boot_timeline（navRes 导航文档传输字节=0 即 SW 缓存命中、netRes+netList 真正走网络的资源、swNew 是否装新版本）；关于→离线状态新增「走本地核验」，用户读一行即可判定 SW 没接管还是后台在重下整包；套件 fold-state 扩到 24/24，回归 autocheck 23/23、chat-fixes 20/20、role 17/17。</span></div>
                 </div>
             </div>
 
-            <!-- v4.04 及以前已归档（最近 2 版本为 v4.10 / v4.09） -->
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.04 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <!-- v4.10 及以前已归档（最近 2 版本为 v4.12 / v4.11） -->
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.10 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

@@ -2103,6 +2103,7 @@
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚑 修「折叠开合/联网打开每次都像清缓存」的真凶：**Service Worker 从没接管过页面**（实测 SW 接管=否、HTML 传输 45830 字节、真实联网资源 35 项、模块就绪 14759ms）⇒ 每次折叠都是整包重新下载。根因：激活时把"接管页面"串在"清理旧缓存"之后，清理一旦失败或卡住，接管就永不执行；而面板据此显示"再刷新一次即生效"，刷新多少次都无效。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 激活改为「接管与清理并行、各自兜错」；新增运行期接管指令（页面可请 SW 当场接管）；页面启动 900ms 自检发现"已激活但未接管"即自动修复并刷新一次（每会话仅一次）⇒ 已卡住的设备无需用户反复刷新。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📴 若作用域不覆盖当前页，「关于→离线状态」会如实写出"作用域 vs 当前地址"，不再给"再刷新一次"这种空话；套件 fold-state 扩到 30/30（新增接管自愈守卫），回归 autocheck 23/23、chat-fixes 20/20。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 日志「✨ 一键修改」引文校正修一处漏判：原来判断"这句是否已有条号"时对**整句**检测，引文正文里本来就有"第X条"字样时会被误判成"已有条号"而跳过补号 → 现在只看引号之前的外壳，保证丢号时按库内原文补上「第X条」（套件 diary-ai-fix 110/110）。</span></div>
                 </div>
             </div>
 

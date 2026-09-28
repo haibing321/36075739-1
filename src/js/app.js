@@ -682,20 +682,14 @@ window.onclick = function(e) {
                     }
                 }, 250);
             }
-            // ② 停在 waiting / installing（折叠被冻结时最常出现）：让它立即激活，否则永远接管不了
+            // ② 没有 active、只有 waiting/installing：
+            //   【用户口径】"系统更新必须走远程加载" ⇒ **这里绝不能替用户激活新版本**
+            //   （那是"更新"行为，必须由用户点「设置→检查更新→立即更新」显式触发）。
+            //   本函数只**如实记账**，让「关于→离线状态」把状态说清楚，不做任何自动更新动作。
             if (!reg.active) {
-                var kick = function (w) { try { w.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {} };
-                if (reg.waiting) kick(reg.waiting);
-                if (reg.installing) {
-                    kick(reg.installing);
-                    try {
-                        reg.installing.addEventListener('statechange', function () {
-                            if (reg.waiting) kick(reg.waiting);
-                        });
-                    } catch (e) {}
-                }
-                console.log('[PWA] SW 未激活（' + (reg.waiting ? 'waiting' : 'installing') + '）→ 已请其立即激活');
-                watchController('kick');
+                var st2 = reg.waiting ? 'waiting（新版本待应用，属"系统更新"，请点设置→检查更新→立即更新）' : 'installing';
+                console.info('[PWA] SW 未激活：' + st2 + '（按口径不自动激活，仅记录）');
+                noteRepair('waiting-only', st2);
                 return;
             }
             // ① active 在但不接管：请它当场 claim

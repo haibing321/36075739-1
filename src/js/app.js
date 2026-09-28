@@ -981,6 +981,35 @@ window.onclick = function(e) {
         hideInstallButton();
     });
 
+    /**
+     * 【2026-09-28】「在应用内重新添加到主屏幕」——桌面图标入口的根治办法。
+     * 为什么要它：用户实测 **浏览器打开瞬间加载 ✓ / 桌面图标打开联网就整包远程 ✗（不联网反而瞬间 ✓）**。
+     *   原因是桌面图标里存的是**少了结尾 “/” 的地址**（如 …/36075739-1）：它与 SW 作用域 …/36075739-1/
+     *   是**同级**关系而非子路径 ⇒ 那一次导航**不在 SW 保护范围内** ⇒ 联网时浏览器直接走网络（离线时才被迫用本机副本，所以"不联网反而快"）。
+     *   修法只能是"把图标里的地址换成带 / 的正规地址" —— 这里让用户在**应用内**（地址栏已是带 / 的正式地址）
+     *   一键重建图标：优先用浏览器给的安装弹窗，拿不到弹窗就给出精确的手动步骤。
+     */
+    window.dsReinstallPWA = function () {
+        try {
+            var here = location.href;
+            if (_deferredPrompt) {
+                _deferredPrompt.prompt();
+                _deferredPrompt.userChoice.then(function (choice) {
+                    try {
+                        if (choice && choice.outcome === 'accepted') {
+                            alert('已发起「添加到主屏幕」✓\n请删掉原来那个图标（它存的是老地址），用新图标进入即可瞬间加载。');
+                        }
+                    } catch (e) {}
+                    _deferredPrompt = null;
+                }, function () {});
+                return;
+            }
+            if (typeof showInstallButton === 'function') showInstallButton();
+            alert('请用浏览器菜单里的「添加到主屏幕 / 安装应用」重新添加一次，并删掉旧图标。\n\n'
+                + '当前地址：' + here + '\n（关键是结尾那个 “/” —— 有它才在离线组件的保护范围内）');
+        } catch (e) {}
+    };
+
     function showInstallButton() {
         if (_installBtnAdded) return;
         _installBtnAdded = true;
@@ -1382,6 +1411,10 @@ window.stFillAboutOffline = async function () {
                         + '例如 <code>/36075739-1</code>）：这种地址与离线组件的作用域 <code>/36075739-1/</code> 是<b>同级</b>，'
                         + '不在保护范围内 ⇒ 这一次必然整包远程。'
                         + '处理：<b>在应用内</b>（地址栏已是带 “/” 的正式地址）重新「添加到主屏幕」，删掉旧的桌面图标即可。');
+                    parts.push('<button type="button" onclick="window.dsReinstallPWA && window.dsReinstallPWA()" '
+                        + 'style="margin-top:6px;padding:6px 10px;border:1px solid #93c5fd;border-radius:8px;'
+                        + 'background:#eff6ff;color:#1d4ed8;font-size:0.76rem;font-weight:600;cursor:pointer;">'
+                        + '📲 在应用内重新添加到主屏幕（一次点击）</button>');
                 }
             } catch (e) {}
             // 连续两趟以上"走远程"时，直接给出可执行的下一步（不再让用户反复试）

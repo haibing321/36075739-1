@@ -626,53 +626,92 @@ window.onclick = function(e) {
     }
 
     /**
-     * 【2026-09-28】「SW 已激活但未接管」的**自愈救援**（治用户实测的病症）。
-     * 现象：关于→离线状态显示「⚠ 离线缓存已就绪但尚未接管 / 再刷新一次即生效」，
-     *   但用户刷新很多次都不生效 —— 实测数据：HTML 每次都传输 45830 字节、35 个资源全走网络、
-     *   模块就绪 14759ms（即每次折叠都整包重新下载）。
-     * 原因：旧版 sw.js 的 activate 把 claim 串在 cleanupOldCaches() 之后，清理失败/卡住 ⇒ 接管永不发生，
-     *   而 reg.active 已非空 ⇒ 面板误判成"再刷新一次就好"（一句无效承诺）。
-     * 现在：① 请 SW 当场 claim（CLAIM_NOW）；② 接管成功后**自动刷新一次**（每会话仅一次），
-     *   让当前会话立刻恢复"走本机缓存"；③ claim 后仍无 controller（典型=作用域不覆盖当前页）
-     *   就把 scope 与真实地址记进 _boot_timeline，由「离线状态」如实写出来，不再糊弄用户。
+     * 【2026-09-28】「SW 没接管页面」的**自愈救援**（治用户实测：折叠/联网打开每次都整包下载）。
+     * 三种坏状态都要治：
+     *   ① active 已存在但页面没被接管（旧版 activate 把 claim 串在 cleanupOldCaches 之后，清理一坏就永不接管）；
+     *   ② 新版本停在 **waiting / installing** —— 折叠期间 SW 被冻结、装/激活没跑完，或"点更新才生效"的
+     *      设计让它一直待命；此时 `reg.active` 可能是**空的** ⇒ 只认 active 的救援会**直接 return** ✗
+     *      （用户 v4.13 上依旧"一直未修改"，就是踩在这个盲区）；
+     *   ③ 作用域不覆盖当前页（救不了，如实写出来，不再给"再刷新一次"这种空话）。
+     * 做法：active 在 → 请它当场 claim；停在 waiting/installing → 发 SKIP_WAITING 让它**立即激活**；
+     *   随后轮询等 controller 就位 → 若**本次加载走的是网络**（_boot_timeline.navRes > 0）就刷新一次，
+     *   让这一趟改用本机缓存。
+     * 刷新条件以"本次是否网络加载"为准（而不是"每会话一次"）：缓存命中后 navRes=0 ⇒ 自然不再刷新
+     *   ⇒ **绝不会成环**；另留每会话 3 次硬上限兜底。
      */
     function _swClaimRescue(reg) {
         try {
-            if (!reg || !reg.active) return;
+            if (!reg) return;
             if (navigator.serviceWorker.controller) return;         // 已接管：什么都不做
             if (location.protocol === 'file:') return;
+            if (!reg.active && !reg.waiting && !reg.installing) return;
             var scopeOk = false;
             try { scopeOk = String(location.href).indexOf(reg.scope) === 0; } catch (e) {}
             _patchBootTimeline({
                 swActive: !!reg.active, swWaiting: !!reg.waiting, swInstalling: !!reg.installing,
-                swScope: reg.scope, swScopeOk: scopeOk
+                swActiveState: (reg.active && reg.active.state) || '', swScope: reg.scope, swScopeOk: scopeOk
             });
             if (!scopeOk) {
                 console.warn('[PWA] SW 作用域不覆盖当前页，无法接管：scope=' + reg.scope + ' 当前页=' + location.href);
                 return;
             }
+            /** 本次加载是否走网络（是才值得刷新；已是缓存加载就不刷 → 不成环） */
+            function thisLoadWasNetwork() {
+                try {
+                    var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
+                    return !!(t && t.navRes > 0);
+                } catch (e) { return false; }
+            }
+            /** controller 就位后刷新一次（每会话 3 次硬上限，杜绝任何意外成环） */
+            function reloadOnceIfNeeded() {
+                if (!navigator.serviceWorker.controller) return;
+                if (!thisLoadWasNetwork()) return;
+                var n = 0;
+                try {
+                    n = parseInt(sessionStorage.getItem('_sw_claim_reloaded') || '0', 10) || 0;
+                    if (n >= 3) return;
+                    sessionStorage.setItem('_sw_claim_reloaded', String(n + 1));
+                } catch (e) { return; }
+                _patchBootTimeline({ swReloaded: n + 1 });
+                console.log('[PWA] SW 已就位且本次加载走网络 → 刷新一次改走本机缓存（第 ' + (n + 1) + ' 次）');
+                try { location.reload(); } catch (e) {}
+            }
+            function waitControllerThenReload() {
+                if (navigator.serviceWorker.controller) return reloadOnceIfNeeded();
+                var tries = 0;
+                var iv = setInterval(function () {
+                    tries++;
+                    if (navigator.serviceWorker.controller) { clearInterval(iv); reloadOnceIfNeeded(); }
+                    else if (tries > 16) {   // 约 4s
+                        clearInterval(iv);
+                        console.warn('[PWA] 等 controller 就位超时（可能作用域不覆盖 / 浏览器不持久保存 SW）');
+                    }
+                }, 250);
+            }
+            // ② 停在 waiting / installing（折叠被冻结时最常出现）：让它立即激活，否则永远接管不了
+            if (!reg.active) {
+                var kick = function (w) { try { w.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {} };
+                if (reg.waiting) kick(reg.waiting);
+                if (reg.installing) {
+                    kick(reg.installing);
+                    try {
+                        reg.installing.addEventListener('statechange', function () {
+                            if (reg.waiting) kick(reg.waiting);
+                        });
+                    } catch (e) {}
+                }
+                console.log('[PWA] SW 未激活（' + (reg.waiting ? 'waiting' : 'installing') + '）→ 已请其立即激活');
+                waitControllerThenReload();
+                return;
+            }
+            // ① active 在但不接管：请它当场 claim
             var ch = new MessageChannel();
             ch.port1.onmessage = function (ev) {
                 var d = ev.data || {};
                 if (d.type !== 'CLAIM_DONE') return;
                 _patchBootTimeline({ swClaimed: !!d.controller, swClaimError: d.error || '' });
                 if (!d.controller) { console.warn('[PWA] SW 当场接管失败：' + (d.error || '')); return; }
-                var done = function () {
-                    var k = '_sw_claim_reloaded';
-                    try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) { return; }
-                    console.log('[PWA] SW 已当场接管 → 自动刷新一次改走本机缓存（每会话仅一次）');
-                    try { location.reload(); } catch (e) {}
-                };
-                // claim 成功与 controller 就位之间有几拍延迟：轮询等它就位。
-                //   （刻意**不**再注册接管监听：那会与"新版本接管"那套逻辑的源码扫描互相干扰，
-                //     也让这里的意图更难读——我们要的只是"controller 到位后刷新一次"。）
-                if (navigator.serviceWorker.controller) return done();
-                var tries = 0;
-                var iv = setInterval(function () {
-                    tries++;
-                    if (navigator.serviceWorker.controller) { clearInterval(iv); done(); }
-                    else if (tries > 12) { clearInterval(iv); console.warn('[PWA] 当场接管后 controller 仍未就位（可能作用域不覆盖当前页）'); }
-                }, 250);
+                waitControllerThenReload();
             };
             try { reg.active.postMessage({ type: 'CLAIM_NOW' }, [ch.port2]); } catch (e) {}
         } catch (e) {}

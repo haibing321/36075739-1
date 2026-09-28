@@ -2086,7 +2086,12 @@
             </div>
 
             <!-- 【2026-09-23】离线状态：用户关心"折叠开合到底走不走离线数据"，这里直接可见 -->
-            <div id="about-offline" style="background:#0f172a;color:#cbd5e1;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.76rem;line-height:1.8;">离线状态：检测中…</div>
+            <div id="about-offline" style="background:#0f172a;color:#cbd5e1;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.76rem;line-height:1.8;">离线状态：检测中…</div>
+<!-- 【2026-09-28】用户批评"自动刷新是掩耳盗铃" → 把真修复交到用户手里：一键重装离线组件（正常导航，不用 reload） -->
+<button type="button" onclick="window.dsRepairOffline && window.dsRepairOffline()"
+    style="display:block;width:100%;margin:0 0 14px;padding:9px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:0.8rem;font-weight:600;cursor:pointer;">
+    🔧 重装离线缓存（联网一次后即纯本机加载）
+</button>
 
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
@@ -2368,6 +2373,23 @@
                         var _net = _res.filter(function (r) { return r.transferSize > 0; });
                         window.__bootT.netRes = _net.length;
                         window.__bootT.netList = _net.slice(0, 5).map(function (r) { return String(r.name).split('/').pop().slice(0, 24); });
+                    } catch (e) {}
+                    // 【2026-09-28 · 用户批评"掩耳盗铃"的对策】把**每一次加载**如实追加进历史（最近 6 次）。
+                    //   以前只保留"最后一次"，于是一旦有事后自动刷新，就把"这次其实整包走了网络"的
+                    //   记录**覆盖掉** —— 看板永远显示正常，问题却被藏起来（用户原话：实际是掩耳盗铃）。
+                    //   历史**只追加、不修改**：即使随后发生任何刷新/接管，这一行也永远留证。
+                    try {
+                        var _hist = [];
+                        try { _hist = JSON.parse(localStorage.getItem('_load_history') || '[]') || []; } catch (e) { _hist = []; }
+                        _hist.push({
+                            ts: new Date().toISOString().slice(11, 19),
+                            shell: window.__bootT.shell, dcl: window.__bootT.dcl,
+                            navRes: window.__bootT.navRes, netRes: window.__bootT.netRes,
+                            ctl: window.__bootT.sw,                 // 加载那一刻是否已被 SW 接管
+                            swNew: !!window.__bootT.swNew
+                        });
+                        if (_hist.length > 6) _hist = _hist.slice(-6);
+                        localStorage.setItem('_load_history', JSON.stringify(_hist));
                     } catch (e) {}
                     try {
                         if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {

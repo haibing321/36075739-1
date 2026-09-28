@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260928220526';
+var CACHE_VERSION = '20260928221753';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -367,11 +367,17 @@ function _fallbackShell(retryCount) {
 self.addEventListener('install', function(event) {
   console.log('[SW] 安装中...', CACHE_VERSION);
   event.waitUntil(precache(event));
-  // 注意：此处【不要】调用 self.skipWaiting()。
-  // 否则新 SW 一装好就静默接管，页面已加载的旧 JS/CSS 不会刷新，
-  // 表现为「点击检查更新无效果」。正确流程：新 SW 进入 waiting 状态后，
-  // 由「检查更新 → 立即更新」弹窗通过 postMessage({type:'SKIP_WAITING'}) 显式激活并刷新页面
-  // （见下方 message 事件处理）。首次安装因无旧 SW，仍会立即激活，不受影响。
+  // 【2026-09-28 折叠屏实测·关键修复】改为**立即接管**（self.skipWaiting）。
+  //   原设计刻意不 skipWaiting：新 SW 进入 waiting，等用户点「设置→检查更新→立即更新」才激活。
+  //   后果（用户设备实测）：
+  //     新版本永远停在 waiting ⇒ **永不接管** ⇒ 页面面板显示「SW 接管=否 / HTML 来自缓存=否
+  //     （传输 45924 字节）/ 真实联网资源 35 项 ⇒ 每次折叠开合都整包远程下载**，
+  //     而"再刷新一次/关窗重开"都不生效 —— 用户原话："一直未修改"。
+  //   更要命的是：**我们后续发布的任何修复，也送不到用户设备上**（都卡在 waiting）。
+  //   现在：装好即激活 → activate 里立刻 clients.claim() → 下一次导航（含折叠重建）
+  //     由本机缓存直接命中 ⇒ 折叠开合不再走远程；新版本也随之生效。
+  //   注：页面若正在交互，其已加载的旧 JS 会在下一次导航后自然换成新的（与「检查更新」流程一致）。
+  event.waitUntil(self.skipWaiting());
 });
 
 // 激活：清理旧缓存 + 立即接管页面

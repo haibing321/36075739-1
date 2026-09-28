@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20260928212200';
+var CACHE_VERSION = '20260928214052';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -380,9 +380,17 @@ self.addEventListener('activate', function(event) {
   // 先做完「清理旧缓存 + 立即接管」，这两步必须快 ——
   // 接管越早，后续请求越早走缓存而不是走网络（这是「打开/刷新感觉慢」的关键）。
   // 补齐剩余 App Shell 与 CDN 预热都放到后台慢慢做，不占用首屏带宽。
-  event.waitUntil(
-    cleanupOldCaches().then(function() { return self.clients.claim(); })
-  );
+  // 【2026-09-28 折叠屏实测修复】接管（claim）必须**独立且最先**执行。
+  //   原来是 `cleanupOldCaches().then(claim)`：清理只要失败或卡住，claim 就永远不跑，
+  //   而 `reg.active` 已是非空 ⇒ 页面永远显示「⚠ 离线缓存已就绪但尚未接管 / 再刷新一次即生效」，
+  //   用户刷新多少次都无效。实测症状（用户手机）：
+  //     走本地核验：HTML 来自缓存=否（传输 45830 字节）· 真实联网资源 35 项 · 模块就绪 14759ms
+  //   ⇒ 每次折叠都是整包重新下载，正是"联网时折叠每次都很慢"的直接原因。
+  //   现在两条任务并行、各自兜错，清理失败也不再连累接管。
+  event.waitUntil(Promise.all([
+    self.clients.claim().catch(function (e) { console.warn('[SW] claim 失败:', e && e.message); }),
+    cleanupOldCaches().catch(function (e) { console.warn('[SW] 清理旧缓存失败（不影响接管）:', e && e.message); })
+  ]));
 
   // 延迟 2.5s 再补齐：避开首屏资源加载高峰，避免与页面自己的请求抢带宽。
   // 兜底：即使此处失败也不影响 SW 已接管的事实（缺的资源会在实际请求时按需缓存）。
@@ -547,6 +555,20 @@ self.addEventListener('message', function(event) {
   switch (data.type) {
     case 'SKIP_WAITING':
       self.skipWaiting();
+      break;
+    // 【2026-09-28】页面侧的「接管救援」：
+    //   设备上若已经处于「SW 已激活但未接管」的坏状态（旧版 activate 的 claim 被清理任务连累而没跑，
+    //   见上方 activate 注释），页面可在运行期请 SW **当场 claim** —— 无需用户反复刷新。
+    case 'CLAIM_NOW':
+      event.waitUntil(
+        self.clients.claim().then(function () {
+          if (event.ports && event.ports[0]) event.ports[0].postMessage({ type: 'CLAIM_DONE', controller: true });
+        }).catch(function (e) {
+          if (event.ports && event.ports[0]) {
+            event.ports[0].postMessage({ type: 'CLAIM_DONE', controller: false, error: String((e && e.message) || e) });
+          }
+        })
+      );
       break;
     case 'GET_SW_VERSION':
       // 离线回传 12 位缓存版本号，避免页面打开时联网 fetch sw.js

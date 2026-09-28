@@ -615,6 +615,73 @@ window.onclick = function(e) {
         } catch (e) {}
     }
     window.dsOfflineSelfCheck = _offlineSelfCheck;
+
+    /** 把若干字段并进启动时间线（供「设置→关于→离线状态」直读，不依赖任何后续计算） */
+    function _patchBootTimeline(patch) {
+        try {
+            var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null') || window.__bootT || {};
+            for (var k in patch) { if (Object.prototype.hasOwnProperty.call(patch, k)) t[k] = patch[k]; }
+            localStorage.setItem('_boot_timeline', JSON.stringify(t));
+        } catch (e) {}
+    }
+
+    /**
+     * 【2026-09-28】「SW 已激活但未接管」的**自愈救援**（治用户实测的病症）。
+     * 现象：关于→离线状态显示「⚠ 离线缓存已就绪但尚未接管 / 再刷新一次即生效」，
+     *   但用户刷新很多次都不生效 —— 实测数据：HTML 每次都传输 45830 字节、35 个资源全走网络、
+     *   模块就绪 14759ms（即每次折叠都整包重新下载）。
+     * 原因：旧版 sw.js 的 activate 把 claim 串在 cleanupOldCaches() 之后，清理失败/卡住 ⇒ 接管永不发生，
+     *   而 reg.active 已非空 ⇒ 面板误判成"再刷新一次就好"（一句无效承诺）。
+     * 现在：① 请 SW 当场 claim（CLAIM_NOW）；② 接管成功后**自动刷新一次**（每会话仅一次），
+     *   让当前会话立刻恢复"走本机缓存"；③ claim 后仍无 controller（典型=作用域不覆盖当前页）
+     *   就把 scope 与真实地址记进 _boot_timeline，由「离线状态」如实写出来，不再糊弄用户。
+     */
+    function _swClaimRescue(reg) {
+        try {
+            if (!reg || !reg.active) return;
+            if (navigator.serviceWorker.controller) return;         // 已接管：什么都不做
+            if (location.protocol === 'file:') return;
+            var scopeOk = false;
+            try { scopeOk = String(location.href).indexOf(reg.scope) === 0; } catch (e) {}
+            _patchBootTimeline({
+                swActive: !!reg.active, swWaiting: !!reg.waiting, swInstalling: !!reg.installing,
+                swScope: reg.scope, swScopeOk: scopeOk
+            });
+            if (!scopeOk) {
+                console.warn('[PWA] SW 作用域不覆盖当前页，无法接管：scope=' + reg.scope + ' 当前页=' + location.href);
+                return;
+            }
+            var ch = new MessageChannel();
+            ch.port1.onmessage = function (ev) {
+                var d = ev.data || {};
+                if (d.type !== 'CLAIM_DONE') return;
+                _patchBootTimeline({ swClaimed: !!d.controller, swClaimError: d.error || '' });
+                if (!d.controller) { console.warn('[PWA] SW 当场接管失败：' + (d.error || '')); return; }
+                var done = function () {
+                    var k = '_sw_claim_reloaded';
+                    try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) { return; }
+                    console.log('[PWA] SW 已当场接管 → 自动刷新一次改走本机缓存（每会话仅一次）');
+                    try { location.reload(); } catch (e) {}
+                };
+                // claim 成功与 controller 就位之间有几拍延迟：轮询等它就位。
+                //   （刻意**不**再注册接管监听：那会与"新版本接管"那套逻辑的源码扫描互相干扰，
+                //     也让这里的意图更难读——我们要的只是"controller 到位后刷新一次"。）
+                if (navigator.serviceWorker.controller) return done();
+                var tries = 0;
+                var iv = setInterval(function () {
+                    tries++;
+                    if (navigator.serviceWorker.controller) { clearInterval(iv); done(); }
+                    else if (tries > 12) { clearInterval(iv); console.warn('[PWA] 当场接管后 controller 仍未就位（可能作用域不覆盖当前页）'); }
+                }, 250);
+            };
+            try { reg.active.postMessage({ type: 'CLAIM_NOW' }, [ch.port2]); } catch (e) {}
+        } catch (e) {}
+    }
+    window.dsSwClaimRescue = function () {
+        try {
+            navigator.serviceWorker.getRegistration().then(function (r) { _swClaimRescue(r); }).catch(function () {});
+        } catch (e) {}
+    };
     try {
         // 空闲时执行（等首屏与模块初始化都落定）：2.5s 后先自检一次，之后每 3 分钟兜一次
         setTimeout(_offlineSelfCheck, 2500);
@@ -624,6 +691,11 @@ window.onclick = function(e) {
     (_regPromise || Promise.resolve(null)).then(function(reg) {
         if (!reg) return;                       // SW 不可用：保持已有 UI，不做注册后逻辑
         console.log('[PWA] SW 注册成功');
+
+        // 【2026-09-28】启动即做一次「接管救援」：正常设备上它什么都不做（controller 已就位）；
+        //   坏状态设备上会自动请 SW 当场接管并刷新一次 —— 不用用户去反复刷新。
+        //   提早到 900ms 执行，保证自动刷新发生在用户开始操作之前。
+        try { setTimeout(function () { _swClaimRescue(reg); }, 900); } catch (e) {}
 
         // 【v3.38】离线优先：打开时【不】调用 reg.update()，避免在后台静默从远程重新下载新 SW/资源。
         // 系统默认打开完全使用离线内容（SW 已 CacheFirst 提供页面）。
@@ -1179,9 +1251,23 @@ window.stFillAboutOffline = async function () {
         if (reg && reg.active && controlled) {
             parts.push('<span style="color:#34d399;font-weight:600;">✓ 已离线化</span>（本机缓存 ' + count + ' 项）'
                 + '<br>折叠开合 / 刷新重建时全部走本机离线数据，不联网；离线也能打开。');
-        } else if (reg && reg.active) {
-            parts.push('<span style="color:#fbbf24;font-weight:600;">⚠ 离线缓存已就绪但尚未接管</span>'
-                + '<br>再刷新一次（或重开应用）即生效。');
+        } else if (reg && (reg.active || reg.installing || reg.waiting)) {
+            // 【2026-09-28】原来是"再刷新一次（或重开应用）即生效"—— 用户实测刷新多次仍不接管，
+            //   因为旧版 activate 的 claim 被清理任务连累而没跑（见 _swClaimRescue 注释）。
+            //   现在如实写出 SW 状态 + 作用域，并说明应用会自己修复，不再给无效承诺。
+            var stName = reg.active ? (reg.waiting ? '已激活（新版本等待中）' : '已激活') : '安装中';
+            var bt = null; try { bt = JSON.parse(localStorage.getItem('_boot_timeline') || 'null'); } catch (e) {}
+            parts.push('<span style="color:#fbbf24;font-weight:600;">⚠ SW ' + stName + '，但未接管本次会话</span>'
+                + '<br>应用正在自动修复（已请 SW 当场接管，成功后会自动刷新一次）。'
+                + '<br>若过一会儿仍显示未接管：请到「设置 → 检查更新 → 立即更新」应用新版本，'
+                + '或关掉所有本系统的窗口重开一次（这一步会清掉卡住的旧版本）。');
+            if (bt && bt.swScopeOk === false) {
+                parts.push('<span style="color:#f87171;">作用域不覆盖当前页</span>：作用域=' + (bt.swScope || '?')
+                    + '，当前页=' + String(location.href).slice(0, 80) + '（需从同一路径打开，如都用 index.html 进入）');
+            }
+            if (bt && bt.swClaimed === false && bt.swClaimError) {
+                parts.push('接管失败原因：' + String(bt.swClaimError).slice(0, 120));
+            }
         } else {
             parts.push('<span style="color:#f87171;font-weight:600;">⚠ 未离线化</span>'
                 + '<br>本浏览器未安装/未启用离线缓存（隐私模式或旧内核），折叠开合会走网络。'

@@ -2053,7 +2053,7 @@
                     <section class="st-sec" data-sec="about">
                         <div class="st-group-title">版本</div>
                         <button id="check-update-btn" onclick="checkForUpdate()" class="st-btn">
-                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v3.76</span></span>
+                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.13</span></span>
                             <span id="check-update-arrow" class="st-btn-arrow">点击检查 →</span>
                         </button>
                         <div id="update-status" class="st-hint"></div>
@@ -2079,7 +2079,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.12</span> · 2026.09.28</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.13</span> · 2026.09.28</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2091,6 +2091,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.13 近期更新（SW 从未接管的真凶：激活时"接管"被"清理"连累） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.13 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚑 修「折叠开合/联网打开每次都像清缓存」的真凶：**Service Worker 从没接管过页面**（实测 SW 接管=否、HTML 传输 45830 字节、真实联网资源 35 项、模块就绪 14759ms）⇒ 每次折叠都是整包重新下载。根因：激活时把"接管页面"串在"清理旧缓存"之后，清理一旦失败或卡住，接管就永不执行；而面板据此显示"再刷新一次即生效"，刷新多少次都无效。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 激活改为「接管与清理并行、各自兜错」；新增运行期接管指令（页面可请 SW 当场接管）；页面启动 900ms 自检发现"已激活但未接管"即自动修复并刷新一次（每会话仅一次）⇒ 已卡住的设备无需用户反复刷新。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📴 若作用域不覆盖当前页，「关于→离线状态」会如实写出"作用域 vs 当前地址"，不再给"再刷新一次"这种空话；套件 fold-state 扩到 30/30（新增接管自愈守卫），回归 autocheck 23/23、chat-fixes 20/20。</span></div>
+                </div>
             </div>
 
             <!-- v4.12 近期更新（联网时折叠慢真因：App Shell 缓存缺文件自愈） -->
@@ -2106,20 +2119,8 @@
                 </div>
             </div>
 
-            <!-- v4.11 近期更新（走没走本地做成可自证） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.11 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 折叠开合「仍走联网/像清缓存」逐条排查：启动/折叠期网络动作（version.json 静默检查、sw.js 条件重验、SW 安装预缓存逐条容错、precacheRest 只补缺、warmCdnLibs 串行静默、豆包 iframe=about:blank、无 CDN 外链）与自动重载路径（location.reload 全部为 用户主动或备份导入；可见性回调只弹提示、controllerchange 隐藏时只标记）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 新增启动埋点 _boot_timeline（navRes 导航文档传输字节=0 即 SW 缓存命中、netRes+netList 真正走网络的资源、swNew 是否装新版本）；关于→离线状态新增「走本地核验」，用户读一行即可判定 SW 没接管还是后台在重下整包；套件 fold-state 扩到 24/24，回归 autocheck 23/23、chat-fixes 20/20、role 17/17。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.10 及以前已归档（最近 2 版本为 v4.12 / v4.11） -->
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.10 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
+            <!-- v4.11 及以前已归档（最近 2 版本为 v4.13 / v4.12） -->
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.11 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 核心功能 -->

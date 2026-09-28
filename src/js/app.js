@@ -1263,6 +1263,19 @@ window.stFillAboutOffline = async function () {
     var el = document.getElementById('about-offline');
     if (!el) return;
     var parts = [];
+    // 【2026-09-28 用户实测定位】入口形态必须写出来 —— 这是本轮把问题定死的关键：
+    //   浏览器标签打开 ⇒ 瞬间加载（SW 正常接管）；**从桌面图标打开（安装的应用实例）⇒ 远程加载**。
+    //   原因：Android 上"安装的应用"是**独立应用**，与浏览器**各自独立的存储与 Service Worker**；
+    //   它启动时的那个导航没有经过自己的 SW ⇒ 整包远程（且浏览器 HTTP 缓存也被绕过）。
+    //   这里如实标出当前形态，避免再把"入口不同"误判成"缓存坏了"。
+    try {
+        var _mm = function (q) { try { return window.matchMedia(q).matches; } catch (e) { return false; } };
+        var _standalone = _mm('(display-mode: standalone)') || _mm('(display-mode: fullscreen)')
+            || _mm('(display-mode: minimal-ui)') || (window.navigator.standalone === true);
+        parts.push('入口形态：' + (_standalone
+            ? '<span style="color:#fbbf24;font-weight:600;">桌面应用实例</span>（独立存储/独立离线组件；若"走本地核验"是"否"，请改用浏览器入口或点下方重装）'
+            : '浏览器标签/普通窗口') + ' · ' + String(location.origin).replace(/^https?:\/\//, ''));
+    } catch (e) {}
     try {
         var reg = (navigator.serviceWorker && navigator.serviceWorker.getRegistration)
             ? await navigator.serviceWorker.getRegistration() : null;
@@ -1361,7 +1374,21 @@ window.stFillAboutOffline = async function () {
             var _bad = _h.slice(-2).filter(function (x) { return x.navRes > 0; });
             if (_bad.length >= 2) {
                 var _last = _h[_h.length - 1] || {};
-                if (_last.regState === 'none') {
+                // 桌面应用实例（standalone）走远程：这是**入口形态**问题，不是缓存坏了
+                var _sa = false;
+                try {
+                    _sa = window.matchMedia('(display-mode: standalone)').matches
+                        || window.matchMedia('(display-mode: minimal-ui)').matches
+                        || window.navigator.standalone === true;
+                } catch (e) {}
+                if (_sa && _last.regState !== 'none') {
+                    parts.push('<span style="color:#fbbf24;">当前是**桌面应用实例**</span>：它与浏览器是'
+                        + '<b>各自独立的存储与离线组件</b>，而它启动时的导航没经过自己的离线组件 ⇒ 整包远程。'
+                        + '建议：① 改用浏览器打开同一网址（实测**瞬间加载**）；'
+                        + '② 若你在桌面实例里录过数据，请先在桌面实例里「设置 → 数据 → 导出备份」，'
+                        + '再到浏览器实例里导入（两者数据不互通）；'
+                        + '③ 也可先点下面的「🔧 重装离线缓存」让它自我修复一次。');
+                } else if (_last.regState === 'none') {
                     parts.push('<span style="color:#f87171;">本浏览器把离线组件丢了</span>：每趟加载时都查不到 SW 注册'
                         + '（regState=none）⇒ 这类浏览器（隐私模式 / 部分内置浏览器）不持久保存离线缓存。'
                         + '建议：用系统自带浏览器打开并「添加到主屏幕」，再从桌面图标进入（这样 S​​W 才会常驻）。');

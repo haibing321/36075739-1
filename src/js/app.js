@@ -569,6 +569,58 @@ window.onclick = function(e) {
         });
     }
 
+    /**
+     * 【2026-09-28】离线完整性自检 + 空闲补齐（治"联网时折叠每次都很慢"）。
+     * 原理见 sw.js 的 CHECK_MISSING / PRECACHE_REST 注释：
+     *   App Shell 的补齐本来挂在 SW activate 后 2.5s，而**折叠/关页面会终止 SW** ⇒ 常常跑不完；
+     *   缺的那些文件在线时每次加载都被真实下载（慢），离线时快速失败但不影响页面（所以显得快）。
+     * 这里在启动后的空闲时刻主动问一次"还缺什么"，缺了就请 SW 当场补齐 ⇒ 下次折叠纯缓存。
+     */
+    function _offlineSelfCheck() {
+        try {
+            if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+            if (navigator.onLine === false) return;                 // 离线无可补，等联网后再说
+            var ch = new MessageChannel();
+            ch.port1.onmessage = function (ev) {
+                var d = ev.data || {};
+                if (d.type !== 'MISSING_RESULT') return;
+                try {
+                    var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
+                    if (t) {
+                        t.cacheMissing = d.missing;
+                        t.cacheMissSample = d.sample || [];
+                        localStorage.setItem('_boot_timeline', JSON.stringify(t));
+                    }
+                } catch (e) {}
+                if (typeof d.missing === 'number' && d.missing > 0) {
+                    try {
+                        var ch2 = new MessageChannel();
+                        ch2.port1.onmessage = function (ev2) {
+                            var r = ev2.data || {};
+                            if (r.type !== 'PRECACHE_REST_DONE') return;
+                            try {
+                                var t2 = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
+                                if (t2) {
+                                    t2.cacheMissing = r.missing;
+                                    t2.cacheFilled = true;
+                                    localStorage.setItem('_boot_timeline', JSON.stringify(t2));
+                                }
+                            } catch (e) {}
+                        };
+                        navigator.serviceWorker.controller.postMessage({ type: 'PRECACHE_REST' }, [ch2.port2]);
+                    } catch (e) {}
+                }
+            };
+            navigator.serviceWorker.controller.postMessage({ type: 'CHECK_MISSING' }, [ch.port2]);
+        } catch (e) {}
+    }
+    window.dsOfflineSelfCheck = _offlineSelfCheck;
+    try {
+        // 空闲时执行（等首屏与模块初始化都落定）：2.5s 后先自检一次，之后每 3 分钟兜一次
+        setTimeout(_offlineSelfCheck, 2500);
+        setInterval(function () { if (navigator.onLine !== false) _offlineSelfCheck(); }, 3 * 60 * 1000);
+    } catch (e) {}
+
     (_regPromise || Promise.resolve(null)).then(function(reg) {
         if (!reg) return;                       // SW 不可用：保持已有 UI，不做注册后逻辑
         console.log('[PWA] SW 注册成功');
@@ -1148,6 +1200,12 @@ window.stFillAboutOffline = async function () {
                     + ' · 真实联网资源=' + (t.netRes || 0) + ' 项'
                     + (t.netList && t.netList.length ? ('（' + t.netList.join('、') + '）') : '')
                     + ' · 本次在装新版本=' + (t.swNew ? '是（后台会重下整包，属更新行为）' : '否'));
+                // 离线完整性：缓存里还缺多少 App Shell 资源（缺 >0 就是"联网时每次加载都慢"的原因）
+                if (t.cacheMissing != null) {
+                    parts.push('离线完整性：' + (t.cacheMissing === 0 ? '✓ 缓存齐全（折叠/刷新不会再联网取资源）'
+                        : ('⚠ 缺 ' + t.cacheMissing + ' 项' + (t.cacheFilled ? '（已后台补齐）' : '（正在补齐）')
+                           + (t.cacheMissSample && t.cacheMissSample.length ? '：' + t.cacheMissSample.join('、') : ''))));
+                }
             }
         }
     } catch (e) {}

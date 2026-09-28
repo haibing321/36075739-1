@@ -954,7 +954,7 @@
                     //   直接喂 arrayBuffer 会让中文静默乱码；文本读取复用自动择码（UTF-8/GBK）。
                     let workbook;
                     if (/\.csv$/i.test(file.name)) {
-                        const _csvText = (typeof window.dsReadTextFileAutoEnc === 'function') ? await file.text() : await file.text();
+                        const _csvText = (typeof window.dsReadTextFileAutoEnc === 'function') ? await window.dsReadTextFileAutoEnc(file) : await file.text();
                         workbook = XLSX.read(_csvText, { type: 'string' });
                     } else {
                         // 【2026-09-21 真数据实测】33.7MB 的 .xlsx（43585 行 × 7 列）导入耗时 **312s**、

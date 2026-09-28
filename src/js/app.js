@@ -579,7 +579,12 @@ window.onclick = function(e) {
 
         // 检测新版本：仅手动检查时才提示，避免打开即打扰
         reg.addEventListener('updatefound', function() {
+            // 【2026-09-28】记进启动时间线：本次启动**在装新版本**（会在后台重新下发整套 App Shell）。
+            //   用户反复反馈"折叠开合像清缓存/更新系统" —— 这一位为 true 就说明后台在重下整包，
+            //   可在「设置 → 关于 → 离线状态」直接读到，不必再靠猜。
+            try { if (window.__bootT) { window.__bootT.swNew = true; localStorage.setItem('_boot_timeline', JSON.stringify(window.__bootT)); } } catch (e) {}
             var sw = reg.installing;
+            if (!sw) return;
             sw.addEventListener('statechange', function() {
                 if (sw.state === 'installed' && navigator.controller) {
                     if (_manualUpdateCheck && window.switchUpdateBtn) window.switchUpdateBtn('update');
@@ -1137,6 +1142,13 @@ window.stFillAboutOffline = async function () {
         var t = JSON.parse(localStorage.getItem('_boot_timeline') || 'null');
         if (t && t.dcl != null) {
             parts.push('上次启动：外壳 ' + t.shell + 'ms · 模块就绪 ' + t.dcl + 'ms · SW 接管=' + (t.sw ? '是' : '否'));
+            // 【2026-09-28】"到底走没走本地"的三项硬证据（用户抱怨"折叠开合像清缓存/更新系统"，用它一锤定音）
+            if (t.navRes != null) {
+                parts.push('走本地核验：HTML 来自缓存=' + (t.navRes === 0 ? '是（传输 0 字节）' : '否（传输 ' + t.navRes + ' 字节）')
+                    + ' · 真实联网资源=' + (t.netRes || 0) + ' 项'
+                    + (t.netList && t.netList.length ? ('（' + t.netList.join('、') + '）') : '')
+                    + ' · 本次在装新版本=' + (t.swNew ? '是（后台会重下整包，属更新行为）' : '否'));
+            }
         }
     } catch (e) {}
     el.innerHTML = parts.join('<br>');

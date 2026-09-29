@@ -1008,10 +1008,17 @@
         var cut = last.filter(function (r) {
             return r && (r.finishReason === 'length' || r.finishReason === 'insufficient_system_resource');
         }).length;
+        var failed = last.filter(function (r) { return r && r.err; }).length;
+        var usageSeen = (hit + miss) > 0;
         var parts = ['近 ' + last.length + ' 轮'];
         if (avgFirst) parts.push('首字均值 ' + (avgFirst / 1000).toFixed(1) + 's');
         if (cacheRate !== null) parts.push('缓存命中 ' + cacheRate + '%');
         if (cut) parts.push('回答不完整 ' + cut + ' 次');
+        if (failed) parts.push('失败 ' + failed + ' 次');
+        // 明确说明"为什么这一行看起来没数据"，避免用户看到一个空值不知所云。
+        // 已知口径：usage 仅从 chat/completions 流式末块采集；联网走 Responses/Anthropic 通道时不带，
+        // 失败轮也可能根本没能拿到 usage。
+        if (!usageSeen && !failed) parts.push('usage 未采集（联网通道或非流式响应）');
         return parts.join(' · ');
     };
 

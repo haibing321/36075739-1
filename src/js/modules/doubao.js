@@ -2629,7 +2629,8 @@
                                 window.__dsLinkRead = _lr || { ok: false, reason: 'null' };
                                 if (_lr && _lr.ok && _lr.digest) {
                                     systemPrompt += '\n\n【链接正文已预读（下列内容由联网通道实际读取，可直接引用）】\n' + _lr.digest
-                                        + '\n（与预读冲突时以预读为准；预读未覆盖的部分，不确定就说不确定，**不要编造**。）';
+                                        + '\n（引用时请用【来源1】【来源2】……标注出处，方便用户核对；'
+                                        + '与预读冲突时以预读为准；预读未覆盖的部分，不确定就说不确定，**不要编造**。）';
                                 }
                                 try {
                                     if (typeof window.dsAppendMsg === 'function') {
@@ -3758,11 +3759,34 @@
                 try {
                     var _lr = w.linkRead;
                     if (_lr) {
-                        _lrLine = _lr.ok
-                            ? '<div style="' + base + 'rgba(77,107,254,0.35);background:rgba(77,107,254,0.10);color:var(--ds-blue)">'
-                                + dsEsc('🔗 已读取链接 ' + (((_lr.links || []).length) || 1) + ' 个（' + (_lr.chars || 0) + ' 字，已并入本轮依据）') + '</div>'
-                            : '<div style="' + base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)">'
-                                + dsEsc('🔗 链接未能读取（' + String(_lr.reason || '') + '）—— 已要求模型如实说明，不猜测内容') + '</div>';
+                        if (_lr.ok) {
+                            _lrLine = '<div style="' + base + 'rgba(77,107,254,0.35);background:rgba(77,107,254,0.10);color:var(--ds-blue)">'
+                                + dsEsc('🔗 已读取链接 ' + (((_lr.links || []).length) || 1) + ' 个（' + (_lr.chars || 0) + ' 字，已并入本轮依据）') + '</div>';
+                            // 【第 3 层·结构化来源】逐个列出：序号 · 标题/域名 · 字数 · 通道（可点击核对原文）
+                            var _srcs = (_lr.links || []).filter(function (x) { return x && x.ok; });
+                            if (_srcs.length) {
+                                var _rows = _srcs.map(function (x, i) {
+                                    var href = (typeof dsSafeUrl === 'function') ? dsSafeUrl(x.url) : x.url;
+                                    var label = (x.title && String(x.title).trim()) ? String(x.title).trim().slice(0, 46) : String(x.url).replace(/^https?:\/\//, '').slice(0, 46);
+                                    var ch = (x.channel === 'reader') ? '阅读器' : (x.channel === 'model' ? '联网检索' : '');
+                                    var meta = ' · ' + (x.chars || 0) + ' 字' + (ch ? ' · ' + ch : '') + (x.cached ? ' · 缓存' : '');
+                                    return '<a href="' + dsEsc(href) + '" target="_blank" rel="noopener" '
+                                        + 'style="display:flex;gap:6px;align-items:baseline;color:var(--ds-blue);text-decoration:none;'
+                                        + 'padding:2px 0;line-height:1.5;"><b style="flex:0 0 auto;">来源' + (i + 1) + '</b>'
+                                        + '<span style="flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsEsc(label) + '</span>'
+                                        + '<span style="flex:0 0 auto;opacity:.75;">' + dsEsc(meta) + '</span></a>';
+                                }).join('');
+                                _lrLine += '<div style="display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:6px 10px;'
+                                    + 'border-radius:10px;border:1px solid rgba(77,107,254,0.25);background:rgba(77,107,254,0.05);'
+                                    + 'font-size:0.74rem;">' + _rows + '</div>';
+                            }
+                        } else {
+                            var _failList = (_lr.links || []).filter(function (x) { return x && !x.ok; })
+                                .map(function (x) { return String(x.url).replace(/^https?:\/\//, '').slice(0, 40); }).slice(0, 3);
+                            _lrLine = '<div style="' + base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)">'
+                                + dsEsc('🔗 链接未能读取（' + String(_lr.reason || '') + (_failList.length ? '：' + _failList.join('、') : '')
+                                    + '）—— 已要求模型如实说明，不猜测内容') + '</div>';
+                        }
                     }
                 } catch (e) {}
                 if (w.conflict) {

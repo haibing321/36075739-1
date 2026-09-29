@@ -872,6 +872,69 @@
     //   ② Responses API + tools:[{type:'web_search'}] —— 其它供应商（OpenAI 等）用，DeepSeek 下官方会忽略检索。
     // 约定：**没有 Key / 通道不可用 / 未检索到内容 → 都返回 ok:false**，由调用方走保底。
     /**
+     * 【2026-09-29 第 2 层·真抓取】阅读器代理通道：把任意网页取回为**干净 Markdown**。
+     * 为什么用 r.jina.ai：① 浏览器端可直连（返回 `Access-Control-Allow-Origin: *`，故已加入 CSP connect-src）；
+     *   ② 它自己做过正文抽取，输出 Markdown（标题/段落/列表/表格保留），比"去标签"干净得多；
+     *   ③ 不消耗模型额度、结果可缓存。
+     * 降级：离线 / 超时 / 限流 / 非 https → 返回 ok:false，由调用方退回"用模型定向读"（第 1 层）。
+     * 返回 { ok, text, title, url, channel:'reader', bytes }
+     */
+    window.dsFetchPage = async function (url, opts) {
+        opts = opts || {};
+        var u = String(url || '').trim();
+        if (!/^https?:\/\//i.test(u)) return { ok: false, error: 'bad-url' };
+        if (navigator.onLine === false) return { ok: false, error: 'offline' };
+        // 【熔断】阅读器在部分网络（如国内直连 r.jina.ai）会超时/被限流 ⇒ 不能每次都白等一轮超时：
+        //   连续失败 2 次即"熔断"10 分钟，期间直接返回 reader-blocked，由调用方立刻走第 1 层（模型定向读）。
+        var BK = '_ds_reader_breaker_v1';
+        var bk = {};
+        try { bk = JSON.parse(localStorage.getItem(BK) || '{}') || {}; } catch (e) { bk = {}; }
+        if (bk.until && Date.now() < bk.until) return { ok: false, error: 'reader-blocked', url: u, until: bk.until };
+        /** 记一次失败：连续 2 次即熔断 10 分钟（期间不再尝试阅读器，直接走第 1 层） */
+        var _brkFail = function () {
+            try {
+                var f = (parseInt(bk.fails || '0', 10) || 0) + 1;
+                var o = { fails: f };
+                if (f >= 2) { o.until = Date.now() + 10 * 60 * 1000; o.fails = 0; }
+                localStorage.setItem(BK, JSON.stringify(o));
+            } catch (e) {}
+        };
+        var to = opts.timeoutMs || 9000;
+        var cap = opts.maxChars || 20000;          // 单页正文上限（防止超长页把 system 撑爆）
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, to) : null;
+        var endpoint = 'https://r.jina.ai/' + u;
+        try {
+            var r = await fetch(endpoint, {
+                method: 'GET',
+                headers: { 'Accept': 'text/plain, text/markdown;q=0.9, */*;q=0.5', 'X-Return-Format': 'markdown' },
+                signal: ctrl ? ctrl.signal : undefined,
+                credentials: 'omit'
+            });
+            if (!r.ok) { _brkFail(); return { ok: false, error: 'HTTP ' + r.status, url: u }; }
+            var txt = await r.text();
+            if (timer) clearTimeout(timer);
+            if (!txt || txt.length < 80) { _brkFail(); return { ok: false, error: 'empty', url: u }; }
+            // r.jina.ai 会在开头给出 `Title: …` / `URL Source: …` / `Markdown Content:` 元信息 —— 抽出来当标题，正文从 Markdown Content 起
+            var title = '';
+            var mt = txt.match(/^\s*Title:\s*(.+)$/m);
+            if (mt) title = String(mt[1]).trim().slice(0, 120);
+            var mc = txt.indexOf('Markdown Content:');
+            if (mc > -1) txt = txt.slice(mc + 'Markdown Content:'.length);
+            txt = txt.trim();
+            var truncated = false;
+            if (txt.length > cap) { txt = txt.slice(0, cap) + '\n\n（正文过长，已截断）'; truncated = true; }
+            try { localStorage.setItem(BK, '{}'); } catch (e0) {}      // 成功即解除熔断
+            return { ok: true, text: txt, title: title, url: u, channel: 'reader', bytes: txt.length, truncated: truncated };
+        } catch (e) {
+            if (timer) clearTimeout(timer);
+            var msg = (e && e.name === 'AbortError') ? 'timeout' : String((e && e.message) || e);
+            if (typeof _brkFail === 'function') _brkFail();
+            return { ok: false, error: msg, url: u };
+        }
+    };
+
+    /**
      * 【2026-09-29】链接**预读**：把用户给的网址真正读一次，产出可注入 system 的摘录。
      * 为什么要它：此前"读链接"完全外包给服务端的**按关键词检索** —— 检索 ≠ 读该页；
      *   模型检索不到时就容易"顺着域名猜内容"（比承认读不到更糟）。这里改为：
@@ -887,7 +950,7 @@
         var seen = {}, uniq = [];
         urls.forEach(function (u) { var k = u.toLowerCase(); if (!seen[k]) { seen[k] = 1; uniq.push(u); } });
         if (!uniq.length) return { ok: false, reason: 'no-link' };
-        var MAX = opts.maxLinks || 2;                 // 再多只读前 2 个（避免拖长首字延迟）
+        var MAX = opts.maxLinks || 4;                 // 【第 3 层】默认最多读 4 个链接（超出者在摘录里列名说明；有总预算兜底）
         var todo = uniq.slice(0, MAX);
         var restOf = uniq.slice(MAX);
         if (typeof window.dsWebSearchOnce !== 'function') return { ok: false, reason: 'no-websearch-api' };
@@ -896,6 +959,7 @@
         var cache = {};
         try { cache = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cache = {}; }
         var parts = [], linksOut = [], fromCache = true, anyOk = false;
+        var t0 = Date.now();   // 总时间预算起点（多链接时防止无限等待）
         for (var i = 0; i < todo.length; i++) {
             var u = todo[i], hit = cache[u];
             if (hit && hit.ts && (Date.now() - hit.ts) < TTL && hit.text) {
@@ -905,27 +969,46 @@
                 continue;
             }
             fromCache = false;
-            var sys = '你是网页正文读取器。请**打开并阅读**用户给出的这个网址，逐段摘录其正文要点，'
-                + '保留关键数字、条款号与原文表述；若该页是列表/导航页，摘录其可见条目标题。'
-                + '只输出摘录本身，不要评价、不要客套、不要解释你做了什么。'
-                + '如果确实无法打开该网址，只回一行：READ_FAILED（不要编造内容）。';
-            var usr = '要读取的网址：' + u + (question ? ('\n（用户就这个链接提的问题是：' + String(question).slice(0, 200) + '）') : '')
-                + '\n\n请优先用检索工具打开该网址本身（检索词可直接用该网址或其标题），然后摘录正文。';
-            var r = null;
-            try {
-                r = await window.dsWebSearchOnce(sys, usr, {
-                    maxUses: opts.maxUses || 2, maxTokens: opts.maxTokens || 1600, timeoutMs: opts.timeoutMs || 30000
-                });
-            } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
-            var txt = (r && r.ok && r.text) ? String(r.text).trim() : '';
-            if (txt && /^READ_FAILED\b/i.test(txt)) txt = '';
-            if (txt) {
+            // 总时间预算：多链接时不要无限等（超预算的链接改为"列出未读"，避免首字延迟过长）
+            if (Date.now() - t0 > (opts.totalBudgetMs || 45000)) {
+                linksOut.push({ url: u, ok: false, error: 'budget', skipped: true });
+                continue;
+            }
+            var _txt = '', _ch = '', _title = '', _err = '';
+            // ① 第 2 层：阅读器代理直取 Markdown（质量最高、不耗额度）
+            if (typeof window.dsFetchPage === 'function') {
+                try {
+                    var _pr = await window.dsFetchPage(u, { timeoutMs: opts.readerTimeoutMs || 15000, maxChars: opts.maxChars || 20000 });
+                    if (_pr && _pr.ok && _pr.text) { _txt = _pr.text; _ch = 'reader'; _title = _pr.title || ''; }
+                    else { _err = (_pr && _pr.error) || 'reader-failed'; }
+                } catch (e) { _err = String((e && e.message) || e); }
+            } else { _err = 'no-reader'; }
+            // ② 第 1 层兜底：用联网通道"以该网址为目标"定向读（reader 不可用时仍能读到）
+            if (!_txt) {
+                var sys = '你是网页正文读取器。请**打开并阅读**用户给出的这个网址，逐段摘录其正文要点，'
+                    + '保留关键数字、条款号与原文表述；若该页是列表/导航页，摘录其可见条目标题。'
+                    + '只输出摘录本身，不要评价、不要客套、不要解释你做了什么。'
+                    + '如果确实无法打开该网址，只回一行：READ_FAILED（不要编造内容）。';
+                var usr = '要读取的网址：' + u + (question ? ('\n（用户就这个链接提的问题是：' + String(question).slice(0, 200) + '）') : '')
+                    + '\n\n请优先用检索工具打开该网址本身（检索词可直接用该网址或其标题），然后摘录正文。';
+                var r = null;
+                try {
+                    r = await window.dsWebSearchOnce(sys, usr, {
+                        maxUses: opts.maxUses || 2, maxTokens: opts.maxTokens || 1600, timeoutMs: opts.modelTimeoutMs || 25000
+                    });
+                } catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
+                var mtxt = (r && r.ok && r.text) ? String(r.text).trim() : '';
+                if (mtxt && /^READ_FAILED\b/i.test(mtxt)) mtxt = '';
+                if (mtxt) { _txt = mtxt; _ch = 'model'; }
+                else if (!_err) _err = (r && (r.error || r.status)) || 'read-failed';
+            }
+            if (_txt) {
                 anyOk = true;
-                parts.push('〔来源 ' + (i + 1) + '〕' + u + '\n' + txt);
-                linksOut.push({ url: u, ok: true, chars: txt.length });
-                cache[u] = { ts: Date.now(), text: txt.slice(0, 4000) };
+                parts.push('〔来源 ' + (i + 1) + '〕' + u + (_title ? ('　标题：' + _title) : '') + '\n' + _txt);
+                linksOut.push({ url: u, ok: true, chars: _txt.length, channel: _ch, title: _title });
+                cache[u] = { ts: Date.now(), text: _txt.slice(0, 8000), channel: _ch, title: _title };
             } else {
-                linksOut.push({ url: u, ok: false, error: (r && (r.error || r.status)) || 'read-failed' });
+                linksOut.push({ url: u, ok: false, error: _err || 'read-failed' });
             }
         }
         // 修剪缓存（最多 8 条，保留最新的）

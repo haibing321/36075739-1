@@ -1447,6 +1447,13 @@ window.stFillAboutOffline = async function () {
             parts.push('加载历史（最近 ' + Math.min(4, _h.length) + ' 次，只追加不覆盖）：' + _htxt);
         }
     } catch (e) {}
+    // 【P1 指标】AI 对话运行指标一行：首字延迟 / 缓存命中率 / 回答被截断次数。
+    //   为什么放在这里：这是"提示词前缀稳定化""输出上限调整"这类优化唯一可对照的数据 ——
+    //   改前跑几轮、改后再跑几轮，命中率与首字延迟的变化一眼可见，不必再凭感觉判断。
+    try {
+        var _aiSum = (typeof window.dsAiMetricsSummary === 'function') ? window.dsAiMetricsSummary(20) : '';
+        if (_aiSum) parts.push('AI 对话指标（' + _aiSum + '）');
+    } catch (e) {}
     el.innerHTML = parts.join('<br>');
 };
 

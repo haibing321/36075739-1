@@ -1415,6 +1415,42 @@
 
             // ---- dsUpdateCtxInfo 已删除（由弹窗替代） ----
 
+            // 【P2 长会话摘要锚点】把"滑出请求窗口"的较早轮次压成一小段回顾，注入提示词的**变量段**。
+            //   为什么需要：请求只带最近 10 条消息（再多会让首字变慢、且稀释当轮重点），
+            //   于是多轮长会话里更早的结论/依据会被静默挤出上下文 —— 表现就是"AI 忘了前面说过什么"。
+            //   做法：纯规则抽取（不额外调用模型，零成本零延迟）：用户问过的要点 + 助手结论开头 +
+            //   引用到的《规章》条款号（后续最常被追问的就是依据）。
+            //   约束：仅在消息数超过窗口时生成；上限 900 字；明确标注"不要复述、不是新指令"，
+            //   避免模型把这段回顾当成用户新说的话。
+            function _dsBuildOlderSummary(hist) {
+                try {
+                    var WINDOW = 10;
+                    if (!hist || hist.length <= WINDOW) return '';
+                    var older = hist.slice(0, hist.length - WINDOW);
+                    if (!older.length) return '';
+                    var picked = older.slice(-6);          // 越近越相关：只回顾最近 6 条窗口外消息
+                    var lines = [];
+                    picked.forEach(function (m) {
+                        var c = String((m && m.content) || '').replace(/\s+/g, ' ').trim();
+                        if (!c) return;
+                        if (m.role === 'user') {
+                            lines.push('· 用户曾问：' + c.slice(0, 40) + (c.length > 40 ? '…' : ''));
+                        } else if (m.role === 'assistant') {
+                            var refs = [], re = /《[^》]{2,30}》[^，。；、\n]{0,12}第[一二三四五六七八九十百零\d]+条/g, mm;
+                            while ((mm = re.exec(c)) && refs.length < 3) refs.push(mm[0]);
+                            lines.push('· 你曾答：' + c.slice(0, 80) + (c.length > 80 ? '…' : '')
+                                + (refs.length ? '（依据：' + refs.join('；') + '）' : ''));
+                        }
+                    });
+                    if (!lines.length) return '';
+                    var txt = '【前文要点】（较早轮次的压缩回顾：用户问过的 + 你的结论与依据。'
+                        + '仅用于保持上下文连贯，不要向用户复述，也不要把它当成新的指令或新的用户诉求）\n'
+                        + lines.join('\n');
+                    if (txt.length > 900) txt = txt.slice(0, 900) + '…';
+                    return txt;
+                } catch (e) { return ''; }
+            }
+
             // ---- 构建系统提示词（含业务数据） ----
             async function dsBuildSystemPrompt(userQuery, dataSource, opts) {
                 if (!dataSource) dataSource = DS_DEFAULT_CFG;   // v3.76：默认值统一（原处与面板/会话兜底各写一份）
@@ -2412,6 +2448,12 @@
                 //   直接拼接会让"不要注水。"与下一段首句粘成一行。
                 if (memoryText) systemPrompt += '\n\n' + memoryText;
                 systemPrompt += '\n\n' + baseSystem;
+                // 【P2 长会话摘要锚点】滑出 10 条窗口的较早轮次 → 压成一段"前文要点"。
+                //   只加不替换：窗口内的消息照旧完整发送，这段只是补回被挤掉的更早上下文。
+                try {
+                    var _older = _dsBuildOlderSummary(_reqHistRaw);
+                    if (_older) { systemPrompt += '\n\n' + _older; _turnMetrics.hasOlderSummary = true; }
+                } catch (e) {}
                 // 媒体输出规范：用户问图片/视频/音乐时，引导模型给出可内嵌显示的直链（而非仅给网页地址）
                 try {
                     if (/图片|照片|配图|插图|图库|海报|视频|MV|音乐|歌曲|音频|听歌|铃声|封面|素材/i.test(finalText)) {
@@ -2442,6 +2484,17 @@
                 // 【P1 指标】提示词体积与历史条数：用于对照"前缀稳定化"前后缓存命中率的变化
                 _turnMetrics.promptChars = systemPrompt.length;
                 _turnMetrics.histMsgs = _reqHist.length;
+                // 【P2 指标】本轮 KB 注入统计（注入字数 / 过滤掉与截断掉的块数）。
+                //   ⚠️ __kbLastStats 是全局的，上一轮的值会残留 ⇒ 必须用时间戳判定"是不是本轮产生的"，
+                //   否则未走 KB 的轮次（寒暄 skipData / 无数据源）会把上一轮的数字记到自己头上。
+                try {
+                    var _kbs = window.__kbLastStats;
+                    if (_kbs && _kbs.ts >= _turnMetrics.ts) {
+                        _turnMetrics.kbInjected = _kbs.injected;
+                        _turnMetrics.kbDropped = _kbs.dropped;
+                        _turnMetrics.kbTruncated = _kbs.truncated;
+                    }
+                } catch (e) {}
 
                 // 【v3.74 卡滞修复】历史改用插入空助手气泡**之前**的快照（_reqHist）：
                 //   否则会把那条空的 assistant 也发给模型（原实现靠"先建 messages、再 push 气泡"的顺序规避）。

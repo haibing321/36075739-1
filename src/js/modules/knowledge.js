@@ -818,11 +818,49 @@
                     }
                 }
             }
+            // 【P2 低分块前移过滤】把"明显不相关"的命中块在**注入前**丢掉，而不是交给模型去忽略。
+            //   为什么必要：topK 是"最多取 k 块"，不是"取 k 块相关的" —— 问题与语料弱相关时，
+            //   BM25 仍会凑满 k 块并全部塞进提示词，既占预算又干扰模型（实测表现为"硬扯上无关条款"）。
+            //   做法：按**源内相对阈值**过滤（跨源分数不可比 —— 各源独立 idf，见文件头注释）；
+            //   兜底扫描命中（fbScore，命中查询词个数）另用绝对门槛，且不与 BM25 分数混算。
+            //   永远保留最佳命中（fail-open），避免"全被过滤 → 明明有资料却像查不到"。
+            var _droppedLow = 0;
+            try {
+                var _ratio = 0.25;
+                try {
+                    var _rv = localStorage.getItem('kb_min_score_ratio');
+                    if (_rv !== null) { var _rn = parseFloat(_rv); if (!isNaN(_rn) && _rn >= 0 && _rn <= 1) _ratio = _rn; }
+                } catch (e) {}
+                if (_ratio > 0 && hits.length > 1) {
+                    var _bmH = [], _fbH = [];
+                    hits.forEach(function (h) {
+                        if (h && h.score == null && h.fbScore != null) _fbH.push(h); else _bmH.push(h);
+                    });
+                    var _kept = _bmH;
+                    if (_bmH.length > 1) {
+                        var _top = 0;
+                        _bmH.forEach(function (h) { var sc = (h && h.score) || 0; if (sc > _top) _top = sc; });
+                        if (_top > 0) {
+                            var _floor = _top * _ratio;
+                            var _f = _bmH.filter(function (h) { return ((h && h.score) || 0) >= _floor; });
+                            if (!_f.length) _f = [_bmH[0]];
+                            _droppedLow += (_bmH.length - _f.length);
+                            _kept = _f;
+                        }
+                    }
+                    // 窗口外兜底命中：至少命中 2 个查询词才算有效证据（其证据强度由既有逻辑保证 ≥3 才会额外并入）
+                    var _fbKept = _fbH.filter(function (h) { return (h && h.fbScore || 0) >= 2; });
+                    if (!_fbKept.length && _fbH.length) _fbKept = [_fbH[0]];
+                    _droppedLow += (_fbH.length - _fbKept.length);
+                    hits = _kept.concat(_fbKept);
+                }
+            } catch (e) { /* 过滤失败则保持原样（fail-open） */ }
             if (hits.length) {
                 results.push({
                     key: key, label: s.label, grain: s.grain,
                     total: st.srcLen, chunks: st.chunks.length,
                     indexed: st.indexed || 0, windowed: windowed, fallback: fb,
+                    droppedLow: _droppedLow,
                     hits: hits
                 });
             }
@@ -922,27 +960,66 @@
     // 【C2-a】header 里如实标注"索引仅覆盖最近 N 条 / 本次为窗口外兜底命中"，让模型知道口径边界。
     function buildRefText(results, opts) {
         opts = opts || {};
-        var budget = opts.budget || SRC_BUDGET;
-        var total = opts.totalBudget || 0;          // 0 = 不限（保持旧行为）
-        var used = 0;
-        var out = '';
-        (results || EMPTY).forEach(function (r) {
-            if (total && used >= total) return;     // 总量已用尽：后续源不再注入
-            var cap = total ? Math.min(budget, total - used) : budget;
+        var budget = opts.budget || SRC_BUDGET;      // 单源上限
+        var total = opts.totalBudget || 0;           // 单轮总量预算（0 = 不限，保持旧行为）
+        var srcs = (results || EMPTY).filter(function (r) { return r && r.hits && r.hits.length; });
+        function headerOf(r) {
             var txt = '【' + r.label + '（数据 ' + r.total + ' 条 → 命中 ' + r.hits.length + ' 块，按' + r.grain + '定位';
             if (r.windowed) {
                 txt += '；⚠️ 本源索引仅覆盖最近 ' + r.indexed + ' 条，更早的 '
                     + Math.max(0, r.total - r.indexed) + ' 条不在索引内，查历史数据请用精确查询工具';
             }
             if (r.fallback) txt += '；本次为窗口外全量兜底命中';
-            txt += '）】\n';
-            r.hits.forEach(function (h, i) {
-                txt += (i + 1) + '. ' + h.path + '\n   ' + h.text + '\n';
+            if (r.droppedLow) txt += '；已过滤 ' + r.droppedLow + ' 块弱相关命中';
+            return txt + '）】\n';
+        }
+        function renderFull(r) {
+            var txt = headerOf(r);
+            r.hits.forEach(function (h, i) { txt += (i + 1) + '. ' + h.path + '\n   ' + h.text + '\n'; });
+            if (txt.length > budget) txt = txt.slice(0, budget) + '\n（内容已截断）\n';
+            return txt;
+        }
+        var full = srcs.map(renderFull);
+        var alloc = full.map(function (t) { return t.length; });
+        var truncated = 0;
+        if (total > 0 && srcs.length) {
+            // 【P2 按源保底配额】原实现按**源顺序**吃预算：rules/cases 排在最前时会把 4500 字用光，
+            //   后面的手册/电话/日志**一块都进不去**（关键依据被静默挤掉，而模型只会说"未检索到"）。
+            //   现改为两轮：① 每源先保底 minShare（按源数均分的一部分，且不超过自身长度与剩余总量）；
+            //   ② 剩余预算再按源顺序追加。每个有命中的源都能贡献内容，预算也不浪费。
+            //   注意 left 递减守卫：极小总量下也要保证总长不超预算（正确性优先于保底）。
+            var minShare = Math.max(200, Math.floor(total / srcs.length * 0.55));
+            var left = total, sum = 0;
+            alloc = full.map(function (t) {
+                var a = Math.min(t.length, budget, minShare, left > 0 ? left : 0);
+                left -= a; sum += a;
+                return a;
             });
-            if (txt.length > cap) txt = txt.slice(0, cap) + '\n（内容已截断）\n';
-            used += txt.length;
-            out += txt + '\n';
-        });
+            var rest = total - sum;
+            for (var i = 0; i < full.length && rest > 0; i++) {
+                var room = Math.min(full[i].length, budget) - alloc[i];
+                if (room <= 0) continue;
+                var add = Math.min(room, rest);
+                alloc[i] += add; rest -= add;
+            }
+        }
+        var out = '';
+        for (var j = 0; j < full.length; j++) {
+            var t = full[j];
+            if (alloc[j] < t.length) { t = t.slice(0, alloc[j]) + '\n（内容已截断）\n'; truncated++; }
+            out += t + '\n';
+        }
+        // 【P2 统计】记下"实际注入多少 / 过滤与截断多少"，供「关于」面板与后续调参（此前完全没有数据）
+        try {
+            window.__kbLastStats = {
+                ts: Date.now(),
+                injected: alloc.reduce(function (a, b) { return a + b; }, 0),
+                truncated: truncated,
+                dropped: srcs.reduce(function (a, r) { return a + (r.droppedLow || 0); }, 0),
+                budgetTotal: total,
+                sources: srcs.map(function (r, i) { return { key: r.key, hits: r.hits.length, dropped: r.droppedLow || 0, chars: alloc[i] }; })
+            };
+        } catch (e) {}
         return out;
     }
 

@@ -1416,15 +1416,23 @@
             // ---- dsUpdateCtxInfo 已删除（由弹窗替代） ----
 
             // ---- 构建系统提示词（含业务数据） ----
-            async function dsBuildSystemPrompt(userQuery, dataSource) {
+            async function dsBuildSystemPrompt(userQuery, dataSource, opts) {
                 if (!dataSource) dataSource = DS_DEFAULT_CFG;   // v3.76：默认值统一（原处与面板/会话兜底各写一份）
+                // 【优化·速度】skipData：寒暄/元问题（"你好""你能做什么"）不需要本地资料。
+                //   跳过 KB.ensure（冷启动实测 0.8~7s）+ 检索，省掉一次索引等待与约 4.5KB 注入，
+                //   首字更快；也避免模型拿着台账数据去回答一句问候（跑题式啰嗦的常见来源）。
+                //   判定与「思考模式自动档」复用同一个函数，保证两者档位一致。
+                var _skipData = !!(opts && opts.skipData);
                 var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
                 var useWrAll = dataSource.wrAll, usePhone = dataSource.phone, useDiary = dataSource.diary;
 
                 let sysParts = [
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
                     '回答请使用中文，条理清晰，引用数据时注明来源（如"规章制度：XXX"、"检查信息：XXX"）。',
-                    '若业务数据中未找到相关内容，如实告知，不得捏造。'
+                    '若业务数据中未找到相关内容，如实告知，不得捏造。',
+                    // 【优化·准确性+废话抑制】检索结果与问题无关是召回常态（关键词/向量召回尤甚）。
+                    //   不写死这条，模型倾向"把检索到的东西都用上" → 硬塞条款、复述原文、答非所问。
+                    '检索到的资料仅在与问题相关时使用：不相关的直接忽略，不要为"用上资料"而牵强引用或转述原文；确实未检索到相关内容时，一句话说明即可。'
                 ];
 
                 // 关键词提取（复用专业词库增强版） + 专业推断
@@ -1437,7 +1445,7 @@
                 // 开关 kb_prompt：默认开；置 '0' 立即回退旧逻辑（便于对照与应急）。
                 var _kbOnP = true;
                 try { _kbOnP = localStorage.getItem('kb_prompt') !== '0'; } catch (e) {}
-                if (_kbOnP && window.KB && typeof window.KB.search === 'function') {
+                if (!_skipData && _kbOnP && window.KB && typeof window.KB.search === 'function') {
                     var _kbSrcs = [];
                     if (useRules) _kbSrcs.push('rules', 'cases');   // 【2026-09-22】案例/汇编类已从 rules 拆出为独立源（避免挤占条款召回），对话仍可按需参考
                     if (useIssue) _kbSrcs.push('issues');
@@ -1470,7 +1478,7 @@
                         }
                     }
                 }
-                if (!_kbOnP) {
+                if (!_skipData && !_kbOnP) {
 
                 // 规章制度：专业优先 + 关键词评分 → top 5
                 if (useRules && typeof window.getRulesData === 'function') {
@@ -2260,7 +2268,22 @@
                 //   原先排在它**之后**才执行 → 这段等待完全没有任何界面反馈。
                 // 现在：立即插入空助手气泡（渲染层对空内容显示"思考中…"）+ 发送按钮切成「停止」态，
                 //   再用双 rAF 让浏览器**真的把这一帧画出来**，然后才去做建索引/检索等重活。
-                var _reqHist = dsHistory.slice(-10);   // 请求用历史快照：此刻只含历史 + 本轮 user，不含下面这条空助手气泡
+                // 【优化·速度】请求历史瘦身：报告类回答可达上万字，会在后续每一轮被**完整重发**，
+                //   既拖慢首字（首 token 延迟随 prompt 增长）又稀释当轮重点。
+                //   策略：只对"较早的助手消息"截断（保留最近一条助手回答完整 —— 用户追问
+                //   "把上面那条改一下"通常指它），保留头部 1800 + 尾部 600 字，中间标出省略量。
+                //   仅影响发出去的请求副本，聊天区显示与存档不受影响。
+                var _reqHistRaw = dsHistory.slice(-10);
+                var _lastAsstIdx = -1;
+                for (var _hi = _reqHistRaw.length - 1; _hi >= 0; _hi--) {
+                    if (_reqHistRaw[_hi] && _reqHistRaw[_hi].role === 'assistant') { _lastAsstIdx = _hi; break; }
+                }
+                var _reqHist = _reqHistRaw.map(function (m, _i) {
+                    if (!m || m.role !== 'assistant' || _i === _lastAsstIdx) return m;
+                    var _c = String(m.content || '');
+                    if (_c.length <= 3000) return m;
+                    return { role: m.role, content: _c.slice(0, 1800) + '\n\n…（此处省略 ' + (_c.length - 2400) + ' 字）\n\n' + _c.slice(-600) };
+                });   // 请求用历史快照：此刻只含历史 + 本轮 user，不含下面这条空助手气泡
                 dsHistory.push({ role: 'assistant', content: '' });
                 var assistantIdx = dsHistory.length - 1;
                 dsRenderAll();
@@ -2303,17 +2326,25 @@
                 }
 
                 // ---- 4.5 长期记忆 ----
+                // 【优化·修复失效】此前用 `typeof extractFacts === 'function'` 判断，但这三个函数定义在
+                //   Part B IIFE（本文件 4394 行之后）且从未挂到 window，而本段在 Part A IIFE 内
+                //   ⇒ 该判断**恒为 false** ⇒ 长期记忆从未存储、从未注入（设置面板的「长期记忆」开关
+                //   与「清空」按钮因此一直是空转）。改为通过 window 调用 Part B 导出的接口。
+                //   同时不再注入"最新 66 条"，只取与本轮问题相关的少量条目（见 getRelevantMemories）。
                 var memoryText = '';
-                if (typeof extractFacts === 'function' && typeof addMemory === 'function' && typeof getRelevantMemories === 'function') {
-                    try {
-                        var newFacts = extractFacts(finalText);
-                        newFacts.forEach(function(f) { addMemory(f); });
-                        var memories = getRelevantMemories(finalText);
-                        if (memories.length) {
-                            memoryText = '【长期记忆】\n' + memories.map(function(m) { return '• ' + m.fact; }).join('\n') + '\n\n';
+                try {
+                    if (typeof window.dsExtractFacts === 'function' && typeof window.dsGetRelevantMemories === 'function') {
+                        var newFacts = window.dsExtractFacts(finalText);
+                        if (newFacts.length && typeof window.dsAddMemory === 'function') {
+                            newFacts.forEach(function (f) { window.dsAddMemory(f); });
                         }
-                    } catch(e) {}
-                }
+                        var memories = window.dsGetRelevantMemories(finalText, { exclude: newFacts, limit: 5 });
+                        if (memories.length) {
+                            memoryText = '【用户长期偏好】（仅在本轮问题相关时参考，不要主动复述或逐条罗列）\n'
+                                + memories.map(function (m) { return '• ' + m.fact; }).join('\n') + '\n\n';
+                        }
+                    }
+                } catch (e) {}
 
                 // ---- 4.6 系统提示 ----
                 var _tempSrc = window._tempDataSrc || null;
@@ -2322,12 +2353,24 @@
                 //   既无用又费 token（此前只排除了准则，资料仍会进 —— 本次审计发现的遗留）。
                 //   等价于该角色下"关联数据全不选"，不影响其它角色。
                 var hasAnySource = (_dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary) && !_isCodeRole;
+                // 【优化·速度】寒暄 / 元问题（"你好""你能做什么"）跳过本地检索：
+                //   复用「思考模式自动档」的同一判定函数（dsAutoThinkingEffort 返回 'off' 的那一批），
+                //   让"不必思考"与"不必检索"两个决定保持一致；省掉一次 KB.ensure 等待与约 4.5KB 注入。
+                var _trivialQ = false;
+                try {
+                    _trivialQ = (typeof window.dsAutoThinkingEffort === 'function')
+                        && window.dsAutoThinkingEffort(finalText) === 'off';
+                } catch (e) {}
+                // 【优化·准确性】对话温度：安监问答以"有据可依、口径一致"为先，0.7 偏高会带来
+                //   措辞漂移与添油加醋（表现为引用不严、结论发散、废话变多）。默认 0.35；
+                //   代码角色给 0.2（要确定性）；风险研判模块另有 0.3，不在本次范围内。
+                var _chatTemp = _isCodeRole ? 0.2 : 0.35;
                 // 【v3.74 卡滞修复】本地资料准备失败**不再中断对话**：降级为"无资料模式"继续回答。
                 //   这样资料侧的任何异常都不会把 dsStreaming 卡在 true（原先异常会跳过 finally 复位）。
                 var baseSystem;
                 try {
                     baseSystem = hasAnySource
-                        ? await dsBuildSystemPrompt(finalText, _dataSrc)
+                        ? await dsBuildSystemPrompt(finalText, _dataSrc, { skipData: _trivialQ })
                         : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
                 } catch (_prepErr) {
                     console.warn('[dsRunStream] 本地资料准备失败，降级为无资料模式：', _prepErr && _prepErr.message);
@@ -2362,6 +2405,14 @@
                 } catch (e) {}
                 // 全域统一升级：注入当前模块上下文（unified-enhancements.js 设置，未定义则无影响）
                 if (window.UNIFIED_TAB_CONTEXT) systemPrompt += '\n\n' + window.UNIFIED_TAB_CONTEXT;
+                // 【优化·角色贴合 + 废话抑制】这两段必须放在**最末尾**（在所有资料与准则之后）：
+                //   角色提示词在 system 最前面，中间夹着可达 4.5KB 的本地资料与各项准则，
+                //   越靠后的指令对模型的约束力越强；末尾再回扣一次角色 + 风格硬约束，
+                //   才能抵住长资料对"角色特征"和"少废话"的稀释。
+                try {
+                    if (typeof window.dsRoleRecall === 'function') systemPrompt += '\n\n' + window.dsRoleRecall(_roleInfo);
+                    if (window.CHAT_STYLE_NORMS) systemPrompt += '\n\n' + window.CHAT_STYLE_NORMS;
+                } catch (e) {}
                 if (_tempSrc) { window._tempDataSrc = null; }
 
                 // 【v3.74 卡滞修复】历史改用插入空助手气泡**之前**的快照（_reqHist）：
@@ -2573,7 +2624,7 @@
 
                     var _respEndpoints = dsResponsesUrlCandidates(dsApiUrl);
                     var responsesUrl = _respEndpoints[0];
-                    var inputItems = dsHistory.slice(-10)
+                    var inputItems = _reqHist
                         .map(function(m) { return { role: m.role, content: (m.content || '') }; })
                         .filter(function(m) { return !!m.content; });
                     // 联网分支：系统提示词已通过 instructions 传入（服务端会插入为首条 system 消息），
@@ -2623,10 +2674,10 @@
                                 model: dsModel,
                                 max_tokens: maxTokens,
                                 system: systemPrompt,
-                                messages: dsBuildAnthropicMessages(dsHistory.slice(-10), visionUserContent),
+                                messages: dsBuildAnthropicMessages(_reqHist, visionUserContent),
                                 tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
                                 stream: true,
-                                temperature: 0.7
+                                temperature: _chatTemp
                             };
                         } else {
                             b = {
@@ -2636,7 +2687,7 @@
                                 tools: [{ type: 'web_search' }],
                                 reasoning: { effort: thinkingOn ? _thinkEffort : 'none' },
                                 stream: true,
-                                temperature: 0.7,
+                                temperature: _chatTemp,
                                 max_output_tokens: maxTokens
                             };
                         }
@@ -2694,7 +2745,7 @@
                         }
                     } else {
                     // 思考模式参数：effort 由三档档位决定（自动档已按问题复杂度分级）
-                    var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
+                    var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: _chatTemp, max_tokens: maxTokens };
                     if (thinkingOn) { _chatBody.thinking = { type: 'enabled' }; _chatBody.reasoning_effort = _thinkEffort; }
                     else { _chatBody.thinking = { type: 'disabled' }; }
                     if (_useTools) { _chatBody.tools = _toolsParamArr; }   // Tool Calls：注入本地工具 schema
@@ -2717,7 +2768,7 @@
                             console.warn('[ds] 当前端点不支持 function calling → 本轮自动降级重试（不带 tools）。要精确查本地台账请用 /agent：' + String(errText).slice(0, 200));
                             _useTools = false; _toolsParamArr = null;
                             _toolsDegradedNote = '（说明：当前模型不支持工具调用，本轮已降级为普通对话；要精确查本地台账请在输入框用 `/agent 任务`，或改用支持工具调用的模型）';
-                            var _bodyNoTools = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
+                            var _bodyNoTools = { model: dsModel, messages: messages, stream: true, temperature: _chatTemp, max_tokens: maxTokens };
                             if (thinkingOn) { _bodyNoTools.thinking = { type: 'enabled' }; _bodyNoTools.reasoning_effort = _thinkEffort; } else { _bodyNoTools.thinking = { type: 'disabled' }; }
                             resp = await fetch(dsApiUrl, {
                                 method: 'POST',
@@ -2893,7 +2944,7 @@
                             dsHistory[assistantIdx].reasoning = '';
                             (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
                             // 后续轮次：回灌工具结果（仍带 tools，允许模型继续调用或总结）
-                            var _bodyN = { model: dsModel, messages: messages, stream: true, temperature: 0.7, max_tokens: maxTokens };
+                            var _bodyN = { model: dsModel, messages: messages, stream: true, temperature: _chatTemp, max_tokens: maxTokens };
                             if (thinkingOn) { _bodyN.thinking = { type: 'enabled' }; _bodyN.reasoning_effort = _thinkEffort; } else { _bodyN.thinking = { type: 'disabled' }; }
                             if (_useTools) { _bodyN.tools = _toolsParamArr; }
                             var _respN = await fetch(dsApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify(_bodyN), signal: window._dsAbortController.signal });
@@ -3130,7 +3181,12 @@
                 var reader = resp.body.getReader();
                 var decoder = new TextDecoder();
                 var buffer = '';
-                var _renderTick = 0;
+                // 【优化·速度】重绘节流：由"每 3 个 delta"改为"距上次重绘 ≥60ms"。
+                //   原实现假设 delta 均匀到达，但真实网络下 delta 常成簇到达（一个 TCP 段带几十个），
+                //   此时每 3 个就重绘 = 短时间内几十次全量 markdown 重解析 + 媒体池重建（O(n²)），
+                //   手机端明显掉帧；而 delta 稀疏时反而显得迟钝。按时间节流对两种情况都更稳。
+                var _lastPaint = 0;
+                var _PAINT_MS = 60;
                 while (true) {
                     var _chunk = await reader.read();
                     if (_chunk.done) break;
@@ -3164,8 +3220,9 @@
                                 }
                                 if (_delta) {
                                     dsHistory[idx].content += _delta;
-                                    _renderTick++;
-                                    if (_renderTick % 3 === 0) {
+                                    var _nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
+                                    if (_nowMs - _lastPaint >= _PAINT_MS) {
+                                        _lastPaint = _nowMs;
                                         var _cb = document.getElementById('ds-chat-box');
                                         if (_cb) {
                                             var _bs = _cb.querySelectorAll('.ds-bubble-assistant');
@@ -4507,36 +4564,103 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
         '5. 跨专业问题：先答本职专业，再点明需协同的专业与协同要点（如供电作业涉及车务登销记、电务联锁试验）。\n' +
         '6. 篇幅：默认紧凑、先给关键结论；用户要求「详细 / 展开」时再逐条深入。';
 
+      // 【优化·废话抑制】所有角色统一适用的回答风格硬约束（含 frontend 代码角色）。
+      //   为什么需要：原有【专业回答准则】管"准确性分层/术语/风险分级"，【输出规范】管"结构/引用/
+      //   建议可执行/篇幅"，但都**没有禁止**最常见的废话来源 —— 开场白、复述问题、客套结尾、
+      //   整段转述检索到的原文、为凑篇幅同义反复、多层标题包一个结论。
+      //   这一段放在 system 提示的**最末尾**（见 dsBuildSystemPrompt 调用处），位置靠后对模型约束力更强。
+      const CHAT_STYLE_NORMS =
+        '【回答风格（硬约束）】\n' +
+        '1. 直接给答案：第一句就是结论 / 结果 / 代码，不要"好的，我来帮你分析""这是个好问题"之类开场，也不要复述我的问题或我已经给出的背景。\n' +
+        '2. 不写废话结尾：不要"希望对您有帮助""如需进一步了解请告知""以上供参考"等客套，也不要在结尾再重复一遍正文要点。\n' +
+        '3. 不转述资料原文：检索到的条款 / 台账只取用得到的结论与关键数据（条款号、数字、时间），不要整段抄录。\n' +
+        '4. 不确定就一句话讲清（"待核实""需联网核实""本地无此数据"），不要用大段铺垫掩盖不确定，也不要为显得完整而堆砌无关内容。\n' +
+        '5. 分点 / 表格只在条目 ≥3 或需要对比时使用；只有一个结论就用一句话，不要为它铺多层小标题。禁止同义反复凑篇幅。\n' +
+        '6. 不用 emoji 与装饰性符号堆砌（用户使用或明确要求时除外）。\n' +
+        '7. 用户未要求"详细 / 展开 / 逐条"时，默认精炼作答；宁可少说，不要注水。';
+
+      // 【优化·角色贴合】把角色身份的一句话回扣放到提示词最末尾。
+      //   原因：角色提示词位于 system 开头，其后还插入了本地资料（可达 4.5KB）与各项准则，
+      //   位置越靠后对模型的"注意力"越强 ⇒ 长资料会把角色特征稀释掉（表现为"角色选了但答得一样"）。
+      //   末尾回扣一句，且不再重复角色全文（省 token）。
+      function buildRoleRecall(roleInfo) {
+        var label = (roleInfo && roleInfo.label) || '通用';
+        if (roleInfo && roleInfo.isCode) {
+          return '【本轮角色】你正在以「' + label + '」身份回答：直接给出可运行代码与必要说明，'
+               + '不要掺入铁路业务规章 / 台账内容，也不要写与代码无关的铺垫。';
+        }
+        return '【本轮角色】你正在以「' + label + '」身份回答：专业术语、分析框架与关注点必须与该角色一致；'
+             + '不要退化成"加强管理、提高认识"式的通用安全套话；跨专业时先答本职专业，'
+             + '再点明需协同的专业与协同要点。';
+      }
+
       // ---------- 3. 长期记忆管理 ----------
       const MEMORY_KEY = 'assistant_memory_v1';
       let userMemories = [];
       let memoryEnabled = true;
 
       function loadMemories() {
-        try { userMemories = JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]'); } catch(e) { userMemories = []; }
+        try {
+          var raw = JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]');
+          // 解析出非数组（如 '{}'）时原实现会让后续 .some/.slice 抛错，这里统一兜底为数组
+          userMemories = Array.isArray(raw)
+            ? raw.filter(function (m) { return m && typeof m.fact === 'string' && m.fact; })
+            : [];
+        } catch(e) { userMemories = []; }
       }
-      function saveMemories() { localStorage.setItem(MEMORY_KEY, JSON.stringify(userMemories)); }
+      function saveMemories() { try { localStorage.setItem(MEMORY_KEY, JSON.stringify(userMemories)); } catch (e) {} }
 
+      // 【优化·准确性】只记「稳定的偏好/背景」，不再把每一句提问都当长期记忆。
+      //   原实现 = 用户输入前 100 字（无条件），于是"帮我查下3号道岔"这类一次性问题也会被
+      //   存成"长期偏好"并注入后续每一轮 —— 既占 token，又让模型误判用户有该偏好，
+      //   是"答非所问 + 废话"的一条隐性来源。改为只在出现偏好/身份/长期约束信号词时记录。
       function extractFacts(text) {
-        // 无条件自动记忆：截取用户输入前100字作为记忆
-        var cleaned = text.replace(/\s+/g, ' ').trim();
-        return cleaned ? [cleaned.slice(0, 100)] : [];
+        var t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+        if (!t) return [];
+        // 寒暄 / 元问题 / 纯致谢：不构成偏好
+        if (/^(你好|您好|hi|hello|hey|在吗|在么|谢谢|感谢|多谢|辛苦|好的|收到|明白|ok|okay|测试|你是谁|你叫什么|你能做什么|你会做什么|介绍一下你)/i.test(t)) return [];
+        // 仅当出现「稳定偏好 / 身份 / 长期约束」信号词才记录
+        if (!/(我是|我在|我们单位|我们段|我们站|我们车间|本段|本人|以后|今后|下次|默认|习惯|偏好|尽量|务必|必须用|统一用|请不要|不用|别用|按照我们|按我们|格式要求|按这个格式|称呼|简称)/.test(t)) return [];
+        var fact = t.slice(0, 80).trim();
+        return fact ? [fact] : [];
       }
 
       function addMemory(fact) {
         if (!fact) return;
+        if (!memoryEnabled) return;   // 关闭「长期记忆」时连存储也不做（原实现只挡读取，仍在后台写入）
         // 去重：完全相同的记忆不重复存储
         if (userMemories.some(function(m) { return m.fact === fact; })) return;
         userMemories.push({ fact: fact, timestamp: Date.now() });
-        // 只保留最近66条记忆
-        if (userMemories.length > 66) userMemories = userMemories.slice(-66);
+        // 保留最近 40 条（原 66 条 × 100 字 ≈ 6.6KB，与"精简提示词"目标冲突）
+        if (userMemories.length > 40) userMemories = userMemories.slice(-40);
         saveMemories();
       }
 
-      function getRelevantMemories(query) {
+      // 取与本轮问题**相关**的记忆：按字符重合度排序 + 条数上限 + 排除刚写入的本轮内容。
+      //   原实现忽略 query、无条件返回最新 66 条 —— 与本轮无关的内容会稀释提示词并引发跑题。
+      //   宁缺毋滥：无相关记忆时返回空数组（不注入）。
+      function getRelevantMemories(query, opts) {
         if (!memoryEnabled) return [];
-        // 无条件返回最近记忆，按时间倒序取最新66条（注入上限由调用方控制）
-        return userMemories.slice(-66).reverse();
+        opts = opts || {};
+        var exclude = opts.exclude || [];
+        var limit = opts.limit || 5;
+        var q = String(query == null ? '' : query);
+        var qChars = {};
+        for (var i = 0; i < q.length; i++) {
+          var ch = q.charAt(i);
+          if (/[\u4e00-\u9fa5A-Za-z0-9]/.test(ch)) qChars[ch] = 1;
+        }
+        var pool = userMemories.slice().reverse();   // 新的优先
+        if (exclude.length) pool = pool.filter(function (m) { return exclude.indexOf(m.fact) === -1; });
+        var scored = pool.map(function (m) {
+          var hit = 0;
+          for (var k in qChars) { if (m.fact.indexOf(k) !== -1) hit++; }
+          return { m: m, hit: hit };
+        });
+        var relevant = scored.filter(function (x) { return x.hit >= 2; });   // 至少 2 个字重合才算相关
+        if (!relevant.length) return [];
+        relevant.sort(function (a, b) { return (b.hit - a.hit) || (b.m.timestamp - a.m.timestamp); });
+        return relevant.slice(0, limit).map(function (x) { return x.m; });
       }
 
       // 清空全部长期记忆（设置面板"清空"按钮调用）
@@ -4551,6 +4675,13 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
         }
       }
       window.clearLongTermMemory = clearLongTermMemory;
+      // 【优化·修复失效】导出记忆三函数：Part A 的对话流程需要调用。
+      //   此前只导出了 clearLongTermMemory，而 Part A 用的是裸标识符 `extractFacts`，
+      //   跨 IIFE 取不到 ⇒ typeof 判断恒假 ⇒ 长期记忆整体从未生效。
+      window.dsExtractFacts = extractFacts;
+      window.dsAddMemory = addMemory;
+      window.dsGetRelevantMemories = getRelevantMemories;
+      window.dsLoadMemories = loadMemories;
 
       // ---------- 4. 轻量级 BM25 检索器 ----------
       // 【v3.72 重构】旧实现每次检索都要对**全部文档重新分词**，而 _build 里算出来的倒排表用完即丢。
@@ -5732,6 +5863,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       // ---------- 9. 增强 dsSendMsg（角色提示词 + 记忆）----------
       window.ROLE_PROMPTS = ROLE_PROMPTS;
       window.ROLE_OUTPUT_NORMS = ROLE_OUTPUT_NORMS;   // v3.76：专业角色统一输出规范（frontend 不追加）
+      // 【优化】废话抑制硬约束 + 角色回扣：由 Part A 在 system 提示末尾追加（Part A 跨 IIFE 需经 window）
+      window.CHAT_STYLE_NORMS = CHAT_STYLE_NORMS;
+      window.dsRoleRecall = buildRoleRecall;
 
       /**
        * 【2026-09-27 角色作用审计】统一的「当前角色」读取口 —— 单一事实来源。

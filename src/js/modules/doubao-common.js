@@ -871,6 +871,87 @@
     //   ① Anthropic 兼容层 POST /messages + tools:[{type:'web_search_20250305'}] —— DeepSeek 唯一真正联网的通道；
     //   ② Responses API + tools:[{type:'web_search'}] —— 其它供应商（OpenAI 等）用，DeepSeek 下官方会忽略检索。
     // 约定：**没有 Key / 通道不可用 / 未检索到内容 → 都返回 ok:false**，由调用方走保底。
+    /**
+     * 【2026-09-29】链接**预读**：把用户给的网址真正读一次，产出可注入 system 的摘录。
+     * 为什么要它：此前"读链接"完全外包给服务端的**按关键词检索** —— 检索 ≠ 读该页；
+     *   模型检索不到时就容易"顺着域名猜内容"（比承认读不到更糟）。这里改为：
+     *   用现有联网通道做一次「以该网址为目标」的定向读取，把真正的正文摘录并入本轮 system。
+     * 为什么不前端抓取：CSP 的 connect-src 是白名单（index.html:63-73），直连 CORS 代理会被硬拦；
+     *   iframe 也不行（跨域读不到 contentDocument）。本层**零新依赖、零新域名**。
+     * 缓存：同一网址 30 分钟内不重复读（省时间与额度）；最多读 2 个链接（余下在摘录里列名说明）。
+     * 返回 { ok, digest, links:[{url,ok,chars}], fromCache, reason }
+     */
+    window.dsLinkPreRead = async function (links, question, opts) {
+        opts = opts || {};
+        var urls = (Array.isArray(links) ? links : []).filter(Boolean).map(String);
+        var seen = {}, uniq = [];
+        urls.forEach(function (u) { var k = u.toLowerCase(); if (!seen[k]) { seen[k] = 1; uniq.push(u); } });
+        if (!uniq.length) return { ok: false, reason: 'no-link' };
+        var MAX = opts.maxLinks || 2;                 // 再多只读前 2 个（避免拖长首字延迟）
+        var todo = uniq.slice(0, MAX);
+        var restOf = uniq.slice(MAX);
+        if (typeof window.dsWebSearchOnce !== 'function') return { ok: false, reason: 'no-websearch-api' };
+        var KEY = '_ds_link_read_cache_v1';
+        var TTL = 30 * 60 * 1000;
+        var cache = {};
+        try { cache = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cache = {}; }
+        var parts = [], linksOut = [], fromCache = true, anyOk = false;
+        for (var i = 0; i < todo.length; i++) {
+            var u = todo[i], hit = cache[u];
+            if (hit && hit.ts && (Date.now() - hit.ts) < TTL && hit.text) {
+                parts.push('〔来源 ' + (i + 1) + '〕' + u + '\n' + hit.text);
+                linksOut.push({ url: u, ok: true, chars: hit.text.length, cached: true });
+                anyOk = true;
+                continue;
+            }
+            fromCache = false;
+            var sys = '你是网页正文读取器。请**打开并阅读**用户给出的这个网址，逐段摘录其正文要点，'
+                + '保留关键数字、条款号与原文表述；若该页是列表/导航页，摘录其可见条目标题。'
+                + '只输出摘录本身，不要评价、不要客套、不要解释你做了什么。'
+                + '如果确实无法打开该网址，只回一行：READ_FAILED（不要编造内容）。';
+            var usr = '要读取的网址：' + u + (question ? ('\n（用户就这个链接提的问题是：' + String(question).slice(0, 200) + '）') : '')
+                + '\n\n请优先用检索工具打开该网址本身（检索词可直接用该网址或其标题），然后摘录正文。';
+            var r = null;
+            try {
+                r = await window.dsWebSearchOnce(sys, usr, {
+                    maxUses: opts.maxUses || 2, maxTokens: opts.maxTokens || 1600, timeoutMs: opts.timeoutMs || 30000
+                });
+            } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+            var txt = (r && r.ok && r.text) ? String(r.text).trim() : '';
+            if (txt && /^READ_FAILED\b/i.test(txt)) txt = '';
+            if (txt) {
+                anyOk = true;
+                parts.push('〔来源 ' + (i + 1) + '〕' + u + '\n' + txt);
+                linksOut.push({ url: u, ok: true, chars: txt.length });
+                cache[u] = { ts: Date.now(), text: txt.slice(0, 4000) };
+            } else {
+                linksOut.push({ url: u, ok: false, error: (r && (r.error || r.status)) || 'read-failed' });
+            }
+        }
+        // 修剪缓存（最多 8 条，保留最新的）
+        try {
+            var ks = Object.keys(cache);
+            if (ks.length > 8) {
+                ks.sort(function (a, b) { return (cache[b].ts || 0) - (cache[a].ts || 0); });
+                var keep = {};
+                ks.slice(0, 8).forEach(function (k) { keep[k] = cache[k]; });
+                cache = keep;
+            }
+            localStorage.setItem(KEY, JSON.stringify(cache));
+        } catch (e) {}
+        if (!anyOk) return { ok: false, links: linksOut, reason: 'read-failed', digest: '' };
+        var digest = parts.join('\n\n');
+        if (restOf.length) {
+            digest += '\n\n（用户还给了其它链接，本轮未预读：' + restOf.join('、') + ' —— 如需其内容请说明。）';
+        }
+        var failed = linksOut.filter(function (x) { return !x.ok; });
+        if (failed.length) {
+            digest += '\n\n（以下链接本次未能读取，请如实说明读不到，不要猜测其内容：'
+                + failed.map(function (x) { return x.url; }).join('、') + '）';
+        }
+        return { ok: true, digest: digest, links: linksOut, fromCache: fromCache };
+    };
+
     window.dsWebSearchOnce = async function (sysPrompt, userPrompt, opts) {
         opts = opts || {};
         var apiKey = '';

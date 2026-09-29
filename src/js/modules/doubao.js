@@ -2618,6 +2618,30 @@
                                 + '**严禁根据域名、URL 中的关键词去猜测或编造网页内容**——这比读不到更糟；\n'
                                 + '12) 引用链接内容时标注来源，方便用户核对。';
                         }
+                        // 【2026-09-29 链接抓取增强·第 1 层】**链接预读**：真的把这个网址读一次，正文摘录并入 system。
+                        //   治的是老毛病：服务端"按关键词检索"≠ 读该页，模型读不到时倾向顺着域名猜内容。
+                        //   零新依赖、零新域名（不动 CSP）；失败如实降级为"未预读"，由上面 9~12 条纪律兜底。
+                        if (_turnLinks.length && typeof window.dsLinkPreRead === 'function') {
+                            window.__dsLinkRead = null;
+                            try { if (typeof window.dsAppendMsg === 'function') window.dsAppendMsg('system', '🔗 正在读取链接内容…'); } catch (e) {}
+                            try {
+                                var _lr = await window.dsLinkPreRead(_turnLinks, finalText);
+                                window.__dsLinkRead = _lr || { ok: false, reason: 'null' };
+                                if (_lr && _lr.ok && _lr.digest) {
+                                    systemPrompt += '\n\n【链接正文已预读（下列内容由联网通道实际读取，可直接引用）】\n' + _lr.digest
+                                        + '\n（与预读冲突时以预读为准；预读未覆盖的部分，不确定就说不确定，**不要编造**。）';
+                                }
+                                try {
+                                    if (typeof window.dsAppendMsg === 'function') {
+                                        window.dsAppendMsg('system', (_lr && _lr.ok)
+                                            ? ('🔗 已读取链接内容（' + String((_lr && _lr.digest) || '').length + ' 字' + (_lr.fromCache ? '，命中缓存' : '') + '），已并入本轮回答依据')
+                                            : '🔗 链接未能读取：已要求模型如实说明，不得猜测网页内容');
+                                    }
+                                } catch (e) {}
+                            } catch (e2) {
+                                window.__dsLinkRead = { ok: false, reason: String((e2 && e2.message) || e2) };
+                            }
+                        }
                     } else {
                         try {
                             if (messages[0] && messages[0].role === 'system') {
@@ -2950,6 +2974,8 @@
                             queries: _wsRes.queries || [],
                             endpoint: _respEndpointUsed,
                             channel: _wsKindUsed,
+                            // 【2026-09-29】链接预读结果（用户给了链接时才有）—— 供证据条显示"链接读到没"
+                            linkRead: (window.__dsLinkRead || null),
                             failed: !!_wsRes.failed,
                             retryFailed: _wsRetryFail || '',
                             // 按需检索：问候/闲聊/写作等无需实时信息的问题即便零检索也不算异常，证据条不再打扰
@@ -3727,6 +3753,18 @@
                 if (!w) return '';
                 var base = 'display:flex;width:fit-content;align-items:center;gap:5px;margin-bottom:8px;padding:3px 9px;border-radius:999px;font-size:0.74rem;line-height:1.5;border:1px solid ';
                 var txt, style;
+                // 【2026-09-29】先把"用户给的链接到底读到没"摆出来（链接预读结果，一眼可辨）
+                var _lrLine = '';
+                try {
+                    var _lr = w.linkRead;
+                    if (_lr) {
+                        _lrLine = _lr.ok
+                            ? '<div style="' + base + 'rgba(77,107,254,0.35);background:rgba(77,107,254,0.10);color:var(--ds-blue)">'
+                                + dsEsc('🔗 已读取链接 ' + (((_lr.links || []).length) || 1) + ' 个（' + (_lr.chars || 0) + ' 字，已并入本轮依据）') + '</div>'
+                            : '<div style="' + base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)">'
+                                + dsEsc('🔗 链接未能读取（' + String(_lr.reason || '') + '）—— 已要求模型如实说明，不猜测内容') + '</div>';
+                    }
+                } catch (e) {}
                 if (w.conflict) {
                     txt = '📎 本次含图片：已切换视觉通道（联网检索接口不支持图片，本次未联网）';
                     style = base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)';
@@ -3747,7 +3785,7 @@
                     txt = '⚠️ 本次未取得实时检索结果' + rf + '，以下内容来自模型内部知识（可能已过时），请勿当作实时信息';
                     style = base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)';
                 }
-                return '<div style="' + style + '">' + dsEsc(txt) + '</div>';
+                return _lrLine + '<div style="' + style + '">' + dsEsc(txt) + '</div>';
             }
 
             function dsBubbleInner(idx) {

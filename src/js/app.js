@@ -552,8 +552,17 @@ window.onclick = function(e) {
     // 表现就是「部分功能点不了」。
     var _regPromise = null;
     try {
+        // 【优化·更新可靠性】必须传 updateViaCache:'none'：不传时取默认值 'imports'，
+        //   即**离线组件脚本 sw.js 本身可以走浏览器的 HTTP 缓存**。本项目部署在
+        //   "不发 Cache-Control"的静态托管上时，浏览器会按启发式新鲜度直接复用旧副本，
+        //   于是「设置 → 检查更新 → 立即更新」里的 reg.update() 可能拿到**同一个旧 sw.js**
+        //   ⇒ 新 SW 永远不进入 waiting ⇒ 20×400ms 轮询超时 ⇒ 落到 forceHardReload 核弹路径
+        //   （清掉全部离线缓存 + 注销 SW + 整包重下），用户感受就是"更新很慢，且更新后第一次
+        //   打开还是远程"。加上该选项后，sw.js 的检查**永远真联网**（这正是"系统更新要走远程"
+        //   的应有语义），正常路径才能生效：新 SW 后台预缓存 → 用户点更新 → 换版本 → 重载走新缓存。
+        //   注意：它只影响"检查 sw.js 更新"这一步，不影响导航——页面仍是缓存优先（本地加载）。
         _regPromise = (!_swSkipForFile && navigator.serviceWorker && navigator.serviceWorker.register)
-            ? navigator.serviceWorker.register('sw.js')
+            ? navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
             : null;
     } catch (swErr) {
         console.warn('[PWA] SW 注册异常，降级为无离线模式:', swErr && swErr.message);
@@ -1495,7 +1504,7 @@ window.dsRepairOffline = function () {
                 });
             } catch (e) { return null; }
         }).then(function () {
-            try { return navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (e) {}
+            try { return navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {}); } catch (e) {}
         }).then(go, go);
     } catch (e) {
         try { location.replace(location.href.split('#')[0]); } catch (e2) {}

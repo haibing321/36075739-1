@@ -1015,6 +1015,17 @@
         if (cacheRate !== null) parts.push('缓存命中 ' + cacheRate + '%');
         if (cut) parts.push('回答不完整 ' + cut + ' 次');
         if (failed) parts.push('失败 ' + failed + ' 次');
+        // 【P2】KB 注入与过滤的可视化：证明"低分块前移过滤 + 按源保底配额"确实在生效，
+        //   也便于调 kb_min_score_ratio（比例太高会只剩极少块，太低等于没过滤）。
+        var kbRounds = last.filter(function (r) { return r && r.kbInjected > 0; });
+        if (kbRounds.length) {
+            var kbAvg = Math.round(kbRounds.reduce(function (a, r) { return a + r.kbInjected; }, 0) / kbRounds.length);
+            parts.push('KB 注入均值 ' + kbAvg + ' 字');
+        }
+        var kbDrop = last.reduce(function (a, r) { return a + ((r && r.kbDropped) || 0); }, 0);
+        if (kbDrop) parts.push('过滤弱相关 ' + kbDrop + ' 块');
+        var anchor = last.filter(function (r) { return r && r.hasOlderSummary; }).length;
+        if (anchor) parts.push('摘要锚点 ' + anchor + ' 轮');
         // 明确说明"为什么这一行看起来没数据"，避免用户看到一个空值不知所云。
         // 已知口径：usage 仅从 chat/completions 流式末块采集；联网走 Responses/Anthropic 通道时不带，
         // 失败轮也可能根本没能拿到 usage。

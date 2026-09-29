@@ -1570,6 +1570,62 @@
                 return { saved: saved, errors: errors, processed: files.length, libFail: false, skipped: skipped };
             };
 
+            /**
+             * 【2026-09-29】把一段**网页正文**存为资料（智能对话「📥 存为资料」专用）。
+             * 为什么单开一个：`wrImportFiles` 只吃 File[]（内部靠 file.name/size 解析），
+             *   而这里拿到的是已经抓好的纯文本 + 来源 URL。
+             * 去重口径：**同一 URL 已有条目 ⇒ 更新正文与时间**（不新增重复条目）；没有才新增。
+             * 入库后必须失效检索索引（materials 是异步源、其列表被缓存），否则新资料检索不到。
+             * 返回 { ok, id, updated, title }
+             */
+            window.wrSaveTextMaterial = async function (info) {
+                info = info || {};
+                var url = String(info.url || '').trim();
+                var text = String(info.content || '').trim();
+                if (!text) return { ok: false, error: '空内容' };
+                var host = '';
+                try { host = url ? new URL(url).host : ''; } catch (e) {}
+                var title = String(info.title || '').trim() || (url ? url.replace(/^https?:\/\//, '').slice(0, 60) : '网页正文');
+                var now = Date.now();
+                var item = {
+                    matType: info.matType || 'other',                 // 不新增类型（避免同步 4 处枚举），归入"其它"
+                    fileName: host ? ('网页-' + host) : '网页正文',
+                    title: title.slice(0, 80),
+                    fileSize: text.length,
+                    importAt: now,
+                    createdAt: now,
+                    content: text.slice(0, 20000),                     // 与既有条目同口径（≤20000）
+                    rawText: text.slice(0, 5000),
+                    source: '网页' + (host ? '：' + host : ''),          // 渲染侧 📍 徽章直接可用
+                    url: url
+                };
+                var afterWrite = function () {
+                    try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('materials'); } catch (e) {}
+                    try { if (typeof window.wrRenderMaterials === 'function') window.wrRenderMaterials(); } catch (e) {}
+                };
+                try {
+                    if (url) {
+                        var all = [];
+                        try { all = await wrDbGetAll(WR_MAT_STORE); } catch (e0) { all = []; }
+                        var hit = null;
+                        (all || []).forEach(function (m) { if (!hit && m && m.url === url) hit = m; });
+                        if (hit && hit.id != null) {
+                            item.id = hit.id;
+                            await wrDbPut(WR_MAT_STORE, item);
+                            afterWrite();
+                            console.log('[资料] 同链接已存在，已更新：' + item.title);
+                            return { ok: true, id: hit.id, updated: true, title: item.title };
+                        }
+                    }
+                    var id = await wrDbPut(WR_MAT_STORE, item);
+                    afterWrite();
+                    console.log('[资料] 已存为资料：' + item.title + '（' + text.length + ' 字）');
+                    return { ok: true, id: id, updated: false, title: item.title };
+                } catch (e) {
+                    return { ok: false, error: String((e && e.message) || e) };
+                }
+            };
+
             // 单文件解析 → 填充 item（原「资料中心导入」的解析主体，逐字搬移，勿改语义）
             async function wrParseIntoItem(item, file, matType) {
                 {

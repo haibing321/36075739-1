@@ -1945,6 +1945,17 @@
                     try { localStorage.setItem(DS_EMBED_TIP_KEY, '1'); } catch (err) {}
                     return;
                 }
+                // 【2026-09-29】「📥 存为资料」：证据条来源行上的按钮。
+                //   属性里直接带 url/title（不依赖渲染顺序，也不与消息 id 耦合）；点击后用 dsSaveLinkAsMaterial 取正文落库。
+                var svBtn = t.closest('[data-ds-save-url]');
+                if (svBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var _su = svBtn.getAttribute('data-ds-save-url') || '';
+                    var _st = svBtn.getAttribute('data-ds-save-title') || '';
+                    if (_su) { try { window.dsSaveLinkAsMaterial(_su, _st); } catch (err) {} }
+                    return;
+                }
                 // 正文里的链接（dsAutoLink 生成的 a.ds-md-link）：一律改为在对话区内嵌打开。
                 // 保留标准浏览器习惯 —— Ctrl/Cmd/Shift+点击、中键（走 auxclick）仍交给系统浏览器新标签，
                 // 这样"想对照两个网页"的老习惯不会被破坏。媒体卡片上的「新窗口打开 ↗」不属此类，不受影响。
@@ -1987,7 +1998,16 @@
                     sub: links.length > 1 ? (host + ' 等 ' + links.length + ' 个') : host,
                     actions: [
                         { label: '🔗 直接打开', onClick: function () { dsOpenLinkEmbed(links[0]); } },
-                        { label: '📖 让 AI 读', primary: true, onClick: dsReadLinkWithAI }
+                        { label: '📖 让 AI 读', primary: true, onClick: dsReadLinkWithAI },
+                        // 【2026-09-29】用户要求：智能对话里"把这页存为资料" —— 贴链接时就给一次性入口
+                        { label: '📥 存为资料', onClick: function () {
+                            try {
+                                var _ls = (links || []).slice(0, 4);
+                                dsChoiceHide();
+                                try { window.Toast.info('正在读取并存入资料（' + _ls.length + ' 个）…'); } catch (e) {}
+                                _ls.forEach(function (_u) { try { window.dsSaveLinkAsMaterial(_u, ''); } catch (e2) {} });
+                            } catch (e) {}
+                        } }
                     ]
                 });
             }
@@ -3749,7 +3769,50 @@
             }
 
             // 联网检索证据条：把「本轮是否真的联网」摆在用户眼前，杜绝「说联网其实没联网」的假成功
-            function dsWebChip(m) {
+                /**
+     * 【2026-09-29】把链接正文**存为资料**（智能对话内「📥 存为资料」按钮共用）。
+     * 取正文顺序（越前越省）：① 预读缓存（30 分钟内、含正文与标题）→ ② 阅读器单页直取（第 2 层）→ ③ 模型定向读（第 1 层）。
+     * 落库走 smart-writer 的 wrSaveTextMaterial（同一 URL ⇒ 更新，不堆重复条目），并失效检索索引。
+     */
+    window.dsSaveLinkAsMaterial = async function (url, title) {
+        var u = String(url || '').trim();
+        if (!/^https?:\/\//i.test(u)) { try { window.Toast.warn('无效链接'); } catch (e) {} return { ok: false, error: 'bad-url' }; }
+        try { window.Toast.info('正在读取并存入资料…'); } catch (e) {}
+        var text = '', t = String(title || '').trim(), ch = '';
+        try {
+            var cache = JSON.parse(localStorage.getItem('_ds_link_read_cache_v1') || '{}') || {};
+            var hit = cache[u];
+            if (hit && hit.text && (Date.now() - (hit.ts || 0)) < 30 * 60 * 1000) {
+                text = hit.text; t = t || hit.title || ''; ch = hit.channel || 'cache';
+            }
+        } catch (e) {}
+        if (!text && typeof window.dsFetchPage === 'function') {
+            try {
+                var r = await window.dsFetchPage(u, { maxChars: 20000 });
+                if (r && r.ok) { text = r.text; t = t || r.title || ''; ch = 'reader'; }
+            } catch (e) {}
+        }
+        if (!text && typeof window.dsLinkPreRead === 'function') {
+            try {
+                var r2 = await window.dsLinkPreRead([u], '');
+                if (r2 && r2.ok) { text = r2.digest; ch = 'model'; }
+            } catch (e) {}
+        }
+        if (!text) { try { window.Toast.error('未能读取该页面，无法存为资料'); } catch (e) {} return { ok: false, error: 'read-failed' }; }
+        if (typeof window.wrSaveTextMaterial !== 'function') {
+            try { window.Toast.error('资料模块未就绪，请稍后再试'); } catch (e) {}
+            return { ok: false, error: 'no-writer' };
+        }
+        var res = null;
+        try { res = await window.wrSaveTextMaterial({ title: t, content: text, url: u }); } catch (e) { res = { ok: false, error: String((e && e.message) || e) }; }
+        try {
+            if (res && res.ok) window.Toast.success((res.updated ? '已更新资料：' : '已存为资料：') + (t || u) + '（' + text.length + ' 字·' + ch + '）');
+            else window.Toast.error('存为资料失败：' + ((res && res.error) || ''));
+        } catch (e) {}
+        return res || { ok: false };
+    };
+
+function dsWebChip(m) {
                 var w = m && m.web;
                 if (!w) return '';
                 var base = 'display:flex;width:fit-content;align-items:center;gap:5px;margin-bottom:8px;padding:3px 9px;border-radius:999px;font-size:0.74rem;line-height:1.5;border:1px solid ';
@@ -3770,11 +3833,16 @@
                                     var label = (x.title && String(x.title).trim()) ? String(x.title).trim().slice(0, 46) : String(x.url).replace(/^https?:\/\//, '').slice(0, 46);
                                     var ch = (x.channel === 'reader') ? '阅读器' : (x.channel === 'model' ? '联网检索' : '');
                                     var meta = ' · ' + (x.chars || 0) + ' 字' + (ch ? ' · ' + ch : '') + (x.cached ? ' · 缓存' : '');
-                                    return '<a href="' + dsEsc(href) + '" target="_blank" rel="noopener" '
+                                    return '<div style="display:flex;gap:6px;align-items:center;">'
+                                        + '<a href="' + dsEsc(href) + '" target="_blank" rel="noopener" '
                                         + 'style="display:flex;gap:6px;align-items:baseline;color:var(--ds-blue);text-decoration:none;'
-                                        + 'padding:2px 0;line-height:1.5;"><b style="flex:0 0 auto;">来源' + (i + 1) + '</b>'
+                                        + 'flex:1 1 auto;min-width:0;padding:2px 0;line-height:1.5;"><b style="flex:0 0 auto;">来源' + (i + 1) + '</b>'
                                         + '<span style="flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + dsEsc(label) + '</span>'
-                                        + '<span style="flex:0 0 auto;opacity:.75;">' + dsEsc(meta) + '</span></a>';
+                                        + '<span style="flex:0 0 auto;opacity:.75;">' + dsEsc(meta) + '</span></a>'
+                                        + '<button type="button" data-ds-save-url="' + dsEsc(x.url) + '" data-ds-save-title="' + dsEsc(label) + '" '
+                                        + 'title="把这页存为资料" style="flex:0 0 auto;border:1px solid rgba(77,107,254,.45);background:transparent;'
+                                        + 'color:var(--ds-blue);border-radius:6px;padding:1px 6px;font-size:.72rem;cursor:pointer;line-height:1.4;">📥</button>'
+                                        + '</div>';
                                 }).join('');
                                 _lrLine += '<div style="display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:6px 10px;'
                                     + 'border-radius:10px;border:1px solid rgba(77,107,254,0.25);background:rgba(77,107,254,0.05);'

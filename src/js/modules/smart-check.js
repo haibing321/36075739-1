@@ -2184,6 +2184,16 @@
                     '【输出要求】只输出一个合法JSON对象，禁止使用代码块（```），禁止任何说明文字。',
                     '【correctedQuery】输出完整的问题描述原文（不要省略）。',
                     _aiTrade ? '【专业指引】本次问题推断涉及"' + _aiTrade + '"专业，请优先选用该专业规章条款。' : '',
+                    // 【P1 角色下沉】按专业补该专业的「术语与条款 / 专业边界」两行（来自 doubao.js 的角色表）：
+                    //   对规本质是"用词匹配"，术语口径直接影响准确率（如"分路不良"与"轨道电路不良"）；
+                    //   专业边界则防止选到外专业条款。只注入两行，不塞完整角色提示（避免稀释 JSON 选择指令）。
+                    (function () {
+                        try {
+                            var _norms = (typeof window.dsTradeNorms === 'function' && _aiTrade)
+                                ? window.dsTradeNorms(_aiTrade) : '';
+                            return _norms ? '【本专业口径】\n' + _norms : '';
+                        } catch (e) { return ''; }
+                    })(),
                     '示例：{"correctedQuery":"机车备品管理问题","selectedIds":["cand_0","cand_2"],"reason":"备品不符"}',
                     '',
                     '候选条款列表：',

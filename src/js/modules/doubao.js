@@ -2365,6 +2365,15 @@
                 //   措辞漂移与添油加醋（表现为引用不严、结论发散、废话变多）。默认 0.35；
                 //   代码角色给 0.2（要确定性）；风险研判模块另有 0.3，不在本次范围内。
                 var _chatTemp = _isCodeRole ? 0.2 : 0.35;
+                // 【P1 指标】本轮度量的起点放在这里 —— 它把 KB 准备等待也算进去，
+                //   那正是用户感知的"点发送到出字"的时间（而不只是网络往返）。
+                //   记录在 finally 里落盘（见 dsRecordAiMetrics）。
+                var _turnMetrics = {
+                    t0: (window.performance && performance.now) ? performance.now() : Date.now(),
+                    ts: Date.now(),
+                    role: selectedRole,
+                    model: dsModel
+                };
                 // 【v3.74 卡滞修复】本地资料准备失败**不再中断对话**：降级为"无资料模式"继续回答。
                 //   这样资料侧的任何异常都不会把 dsStreaming 卡在 true（原先异常会跳过 finally 复位）。
                 var baseSystem;
@@ -2377,7 +2386,16 @@
                     baseSystem = '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
                 }
                 clearTimeout(_prepHintTimer);   // 准备结束：撤掉"正在准备本地资料"的延时提示
-                var systemPrompt = rolePrompt + memoryText + baseSystem;
+                // 【优化·P0 前缀稳定化】拼装顺序改为「稳定段在前、变量段在后」。
+                //   依据：DeepSeek 上下文硬盘缓存默认开启，但命中要求**完整匹配缓存前缀单元**
+                //   （官方文档：前缀单元 = 用户输入结束位置 / 模型输出结束位置 / 系统检测到的公共前缀）。
+                //   原顺序把"长期记忆 → KB 本地资料"这两段**每轮都变**的内容排在第 2、3 位，
+                //   于是两轮不同提问之间可复用的公共前缀只剩开头的角色段（≈470 字）。
+                //   现改为：角色 → 输出规范 → 专业准则 → 风格约束（稳定段，≈1800 字 ≈1100 tokens）
+                //          → 记忆 → KB 资料 → 媒体规范 → 日期 → 模块上下文（变量段）
+                //          → 角色回扣（80 字短尾，满足"末位约束力"且不影响缓存前缀）
+                //   ⇒ 每一轮都能命中稳定段：首字更快、输入更省。
+                var systemPrompt = rolePrompt;   // 稳定段①：角色全文 + ROLE_OUTPUT_NORMS
                 // 通用专业准则与知识更新指引：对所有角色/默认生效，强化专业深度、准确性与时效
                 var proRoleGuidelines = '\n\n【专业回答准则】\n' +
                   '1. 知识分层：①铁路业务规章/检查信息/手册以本地数据库为权威源，必须优先检索并引用真实条款与案例；②涉及最新政策、标准修订、外部新闻、天气行情等时效信息，联网时直接引用检索结果并标注日期与来源；③本地未覆盖且未联网时，明确告知“需联网核实”，严禁臆造。\n' +
@@ -2385,6 +2403,15 @@
                   '3. 专业性：使用铁路行业规范术语；多专业问题从“人、机、环、管”与风险分级（高/中/低）视角结构化作答。';
                 // 【v3.76】代码角色（frontend）不追加铁路业务准则（同上：避免业务框架污染代码任务）
                 if (!_isCodeRole) systemPrompt += proRoleGuidelines;
+                // 稳定段③：废话抑制硬约束。原先放在最末尾，现前移到稳定段以吃满缓存；
+                //   "少废话"的末位约束力由末尾的角色回扣承担（实测风格漂移的主因是长资料稀释角色，
+                //   而不是这条的位置）。
+                try { if (window.CHAT_STYLE_NORMS) systemPrompt += '\n\n' + window.CHAT_STYLE_NORMS; } catch (e) {}
+                // ══ 变量段开始：以下内容每轮 / 每问都可能变化，必须排在稳定段之后 ══
+                //   注意必须带 '\n\n' 分隔：稳定段末尾（风格约束）没有结尾换行，
+                //   直接拼接会让"不要注水。"与下一段首句粘成一行。
+                if (memoryText) systemPrompt += '\n\n' + memoryText;
+                systemPrompt += '\n\n' + baseSystem;
                 // 媒体输出规范：用户问图片/视频/音乐时，引导模型给出可内嵌显示的直链（而非仅给网页地址）
                 try {
                     if (/图片|照片|配图|插图|图库|海报|视频|MV|音乐|歌曲|音频|听歌|铃声|封面|素材/i.test(finalText)) {
@@ -2405,15 +2432,16 @@
                 } catch (e) {}
                 // 全域统一升级：注入当前模块上下文（unified-enhancements.js 设置，未定义则无影响）
                 if (window.UNIFIED_TAB_CONTEXT) systemPrompt += '\n\n' + window.UNIFIED_TAB_CONTEXT;
-                // 【优化·角色贴合 + 废话抑制】这两段必须放在**最末尾**（在所有资料与准则之后）：
-                //   角色提示词在 system 最前面，中间夹着可达 4.5KB 的本地资料与各项准则，
-                //   越靠后的指令对模型的约束力越强；末尾再回扣一次角色 + 风格硬约束，
-                //   才能抵住长资料对"角色特征"和"少废话"的稀释。
+                // 【优化·角色贴合】末尾只保留一句角色回扣。角色提示词在 system 最前面，
+                //   中间隔着可达 4.5KB 的本地资料，越靠后的指令约束力越强，末尾回扣一句
+                //   即可抵住长资料对"角色特征"的稀释。（风格硬约束已前移到稳定段以吃缓存。）
                 try {
                     if (typeof window.dsRoleRecall === 'function') systemPrompt += '\n\n' + window.dsRoleRecall(_roleInfo);
-                    if (window.CHAT_STYLE_NORMS) systemPrompt += '\n\n' + window.CHAT_STYLE_NORMS;
                 } catch (e) {}
                 if (_tempSrc) { window._tempDataSrc = null; }
+                // 【P1 指标】提示词体积与历史条数：用于对照"前缀稳定化"前后缓存命中率的变化
+                _turnMetrics.promptChars = systemPrompt.length;
+                _turnMetrics.histMsgs = _reqHist.length;
 
                 // 【v3.74 卡滞修复】历史改用插入空助手气泡**之前**的快照（_reqHist）：
                 //   否则会把那条空的 assistant 也发给模型（原实现靠"先建 messages、再 push 气泡"的顺序规避）。
@@ -2444,7 +2472,10 @@
                     }, _reqTimeoutMs);
                     var isFrontendRole = selectedRole === 'frontend';
                     var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
-                    var maxTokens = (isFrontendRole || isCodeRequest) ? 8192 : 4096;
+                    // 【P1 输出完整性】平台默认输出上限：非思考 8K、思考 64K（官方 Chat Completions 文档）。
+                    //   原先非思考只给 4096 —— 低于平台默认一倍，长报告（月度/专项）容易被静默截断；
+                    //   按量计费只算实际输出 token，上限抬高不产生额外费用，只是不再"提前掐断"。
+                    var maxTokens = (isFrontendRole || isCodeRequest) ? 16384 : 8192;
                     // 联网搜索开关：开启则走 DeepSeek Responses API（web_search 工具），否则维持原 chat/completions
                     // 天气等本地查询失败时由调用方置 window._dsForceWebSearch=true 强制联网（读取后立即清除，仅本次生效）
                     var forceWs = !!window._dsForceWebSearch;
@@ -2876,7 +2907,7 @@
                     } else {
                         // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
-                        await _dsStreamChat(resp, assistantIdx, _pendingToolCalls);
+                        await _dsStreamChat(resp, assistantIdx, _pendingToolCalls, _turnMetrics);
                         if (_toolsDegradedNote) {   // 端点不支持工具 → 如实补一行说明（不再静默降级）
                             dsHistory[assistantIdx].content = (dsHistory[assistantIdx].content || '') + '\n\n' + _toolsDegradedNote;
                             _toolsDegradedNote = '';
@@ -2950,10 +2981,25 @@
                             var _respN = await fetch(dsApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify(_bodyN), signal: window._dsAbortController.signal });
                             if (!_respN.ok) { _dsStreaming = false; var _et = await _respN.text(); dsHistory[assistantIdx].content = '❌ 工具结果回灌后请求失败（HTTP ' + _respN.status + '）：' + _et.slice(0, 200); dsRenderAll(); return; }
                             _pendingToolCalls = [];
-                            await _dsStreamChat(_respN, assistantIdx, _pendingToolCalls);
+                            await _dsStreamChat(_respN, assistantIdx, _pendingToolCalls, _turnMetrics);
+                            _turnMetrics.toolRounds = (_turnMetrics.toolRounds || 0) + 1;
                         }
                     }
 
+                    // 【P1 输出完整性】平台有且仅有两种"内容不完整"的结束原因，此前完全不检查 ⇒
+                    //   回答静默断掉、用户以为答完了：
+                    //     · length：达到 max_tokens（本文件已把非思考上限由 4096 提到平台默认 8192，减少发生）
+                    //     · insufficient_system_resource：服务端推理资源不足被打断（与用户无关，不该被误判成 App 问题）
+                    try {
+                        var _frEnd = _turnMetrics.finishReason;
+                        if (_frEnd === 'length' || _frEnd === 'insufficient_system_resource') {
+                            var _frNote = (_frEnd === 'length')
+                                ? '⚠️ 本次回复已达单次输出上限，内容可能不完整。'
+                                : '⚠️ 本次回复因服务端资源不足被中断，内容可能不完整。';
+                            dsHistory[assistantIdx].content = (dsHistory[assistantIdx].content || '')
+                                + '\n\n' + _frNote + '点下方「▶️ 继续生成」可从断点接着写。';
+                        }
+                    } catch (e) {}
                     _dsStreaming = false; // 收尾：确保最终渲染出真实播放器
                     var _finalChatBox = document.getElementById('ds-chat-box');
                     var _finalBubbles = _finalChatBox.querySelectorAll('.ds-bubble-assistant');
@@ -2970,6 +3016,10 @@
                     if (/违章|违反|不符合|对规/.test(aiContent)) suggestions.push('📝 生成整改通知书');
                     if (/风险|趋势|研判|预警/.test(aiContent)) suggestions.push('📊 生成风险研判报告');
                     if (/检查|问题|隐患/.test(aiContent)) suggestions.push('📋 查询相关规章');
+                    // 【P1 输出完整性】被截断 / 被服务端中断时，把「继续生成」放到第一位
+                    if (_turnMetrics.finishReason === 'length' || _turnMetrics.finishReason === 'insufficient_system_resource') {
+                        suggestions.unshift('▶️ 继续生成');
+                    }
                     if (suggestions.length > 0 && _finalChatBox) {
                         var lastMsgDiv = _finalChatBox.querySelector('.ds-row-assistant:last-of-type');
                         if (lastMsgDiv) {
@@ -2982,7 +3032,13 @@
                                 btn.className = 'btn btn-secondary btn-small ds-suggestion';
                                 btn.onclick = function() {
                                     var ib = document.getElementById('ds-user-input');
-                                    if (ib) ib.value = text.replace(/^[^\s]+\s/, '');
+                                    if (ib) {
+                                        // 「继续生成」需要明确的续写口径：历史里已有半截回答，
+                                        // 若只发"继续生成"模型容易从头重写，这里换成可执行指令。
+                                        ib.value = (text === '▶️ 继续生成')
+                                            ? '继续（从上次中断处接着写，不要重复已写过的内容）'
+                                            : text.replace(/^[^\s]+\s/, '');
+                                    }
                                     setTimeout(function() { dsSendMsg(); }, 100);
                                 };
                                 suggestDiv.appendChild(btn);
@@ -2992,6 +3048,7 @@
                     }
 
                 } catch(err) {
+                    try { _turnMetrics.err = (err && err.name) || 'error'; } catch (e) {}
                     if (err.name === 'TimeoutError') {
                         // P8：请求超时（非用户主动停止）
                         dsHistory[assistantIdx].content = '❌ 请求超时（' + (_reqTimeoutMs / 1000) + 's）：模型响应时间过长，请稍后重试，或检查网络/API 状态。';
@@ -3042,6 +3099,17 @@
                         // 输入已被清空 → 恢复置灰态（DeepSeek 行为）
                         if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
                     }
+                    // 【P1 指标】本轮落一条记录（失败轮也落，便于区分"慢"与"错"）。
+                    //   缓存命中率/首字延迟/结束原因都取自 _dsStreamChat 采集到的 usage 与 finish_reason。
+                    try {
+                        var _nowEnd = (window.performance && performance.now) ? performance.now() : Date.now();
+                        _turnMetrics.totalMs = Math.round(_nowEnd - _turnMetrics.t0);
+                        try { _turnMetrics.think = !!thinkingOn; } catch (e1) {}
+                        try { _turnMetrics.web = !!useWebSearch; } catch (e2) {}
+                        try { _turnMetrics.tools = !!_useTools; } catch (e3) {}
+                        try { _turnMetrics.outChars = String((dsHistory[assistantIdx] || {}).content || '').length; } catch (e4) {}
+                        if (typeof window.dsRecordAiMetrics === 'function') window.dsRecordAiMetrics(_turnMetrics);
+                    } catch (e) {}
                 }
             };
 
@@ -3176,7 +3244,11 @@
             // ---- 气泡内容组装（含思考过程折叠块） ----
             // ---- P1 Tool Calls：通用 chat/completions 流式解析 ----
             // 将 resp 流式写入 dsHistory[idx]，并把增量 tool_calls 累积进 toolCallsOut（按 index 存放，调用方需 filter(Boolean)）
-            async function _dsStreamChat(resp, idx, toolCallsOut) {
+            async function _dsStreamChat(resp, idx, toolCallsOut, metricsOut) {
+                // 【P1 指标】metricsOut：本轮度量收集器（可缺省）。DeepSeek 流式的**最后一个块默认带 usage
+                //   与 finish_reason**（官方文档：统计信息附加在最后一个内容块上，无需 stream_options），
+                //   所以不新增任何请求参数就能采到缓存命中 token 与"内容是否完整"。
+                if (!metricsOut) metricsOut = {};
                 _dsStreaming = true; // 流式期间媒体降级为占位卡片，避免逐帧重建反复加载
                 var reader = resp.body.getReader();
                 var decoder = new TextDecoder();
@@ -3199,6 +3271,18 @@
                         if (_trimmed.indexOf('data: ') === 0) {
                             try {
                                 var _json = JSON.parse(_trimmed.slice(6));
+                                // 【P1 指标】采集用量与结束原因（末块才有值，前序块为 null）
+                                if (_json.usage) {
+                                    metricsOut.usage = _json.usage;
+                                    metricsOut.cacheHit = _json.usage.prompt_cache_hit_tokens || 0;
+                                    metricsOut.cacheMiss = _json.usage.prompt_cache_miss_tokens || 0;
+                                    metricsOut.promptTokens = _json.usage.prompt_tokens || 0;
+                                    metricsOut.completionTokens = _json.usage.completion_tokens || 0;
+                                    var _rt = _json.usage.completion_tokens_details && _json.usage.completion_tokens_details.reasoning_tokens;
+                                    if (_rt) metricsOut.reasoningTokens = _rt;
+                                }
+                                var _frNow = _json.choices?.[0]?.finish_reason;
+                                if (_frNow) metricsOut.finishReason = _frNow;
                                 var _delta = _json.choices?.[0]?.delta?.content || '';
                                 var _rc = _json.choices?.[0]?.delta?.reasoning_content || '';
                                 if (_rc) { dsHistory[idx].reasoning = (dsHistory[idx].reasoning || '') + _rc; }
@@ -3221,6 +3305,10 @@
                                 if (_delta) {
                                     dsHistory[idx].content += _delta;
                                     var _nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
+                                    // 【P1 指标】首字延迟：从请求发出到第一个内容 delta
+                                    if (!metricsOut.firstDeltaMs && metricsOut.t0) {
+                                        metricsOut.firstDeltaMs = Math.round(_nowMs - metricsOut.t0);
+                                    }
                                     if (_nowMs - _lastPaint >= _PAINT_MS) {
                                         _lastPaint = _nowMs;
                                         var _cb = document.getElementById('ds-chat-box');
@@ -5904,6 +5992,29 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       // 【优化】废话抑制硬约束 + 角色回扣：由 Part A 在 system 提示末尾追加（Part A 跨 IIFE 需经 window）
       window.CHAT_STYLE_NORMS = CHAT_STYLE_NORMS;
       window.dsRoleRecall = buildRoleRecall;
+
+      // 【P1 角色下沉】把「术语与条款 / 专业边界」两行按专业取出来，供其它模块复用。
+      //   为什么只给两行而不是整个角色提示：智能对规是"从候选条款里挑最相关的 1-3 个"的结构化
+      //   JSON 任务，塞进整段角色提示只会稀释指令；而术语口径恰好直接决定用词差异下的匹配准确率
+      //   （如"分路不良" vs "轨道电路不良"），专业边界则避免选到外专业条款。
+      //   同时避免各模块各维护一份专业术语表（维护面翻倍且会漂移）。
+      var TRADE_KEY_MAP = {
+        '工务': 'gongwu', '电务': 'dianwu', '供电': 'gongdian', '车务': 'chewu',
+        '客运': 'keyun', '机务': 'jiwu', '车辆': 'cheliang', '通信': 'tongxin',
+        '房建': 'fangjian', '货运': 'huoyun', '综合': 'tongyong', '通用': 'default'
+      };
+      window.dsTradeNorms = function (tradeNameOrKey) {
+        try {
+          var raw = String(tradeNameOrKey == null ? '' : tradeNameOrKey).trim();
+          if (!raw) return '';
+          var key = TRADE_KEY_MAP[raw] || (/^[a-z]+$/.test(raw) ? raw : '');
+          var t = key && ROLE_PROMPTS[key];
+          if (!t) return '';
+          return t.split('\n').filter(function (l) {
+            return /^【术语与条款】/.test(l) || /^【专业边界】/.test(l);
+          }).join('\n');
+        } catch (e) { return ''; }
+      };
 
       /**
        * 【2026-09-27 角色作用审计】统一的「当前角色」读取口 —— 单一事实来源。

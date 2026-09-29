@@ -960,5 +960,60 @@
         } finally { if (to) clearTimeout(to); }
     };
 
+    // ==================== AI 运行指标（P1：让优化可度量）====================
+    // 为什么需要：此前 finish_reason / usage / 首字延迟**一个都没记录**，
+    //   于是"提示词改了有没有变快、缓存有没有命中、回答是不是被截断"全靠感觉。
+    //   DeepSeek 流式的最后一个块默认就带 usage（含 prompt_cache_hit_tokens / prompt_cache_miss_tokens）
+    //   且 finish_reason 非空（官方文档：统计信息附加在最后一个内容块上，无需 stream_options），
+    //   所以不需要新增请求参数即可采集。
+    // 存储：localStorage 环形缓冲（最近 60 轮），单条约 200 字节，对配额无压力。
+    var AI_METRICS_KEY = 'ds_ai_metrics_v1';
+    var AI_METRICS_MAX = 60;
+
+    window.dsRecordAiMetrics = function (rec) {
+        try {
+            if (!rec) return;
+            var arr = [];
+            try {
+                var raw = JSON.parse(localStorage.getItem(AI_METRICS_KEY) || '[]');
+                arr = Array.isArray(raw) ? raw : [];
+            } catch (e) { arr = []; }
+            arr.push(rec);
+            if (arr.length > AI_METRICS_MAX) arr = arr.slice(-AI_METRICS_MAX);
+            localStorage.setItem(AI_METRICS_KEY, JSON.stringify(arr));
+        } catch (e) {}
+    };
+
+    window.dsAiMetrics = function () {
+        try {
+            var raw = JSON.parse(localStorage.getItem(AI_METRICS_KEY) || '[]');
+            return Array.isArray(raw) ? raw : [];
+        } catch (e) { return []; }
+    };
+    window.dsClearAiMetrics = function () { try { localStorage.removeItem(AI_METRICS_KEY); } catch (e) {} };
+
+    // 汇总最近 N 轮：首字延迟 / 缓存命中率 / 回答被截断次数 —— 供「关于 → 离线状态」一行显示，
+    // 也供后续优化做前后对比（改前跑几轮、改后再跑几轮即可看到差异）。
+    window.dsAiMetricsSummary = function (n) {
+        var arr = window.dsAiMetrics();
+        if (!arr.length) return '';
+        var last = arr.slice(-(n || 20));
+        var withFirst = last.filter(function (r) { return r && r.firstDeltaMs > 0; });
+        var avgFirst = withFirst.length
+            ? Math.round(withFirst.reduce(function (a, r) { return a + r.firstDeltaMs; }, 0) / withFirst.length)
+            : 0;
+        var hit = last.reduce(function (a, r) { return a + ((r && r.cacheHit) || 0); }, 0);
+        var miss = last.reduce(function (a, r) { return a + ((r && r.cacheMiss) || 0); }, 0);
+        var cacheRate = (hit + miss) > 0 ? Math.round(hit / (hit + miss) * 100) : null;
+        var cut = last.filter(function (r) {
+            return r && (r.finishReason === 'length' || r.finishReason === 'insufficient_system_resource');
+        }).length;
+        var parts = ['近 ' + last.length + ' 轮'];
+        if (avgFirst) parts.push('首字均值 ' + (avgFirst / 1000).toFixed(1) + 's');
+        if (cacheRate !== null) parts.push('缓存命中 ' + cacheRate + '%');
+        if (cut) parts.push('回答不完整 ' + cut + ' 次');
+        return parts.join(' · ');
+    };
+
     console.log('✅ doubao-common.js 已加载');
 })();

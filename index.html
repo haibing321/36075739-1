@@ -1900,8 +1900,9 @@
                                 <button onclick="phoneExportJSON()" class="st-mini btn-data-green">导出</button>
                                 <!-- 【2026-09-21】补「模板」入口：phoneDownloadTemplate() 此前无任何 UI 引用（死代码），
                                      用户拿不到标准列名的 Excel 模板，只能靠猜列名（缺\"单位/站名\"列会直接报错） -->
-                                <button onclick="phoneDownloadTemplate()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">模板</button>
                                 <button onclick="phoneShowClear()" class="st-mini btn-data-red">清空</button>
+                                <!-- 【2026-09-29 用户口径】本行只保留 导入 / 导出 / 清除 三个按钮：「模板」按钮已删。
+                                     phoneDownloadTemplate() 函数保留（未删功能，只是不再占按钮位）。 -->
                             </span>
                         </div>
                         <div class="st-row st-row-data">
@@ -1909,9 +1910,10 @@
                             <span class="st-actions">
                                 <button onclick="wrMaterialImportUnified()" class="st-mini btn-data-blue">导入</button>
                                 <!-- 【2026-09-23】原「🧩 写作模板」独立行并入本行（写作模板就是"类型=模板"的写作资料） -->
-                                <button onclick="wrImportTemplates()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">模板导入</button>
-                                <!-- 【2026-09-21】Excel 专用导入（含多 Sheet 与列名映射引导）此前无 UI 入口 -->
-                                <button onclick="wrMaterialImportExcel()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">Excel 导入</button>
+                                <!-- 【2026-09-29 用户口径】本行只保留 导入 / 导出 / 清除 三个按钮：
+                                     「模板导入」「Excel 导入」两个按钮已删（原「🧩 写作模板」行此前已并入本行）。
+                                     wrImportTemplates() / wrMaterialImportExcel() 函数保留，未删功能；
+                                     写作模板仍可经上面「导入」按类型选择导入。 -->
                                 <button onclick="wrMaterialExportAll()" class="st-mini btn-data-green">导出</button>
                                 <button onclick="wrMaterialClearAll()" class="st-mini btn-data-red">清空</button>
                             </span>
@@ -1930,7 +1932,8 @@
                                 <button onclick="importRailwayTerms()" class="st-mini btn-data-blue">导入</button>
                                 <button onclick="exportRailwayTerms()" class="st-mini btn-data-green">导出</button>
                                 <button onclick="termClearWithConfirm()" class="st-mini btn-data-red">清空</button>
-                                <button onclick="termResetWithConfirm()" class="st-mini" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">恢复默认</button>
+                                <!-- 【2026-09-29 用户口径】本行只保留 导入 / 导出 / 清除 三个按钮：「恢复默认」按钮已删。
+                                     termResetWithConfirm() 函数保留（未删功能，只是不再占按钮位）。 -->
                             </span>
                         </div>
                         <!-- 【2026-09-21】备忘录：此前**没有任何独立导入/导出入口**（只能整包备份），

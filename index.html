@@ -1999,12 +1999,15 @@
                                         <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
                                             <span class="st-row-label">🔎 检索自测</span>
                                             <input id="kb-test-input" type="text" placeholder="输入一句检查问题或关键词…"
-                                                style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;background:#f8fafc;">
+                                                style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;background:var(--card-bg);">
                                             <span class="st-actions">
                                                 <button onclick="KB.panelTest()" class="st-mini btn-data-blue">检索</button>
                                                 <button onclick="document.getElementById('kb-test-out').textContent=''" class="st-mini">清空</button>
                                             </span>
-                                            <div id="kb-test-out" style="font-size:0.76rem;color:var(--text-secondary);white-space:pre-wrap;max-height:220px;overflow:auto;background:#f8fafc;border-radius:8px;padding:8px;"></div>
+                                            <!-- 【2026-09-30 用户报「设置中知识库界面未设置暗黑」】原为内联 background:#f8fafc
+                                                 （暗黑下仍是浅灰块）；改用主题变量 var(--card-bg)：浅色主题=#f7f8fa（视觉几乎不变），
+                                                 暗黑主题随 dark.css 的 :root[data-theme="dark"] 自动变 #1d1d1d。 -->
+                                            <div id="kb-test-out" style="font-size:0.76rem;color:var(--text-secondary);white-space:pre-wrap;max-height:220px;overflow:auto;background:var(--card-bg);border-radius:8px;padding:8px;"></div>
                                         </div>
                                         <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
                                             <span class="st-row-label">🩺 索引缓存维护</span>
@@ -2012,7 +2015,7 @@
                                                 <button onclick="KB.panelDiag()" class="st-mini btn-data-blue">缓存自检</button>
                                                 <button onclick="KB.panelClearCache()" class="st-mini">清空缓存</button>
                                             </span>
-                                            <div id="kb-diag-out" style="display:none;white-space:pre-wrap;font-size:0.74rem;color:var(--text-secondary);background:#f8fafc;border-radius:8px;padding:8px;max-height:200px;overflow:auto;"></div>
+                                            <div id="kb-diag-out" style="display:none;white-space:pre-wrap;font-size:0.74rem;color:var(--text-secondary);background:var(--card-bg);border-radius:8px;padding:8px;max-height:200px;overflow:auto;"></div>
                                         </div>
                                         <div class="st-row" style="flex-direction:column;align-items:stretch;gap:8px;">
                                             <span class="st-row-label">🔌 统一检索层开关 <span class="st-row-sub">关闭即回退旧逻辑</span></span>

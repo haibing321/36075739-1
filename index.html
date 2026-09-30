@@ -1308,12 +1308,16 @@
                                 </div>
                             </div>
 
-                            <button onclick="window.runRiskAnalysis && window.runRiskAnalysis()"
-                                style="padding:14px 24px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;transition:all 0.2s;"
-                                onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='var(--primary)'">
-                                📊 开始风险研判
+                            <!-- 【2026-09-30 用户口径】「开始研判」与「停止」合成一个按钮：
+                                 闲时 =「📊 开始研判」，运行中 =「⏹ 停止研判」（再点即中止本轮）。
+                                 文案与配色由 doubao.js 的 _riskSetBtn() 统一维护（id = risk-main-btn）。
+                                 注：原先的 onmouseover/onmouseout 内联样式会在运行中被鼠标移出复位成蓝色，
+                                 与"运行中=红色停止"冲突，故移除，改由 JS 控制。 -->
+                            <button id="risk-main-btn" onclick="window.runRiskAnalysis && window.runRiskAnalysis()"
+                                style="padding:14px 24px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;transition:all 0.2s;">
+                                📊 开始研判
                             </button>
-                            <p style="font-size:0.75rem;color:#9ca3af;">自动汇总检查信息&规章制度 → AI分析 → 输出风险报告</p>
+                            <p style="font-size:0.75rem;color:#9ca3af;">自动汇总检查信息&规章制度 → AI分析 → 输出风险报告（需先填「重点关注」或选择时间/单位范围；空条件不再强制研判）</p>
                             <div id="risk-results" style="flex:1;min-height:200px;overflow-y:auto;overflow-x:hidden;word-break:break-word;line-height:1.7;border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#fff;display:none;"></div>
                             <!-- 跟进调整区 -->
                             <div id="risk-refine" style="display:none;margin-top:10px;gap:8px;">

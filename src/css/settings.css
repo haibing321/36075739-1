@@ -510,8 +510,12 @@
   flex-wrap: wrap;
 }
 #settings-panel .st-fold-inner {
-  margin: 0;
-  background: rgba(248, 250, 252, 0.7);
+    margin: 0;
+    /* 【2026-09-30 用户报「设置中知识库的高级自检和说明也未设置暗黑」】
+       原来硬编码 rgba(248, 250, 252, 0.7)：浅色主题正常，暗黑下「高级与自检」「说明」两块仍是浅灰底。
+       改用主题变量 --fold-inner-bg：浅色不变，暗黑在 dark.css 的 :root[data-theme="dark"] 里是
+       rgba(255,255,255,0.045)（与父卡片 --card-bg 形成层次）。 */
+    background: var(--fold-inner-bg);
 }
 #settings-panel .st-fold-head-sm {
   min-height: 38px;

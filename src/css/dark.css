@@ -47,6 +47,10 @@ html:not([data-theme="dark"]) { color-scheme: light; }
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.55);
     --gradient-primary: linear-gradient(135deg, #1e3a5f 0%, #4d6bfe 100%);
     --gradient-card: linear-gradient(180deg, #1d1d1d 0%, #181818 100%);
+    /* 【2026-09-30】设置面板「嵌套折叠区」底：原来在 settings.css 里硬编码 rgba(248,250,252,0.7)，
+       暗黑下仍是浅灰块（用户报「知识库的高级自检和说明也未设置暗黑」）。暗黑改用极淡白，
+       与父卡片（--card-bg #1d1d1d）形成层次而不刺眼。 */
+    --fold-inner-bg: rgba(255, 255, 255, 0.045);
 }
 
 /* ---------- 2. 基础画布 ---------- */

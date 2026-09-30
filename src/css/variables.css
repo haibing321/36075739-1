@@ -14,6 +14,7 @@
     --info: #4a7fb5;
     --bg: #ffffff;            /* DeepSeek 网页版 --paper：主背景 */
     --card-bg: #f7f8fa;       /* DeepSeek 网页版 --paper-2：区块底 */
+    --fold-inner-bg: rgba(248, 250, 252, 0.7);   /* 设置面板「嵌套折叠区」底（如🧠知识库的「高级与自检」「说明」）；暗黑值见 dark.css */
     --text: #1a1a1a;          /* DeepSeek 网页版 --ink */
     --text-secondary: #5a5a5a; /* DeepSeek 网页版 --ink-2 */
     --border: #e5e7eb;        /* DeepSeek 网页版 --line */

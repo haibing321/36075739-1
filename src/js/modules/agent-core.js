@@ -263,6 +263,69 @@
         return r ? { 章节:(r.chapter||'')+(r.section?('/'+r.section):'')+(r.item?('/'+r.item):''), 内容:(r.content||r.rules||'') } : { error:'未找到 id=' + args.id };
       }
     },
+    // ===== 【2026-09-30 用户要求】把「事故案例」正式纳入工具 =====
+    //   「事故案例」是与检查手册**平行**的第二份四级数据（handbook.js:13-23；kb 源 key=accidents，
+    //   与手册共用同一条导入管线）。此前：① 没有专用工具 —— 只能借 kb_search 的 accidents 源拿片段；
+    //   ② search_handbook / get_handbook_detail 只覆盖检查手册 ⇒ 拿不到案例全文；
+    //   ③ 工具描述与 system prompt 都没提"事故案例" ⇒ 模型基本不会主动去查（数据有、用不上）。
+    //   这里补一对与检查手册形态一致的专用工具。
+    {
+      name: 'search_accidents',
+      description: '查询「事故案例」库（与检查手册平行的第二份四级数据；用于找相似案例、借鉴事故教训）。优先走统一检索层（项点级片段+出处），无命中回退关键词模糊搜索。返回精简列表(id=全量下标+标题+摘要)，需要全文请用 get_accident_detail(id)',
+      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词（如"脱轨""接触网""施工""违章"）'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:['keyword'] },
+      handler: async function(args) {
+        var full = [];
+        try { if (typeof window.getAccidentData === 'function') full = window.getAccidentData() || []; } catch (e) {}
+        if (!full.length) return { total: 0, items: [], note: '本地尚未导入「事故案例」数据（可在 设置 → 检查手册/事故案例 导入，与检查手册共用同一导入管线）' };
+        var idxMap = new Map();
+        for (var fi = 0; fi < full.length; fi++) { if (!idxMap.has(full[fi])) idxMap.set(full[fi], fi); }
+        // ① 统一检索层优先（项点级命中）
+        var hits = await _kbHitsFirst('accidents', String(args.keyword || '').trim(), args.limit || 10);
+        if (hits) {
+          var seenA = new Set(), itemsKb = [];
+          hits.forEach(function(h) {
+            var doc = h.doc || null;
+            if (!doc || seenA.has(doc)) return;
+            seenA.add(doc);
+            itemsKb.push({
+              id: idxMap.has(doc) ? idxMap.get(doc) : -1,
+              标题: (doc.chapter || '') + (doc.section ? (' / ' + doc.section) : '') + (doc.item ? (' / ' + doc.item) : ''),
+              命中出处: h.path || '',
+              摘要: String(h.text || doc.content || '').slice(0, 120)
+            });
+          });
+          if (itemsKb.length) return { total: itemsKb.length, items: itemsKb, 检索方式: '统一检索层（项点级命中）' };
+        }
+        // ② 回退：关键词模糊搜索（与 search_handbook 同口径）
+        var kw = String(args.keyword || '').trim();
+        var lim = Math.min(Math.max(parseInt(args.limit, 10) || 10, 1), 50);
+        var out = [];
+        for (var i = 0; i < full.length && out.length < lim; i++) {
+          var d = full[i] || {};
+          var blob = [d.chapter, d.section, d.item, d.subitem, d.content, d.rules].join(' ');
+          if (!kw || blob.indexOf(kw) !== -1) {
+            out.push({ id: i, 标题: (d.chapter || '') + (d.section ? (' / ' + d.section) : '') + (d.item ? (' / ' + d.item) : ''), 摘要: String(d.content || d.rules || '').slice(0, 120) });
+          }
+        }
+        return { total: out.length, items: out };
+      }
+    },
+    {
+      name: 'get_accident_detail',
+      description: '根据 search_accidents 返回的 id(全量下标) 获取单条事故案例完整内容',
+      parameters: { type:'object', properties:{ id:{type:'integer',description:'search_accidents 返回的 id(全量下标)'} }, required:['id'] },
+      handler: async function(args) {
+        try {
+          var full = (typeof window.getAccidentData === 'function') ? (window.getAccidentData() || []) : [];
+          var r = full[args.id];
+          if (!r) return { error: '未找到 id=' + args.id };
+          return {
+            章节: (r.chapter || '') + (r.section ? ('/' + r.section) : '') + (r.item ? ('/' + r.item) : '') + (r.subitem ? ('/' + r.subitem) : ''),
+            内容: String(r.content || r.rules || '')
+          };
+        } catch (e) { return { error: '读取失败：' + ((e && e.message) || e) }; }
+      }
+    },
     {
       name: 'write_diary',
       description: '在工作日志模块新增一条记录。issueIds 接收 search_issues 返回的 id 数组，自动提取性质/摘要/单位并结构化写入',
@@ -568,7 +631,7 @@
     // "引用依据、查条款原文"这类需求。
     {
       name: 'kb_search',
-      description: '统一检索本地知识库（规章制度/检查手册/检查信息/写作资料/历史报告/应急电话/工作日志），返回命中片段（带出处路径，规章精确到条款、手册精确到项点、资料精确到段落）。用于引用依据、查条款原文、找相似案例；比 search_rules / search_issues 覆盖面更全、粒度更细',
+      description: '统一检索本地知识库（规章制度/检查手册/事故案例/检查信息/写作资料/历史报告/应急电话/工作日志），返回命中片段（带出处路径，规章精确到条款、手册与事故案例精确到项点、资料精确到段落）。用于引用依据、查条款原文、找相似案例（事故案例用 sources="accidents" 或专用工具 search_accidents）；比 search_rules / search_issues 覆盖面更全、粒度更细',
       parameters: {
         type: 'object',
         properties: {
@@ -1045,12 +1108,15 @@
       finalOutput: ''
     };
 
-    var system = '你是铁路安监智能体，可调用下方 functions 操作本地数据（检查信息/规章制度/检查手册/工作日志/天气）。\n';
+    var system = '你是铁路安监智能体，可调用下方 functions 操作本地数据（检查信息/规章制度/检查手册/事故案例/工作日志/天气）。\n';
     // P1-9: 注入当前数据概览，减少盲搜轮次
     try {
       var issCount = window.getIssueData ? window.getIssueData().length : 0;
       var ruleCount = window.getRulesData ? window.getRulesData().length : 0;
       var hbCount = window.getHandbookData ? window.getHandbookData().length : 0;
+      // 【2026-09-30 用户要求】事故案例（与检查手册平行的第二份数据）也列进概览 ——
+      //   此前概览里没有它，模型不知道本地有这份数据，涉及"找案例/借鉴教训"时容易凭印象作答。
+      var accCount = (typeof window.getAccidentData === 'function') ? ((window.getAccidentData() || []).length) : 0;
       var phoneCount = window.getPhoneData ? window.getPhoneData().length : 0;
       var issDates = '';
       if (issCount > 0 && window.getIssueData) {
@@ -1058,7 +1124,7 @@
         var all = [].concat(window.getIssueData() || []); all.sort(function(a,b){ return (a.datetime||'').localeCompare(b.datetime||''); });
         issDates = '，日期范围 ' + (all[0] ? (all[0].datetime||'').slice(0,10) : '?') + ' ~ ' + (all[all.length-1] ? (all[all.length-1].datetime||'').slice(0,10) : '?');
       }
-      system += '当前数据：检查信息 ' + issCount + '条' + issDates + '，规章制度 ' + ruleCount + '条，检查手册 ' + hbCount + '条，应急电话 ' + phoneCount + '个。\n';
+      system += '当前数据：检查信息 ' + issCount + '条' + issDates + '，规章制度 ' + ruleCount + '条，检查手册 ' + hbCount + '条，事故案例 ' + accCount + '条，应急电话 ' + phoneCount + '个。\n';
       if (issCount > 0) {
         var uniqUnits = {}; var issues = window.getIssueData();
         issues.forEach(function(i){ if(i.unit) uniqUnits[i.unit]=1; });
@@ -1084,7 +1150,7 @@
     system += '7. 尽量在 6 轮内完成（逐月/逐单位这类本质需要多轮的任务可以继续），但不要无意义地重复调用同一参数\n';
     system += '8. 引用典型问题写报告时，默认列举不超过 35 条；若用户明确要更多，可在 search_issues 中加大 limit（结果过大时系统会自动压缩为摘要，必要时分批查询），不要自行截断或估算\n';
     system += '9. 做统计/计数（如"某时段共多少条""按性质分布"）时，必须用 count_issues 或读取 search_issues 返回的 total（该值为时间范围内真实总数，不封顶）；务必统计时间范围内的全部，不得因条数多而只取前 N 条或估算\n';
-    system += '10. 检索本地资料（规章条款 / 检查信息 / 检查手册 / 写作资料 / 历史报告 / 应急电话 / 工作日志）时，优先用 kb_search：它跨源统一检索、按条款/段落粒度返回并带出处，通常比逐个调用单项检索更全；只有需要精确计数或按时间范围列明细时，才用 count_issues / search_issues 等单项工具\n';
+    system += '10. 检索本地资料（规章条款 / 检查信息 / 检查手册 / 事故案例 / 写作资料 / 历史报告 / 应急电话 / 工作日志）时，优先用 kb_search：它跨源统一检索、按条款/段落粒度返回并带出处，通常比逐个调用单项检索更全；只有需要精确计数或按时间范围列明细时，才用 count_issues / search_issues 等单项工具\n';
     system += '11. 需要给"检查发现问题"写规章依据 / 对规结论（如"不符合《X》第Y条“条款原文”的规定。"）时，**必须先用 autocheck 工具**取候选，并直接引用它返回的「结论式」——引号内的条款原文与条号一律照抄，不得改写、不得自行编造条款；autocheck 无候选时再用 kb_search / search_rules 换个角度找，仍无则如实说明"未找到可引用的规章依据"\n';
 
     system += '12. 参数口径（很重要）：日期一律 YYYY-MM-DD，可只到月（如 2026-09 表示整月）；性质 nature 只传 A类/B类/C类/红线（或首字母 A/B/C）；count_issues 的 groupBy 只支持 性质/category/unit/trade/month —— 做「近 N 个月趋势」「按月分布」时用 groupBy="month"，**一次调用即可拿到**，不要逐月调用多次\n';
@@ -1096,6 +1162,10 @@
     //   这里补两条：14 = 普适依据与诚实约束；15 = 交卷前自检（相当于内置一次轻量复核）。
     system += '14. 依据与诚实（硬约束）：结论必须能被工具返回的内容支撑 —— 引用条款/数字/案例时要注明来源（哪个库、哪一条、哪个时间范围）；工具返回「0 命中」「执行失败」或你自己没有把握时，**必须如实说明**（如"本地资料中未检索到相关规定，建议补充关键词或人工核实"），禁止凭印象编造条款号、统计数字或案例；也不要把"没查到"表述成"不存在"。\n';
     system += '15. 最终回答前自检（默检，不要输出本过程）：① 每个数字/条款/案例是否都能对到某次工具返回？② 有没有把"未检索到"说成"没有/不存在"？③ 时间范围、责任单位、统计口径是否与用户问的一致？任一项不成立时，先补一次工具调用或修正措辞再回答。\n';
+    // 【2026-09-30 用户要求】「事故案例」专用规则：它是与检查手册**平行**的第二份数据（不是手册的一部分），
+    //   此前既无专用工具、提示词也不提 ⇒ 数据在本地但模型不会主动查（"有数据用不上"）。
+    //   现在工具（search_accidents / get_accident_detail）、数据概览、本规则三处齐备。
+    system += '16. 「事故案例」是与检查手册**平行**的第二份数据（不是检查手册的一部分）：找相似案例、借鉴事故教训、写案例警示/警示教育时，用 search_accidents（关键词检索）＋ get_accident_detail(id) 取全文，也可用 kb_search 的 sources="accidents"。先看上面「当前数据」里的事故案例条数：为 0 说明本地尚未导入，要如实说明并提示导入位置，禁止凭印象编造案例。\n';
 
     try {
       var ctx = await window.getRecentAgentContext();

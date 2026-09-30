@@ -371,7 +371,16 @@
     // loader 返回 { list, async } ：sync 源就地取数；async 源由 KB.ensure() 预载
     var SOURCES = [
         { key: 'rules', label: '规章制度', grain: '条款', accessor: 'getRulesData', pick: nonCaseDocs, chunk: chunkRules },
-        { key: 'cases', label: '案例/汇编', grain: '条款', accessor: 'getRulesData', pick: onlyCaseDocs, chunk: chunkRules },
+        // 【2026-09-30 用户反馈"案例/汇编是啥，是否和事故案例重了"】标签改清楚：
+        //   本源 = **规章制度库里标题像"汇编"的文档**（判据见 CASE_DOC_RE：事故案例/典型案例/案例汇编/案例集/
+        //   案例选编/案例库/法律法规XX汇编/规范性文件汇编），与「事故案例」源**完全是两回事**：
+        //     · 本源：来源=规章制度库，导入入口=规章导入，按「章/节/条」切，用户实测本地命中 1 篇
+        //       《铁路运输安全生产法律法规及规范性文件汇编》；
+        //     · 事故案例源（key=accidents）：来源=检查手册模块的**平行四级数据**，导入入口=设置→检查手册/事故案例，
+        //       按「章/节/项点」切，本地是《全路事故案例（2006-2025）》。
+        //   拆源的目的（2026-09-22）：汇编类文档满是现场描述词，在"规章制度"源里会抢走真条款的候选位
+        //   （实测抢第 1 位 20%、进前 5 达 47%），对规只查 rules ⇒ 天然不受挤占。
+        { key: 'cases', label: '汇编文档（法规/案例汇编）', grain: '条款', accessor: 'getRulesData', pick: onlyCaseDocs, chunk: chunkRules },
         { key: 'issues', label: '检查信息', grain: '条', accessor: 'getIssueData', chunk: chunkIssues, prepare: prepareIssues },
         { key: 'handbook', label: '检查手册', grain: '项点', accessor: 'getHandbookData', chunk: chunkHandbook },
         { key: 'accidents', label: '事故案例', grain: '项点', accessor: 'getAccidentData', chunk: chunkAccidents },   // 【2026-09-22】与手册平行的第二份四级目录数据

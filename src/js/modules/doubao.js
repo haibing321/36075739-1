@@ -2207,39 +2207,16 @@
                 // ════════════════════════════════════════════
                 // 3. 自然语言意图识别（仅 chat 模式）
                 // ════════════════════════════════════════════
+                // 【2026-09-30 用户口径】对话里输入**任何内容都不得跳转**到「智能写作 / 智能对规 / 智能风险研判」。
+                //   原先这里按关键词"抢话"（对规：对规|违反|违章|不符合|哪条规章|匹配条款；
+                //   写作：写报告|生成…报告|起草|撰写|月度总结|整改通知书；研判：生成/分析…+风险/趋势/预警）——
+                //   用户明确要求去掉这种自动跳转：这些内容一律**留在对话里正常回答**。
+                //   仍可切模块的方式（都是"用户主动"）：
+                //     · 子视图下拉 ds-sub-select（index.html）手动切换；
+                //     · 显式命令 `/check …` `/write …` `/risk …`（见上方第 1 段强制命令路由）；
+                //     · 回答末尾的建议按钮（点它=用户点击，走正常发送流程，不再被内容规则拽走）。
                 if (currentSub === 'chat') {
-                    const lower = rawUserText.toLowerCase();
-                    if (/对规|违反|违章|不符合|哪条规章|匹配条款/.test(lower)) {
-                        dsSwitchSub('check');
-                        const acInput = document.getElementById('autoCheck-input');
-                        if (acInput) { acInput.value = rawUserText; setTimeout(function() { if (typeof window.autoCheckLocal === 'function') window.autoCheckLocal(); }, 200); }
-                        input.value = ''; return;
-                    }
-                    // 【2026-09-23 用户反馈修复】原来命中 /风险|趋势|研判|预警/ 就把整句话抢走、切到「风险研判」
-                    //   子视图 —— 于是"这个风险点怎么整改""安全风险有哪些"这类**普通提问**也得不到回答。
-                    //   现在只在**明确要求出研判/分析**时才跳转；其余照常在对话里回答（回答末尾仍会给出
-                    //   「📊 生成风险研判报告」建议按钮，用户想跳再点，见 dsRenderAll 的建议生成逻辑）。
-                    //   ⚠️ 这条判定必须排在「写作」规则**之前**：否则"生成风险分析报告"会被
-                    //   `/生成.*报告/` 先抢去智能写作（实测就是这么错的）。
-                    var _riskTxt = rawUserText.trim();
-                    var _riskAsk = (/^(帮我|请|麻烦|给我)?(生成|出具|出个|出一份|做一份|写一份|写个|来一份|汇总|分析|研判|评估|总结)/.test(_riskTxt)
-                                    && /(风险|趋势|预警|研判)[^，。！？；]{0,4}$/.test(_riskTxt)
-                                    && _riskTxt.length <= 30)
-                        || /^(风险研判|风险分析|趋势分析|预警分析)$/.test(_riskTxt);
-                    if (/写报告|生成.*报告|起草|撰写|月度总结|整改通知书/.test(lower)) {
-                        if (!_riskAsk) {
-                            dsSwitchSub('writer');
-                            const wrInput = document.getElementById('wr-query-input');
-                            if (wrInput) { wrInput.value = rawUserText; setTimeout(function() { if (typeof window.wrWrite === 'function') window.wrWrite(); }, 300); }
-                            input.value = ''; return;
-                        }
-                    }
-                    if (_riskAsk) {
-                        dsSwitchSub('risk');
-                        const focusInput = document.getElementById('risk-focus');
-                        if (focusInput) { focusInput.value = rawUserText; setTimeout(function() { if (typeof window.runRiskAnalysis === 'function') window.runRiskAnalysis(); }, 300); }
-                        input.value = ''; return;
-                    }
+                    // 自然语言不再做任何路由：不切子视图、不把输入搬给别的模块。
                 }
 
                 // ════════════════════════════════════════════
@@ -5768,10 +5745,43 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         if (btn) btn.textContent = '⏹ 停止';
       }
 
+      /** 「开始研判 / 停止」同一个按钮：统一维护文案与配色（id=risk-main-btn，见 index.html） */
+      function _riskSetBtn(running) {
+        var b = document.getElementById('risk-main-btn');
+        if (!b) return;
+        b.textContent = running ? '⏹ 停止研判' : '📊 开始研判';
+        b.style.background = running ? 'linear-gradient(135deg,#dc2626,#b91c1c)' : 'var(--primary)';
+        b.title = running ? '点击中止本轮研判' : '按当前条件开始研判';
+      }
+
+      /**
+       * 【2026-09-30 用户口径】停止本轮研判（与「开始」同按钮）。
+       * 实现方式：abort 掉进行中的请求（_riskAbortCtl，见 runRiskAnalysis 内部），
+       *   置 _riskStopped 让 catch 分支区分"用户主动停止"与"真失败"，并复位按钮与结果区。
+       */
+      window.riskStopAnalysis = function () {
+        try {
+          window._riskStopped = true;
+          if (window._riskAbortCtl && typeof window._riskAbortCtl.abort === 'function') {
+            window._riskAbortCtl.abort(new Error('UserStop'));
+          }
+        } catch (e) {}
+        window._riskRunning = false;
+        _riskSetBtn(false);
+        var c = document.getElementById('risk-results');
+        if (c) {
+          c.innerHTML = '<div style="padding:16px;color:var(--text-secondary);text-align:center;line-height:1.9;">'
+            + '⏹ 已停止本轮研判<br><span style="font-size:0.78rem;">（可修改条件后再点「📊 开始研判」）</span></div>';
+        }
+      };
+
       window.runRiskAnalysis = async function(followUp) {
         var container = document.getElementById('risk-results');
         var refineArea = document.getElementById('risk-refine');
         if (!container) return;
+        // 运行中再点同一个按钮 = 停止（不再像原来那样并发跑第二轮）
+        if (window._riskRunning) { try { window.riskStopAnalysis(); } catch (e) {} return; }
+        window._riskStopped = false;
         container.style.display = 'block';
         container.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">'
           + '<div style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:8px;"></div>'
@@ -5795,13 +5805,27 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             var format = formatEl ? formatEl.value : 'full';
             var formatDesc = { full: '完整报告：总体概况 + 风险分级 + 预警措施', brief: '简要摘要：只输出关键风险点和数量统计', actions: '整改措施清单：仅列出3-5条可执行的整改措施' }[format] || '完整报告';
 
+            // 【2026-09-30 用户口径】**没有任何输入时不要强制研判**。
+            //   原来：focus 为空会被降级成"通用安全风险"，并把整库数据全量跑一轮（还会往资料库落一份报告）。
+            //   现在：四个条件（重点关注 / 时间范围 / 责任单位）全空 ⇒ 只提示、不发起请求、不落库。
+            if (!focus && !dateStart && !dateEnd && !unit) {
+              container.innerHTML = '<div style="padding:18px;color:var(--text-secondary);line-height:1.9;">'
+                + '请先填写 <b>重点关注</b>，或选择 <b>时间范围</b>／<b>责任单位</b>，再点「📊 开始研判」。<br>'
+                + '<span style="font-size:0.78rem;">空条件不再自动跑全库研判；确实要做整体研判时，'
+                + '在「重点关注」里写明即可（例如：通用安全风险）。</span></div>';
+              _riskSetBtn(false);
+              return;
+            }
+            window._riskRunning = true;
+            _riskSetBtn(true);
+
             var summary = await _buildRiskDataSummary(dateStart, dateEnd, unit);
             noIssueData = summary.indexOf('【检查信息】总计') === -1;
             var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
             userMsg += '研判要求：\n';
             if (dateStart || dateEnd) userMsg += '- 时间范围：' + (dateStart||'不限') + ' 至 ' + (dateEnd||'不限') + '\n';
             if (unit) userMsg += '- 限定责任单位：' + unit + '\n';
-            userMsg += '- 重点关注：' + (focus || '通用安全风险') + '\n';
+            if (focus) userMsg += '- 重点关注：' + focus + '\n';   // 不再降级为"通用安全风险"（空条件已被上面拦下）
             userMsg += '- 输出格式：' + formatDesc + '\n';
             userMsg += '- 可参考下方【事故案例】（来自规章制度库「事故案例」专业）与【相关规章条款】中的真实案例与条款，结合检查信息开展研判，使结论更具针对性。\n';
             userMsg += '\n请开始分析。';
@@ -5845,6 +5869,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           }
           // Y1：增加整体超时，避免长报告假死、不可中断（思考模式耗时更长，放宽到 240s）
           var _riskAbort = new AbortController();
+          // 【2026-09-30 用户口径】把控制器暴露出去，让「⏹ 停止研判」能真正中止请求
+          //   （原来它只在模块闭包里，用户无论如何都停不下来）。
+          window._riskAbortCtl = _riskAbort;
           var _riskTimeout = setTimeout(function() {
             try { _riskAbort.abort(new Error('TimeoutError')); } catch (e) {}
           }, _riskThinking ? 240000 : 180000);
@@ -5913,7 +5940,15 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             refineArea.style.display = 'flex';
             refineArea.style.flexDirection = 'column';
           }
+          // 【2026-09-30】本轮结束：复位"运行中"状态与按钮（闲时回到「📊 开始研判」）
+          window._riskRunning = false;
+          _riskSetBtn(false);
         } catch(e) {
+          // 【2026-09-30】用户点「⏹ 停止研判」造成的 abort **不是错误**：
+          //   riskStopAnalysis 已经把提示与按钮状态写好了，这里静默复位即可，不报错、不落库。
+          window._riskRunning = false;
+          _riskSetBtn(false);
+          if (window._riskStopped) return;
           var _errMsg = e && e.message ? e.message : '分析失败';
           if (e && e.name === 'TimeoutError') {
             _errMsg = '请求超时（180s）：模型响应时间过长。请稍后重试，或检查网络/API 状态；也可缩短时间范围、减少数据量后重试。';

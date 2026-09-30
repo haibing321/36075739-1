@@ -52,6 +52,9 @@
   // 命中就返回"条款/项点/段落级片段 + 出处"（比"整篇前 150 字摘要"更准），
   // 未命中 / 开关 kb_agent 关闭 / KB 未加载 / 异常时，回退各自原来的关键词搜索。
   // 目的：即便模型没直接调用 kb_search，走旧工具也能拿到 KB 质量的结果（旧工具 = 兜底）。
+  // 【2026-09-30】知识库检索**降级原因**：供 _executeTool 把"已退回关键词检索"如实告知模型与用户。
+  var _kbDegradeReason = '';
+
   async function _kbHitsFirst(sourceKey, query, topK) {
     try {
       if (!query) return null;
@@ -61,7 +64,14 @@
       var res = window.KB.search(query, { sources: [sourceKey], topK: Math.min(Math.max(topK || 8, 1), 12) });
       var hits = (res && res.length) ? res[0].hits : null;
       return (hits && hits.length) ? hits : null;
-    } catch (e) { return null; }
+    } catch (e) {
+      // 原实现 `catch (e) { return null; }` 是**静默降级**：模型与用户都不知道"知识库检索失败、
+      // 已退回关键词检索"，于是可能把低质量的关键词召回当成知识库结论（依据强度被高估）。
+      // 现在记下原因，由 _executeTool 附进工具结果，让模型在回答里说明依据范围。
+      _kbDegradeReason = (e && e.message) ? e.message : '未知错误';
+      try { console.warn('[agent] 知识库检索失败，已退回关键词检索：' + _kbDegradeReason); } catch (_) {}
+      return null;
+    }
   }
 
   // ========== 工具注册表（标准 OpenAI/DeepSeek tools 格式）==========
@@ -754,6 +764,26 @@
   //   通过 window.__agentProgress 回传给 UI（对话气泡 / 智能体状态行）。
   var _phaseText = {};
   window.__agentPhase = function (tool, text) { try { _phaseText[tool] = String(text || ''); } catch (e) {} };
+  /**
+   * 【2026-09-30 智能程度与逻辑检查】把"知识库检索已降级"如实附进工具结果。
+   *   模型据此会在回答里说明依据范围（而不是把关键词召回当成知识库结论）；用户也能看到。
+   *   只在结果是普通对象时附加，数组/字符串不改结构。
+   */
+  function _withKbNote(out) {
+    try {
+      if (out && out.ok && _kbDegradeReason && out.result && typeof out.result === 'object' && !Array.isArray(out.result)) {
+        out.result = Object.assign({}, out.result, {
+          检索降级: '知识库检索失败（' + _kbDegradeReason + '），本结果来自关键词/本地回退检索，召回可能不全；回答时请注明依据范围。'
+        });
+      } else if (out && out.ok && _kbDegradeReason && Array.isArray(out.result)) {
+        // 数组结果：包一层，既不改调用方语义（items 仍是原数组）也能把降级说明带给模型
+        out.result = { items: out.result, 检索降级: '知识库检索失败（' + _kbDegradeReason + '），本结果来自关键词/本地回退检索，召回可能不全；回答时请注明依据范围。' };
+      }
+    } catch (e) {}
+    _kbDegradeReason = '';
+    return out;
+  }
+
   async function _executeTool(toolName, params) {
     var tool = TOOLS.find(function(t) { return t.name === toolName; });
     if (!tool) return { ok: false, error: '未知工具: ' + toolName };
@@ -772,7 +802,7 @@
     var _hit = _toolCacheGet(toolName, params);
     if (_hit) {
       _stopTick();
-      return { ok: true, tool: toolName, result: _hit.result, 缓存说明: '命中本会话缓存（' + Math.round(_hit.ageMs / 1000) + 's 前的同样调用）' };
+      return _withKbNote({ ok: true, tool: toolName, result: _hit.result, 缓存说明: '命中本会话缓存（' + Math.round(_hit.ageMs / 1000) + 's 前的同样调用）' });
     }
     while (_attempts <= _retry) {
       _attempts++;
@@ -793,7 +823,7 @@
         _toolCacheSet(toolName, params, result);   // 只读成功结果入短缓存（写库/导出不入）
         var _out = { ok: true, tool: toolName, result: result };
         if (_attempts > 1) _out.重试说明 = '第 ' + _attempts + ' 次尝试成功（前一次为瞬时失败，已自动重试）';
-        return _out;
+        return _withKbNote(_out);
       } catch(e) {
         if (_timer) clearTimeout(_timer);
         _lastErr = (e && e.message) ? e.message : String(e || '未知错误');
@@ -881,7 +911,29 @@
   }
 
   // ========== 调用 LLM（官方 function-calling）==========
+  /**
+   * 【2026-09-30 智能程度与逻辑检查】模型层重试（与工具层策略对齐）。
+   * 原实现：_callLLM 遇到 5xx / 断网 / 网关抖动直接 throw ⇒ 整个 ReAct 循环以 loopError 结束，
+   *   前面若干轮工具结果**全部作废**；而工具层有重试、模型层没有，策略不对称。
+   * 现在：只在抛错点显式标记 `e.retryable === true`（网络类、429、5xx、返回格式异常）时重试 1 次；
+   *   4xx（Key 错/参数错/不支持 tools）、「已手动停止」、**超时**都不重试 —— 超时不重试是因为
+   *   已经等满 60s/180s，再等一轮对用户更糟，应由用户决定是否重来。
+   */
   async function _callLLM(messages, withTools) {
+    var lastErr = null;
+    for (var _tryNo = 1; _tryNo <= 2; _tryNo++) {
+      try { return await _callLLMOnce(messages, withTools); }
+      catch (e) {
+        lastErr = e;
+        if (!e || e.retryable !== true || _tryNo >= 2) throw e;
+        console.warn('[agent] 模型调用失败，800ms 后重试一次：' + ((e && e.message) || e));
+        await new Promise(function (r) { setTimeout(r, 800); });
+      }
+    }
+    throw lastErr;
+  }
+
+  async function _callLLMOnce(messages, withTools) {
     var apiKey = localStorage.getItem('ds_api_key_v1') || '';
     var apiUrl = window.dsGetApiUrl(); // v3.70：归一化（缺 https:// 时 fetch 会按相对路径打到本站 → 404）
     var model = localStorage.getItem('ds_model_v1') || 'deepseek-flash';
@@ -901,7 +953,9 @@
         }
       }
     }
-    var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 4000 };
+    // 【2026-09-30】max_tokens 4000 → 6000：智能体要产出"多工具汇总 + 报告式回答"，4000 常在结尾被截断
+    //   （对话侧 8192 起、风险研判 6000；思考模式下面另有 body.max_tokens = 8192 的抬升）。
+    var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 6000 };
     if (withTools) body.tools = _toolsParam();
     // 思考模式：跟随设置页开关（默认开）。开启后思维链占用生成预算、首 token 明显变慢，
     // 且 temperature 不再生效（官方行为）。非 DeepSeek 端点下该函数返回 {}，不会误传参数。
@@ -914,12 +968,13 @@
     }
     var resp;
     var timeoutTimer;
+    var _timedOut = false;   // 【2026-09-30】区分"用户点停止"(AbortError) 与"我们自己超时"：后者不重试
     // 带 tools 的 ReAct 请求叠加思考模式后，60s 明显偏紧（大上下文 + 思维链 + 工具回灌）；
     // 思考模式下放宽到 180s，非思考模式仍保持 60s 快速失败。
     var _llmTimeoutMs = _agThinking ? 180000 : 60000;
     try {
       var timeoutPromise = new Promise(function(_, reject) {
-        timeoutTimer = setTimeout(function() { controller.abort(); reject(new Error('请求超时（' + (_llmTimeoutMs / 1000) + 's），请稍后重试')); }, _llmTimeoutMs);
+        timeoutTimer = setTimeout(function() { _timedOut = true; controller.abort(); reject(new Error('请求超时（' + (_llmTimeoutMs / 1000) + 's），请稍后重试')); }, _llmTimeoutMs);
       });
       var fetchPromise = fetch(apiUrl, {
         method: 'POST',
@@ -930,7 +985,12 @@
       resp = await Promise.race([fetchPromise, timeoutPromise]);
     } catch(e) {
       clearTimeout(timeoutTimer);
-      if (e.name === 'AbortError') throw new Error('已手动停止');
+      if (e.name === 'AbortError') {
+        // 超时（我们自己 abort）不重试；用户点「停止」也不重试
+        if (_timedOut) { var _te = new Error('请求超时（' + (_llmTimeoutMs / 1000) + 's），请稍后重试'); _te.retryable = false; throw _te; }
+        var _se = new Error('已手动停止'); _se.retryable = false; throw _se;
+      }
+      e.retryable = true;   // 网络类失败（断网/DNS/连接重置）：交给 _callLLM 决定重试
       throw e;
     }
     clearTimeout(timeoutTimer);
@@ -938,12 +998,17 @@
       var detail = '';
       try { var _etxt = await resp.text(); detail = ((JSON.parse(_etxt) || {}).error || {}).message || ''; } catch(_) {}
       if (resp.status === 400) detail += (detail ? ' ｜ ' : '') + '若当前 API 不支持 function calling，请在「设置 → API 配置」中改用 deepseek-flash';
-      throw new Error(typeof window.dsAiHttpError === 'function'
+      var _he = new Error(typeof window.dsAiHttpError === 'function'
         ? window.dsAiHttpError(resp.status, detail)
         : ('API 错误 ' + resp.status + (detail ? '：' + detail : '')));
+      // 429 / 5xx 多是网关或服务端的临时问题，值得重试；其余 4xx 是请求本身的问题，重试无意义。
+      _he.retryable = (resp.status === 429 || resp.status >= 500);
+      throw _he;
     }
     var data = await resp.json();
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) throw new Error('API 返回格式异常');
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      var _fe = new Error('API 返回格式异常'); _fe.retryable = true; throw _fe;
+    }
     return data.choices[0].message;
   }
 
@@ -1024,6 +1089,13 @@
 
     system += '12. 参数口径（很重要）：日期一律 YYYY-MM-DD，可只到月（如 2026-09 表示整月）；性质 nature 只传 A类/B类/C类/红线（或首字母 A/B/C）；count_issues 的 groupBy 只支持 性质/category/unit/trade/month —— 做「近 N 个月趋势」「按月分布」时用 groupBy="month"，**一次调用即可拿到**，不要逐月调用多次\n';
     system += '13. 工具返回里 total 是真实总数（可信）；若返回「0 命中」或「执行失败」，请更换关键词/放宽条件后重试，不要用同一参数重复调用\n';
+    // 【2026-09-30 智能程度与逻辑检查】此前智能体只在第 11 条（autocheck）里要求"不得编造条款"，
+    //   其余工具（kb_search / search_issues / count_issues / search_rules …）在"0 命中/失败"时
+    //   模型可以自由作答 ⇒ 存在"无依据硬答"风险（对比：对话侧 doubao.js 有『不得捏造/注明来源』，
+    //   风险研判有『严禁虚构统计数字』，智能体反而没有等价普适条款 —— 三条链路口径不统一）。
+    //   这里补两条：14 = 普适依据与诚实约束；15 = 交卷前自检（相当于内置一次轻量复核）。
+    system += '14. 依据与诚实（硬约束）：结论必须能被工具返回的内容支撑 —— 引用条款/数字/案例时要注明来源（哪个库、哪一条、哪个时间范围）；工具返回「0 命中」「执行失败」或你自己没有把握时，**必须如实说明**（如"本地资料中未检索到相关规定，建议补充关键词或人工核实"），禁止凭印象编造条款号、统计数字或案例；也不要把"没查到"表述成"不存在"。\n';
+    system += '15. 最终回答前自检（默检，不要输出本过程）：① 每个数字/条款/案例是否都能对到某次工具返回？② 有没有把"未检索到"说成"没有/不存在"？③ 时间范围、责任单位、统计口径是否与用户问的一致？任一项不成立时，先补一次工具调用或修正措辞再回答。\n';
 
     try {
       var ctx = await window.getRecentAgentContext();
@@ -1058,6 +1130,19 @@
     // 【2026-09-21】run 级「停止令牌」：原先「⏹ 停止」只 abort 在途 HTTP —— 工具执行期（天气 5s / KB 冷建数秒）
     //   按停止无效，且循环里没有任何 stop 标记 → 下一轮又新建 AbortController 继续跑（用户看到"停了还在动"）。
     //   现在每轮开头、每个工具执行前都校验令牌；令牌由 doubao 侧的停止/切换按钮递增。
+    // 【2026-09-30 智能程度与逻辑检查】**单飞锁**（防并发互相"静默击杀"）。
+    //   旧行为：内核无 single-flight —— 独立页有 _agentRunning 锁，但对话内 `/agent` 分支
+    //   (`doubao.js` :2181) 直接 return、没有置 dsStreaming，`if (dsStreaming) return` 拦不住；
+    //   于是重复回车/换个入口再发 会并行跑两个 ReAct，而每个 run 都会递增全局令牌
+    //   ⇒ 先启动的那个任务会被后启动者**莫名其妙中断**且没有任何提示（用户视角=答到一半没了）。
+    //   现在：有个带兜底 TTL 的忙标（正常结束会立即清除；异常路径靠 TTL 自愈，不会永久卡死）。
+    var _busyNow = Date.now();
+    if (window.__agentBusyUntil && window.__agentBusyUntil > _busyNow) {
+      var _busyErr = new Error('已有一个智能体任务正在运行，请等它完成或先点「⏹ 停止」再发起新任务。');
+      _busyErr.agentBusy = true;
+      throw _busyErr;
+    }
+    window.__agentBusyUntil = _busyNow + 15 * 60 * 1000;   // 兜底 15 分钟（正常结束会清）
     window.__agentRunToken = (window.__agentRunToken || 0) + 1;
     var _runToken = window.__agentRunToken;
     function _runStopped() { return window.__agentRunToken !== _runToken; }
@@ -1210,7 +1295,9 @@
           }
           renderMsgs.push({ role: 'agent-tool', content: '⏱️ 工具总预算 ' + _budgetTxt + ' 已用完，本轮工具未执行' });
           _emit({ phase: 'tool-done', step: renderMsgs[renderMsgs.length - 1] });
-          if (_budgetSkipRounds >= 2) messages.push({ role: 'user', content: '请立即基于已有信息给出最终回答，不要再调用任何工具。' });
+          // 【2026-09-30】原来是 >=2 才追加"立即作答"：预算用完后还会多烧**两轮**完整模型请求
+          //   （每轮都可能再让模型思考一遍工具计划）才收口。改为第一次跳过就明确要求收口。
+          if (_budgetSkipRounds >= 1) messages.push({ role: 'user', content: '请立即基于已有信息给出最终回答，不要再调用任何工具。' });
           continue;
         }
         var _roundT0 = Date.now();
@@ -1282,6 +1369,7 @@
     // 收尾清理：图片内容（dataUrl）常驻内存直到下次任务 → 本轮结束立即释放
     window.__agentVisionContent = null;
     window.__agentProgress = null;   // 进度回传只在 run 期间有效（避免全局残留在别的调用上触发 UI 更新）
+    window.__agentBusyUntil = 0;     // 【2026-09-30】正常收尾：释放单飞锁（异常路径由 15 分钟兜底 TTL 自愈）
     return { messages: renderMsgs, taskId: taskId };
   };
 

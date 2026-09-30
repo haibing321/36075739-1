@@ -8,14 +8,17 @@
  *   本模块把各源**按自然粒度分块**（规章按条、手册按项点、资料按段落、问题库/电话/日志按条），
  *   命中哪一块就把那一块**完整**喂进去，并带上出处路径。
  *
- * 覆盖的源（6 类，7 个数据列表）：
- *   rules    规章制度   window.getRulesData()      → 按「章/节/条」切
- *   issues   检查信息   window.getIssueData()      → 一条一记录
- *   handbook 检查手册   window.getHandbookData()   → 一个项点一块（四级路径）
- *   materials 写作资料  _wrGetAllMaterials()       → 按段落切
- *   reports  历史报告   _wrGetAllReports()         → 按段落切
- *   phone    应急电话   window.getPhoneData()      → 一条一记录
- *   diary    工作日志   window.getDiaryData()      → 一天一块
+ * 覆盖的源（9 个；本段曾停留在"6 类 7 列表"的旧口径，2026-09-30 按实现更新）：
+ *   rules     规章制度   window.getRulesData()      → 按「章/节/条」切（非案例类文档：pick=nonCaseDocs）
+ *   cases     案例/汇编  window.getRulesData()      → 同上切法，但只取标题像案例汇编的文档
+ *                        （CASE_DOC_RE 分流；与手册模块的 accidents 是**两个不同概念**的"案例"）
+ *   issues    检查信息   window.getIssueData()      → 一条一记录（**windowed**：默认只索引最近 N 条）
+ *   handbook  检查手册   window.getHandbookData()   → 一个项点一块（四级路径）
+ *   accidents 事故案例   window.getAccidentData()   → 一个项点一块（与手册平行的第二份四级数据）
+ *   materials 写作资料   _wrGetAllMaterials()       → 按段落切（**懒建**）
+ *   reports   历史报告   _wrGetAllReports()         → 按段落切（**懒建**；指写作库的历史报告）
+ *   phone     应急电话   window.getPhoneData()      → 一条一记录
+ *   diary     工作日志   window.getDiaryData()      → 一天一块
  *
  * 设计要点：
  *   · 打分复用 doubao.js 暴露的 window.LightBM25（倒排表 + 词频累加，千级语料毫秒级）
@@ -78,7 +81,10 @@
             .trim();
     }
 
-    var RE_MARK = /(^|\n)[ \t　]*(第[一二三四五六七八九十百千零〇0-9]+[章节条])/g;
+    // 【2026-09-30 准确性修复】条号标记支持**多级条号**（如「第4.3.4条」）：
+    //   原来只认 `第[数字/中文数字]+[章节条]`，多级条号整段落进上一块 ⇒ 粒度变粗、命中不精确。
+    //   现在允许数字/中文数字之间夹小数点（最多 10 位），捕获组仍是 2 个（m[1]=行首、m[2]=标记）。
+    var RE_MARK = /(^|\n)[ \t　]*(第[一二三四五六七八九十百千零〇0-9][一二三四五六七八九十百千零〇0-9.．]{0,9}[章节条])/g;
 
     function firstLine(seg) {
         var line = String(seg || '').split('\n')[0].replace(/\s+/g, ' ').trim();
@@ -119,6 +125,16 @@
         return out;
     }
 
+    // 【2026-09-30 准确性修复】标题/出处**加权**倍数：head（[专业]《规章名》/《资料名》）在检索文本里
+    //   出现 1 + (HEAD_REPEAT-1) 次。动因来自真实召回基准（80 条"问题描述→引用规章"，Recall@10 仅 56.3%、
+    //   MRR 0.326）：漏检几乎都是"正确的办法输给主题相近的另一份办法"——查询是上百字的问题描述
+    //   （几十个 token），标题只贡献几个 token，被长查询稀释。重复 head 提高其 tf，等于给标题加权；
+    //   纯加词、不改打分逻辑，可用 localStorage['kb_head_weight']=1 关掉（1~4）。
+    var HEAD_REPEAT = (function () {
+        try { var v = parseInt(localStorage.getItem('kb_head_weight'), 10); if (v >= 1 && v <= 4) return v; } catch (e) {}
+        return 2;
+    })();
+
     function makeChunk(src, srcLabel, path, text, doc, extra) {
         var t = String(text == null ? '' : text).trim();
         if (!t) return null;
@@ -128,12 +144,14 @@
             path: path,
             doc: doc                                     // 归属的原始记录（用于同文档限流）
         };
-        // 出处也参与检索（与旧路径 title+content 一致）
-        c.searchText = path + '\n' + t;
+        // 出处也参与检索（与旧路径 title+content 一致）；head 按权重重复（见 HEAD_REPEAT 注释）
+        var _head = (extra && extra.head) ? String(extra.head) : '';
+        var _rep = (_head && HEAD_REPEAT > 1) ? new Array(HEAD_REPEAT).join(_head + '\n') : '';
+        c.searchText = _rep + path + '\n' + t;
         // 【2026-09-22 省内存】text 不再单独复制一份：直接取 searchText 的切片 —— V8 对够长的 slice 生成
         //   SlicedString（只存父串引用 + 偏移，不复制字符），`c.text` 取值与原来完全一致。
         //   真数据规章 139385 块的量级下，这省掉的就是"同一段正文存两份"里的那一份。
-        c.text = (t.length >= 13) ? c.searchText.slice(path.length + 1) : t;
+        c.text = (t.length >= 13) ? c.searchText.slice(_rep.length + path.length + 1) : t;
         if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) c[k] = extra[k];
         return c;
     }
@@ -159,7 +177,7 @@
             }
             function push(ref, body) {
                 splitLong(body, ref).forEach(function (piece) {
-                    var c = makeChunk('rules', '规章制度', pathOf(ref), piece, rule, { ref: ref, trade: trade, title: title });
+                    var c = makeChunk('rules', '规章制度', pathOf(ref), piece, rule, { ref: ref, trade: trade, title: title, head: head });
                     if (c) out.push(c);
                 });
             }
@@ -237,7 +255,7 @@
             var paras = splitParagraphs(it && it.content, '');
             paras.forEach(function (p, i) {
                 var path = head + (paras.length > 1 ? ' > 第' + (i + 1) + '段' : '');
-                var c = makeChunk('materials', '写作资料库', path, p, it, { matType: type, title: title });
+                var c = makeChunk('materials', '写作资料库', path, p, it, { matType: type, title: title, head: head });
                 if (c) out.push(c);
             });
         });
@@ -254,7 +272,7 @@
             var paras = splitParagraphs(it && it.content, '');
             paras.forEach(function (p, i) {
                 var path = head + (paras.length > 1 ? ' > 第' + (i + 1) + '段' : '');
-                var c = makeChunk('reports', '历史报告', path, p, it, { date: date, title: title });
+                var c = makeChunk('reports', '历史报告', path, p, it, { date: date, title: title, head: head });
                 if (c) out.push(c);
             });
         });
@@ -414,7 +432,8 @@
     // ⚠️ 序列化格式与 LightBM25 内部实现绑定：改动分词/倒排/打分必须提升 KB_INDEX_VER。
     var CACHE_DB = 'RailwayKBCache_v1';
     var CACHE_STORE = 'kb_index';
-    var KB_INDEX_VER = 1;
+    var KB_INDEX_VER = 2;   // 【2026-09-30】1 → 2：分块检索文本（标题加权 head 重复）与分词（NFKC/条号归一）都变了，
+                            //   必须升版本 ⇒ 旧格式缓存一律作废、按新规则重建（否则设备会恢复旧索引、改动永不生效）
     var KB_CACHE_MAX_ITEMS = 50000;      // 超过此条数不做缓存（避免几十 MB 的写入与配额风险）
     var _lastCacheErr = '';              // 最近一次缓存写入失败原因（面板展示，便于诊断）
     var _cacheDbp = null;
@@ -505,6 +524,10 @@
             var it = items[i] || {};
             var c = String(it.content == null ? '' : it.content);
             mix(String(i)); mix(String(c.length)); mix(c.slice(0, 24)); mix(c.slice(-24));
+            // 【2026-09-30 准确性修复】补**中段抽样**：原来只取首尾 24 字，一份文档若"中段被等长改写"
+            //   （长度不变、首尾不变）指纹不变 ⇒ 缓存里可能恢复出旧索引。加一段中段抽样，成本仍与条数线性。
+            var _mid = (c.length >> 1);
+            mix(c.slice(Math.max(0, _mid - 12), _mid + 12));
             mix(String(it.title || '') + String(it.datetime || '') + String(it['性质'] || '') + String(it.category || '') + String(it.trade || '') + String(it.fileNumber || ''));
         }
         return items.length + ':' + (h >>> 0).toString(36);
@@ -753,8 +776,59 @@
      * @param opts  { sources:['rules','issues',...] , topK:4 , perDoc:2 , recentMonth:false }
      * @returns [{ key, label, grain, total, hits:[{path,text,doc,...}] }]  —— 只含有命中的源
      */
+    // ==================== 【2026-09-30 准确性修复】同义词/术语表（KB 层公共能力）====================
+    // 原来这张表只存在于「智能对规」（smart-check.js），对话 / 写作 / 智能体走 KB 时完全是字面滑窗
+    // ⇒ 口语化表达（"没挂地线" vs "接地线"、"未设置" vs "未设/缺少"）跨源召回吃亏。
+    // 现在以 KB 为**单一来源**：smart-check 若发现 window.KB.SYNONYM_MAP 就直接复用（见其注释）。
+    // 关掉扩展：localStorage['kb_synonym'] = '0'（对照/排障用）。扩展只**追加**同义词、不改原查询。
+    var SYNONYM_MAP = {
+        '天窗': ['封闭时间', '施工时间', '施工窗口'],
+        '防护': ['防护员', '安全防护', '设防护', '防护措施'],
+        '上道': ['上轨道', '进入线路', '进线作业', '上线路'],
+        '违规': ['违章', '违反规定', '不符合规定', '不按规定', '违章作业', '违章行为'],
+        '超限': ['超出限界', '限界超限'],
+        '信号机': ['信号灯', '信号设备'],
+        '道岔': ['转辙器', '岔道'],
+        '行车': ['行驶', '运行', '列车运行'],
+        '防溜': ['防止溜逸', '止溜', '防溜措施'],
+        '闭塞': ['闭塞区间', '区间闭塞'],
+        '限速': ['限制速度', '降速'],
+        '接触网': ['供电线路', '架空线'],
+        '作业人员': ['工作人员', '施工人员', '作业者', '现场人员'],
+        '检查': ['巡查', '巡检', '查看', '核查'],
+        '列车': ['火车', '机车', '车列'],
+        '铁路': ['铁道', '轨道线路'],
+        '违章': ['违规', '违反规定', '违章作业'],
+        '未设置': ['未设', '未配备', '未安装', '缺少'],
+        '擅自': ['未经允许', '未经批准', '私自', '未经许可'],
+        '未确认': ['未核实', '未检查', '未核对'],
+        '制动': ['刹车', '制动系统'],
+        '瞭望': ['观察', '了望', '眺望'],
+        '调车': ['编组调车', '调车作业'],
+        '施工': ['施工作业', '维修作业', '作业施工'],
+        '封锁': ['线路封锁', '区间封锁', '施工封锁'],
+        '命令': ['调度命令', '行车命令', '作业命令'],
+        '进路': ['行车进路', '列车进路'],
+        '联控': ['车机联控', '呼唤应答']
+    };
+
     function search(query, opts) {
         opts = opts || {};
+        // 【2026-09-30】KB 层同义词扩展（默认开，见上方注释）：把命中的同义词追加到查询尾部。
+        //   追加而非替换 —— 原查询的字面信号完全保留，只多给几个"同义表达"的机会。
+        var q = String(query == null ? '' : query);
+        try {
+            if (localStorage.getItem('kb_synonym') !== '0') {
+                var _added = [];
+                Object.keys(SYNONYM_MAP).forEach(function (key) {
+                    if (q.indexOf(key) === -1) return;
+                    (SYNONYM_MAP[key] || []).forEach(function (syn) {
+                        if (q.indexOf(syn) === -1 && _added.indexOf(syn) === -1) _added.push(syn);
+                    });
+                });
+                if (_added.length) q = q + ' ' + _added.slice(0, 12).join(' ');
+            }
+        } catch (e) {}
         var keys = (opts.sources && opts.sources.length) ? opts.sources : SOURCES.map(function (s) { return s.key; });
         var topK = opts.topK || 4;
         var topKByKey = opts.topKByKey || null;      // 【C1】按源分档 topK（如"仅文风参考"的资料库/历史报告给 2）
@@ -772,7 +846,7 @@
             var k = Math.max(1, (topKByKey && topKByKey[key]) || topK);
             var bm = getBM(key);
             if (!bm) return;
-            var raw = bm.search(query, Math.max(k * 4, 12));
+            var raw = bm.search(q, Math.max(k * 4, 12));   // 用扩展后的查询（见 search 开头）
             var seen = new Map(), hits = [];
             for (var i = 0; i < raw.length && hits.length < k; i++) {
                 var h = raw[i];
@@ -1026,6 +1100,16 @@
     // ==================== 维护接口 ====================
 
     function invalidate(key) {
+        // 【2026-09-30 准确性修复】原来只删内存 STATE ⇒ 持久化缓存仍在，重启后可能**恢复出旧索引**
+        //   （配合 sourceSig 已加"中段抽样"；两者一起保证"数据变了，索引一定跟着变"）。
+        //   一并删掉该源的索引缓存与 df 缓存；异步、失败不影响主流程。下次访问该源会重建索引。
+        try {
+            var _ks = key ? [key] : SOURCES.map(function (s) { return s.key; });
+            _ks.forEach(function (k) {
+                try { cacheDel(k).catch(function () {}); } catch (e) {}
+                try { cacheDel('dfcache:' + k).catch(function () {}); } catch (e) {}
+            });
+        } catch (e) {}
         if (key && SRC_MAP[key]) { delete STATE[key]; return; }
         STATE = {};
     }
@@ -1577,6 +1661,7 @@
         setAutoLoad: setAutoLoad,
         getAutoLoad: autoLoadEnabled,
         setSwitch: setSwitch,
+        SYNONYM_MAP: SYNONYM_MAP,   // 【2026-09-30】同义词表对外暴露（单一来源）：smart-check 等模块可复用，避免两处维护
         getSwitch: getSwitch,
         cacheInfo: cacheInfo,
         diag: diag,

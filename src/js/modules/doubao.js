@@ -5127,7 +5127,11 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         _tokenize(str) {
           if (!str) return [];
           const tokens = [];
-          const s = str.toLowerCase();
+          // 【2026-09-30 准确性修复】先做 NFKC 归一：全角数字/字母、全角标点、常见兼容字符会被规整为等价形式
+          //   （原来只 toLowerCase ⇒ 全角"１２"、"（）"与半角互不命中，检索/召回直接漏）。
+          let _sNorm = String(str);
+          try { _sNorm = _sNorm.normalize('NFKC'); } catch (e) {}
+          const s = _sNorm.toLowerCase();
           const n = s.length;
           for (let i = 0; i < n; i++) {
             const c = s.charCodeAt(i);
@@ -5146,6 +5150,40 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               tokens.push(s.slice(i, j));
               i = j - 1;
             }
+          }
+          // 【2026-09-30 准确性修复】条号归一：把「第X条/章/节/款/项」额外产出一个规范 token
+          //   （#art{数字}{单位}），解决「第12条」与「第十二条」token **完全无交集**、互相搜不到的问题。
+          //   该分词器被 KB 索引 / 对规召回 / 对话 / 智能体共用，所以修一处四处受益。
+          //   只**新增** token、不改动原有 token ⇒ 召回只增不减；查询侧与文档侧走同一规则，故能互相命中。
+          //   注意：多级条号（如「第4.3.4条」）不在本次范围内（字符类不含小数点），与切块正则保持一致。
+          if (s.indexOf('第') !== -1) {
+            try {
+              var _re = /第([0-9〇零一二三四五六七八九十百千两][0-9.．〇零一二三四五六七八九十百千两]{0,9})(条|章|节|款|项)/g;
+              var _m;
+              while ((_m = _re.exec(s)) !== null) {
+                var _unit = _m[2];
+                var _body = _m[1].replace(/．/g, '.');
+                var _ar = '';
+                if (/^[0-9.]+$/.test(_body)) {
+                  _ar = _body.replace(/\.$/, '');   // 多级条号（如 4.3.4）原样保留；去掉尾随点
+                } else {
+                  var _d = { '〇': 0, '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+                  var _sum = 0, _sec = 0, _ok = true, _lastUnit = false;
+                  for (var _ci = 0; _ci < _body.length; _ci++) {
+                    var _ch = _body.charAt(_ci);
+                    if (_d[_ch] !== undefined) {
+                      if (_lastUnit) { _sec += _d[_ch]; } else { _sec = _sec * 10 + _d[_ch]; }
+                      _lastUnit = false;
+                    } else if (_ch === '十') { _sec = (_sec || 1) * 10; _lastUnit = true; }
+                    else if (_ch === '百') { _sum += (_sec || 1) * 100; _sec = 0; _lastUnit = true; }
+                    else if (_ch === '千') { _sum += (_sec || 1) * 1000; _sec = 0; _lastUnit = true; }
+                    else { _ok = false; break; }
+                  }
+                  if (_ok) _ar = String(_sum + _sec);
+                }
+                if (_ar) tokens.push('#art' + _ar + _unit);
+              }
+            } catch (e) {}
           }
           return tokens;
         }

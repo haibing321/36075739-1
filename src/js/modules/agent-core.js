@@ -626,6 +626,52 @@
         }) };
       }
     },
+    // ===== 【2026-09-30 用户问"有知识库工具吗"】补知识库**运维类**工具 =====
+    //   此前只有检索类（kb_search + 各源单项检索 + autocheck），知识库自身的状态与载入只能手点设置面板：
+    //   window.KB 其实早已对外提供 stats / ensure / panelWarm / panelRebuild / panelTest / panelDiag /
+    //   panelClearCache / setSwitch / getSwitch —— 但**没有一个是智能体工具**。
+    //   本次补两个低风险的：kb_status（只读状态）、kb_warm（载入索引，等价设置面板「载入索引」）。
+    //   刻意**不暴露**：一键重建 / 清空缓存 / 改检索开关 ——
+    //   重建可能耗时数分钟（超出单次任务 120s 工具预算）、清缓存属破坏性操作、改开关属改用户设置；
+    //   这三类仍要求用户到「设置 → 知识库」手动执行（规则 17 要求模型只提示位置、不替用户执行）。
+    {
+      name: 'kb_status',
+      description: '查看本地知识库索引状态（只读）：每个源（规章/检查手册/事故案例/检查信息/写作资料/历史报告/应急电话/工作日志）的条数、已索引条数、片段数、是否已建索引/是否来自本机缓存，以及三个检索开关（智能对话写作 / 对规 / 智能体）的状态。用户问"知识库能用吗/索引建了吗/为什么搜不到"时先查它',
+      parameters: { type:'object', properties:{}, required: [] },
+      handler: async function() {
+        try {
+          if (!window.KB || typeof window.KB.stats !== 'function') return { error: '知识库未就绪（knowledge.js 未加载）' };
+          var rows = window.KB.stats() || [];
+          var items = rows.map(function(r) {
+            return {
+              源: r.label, 键: r.key, 粒度: r.grain, 总条数: r.total, 已索引: r.indexed, 片段数: r.chunks,
+              状态: r.built ? (r.restored ? '已建索引（本机缓存恢复）' : '已建索引')
+                            : (r.total ? '有数据但未建索引（首次检索会自动建，也可用 kb_warm 提前载入）' : '无数据（尚未导入）')
+            };
+          });
+          var sw = {};
+          try { sw = { '智能对话/写作': window.KB.getSwitch('kb_prompt'), '对规': window.KB.getSwitch('kb_autocheck'), '智能体': window.KB.getSwitch('kb_agent') }; } catch (e) {}
+          return { total: items.length, items: items, 检索开关: sw,
+                   note: '索引是懒建的：首次检索某个源时自动建。要提前建用 kb_warm；重建 / 清缓存 / 改开关请在「设置 → 知识库」手动操作。' };
+        } catch (e) { return { error: '读取知识库状态失败：' + ((e && e.message) || e) }; }
+      }
+    },
+    {
+      name: 'kb_warm',
+      description: '载入/预热本地知识库索引（等价设置面板「载入索引」按钮：优先用本机缓存，缺失则现场建）。何时用：kb_search 或单项检索返回 0 命中、且 kb_status 显示"有数据但未建索引"时，先 kb_warm 再重试一次检索',
+      parameters: { type:'object', properties:{}, required: [] },
+      handler: async function() {
+        try {
+          if (!window.KB || typeof window.KB.ensure !== 'function') return { error: '知识库未就绪（knowledge.js 未加载）' };
+          var t0 = Date.now();
+          await window.KB.ensure(null);
+          var ms = Date.now() - t0;
+          var ready = 0, total = 0;
+          try { (window.KB.stats() || []).forEach(function(r) { total++; if (r.built) ready++; }); } catch (e) {}
+          return { ok: true, 耗时: ms + 'ms', 已建索引源: ready + '/' + total, note: '索引已载入，可继续检索。' };
+        } catch (e) { return { error: '载入索引失败：' + ((e && e.message) || e) }; }
+      }
+    },
     // 【v3.73】统一检索层入口：一次可跨源检索，且返回的是**按自然粒度切好的片段**（规章按条款、
     // 手册按项点、资料按段落，每段完整≤500 字 + 出处路径），比 search_rules/search_issues 更适合
     // "引用依据、查条款原文"这类需求。
@@ -768,14 +814,16 @@
   //   可用 window.__agentToolTimeoutMs 覆盖（排查/测试用，例如把 default 调到 500 验证超时路径）。
   window.__agentToolTimeoutMs = window.__agentToolTimeoutMs || {
     default: 15000, get_weather: 8000, kb_search: 30000, autocheck: 30000,
-    export_issues: 30000, save_report: 30000, write_diary: 20000
+    export_issues: 30000, save_report: 30000, write_diary: 20000,
+    kb_warm: 60000   // 【2026-09-30】载入索引可能现场建（慢设备更久），给到 60s
   };
   // 【2026-09-21】只读工具的"失败自动重试一次"：瞬时抖动（IndexedDB 忙、KB 冷建竞态、
   //   网络抖动）导致的失败重试一次往往就能成功，能少一轮 ReAct（一轮 = 一次完整模型调用）。
   //   ⚠️ 只对**只读**工具生效：写库类（write_diary / save_report）与导出类（export_issues，可能已生成文件）
   //   一律不重试，避免产生重复记录/重复下载。超时也不重试（大概率再超时，白等一轮）。
   var RETRYABLE_TOOLS = ['search_issues', 'count_issues', 'get_issue_detail', 'get_issue_details',
-    'search_rules', 'get_rule_detail', 'search_handbook', 'get_handbook_detail', 'kb_search',
+    'search_rules', 'get_rule_detail', 'search_handbook', 'get_handbook_detail', 'search_accidents', 'get_accident_detail',
+    'kb_search', 'kb_status',
     'autocheck', 'search_phone', 'search_material', 'get_material_detail', 'read_diary', 'get_weather'];
   // 可用 window.__agentToolRetry = {工具名: 次数} 覆盖（排查/测试用）
   function _retryTimes(toolName) {
@@ -1166,6 +1214,8 @@
     //   此前既无专用工具、提示词也不提 ⇒ 数据在本地但模型不会主动查（"有数据用不上"）。
     //   现在工具（search_accidents / get_accident_detail）、数据概览、本规则三处齐备。
     system += '16. 「事故案例」是与检查手册**平行**的第二份数据（不是检查手册的一部分）：找相似案例、借鉴事故教训、写案例警示/警示教育时，用 search_accidents（关键词检索）＋ get_accident_detail(id) 取全文，也可用 kb_search 的 sources="accidents"。先看上面「当前数据」里的事故案例条数：为 0 说明本地尚未导入，要如实说明并提示导入位置，禁止凭印象编造案例。\n';
+    // 【2026-09-30】知识库自查顺序（配合新增的 kb_status / kb_warm：检索类工具早就有，运维类此前没有）
+    system += '17. 知识库相关自查顺序（用户说"搜不到/知识库不好用"时）：① 先 kb_status 看各源索引与检索开关状态；② 若显示"有数据但未建索引"，就 kb_warm 载入后**重试一次**检索；③ 若某开关被关（对话写作/对规/智能体）就在回答里说明"该源检索开关已关闭，可在 设置 → 知识库 打开"；④ 仍无命中再换关键词试一次。**索引重建、清空缓存、改检索开关都属于用户决策**：只提示在哪操作，不要替用户执行。\n';
 
     try {
       var ctx = await window.getRecentAgentContext();

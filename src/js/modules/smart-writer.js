@@ -3598,18 +3598,24 @@
                     const isModify = !!window._wrModifyMode;
                     let savedId = null;
                     try {
+                        // 【2026-10-01 用户选定"新版另存 + 题目沿用规范名 + 标注版本"】
+                        //   保存前先算好题名与版本号：既用于落库，也用于"记住给下次继续修改递增"。
+                        var _repTitle = wrBuildReportTitle({
+                            isModify: isModify,
+                            baseTitle: window._wrModifyBaseTitle,
+                            baseVersion: window._wrModifyBaseVersion,
+                            templateTitle: (template && template.title) || '',
+                            content: fullText,
+                            query: q,
+                            reportType: parsed && parsed.reportType
+                        });
+                        var _repVersion = isModify ? wrNextVersion(window._wrModifyBaseVersion, window._wrModifyBaseTitle) : 1;
                         savedId = await wrSaveReport({
-                            // 【2026-10-01】题目不再直接取"提问前 30 字"（见 wrBuildReportTitle 规则）
-                            title: wrBuildReportTitle({
-                                isModify: isModify,
-                                baseTitle: window._wrModifyBaseTitle,
-                                templateTitle: (template && template.title) || '',
-                                content: fullText,
-                                query: q,
-                                reportType: parsed && parsed.reportType
-                            }),
-                            // 修改流程且已知底稿记录 id ⇒ 带上 id（put 会**更新同一条**，不再堆记录）
-                            id: (isModify && window._wrModifyBaseId != null) ? window._wrModifyBaseId : undefined,
+                            title: _repTitle,
+                            // ⚠️ 刻意**不带 id**：修改一律**另存为新记录**（原记录保留），版本号体现在题名「 Vn」上
+                            version: _repVersion,
+                            baseTitle: isModify ? wrStripVersionSuffix(window._wrModifyBaseTitle) : undefined,
+                            baseId: (isModify && window._wrModifyBaseId != null) ? window._wrModifyBaseId : undefined,
                             category: isModify ? (window._wrModifyCategory || 'other') : (template && template.category ? template.category : parsed.reportType),
                             query: enhancedQuery,
                             content: fullText,
@@ -3653,7 +3659,11 @@
                     try {
                         if (savedId != null) {
                             window._wrLastSavedId = savedId;
-                            if (isModify) window._wrModifyBaseId = savedId;
+                            // 【2026-10-01】记住"规范名 + 版本"，供「继续修改」接着递增（新版另存策略下用它当底稿）
+                            window._wrLastSavedTitle = wrStripVersionSuffix(_repTitle) || _repTitle;
+                            window._wrLastSavedVersion = _repVersion;
+                            // 继续修改的底稿指向**刚存这条**（baseId 只作版本链标记，不再用于覆盖原记录）
+                            window._wrModifyBaseId = savedId;
                         }
                     } catch (e) {}
 
@@ -3862,9 +3872,10 @@
 
                 window._wrModifyMode = true;
                 window._wrModifyBaseContent = previousReport;
-                window._wrModifyBaseTitle = String(window._wrCurrentReportQuery || '报告').slice(0, 30);
-                // 【2026-10-01】带上当前报告已落库的 id ⇒ 修改结果**更新同一条**（原来每次新增一条）
-                window._wrModifyBaseId = (window._wrLastSavedId != null) ? window._wrLastSavedId : null;
+                // 【2026-10-01 用户选定"新版另存"】底稿 = **刚保存那份的规范名 + 版本**（没有再退回当前提问）
+                window._wrModifyBaseTitle = window._wrLastSavedTitle || String(window._wrCurrentReportQuery || '报告');
+                window._wrModifyBaseVersion = (window._wrLastSavedVersion > 0) ? window._wrLastSavedVersion : null;
+                window._wrModifyBaseId = (window._wrLastSavedId != null) ? window._wrLastSavedId : null;   // 只作版本链标记
                 window._wrModifyCategory = 'other';
                 window._wrModifySuppMats = suppMats;
                 try {
@@ -3873,6 +3884,7 @@
                     window._wrModifyMode = false;
                     window._wrModifyBaseContent = null;
                     window._wrModifyBaseTitle = null;
+                    window._wrModifyBaseVersion = null;  // 【2026-10-01】一并清理底稿版本
                     window._wrModifyBaseId = null;      // 【2026-10-01】一并清理底稿 id
                     window._wrModifyCategory = null;
                     window._wrModifySuppMats = null;
@@ -4112,12 +4124,36 @@
                 var d = new Date();
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
+            /** 【2026-10-01】把题名归一成"规范名"：去掉尾部的「（修改版 …）」与「 Vn」（兼容历史题名） */
+            function wrStripVersionSuffix(t) {
+                return String(t || '')
+                    .replace(/（修改版[^）]*）/g, '')
+                    .replace(/\s*[Vv]\d+\s*$/, '')
+                    .replace(/[《》"'「」]/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+            /** 【2026-10-01】解析题名里的版本号；没有版本号 ⇒ 视为 V1（于是下次修改 = V2） */
+            function wrParseVersion(t) {
+                var m = String(t || '').match(/[Vv](\d+)\s*$/);
+                if (m) { var v = parseInt(m[1], 10); if (v > 0) return v; }
+                return 1;
+            }
+            /** 【2026-10-01】修改后的版本号 = 底稿版本 + 1 */
+            function wrNextVersion(baseVersion, baseTitle) {
+                var v = parseInt(baseVersion, 10);
+                if (!(v > 0)) v = wrParseVersion(baseTitle);
+                return v + 1;
+            }
             function wrBuildReportTitle(ctx) {
                 ctx = ctx || {};
                 var date = wrTodayCn();
                 if (ctx.isModify) {
-                    var base = String(ctx.baseTitle || '报告').replace(/（修改版[^）]*）\s*$/, '').trim() || '报告';
-                    return base.slice(0, 40) + '（修改版 ' + date + '）';
+                    // 【2026-10-01 用户选定】"新版另存 + 题目沿用规范名 + 标注版本"：
+                    //   不再写「（修改版 日期）」（既不像版本号、又随日期变化），改为 **规范名 + 「 V{n}」**——
+                    //   原记录题名保持干净（不带版本号 = V1），第一次修改 = 「规范名 V2」，再改 = 「 V3」…
+                    var base = wrStripVersionSuffix(ctx.baseTitle) || '报告';
+                    return base.slice(0, 40) + ' V' + wrNextVersion(ctx.baseVersion, ctx.baseTitle);
                 }
                 if (ctx.templateTitle) return String(ctx.templateTitle).replace(/[《》]/g, '').slice(0, 30) + '（' + date + '）';
                 var fromBody = wrTitleFromContent(ctx.content);
@@ -4666,7 +4702,9 @@
                     var input = document.getElementById('wr-query-input');
                     var oldVal = input ? input.value : '';
                     window._wrModifyBaseTitle = r.title || '未命名报告';
-                    // 【2026-10-01】来自历史记录的修改：带上该记录 id ⇒ 直接**更新同一条**（不再新增「（修改版）」）
+                    // 【2026-10-01 用户选定"新版另存"】版本号取该记录自身的 version；老记录没有 ⇒ 交给题名解析
+                    //   （题名里没有 Vn 则视为 V1 ⇒ 本次修改记为 V2）；baseId 仅作版本链标记，不用于覆盖。
+                    window._wrModifyBaseVersion = (r && r.version > 0) ? r.version : null;
                     window._wrModifyBaseId = (r && r.id != null) ? r.id : null;
                     window._wrModifyCategory = r.category || 'other';
                     window._wrModifyBaseContent = r.content || '';
@@ -4682,6 +4720,7 @@
                         if (input) input.value = oldVal;
                         window._wrModifyMode = false;
                         window._wrModifyBaseTitle = null;
+                        window._wrModifyBaseVersion = null;  // 【2026-10-01】一并清理底稿版本
                         window._wrModifyBaseId = null;   // 【2026-10-01】一并清理底稿 id
                         window._wrModifyCategory = null;
                         window._wrModifyBaseContent = null;

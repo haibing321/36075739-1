@@ -2012,7 +2012,7 @@
                         // 使用 smartSplitParagraphs 智能分段，兼容旧数据无换行的情况
                         const paragraphs = smartSplitParagraphs(contentToShow);
                         const hlParts = paragraphs.map((para, lineIdx) => {
-                            if (!para.trim()) return '<span data-line="' + lineIdx + '"></span>';
+                            if (!para.trim()) return '<span data-para-index="' + lineIdx + '" data-line="' + lineIdx + '"></span>';
                             let escaped = escapeHtml(para);
                             keywords.forEach((kw, kwIdx) => {
                                 if (!kw) return;
@@ -2022,7 +2022,7 @@
                                     `<mark class="rule-fv-hl" data-kw-idx="${kwIdx}" data-line="${lineIdx}" style="background:${color.bg};color:${color.text};font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ${color.border};">$1</mark>`
                                 );
                             });
-                            return '<span data-line="' + lineIdx + '">' + escaped + '</span>';
+                            return '<span data-para-index="' + lineIdx + '" data-line="' + lineIdx + '">' + escaped + '</span>';
                         });
                         bodyEl.innerHTML = hlParts.join('<br>');
                         bodyEl.style.whiteSpace = 'pre-wrap';
@@ -2130,7 +2130,13 @@
                         // 纯文本模式：使用 content，通过 smartSplitParagraphs 智能分段（兼容旧数据无换行）
                         const plainText = rule.content || contentToShow || '';
                         const paragraphs = smartSplitParagraphs(plainText);
-                        bodyEl.innerHTML = paragraphs.map(para => '<p style="margin:4px 0;line-height:1.6;">' + escapeHtml(para) + '</p>').join('');
+                        // 【2026-10-01 用户报「关键词全文定位有时不准」】这里原来**不带任何段落下标**：
+                        //   于是无关键词模式下 `querySelector('[data-line="N"]')` 永远找不到元素 ⇒ 点了命中段
+                        //   根本不会滚动（"定位不准"的一种就是"没动"）。补上 data-para-index / data-line，
+                        //   与 smartSplitParagraphs 的段落序列完全同源，可按下标精确命中。
+                        bodyEl.innerHTML = paragraphs.map((para, i) =>
+                            '<p data-para-index="' + i + '" data-line="' + i + '" style="margin:4px 0;line-height:1.6;">' + escapeHtml(para) + '</p>'
+                        ).join('');
                         bodyEl.style.whiteSpace = 'normal';
                     }
                     _fvHighlights = [];
@@ -2251,7 +2257,7 @@
                         // 使用 smartSplitParagraphs 智能分段，兼容旧数据无换行的情况
                         const paragraphs = smartSplitParagraphs(contentToShow);
                         const hlParts = paragraphs.map((para, lineIdx) => {
-                            if (!para.trim()) return '<span data-line="' + lineIdx + '"></span>';
+                            if (!para.trim()) return '<span data-para-index="' + lineIdx + '" data-line="' + lineIdx + '"></span>';
                             let escaped = escapeHtml(para);
                             keywords.forEach((kw, kwIdx) => {
                                 if (!kw) return;
@@ -2261,7 +2267,7 @@
                                     `<mark class="rule-fv-hl" data-kw-idx="${kwIdx}" data-line="${lineIdx}" style="background:${color.bg};color:${color.text};font-weight:600;padding:1px 3px;border-radius:3px;border:1px solid ${color.border};">$1</mark>`
                                 );
                             });
-                            return '<span data-line="' + lineIdx + '">' + escaped + '</span>';
+                            return '<span data-para-index="' + lineIdx + '" data-line="' + lineIdx + '">' + escaped + '</span>';
                         });
                         bodyEl.innerHTML = hlParts.join('<br>');
                         bodyEl.style.whiteSpace = 'pre-wrap';
@@ -2310,7 +2316,13 @@
                         // 纯文本模式：使用 content，通过 smartSplitParagraphs 智能分段（兼容旧数据无换行）
                         const plainText = rule.content || contentToShow || '';
                         const paragraphs = smartSplitParagraphs(plainText);
-                        bodyEl.innerHTML = paragraphs.map(para => '<p style="margin:4px 0;line-height:1.6;">' + escapeHtml(para) + '</p>').join('');
+                        // 【2026-10-01 用户报「关键词全文定位有时不准」】这里原来**不带任何段落下标**：
+                        //   于是无关键词模式下 `querySelector('[data-line="N"]')` 永远找不到元素 ⇒ 点了命中段
+                        //   根本不会滚动（"定位不准"的一种就是"没动"）。补上 data-para-index / data-line，
+                        //   与 smartSplitParagraphs 的段落序列完全同源，可按下标精确命中。
+                        bodyEl.innerHTML = paragraphs.map((para, i) =>
+                            '<p data-para-index="' + i + '" data-line="' + i + '" style="margin:4px 0;line-height:1.6;">' + escapeHtml(para) + '</p>'
+                        ).join('');
                         bodyEl.style.whiteSpace = 'normal';
                     }
                     _fvHighlights = [];
@@ -2332,7 +2344,23 @@
                     if (_fvHighlights.length > 0) {
                         // 精确定位：在全文高亮中找到与目标段落匹配的高亮元素
                         let targetHlIdx = 0;
-                        if (targetPara) {
+                        // 【2026-10-01 用户报「关键词全文定位有时不准」】原来**只按"关键词左右各 3 个字"猜**目标高亮
+                        //   （同一段里有多个相同关键词、或富文本路径下父元素文本不同 ⇒ 猜错 ⇒ 定位到别处）。
+                        //   现在先用**段落下标**精确命中：纯文本路径的 <span>/<mark> 都带 data-para-index /
+                        //   data-line，且与 smartSplitParagraphs 同源 ⇒ 下标可比；命中就取该段内第一个高亮。
+                        //   富文本路径下标不可比 ⇒ 自然落空 ⇒ 仍走下面的上下文匹配（行为不变）。
+                        let _exactHlIdx = -1;
+                        if (Number.isInteger(paraIdx) && paraIdx >= 0) {
+                            for (let i = 0; i < _fvHighlights.length; i++) {
+                                const m = _fvHighlights[i];
+                                const own = String(m.getAttribute('data-line') || '');
+                                const holder = (m.closest ? m.closest('[data-para-index="' + paraIdx + '"]') : null);
+                                if (own === String(paraIdx) || holder) { _exactHlIdx = i; break; }
+                            }
+                        }
+                        if (_exactHlIdx >= 0) {
+                            targetHlIdx = _exactHlIdx;
+                        } else if (targetPara) {
                             // 从目标段落中提取关键词周围的上下文（左右各延伸3个字）作为匹配锚点
                             const lowerTargetPara = targetPara.toLowerCase();
                             let bestIdx = -1;
@@ -2392,13 +2420,13 @@
                         _fvCurHl = targetHlIdx;
                         ruleFvScrollToHl(_fvCurHl);
                     } else if (targetLineIdx >= 0) {
-                        // 无高亮时直接滚动到目标行
-                        const targetEl = bodyEl.querySelector('[data-line="' + targetLineIdx + '"]');
-                        if (targetEl) {
-                            targetEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-                        }
+                        // 【2026-10-01】无高亮时定位目标行：原来用 scrollIntoView（会把**整个页面**也滚走，
+                        //   且不会避开弹窗内的粘性提示栏）⇒ 改为与高亮路径同一个"容器内定位 + 复核"函数。
+                        const targetEl = bodyEl.querySelector('[data-para-index="' + targetLineIdx + '"]')
+                            || bodyEl.querySelector('[data-line="' + targetLineIdx + '"]');
+                        if (targetEl) ruleFvEnsureVisible(targetEl);
                     }
-                }, 300);
+                }, 120);   // 原来 300ms 单次：长文档/小屏排版更慢，300ms 时元素还没落位 ⇒ 用旧坐标算偏移
                 
                 // 图片点击放大：事件委托（与 ruleViewFullText 共用同一个委托监听，不重复绑定）
                 if (!bodyEl._imgClickDelegated) {
@@ -2411,31 +2439,120 @@
                 }
             };
 
-            function ruleFvScrollToHl(idx) {
+            /**
+             * 【2026-10-01 用户报「关键词全文定位有时不准，可能与屏幕大小有关」】
+             * 原实现三个"跟屏幕/布局有关"的隐患：
+             *   ① 300ms 单次 setTimeout + smooth：长文档、小屏（手机）排版更慢，测坐标时元素还没落位 ⇒ 偏移算错；
+             *   ② 弹窗顶部有**粘性提示栏**（"已找到 N 处" + 关键词标签会换行）⇒ 高度随关键词个数/屏宽变化，
+             *      按"容器居中"滚动时目标容易被它盖住（屏越小越容易）；
+             *   ③ 无高亮路径用 scrollIntoView ⇒ 会把整个页面也滚走，定位结果随页面滚动位置漂移。
+             * 现在统一为：**只在容器内滚动**、现场量粘性栏高度并避开、先把目标放到可视区上 1/3 处，
+             * 再在 rAF / +120ms / +300ms 复核三次（布局晚到也能自动纠正，幂等）；只有用户点"上一处/下一处"才用平滑动画。
+             */
+            function _fvStickyH() {
+                const bar = document.getElementById('rule-fullViewHlBar');
+                const container = document.getElementById('rule-fullContentBody');
+                if (!bar || !container) return 0;
+                const cs = getComputedStyle(bar);
+                if (cs.display === 'none' || cs.visibility === 'hidden') return 0;
+                // ⚠️ 提示栏在布局上其实位于滚动容器**之外**（不遮挡内容）—— 只有当它真的与容器**重叠**
+                //   （例如将来做成 sticky 或容器本身可滚动时）才需要避让，否则一律按 0 处理，
+                //   免得把目标白白往下推一段（第一版就是这么把 rel 推成 51、恰好压着 53 的栏高的）。
+                const br = bar.getBoundingClientRect();
+                const cr = container.getBoundingClientRect();
+                const overlap = Math.min(br.bottom, cr.bottom) - Math.max(br.top, cr.top);
+                return overlap > 1 ? Math.round(overlap) : 0;
+            }
+
+            function ruleFvPlaceEl(el, smooth) {
+                const container = document.getElementById('rule-fullContentBody');
+                if (!container || !el || !el.isConnected) return;
+                const cr = container.getBoundingClientRect();
+                const er = el.getBoundingClientRect();
+                const sticky = _fvStickyH();
+                const topLimit = cr.top + sticky + 10;                  // 粘性提示栏之下 10px
+                // 放在可视区（扣掉粘性栏）的上 1/3 处：比"居中"更稳 —— 小屏上居中会把上下文都挤出视野
+                const inner = Math.max(60, cr.height - sticky - 20);
+                const wantTop = topLimit + Math.max(0, (inner - Math.max(er.height, 18)) / 3);
+                const delta = er.top - wantTop;
+                if (Math.abs(delta) < 2) return;                        // 已在位：不动，避免抖动
+                container.scrollTo({ top: Math.max(0, container.scrollTop + delta), behavior: smooth ? 'smooth' : 'auto' });
+            }
+
+            function ruleFvEnsureVisible(el, smooth) {
+                if (!el) return;
+                ruleFvPlaceEl(el, smooth === true);
+                ruleFvFollow(el);                     // 布局还会变（见下）⇒ 有界跟随重定位
+                try {
+                    // 字体晚到会改变换行 ⇒ 字体就绪后再落位一次
+                    if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+                        document.fonts.ready.then(function () { if (el.isConnected && _fvFollowEl === el) ruleFvPlaceEl(el, false); });
+                    }
+                } catch (e) {}
+                let tries = 0;
+                const verify = () => {
+                    tries++;
+                    if (!el.isConnected) return;
+                    const container = document.getElementById('rule-fullContentBody');
+                    if (!container) return;
+                    const cr = container.getBoundingClientRect();
+                    const er = el.getBoundingClientRect();
+                    const topLimit = cr.top + _fvStickyH() + 4;
+                    const bottomLimit = cr.bottom - 4;
+                    const ok = (er.top >= topLimit && er.top <= bottomLimit);
+                    if (!ok) ruleFvPlaceEl(el, false);                  // 布局晚到 ⇒ 用新坐标再放一次（幂等）
+                    if (tries < 3) setTimeout(verify, tries === 1 ? 120 : 300);
+                };
+                requestAnimationFrame(verify);
+            }
+
+            /**
+             * 【2026-10-01 用户补充：屏幕大小会影响关键词所在的**视觉行数**】
+             *   窄屏一行放不下 ⇒ 同一段在小屏上占**更多行** ⇒ 内容整体高度、目标所处的纵向位置都会变。
+             *   所以：① 定位必须**锚住 DOM 元素**（每次都用 getBoundingClientRect 现场量，绝不按行数/固定像素折算）；
+             *        ② 在"布局还会变"的时间窗内自动跟随重定位 —— 容器尺寸变化（窄屏/横竖屏切换）、
+             *           字体晚到（document.fonts.ready）、懒加载图片撑高，任一发生都不会让目标漂走。
+             *   跟随是有界的：最长约 2.5s，且用户一主动滚动/触摸/点击就立刻停止（不跟用户抢滚动条）。
+             */
+            let _fvFollowEl = null, _fvFollowUntil = 0, _fvFollowTimer = null;
+            function ruleFvStopFollow() {
+                _fvFollowEl = null;
+                if (_fvFollowTimer) { clearTimeout(_fvFollowTimer); _fvFollowTimer = null; }
+            }
+            function ruleFvFollow(el) {
+                _fvFollowEl = el;
+                _fvFollowUntil = Date.now() + 2500;
+                const container = document.getElementById('rule-fullContentBody');
+                if (container && !container._fvFollowBound) {
+                    container._fvFollowBound = true;
+                    ['wheel', 'touchstart', 'mousedown', 'keydown'].forEach(ev =>
+                        container.addEventListener(ev, ruleFvStopFollow, { passive: true }));
+                }
+                if (_fvFollowTimer) return;
+                const tick = () => {
+                    _fvFollowTimer = null;
+                    if (!_fvFollowEl || !_fvFollowEl.isConnected || Date.now() > _fvFollowUntil) { _fvFollowEl = null; return; }
+                    ruleFvPlaceEl(_fvFollowEl, false);   // 用现场坐标重新落位（幂等；已在位时不动）
+                    _fvFollowTimer = setTimeout(tick, 250);
+                };
+                _fvFollowTimer = setTimeout(tick, 150);
+            }
+
+            function ruleFvScrollToHl(idx, smooth) {
                 if (_fvHighlights.length === 0) return;
                 // 移除旧的激活态
                 _fvHighlights.forEach(el => el.classList.remove('fv-active'));
                 _fvCurHl = ((idx % _fvHighlights.length) + _fvHighlights.length) % _fvHighlights.length;
                 const el = _fvHighlights[_fvCurHl];
                 el.classList.add('fv-active');
-                // 在内容容器内部精确滚动（避免 scrollIntoView 滚动整个页面）
-                const container = document.getElementById('rule-fullContentBody');
-                if (container) {
-                    const containerRect = container.getBoundingClientRect();
-                    const elRect = el.getBoundingClientRect();
-                    // 计算元素在容器中的相对位置，滚到元素居中
-                    const offset = elRect.top - containerRect.top + container.scrollTop - container.clientHeight / 2 + elRect.height / 2;
-                    container.scrollTo({ top: offset, behavior: 'smooth' });
-                } else {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
+                ruleFvEnsureVisible(el, smooth === true);
                 // 更新位置提示
                 const posEl = document.getElementById('rule-fullViewHlPosText');
                 if (posEl) posEl.textContent = '（第 ' + (_fvCurHl + 1) + ' / ' + _fvHighlights.length + ' 处）';
             }
 
-            window.ruleFvNextHl = function() { ruleFvScrollToHl(_fvCurHl + 1); };
-            window.ruleFvPrevHl = function() { ruleFvScrollToHl(_fvCurHl - 1); };
+            window.ruleFvNextHl = function() { ruleFvScrollToHl(_fvCurHl + 1, true); };
+            window.ruleFvPrevHl = function() { ruleFvScrollToHl(_fvCurHl - 1, true); };
 
             document.addEventListener('DOMContentLoaded', async function() {
                 await loadRulesFromDB();

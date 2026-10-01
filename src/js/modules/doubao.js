@@ -5785,6 +5785,11 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
 
       /** 「开始研判 / 停止」同一个按钮：统一维护文案与配色（id=risk-main-btn，见 index.html） */
       function _riskSetBtn(running) {
+        // 【2026-10-01】复位按钮时顺手停掉等待期计时（覆盖成功/失败/超时/用户停止所有出口）
+        if (!running && window._riskWaitTimer) {
+          try { clearInterval(window._riskWaitTimer); } catch (e) {}
+          window._riskWaitTimer = null;
+        }
         var b = document.getElementById('risk-main-btn');
         if (!b) return;
         b.textContent = running ? '⏹ 停止研判' : '📊 开始研判';
@@ -5821,9 +5826,22 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         if (window._riskRunning) { try { window.riskStopAnalysis(); } catch (e) {} return; }
         window._riskStopped = false;
         container.style.display = 'block';
+        // 【2026-10-01 优化】等待期显示「已等 Ns」：单轮最长 180s（思考模式 240s），原来只有一个转圈，
+        //   用户分不清"在跑"还是"卡住"（对规/智能体都有秒数，这里补齐）。计时器在按钮复位时统一清理。
+        var _riskWaitT0 = Date.now();
+        var _riskWaitBase = followUp ? '正在重新分析' : '正在汇总本地数据并分析风险';
+        if (window._riskWaitTimer) { try { clearInterval(window._riskWaitTimer); } catch (e) {} window._riskWaitTimer = null; }
         container.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">'
           + '<div style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:8px;"></div>'
-          + '<p>📊 ' + (followUp ? '正在重新分析…' : '正在汇总本地数据并分析风险…') + '</p></div>';
+          + '<p id="risk-wait-text">📊 ' + _riskWaitBase + '…</p></div>';
+        window._riskWaitTimer = setInterval(function () {
+            try {
+                var el = document.getElementById('risk-wait-text');
+                if (!el) return;
+                var s = Math.round((Date.now() - _riskWaitT0) / 1000);
+                el.textContent = '📊 ' + _riskWaitBase + '…已等 ' + s + 's' + (s >= 60 ? '（长报告较慢，可随时点「⏹ 停止研判」）' : '');
+            } catch (e) {}
+        }, 1000);
 
         try {
           var apiKey = localStorage.getItem('ds_api_key_v1') || '';
@@ -5859,6 +5877,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
 
             var summary = await _buildRiskDataSummary(dateStart, dateEnd, unit);
             noIssueData = summary.indexOf('【检查信息】总计') === -1;
+            // 【2026-10-01】留一份"数据口径"首行（如「【检查信息】总计 43526 条, 本次筛选 120 条」），
+            //   供报告头部回显 —— 报告全文由模型生成，用户看不到它依据的数据范围。
+            try { window.__riskLastDataLine = String(summary.split('\n')[0] || '').slice(0, 140); } catch (e) {}
             var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
             userMsg += '研判要求：\n';
             if (dateStart || dateEnd) userMsg += '- 时间范围：' + (dateStart||'不限') + ' 至 ' + (dateEnd||'不限') + '\n';
@@ -5891,6 +5912,7 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             var refineInput = document.getElementById('risk-refine-input');
             var refineText = refineInput ? refineInput.value.trim() : '';
             if (!refineText) refineText = '请进一步分析';
+            try { window.__riskLastRefine = refineText; } catch (e) {}   // 【2026-10-01】供报告头部回显追问内容
             messages.push({ role: 'user', content: refineText });
             if (refineInput) refineInput.value = '';
           }
@@ -5949,6 +5971,30 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             : '<pre style="white-space:pre-wrap;">' + report.replace(/</g, '&lt;') + '</pre>';
           container.innerHTML = html;
           window._riskLastReportText = report;
+          // 【2026-10-01 优化】报告头部回显「研判条件 · 数据口径」：
+          //   报告正文完全由模型生成，条件（时间/单位/重点/格式）只写在 prompt 里、界面上看不到；
+          //   补一行 chip，便于核对"这份报告是按什么条件、多大范围跑出来的"（与"走本地核验"同一透明度思路）。
+          try {
+            var _chipParts = [];
+            if (followUp) {
+              _chipParts.push('追问：' + String(window.__riskLastRefine || '进一步分析').slice(0, 60));
+            } else {
+              var _dsEl = document.getElementById('risk-date-start'), _deEl = document.getElementById('risk-date-end');
+              var _unEl = document.getElementById('risk-unit'), _foEl = document.getElementById('risk-focus');
+              var _fmtEl = document.querySelector('input[name="risk-format"]:checked');
+              var _fmtTxt = { full: '完整报告', brief: '简要摘要', actions: '仅整改措施' }[(_fmtEl && _fmtEl.value) || 'full'] || '完整报告';
+              _chipParts.push('时间：' + ((_dsEl && _dsEl.value) || '不限') + ' ~ ' + ((_deEl && _deEl.value) || '不限'));
+              _chipParts.push('单位：' + ((_unEl && _unEl.value.trim()) || '全部'));
+              _chipParts.push('重点：' + ((_foEl && _foEl.value.trim()) || '（未填）'));
+              _chipParts.push('格式：' + _fmtTxt);
+              if (window.__riskLastDataLine) _chipParts.push(String(window.__riskLastDataLine));
+            }
+            var _chip = document.createElement('div');
+            _chip.id = 'risk-cond-chip';
+            _chip.style.cssText = 'padding:6px 10px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;font-size:0.74rem;color:var(--text-secondary);margin-bottom:10px;line-height:1.6;word-break:break-word;';
+            _chip.textContent = '🧭 研判条件 · ' + _chipParts.join(' ｜ ');
+            container.insertBefore(_chip, container.firstChild);
+          } catch (e) {}
           container.scrollTop = 0;
 
           // 无本地检查信息时提示横幅

@@ -895,11 +895,15 @@
             try {
                 var f = (parseInt(bk.fails || '0', 10) || 0) + 1;
                 var o = { fails: f };
-                if (f >= 2) { o.until = Date.now() + 10 * 60 * 1000; o.fails = 0; }
+                // 【2026-10-01】熔断窗口 10 → 30 分钟：实测该通道在部分网络"必失败"，
+                //   10 分钟一过就再付两次超时的代价，收益为零；拉长到 30 分钟。
+                if (f >= 2) { o.until = Date.now() + 30 * 60 * 1000; o.fails = 0; }
                 localStorage.setItem(BK, JSON.stringify(o));
             } catch (e) {}
         };
-        var to = opts.timeoutMs || 9000;
+        // 【2026-10-01 实测优化】默认超时 9000 → 6000：本机/国内网络实测直连 r.jina.ai 一律 12s 超时
+        //   （两次 sample 都是 timeout，随后熔断），每次白等越短越好；能连通的网络 6s 也足够返回首页正文。
+        var to = opts.timeoutMs || 6000;
         var cap = opts.maxChars || 20000;          // 单页正文上限（防止超长页把 system 撑爆）
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, to) : null;

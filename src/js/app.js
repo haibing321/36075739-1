@@ -1488,8 +1488,14 @@ window.dsRepairOffline = function () {
                 localStorage.removeItem('_boot_timeline');
                 localStorage.removeItem('_load_history');
             } catch (e) {}
-            // 正常导航（replace）而非 reload —— reload 会绕过 HTTP 缓存，反而全量重下
-            try { location.replace(location.href.split('#')[0] + '#offline-repair'); } catch (e) {}
+            // 【2026-10-01 用户报"折叠开合联网问题依然未解决"·真凶修复】
+            //   原来这里是 `location.replace(href.split('#')[0] + '#offline-repair')` ——
+            //   如果当前 URL 与目标只差一个 hash（通常是**只差这一个 hash**），浏览器判定为
+            //   **同文档的片段跳转**，**根本不会重新加载页面** ⇒ 用户点「🔧 重装离线缓存」后
+            //   只看到"正在重装…"的提示、页面纹丝不动 ⇒ 结论"掩耳盗铃、依然未解决"。
+            //   为什么现在敢直接 reload：此刻 CacheStorage 已被清空，本来就必须重新下载一次，
+            //   "用 HTTP 缓存省一次下载"这个顾虑已不存在；reload 才是真正的导航。
+            try { location.reload(); } catch (e) {}
         };
         var seq = Promise.resolve();
         try {
@@ -1505,6 +1511,18 @@ window.dsRepairOffline = function () {
             } catch (e) { return null; }
         }).then(function () {
             try { return navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {}); } catch (e) {}
+        }).then(function (reg) {
+            // 【2026-10-01】注册完成 ≠ 激活完成：等它 activated（最多 6s）再导航，
+            //   这样 reload 出来的新页面**一开始就被接管**（activate 里的 clients.claim 会连本次导航一起收编），
+            //   用户就不会再看到"HTML 传输 4 万多字节 / 35 个资源走网络"那一幕。
+            return new Promise(function (done) {
+                if (!reg || !reg.installing && !reg.waiting) { done(); return; }
+                var t0 = Date.now();
+                var iv = setInterval(function () {
+                    var active = reg.active && reg.active.state === 'activated';
+                    if (active || Date.now() - t0 > 6000) { clearInterval(iv); done(); }
+                }, 250);
+            });
         }).then(go, go);
     } catch (e) {
         try { location.replace(location.href.split('#')[0]); } catch (e2) {}

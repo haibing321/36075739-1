@@ -2086,6 +2086,10 @@
                 var _acRecallSrc = '';       // 阶段3 进度提示里显示本次真实召回来源
                 try {
                     var _recall = await window.acRecallCandidates(query, {
+                        // 【2026-10-01 优化】补 kbEnsureTimeout=4000：原来主链不传该参数 ⇒ 冷启动时
+                        //   （第一次用对规、索引还没建）会**无上限等待**建索引，界面一直是"正在准备索引…"。
+                        //   与「一键修改」(diary.js) / 智能体同口径：等不到就走关键词召回，并如实说明。
+                        kbEnsureTimeout: 4000,
                         onProgress: function (msg) {
                             container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">⏳ ' + msg + '</div>';
                         }
@@ -2184,6 +2188,11 @@
                 const sysPrompt = [
                     '你是铁路安监对规专家。请从以下候选条款列表中，挑选与检查问题最相关的1-3个条款ID。',
                     '【输出要求】只输出一个合法JSON对象，禁止使用代码块（```），禁止任何说明文字。',
+                    // 【2026-10-01 优化】补硬约束（原来只有"输出要求"，逐字可靠性靠本地拼装兜着，
+                    //   模型侧没有明确禁令 ⇒ 有改写条号/凑答案的空间）。三句对齐智能体规则 11/14 的口径。
+                    '【硬约束】① 引号内的条文必须**逐字**取自候选项原文，不得改写、拼接、补全或润色；'
+                    + '② 条号只能照抄候选项里给出的条号，不得自行编号、换算或推断；'
+                    + '③ 若候选中找不到能支撑的条款，selectedIds 必须返回空数组 [] —— 绝不勉强凑答案。',
                     '【correctedQuery】输出完整的问题描述原文（不要省略）。',
                     _aiTrade ? '【专业指引】本次问题推断涉及"' + _aiTrade + '"专业，请优先选用该专业规章条款。' : '',
                     // 【P1 角色下沉】按专业补该专业的「术语与条款 / 专业边界」两行（来自 doubao.js 的角色表）：
@@ -2242,8 +2251,12 @@
 
                 console.log('[AI对规] 阶段3：发送AI请求，召回来源:', _acRecallSrc, '候选', allCandidates.length, '个，模型:', model);
 
+                let resp;                    // 【2026-10-01】提到 try 外声明：后面 `if (!resp.ok)` 在 try 外使用
+                var _acTimedOut = false;     // 超时标记（与"用户点停止"区分，供 catch 分支判断）
                 try {
                     window._dsAbortController = new AbortController();
+                    // 【2026-10-01】AI 精排期间显示「⏹ 停止」（配合新增的 #autoCheck-stopBtn）
+                    try { var _stopBtn = document.getElementById('autoCheck-stopBtn'); if (_stopBtn) _stopBtn.style.display = ''; } catch (e) {}
                     console.log('[AI对规] fetch 开始...', apiUrl);
                     // 【视觉模型接入】若当前附件含图片且模型支持视觉，把 user 消息转为多模态数组（纯新增；无图时走原纯文本）
                     let _checkUserMsg = _buildAICheckUserMsg(query);
@@ -2280,12 +2293,22 @@
                     if (typeof window.dsThinkingParam === 'function') {
                         Object.assign(_scBody, window.dsThinkingParam({ apiUrl: apiUrl, model: model, mode: 'off' }));
                     }
-                    const resp = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-                        body: JSON.stringify(_scBody),
-                        signal: window._dsAbortController.signal
-                    });
+                    // 【2026-10-01 优化】加整体超时：思考已强制关闭，给 60s（原来**没有超时** ⇒
+                    //   网络抖动时会一直转圈、界面不复位，用户只能刷新）。超时与"用户点停止"用标记区分，
+                    //   以免把超时误报成"已停止"。
+                    var _acAbortTimer = setTimeout(function () {
+                        try { _acTimedOut = true; if (window._dsAbortController) window._dsAbortController.abort(); } catch (e) {}
+                    }, 60000);
+                    try {
+                        resp = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                            body: JSON.stringify(_scBody),
+                            signal: window._dsAbortController.signal
+                        });
+                    } finally {
+                        clearTimeout(_acAbortTimer);
+                    }
 
                     console.log('[AI对规] fetch 响应:', resp.status, resp.ok);
 
@@ -2521,10 +2544,12 @@
                         + '</div>';
 
                     // 组装纯文本结论（供复制/下载/朗读）
+                    // 【2026-10-01 优化】条号统一经 acFmtArticle 归一后再展示：KB 的 ref 本身就是
+                    //   「第十二条」，原来再拼一层「第…条」会输出「第第十二条条」（v3.7x 起就有的显示缺陷）。
                     var conclusionPlain = '【对规结论】\n校核后问题：' + (correctedQuery || query) + '\n\n'
-                        + issueSelected.map(function (id) { var c = _globalCandidatesMap[id]; return '📋 历史案例条款：不符合/违反《' + (c.title || '') + '》' + (c.fileNumber ? '（' + c.fileNumber + '）' : '') + (c.article ? ' 第' + c.article + '条' : '') + '\n  ' + (c.clause || ''); }).join('\n')
+                        + issueSelected.map(function (id) { var c = _globalCandidatesMap[id]; return '📋 历史案例条款：不符合/违反《' + (c.title || '') + '》' + (c.fileNumber ? '（' + c.fileNumber + '）' : '') + (c.article ? ' ' + acFmtArticle(c.article) : '') + '\n  ' + (c.clause || ''); }).join('\n')
                         + '\n'
-                        + ruleSelected.map(function (id) { var c = _globalCandidatesMap[id]; return '⚖️ 规章库条款：不符合/违反《' + (c.title || '') + '》' + (c.fileNumber ? '（' + c.fileNumber + '）' : '') + (c.article ? ' 第' + c.article + '条' : '') + '\n  ' + (c.clause || ''); }).join('\n')
+                        + ruleSelected.map(function (id) { var c = _globalCandidatesMap[id]; return '⚖️ 规章库条款：不符合/违反《' + (c.title || '') + '》' + (c.fileNumber ? '（' + c.fileNumber + '）' : '') + (c.article ? ' ' + acFmtArticle(c.article) : '') + '\n  ' + (c.clause || ''); }).join('\n')
                         + (reason ? ('\n\n选择理由：' + reason) : '');
                     var _cardEl = document.getElementById('ac-conclusion-card');
                     if (_cardEl) _cardEl.setAttribute('data-conclusion', conclusionPlain);
@@ -2582,13 +2607,18 @@
                     // 【v3.74 合并】用户主动停止不算失败（不触发本地保底）；其余失败 → 交给 autoCheckSmart 保底
                     _acSmartStatus = (err && err.name === 'AbortError') ? 'aborted' : 'ai-error';
                     if (err.name === 'AbortError') {
-                        container.innerHTML = '<div style="color:#e53e3e;padding:12px;">⏹️ 已停止AI对规</div>';
+                        // 【2026-10-01】区分「超时」与「用户点停止」：超时由 60s 定时器 abort，给出可操作的下一步
+                        container.innerHTML = _acTimedOut
+                            ? '<div style="color:#e53e3e;padding:12px;">⏱️ AI对规请求超时（60s）：请检查网络后重试，或先用本地匹配。<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>'
+                            : '<div style="color:#e53e3e;padding:12px;">⏹️ 已停止AI对规</div>';
                     } else {
                         container.innerHTML = '<div style="padding:16px;color:#e53e3e;">❌ AI对规失败：' + acEscHtml(err.message) + '<br><button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="autoCheckLocal()">改用本地匹配</button></div>';
                     }
                 } finally {
                     window._dsAbortController = null;
                     if (_acWaitTimer) { clearInterval(_acWaitTimer); _acWaitTimer = null; }   // B：收尾停掉等待期计时
+                    // 【2026-10-01】无论成功/失败/超时/用户停止，都把「⏹ 停止」收起来
+                    try { var _sb2 = document.getElementById('autoCheck-stopBtn'); if (_sb2) _sb2.style.display = 'none'; } catch (e) {}
                 }
             };
 

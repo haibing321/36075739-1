@@ -995,6 +995,12 @@
                                      已有同功能的导入/导出按钮 → 直接删除。函数 `importRailwayTerms()` / `exportRailwayTerms()`
                                      仍保留并被设置面板使用。 -->
                                 <button class="btn btn-secondary" id="autoCheck-clearBtn" style="flex: 1;">🔄 重置</button>
+                            <!-- 【2026-10-01 优化】对规生成中可中断：window.stopACGeneration() 早就实现了，
+                                 但全仓没有任何调用点、界面上也没入口 ⇒ 生成中只能干等（或刷新整页）。
+                                 默认隐藏，仅在 AI 精排期间显示（显示/隐藏由 smart-check.js 控制）。 -->
+                            <button class="btn btn-secondary" id="autoCheck-stopBtn" style="flex: 0 0 auto; display:none;"
+                                title="中断本次 AI 精排（已召回的候选会保留在界面上）"
+                                onclick="window.stopACGeneration && window.stopACGeneration()">⏹ 停止</button>
                             </div>
                             <!-- 本地匹配后提示必须先AI对规 -->
                             <div id="autoCheck-ai-hint" style="margin-top:6px;padding:6px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:0.78rem;color:#1d4ed8;text-align:center;">

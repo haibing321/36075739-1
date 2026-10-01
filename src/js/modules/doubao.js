@@ -5494,7 +5494,19 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         try {
           var now = new Date();
           var report = {
-            title: title || ('风险研判 ' + now.toLocaleString('zh-CN').replace(/\//g, '-')),
+            // 【2026-10-01 用户反馈"报告题目不太好"】题目带上"重点/范围"而不是纯时间戳：
+            //   例：风险研判报告（施工安全·甲站）2026-10-01 —— 与智能写作的题目规则一致（都不拿提问当题目）。
+            title: title || (function () {
+              var _seg = [];
+              try {
+                var _fo = document.getElementById('risk-focus');
+                var _un = document.getElementById('risk-unit');
+                if (_fo && _fo.value.trim()) _seg.push(_fo.value.trim().slice(0, 20));
+                if (_un && _un.value.trim()) _seg.push(_un.value.trim().slice(0, 16));
+              } catch (e) {}
+              var _d = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+              return '风险研判报告' + (_seg.length ? '（' + _seg.join('·') + '）' : '') + ' ' + _d;
+            })(),
             category: '风险研判',
             content: markdown,
             date: now.toISOString(),

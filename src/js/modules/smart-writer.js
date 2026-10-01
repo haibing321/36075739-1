@@ -3599,7 +3599,17 @@
                     let savedId = null;
                     try {
                         savedId = await wrSaveReport({
-                            title: isModify ? ((window._wrModifyBaseTitle || '报告') + '（修改版）') : (q.slice(0, 30) + (q.length > 30 ? '…' : '')),
+                            // 【2026-10-01】题目不再直接取"提问前 30 字"（见 wrBuildReportTitle 规则）
+                            title: wrBuildReportTitle({
+                                isModify: isModify,
+                                baseTitle: window._wrModifyBaseTitle,
+                                templateTitle: (template && template.title) || '',
+                                content: fullText,
+                                query: q,
+                                reportType: parsed && parsed.reportType
+                            }),
+                            // 修改流程且已知底稿记录 id ⇒ 带上 id（put 会**更新同一条**，不再堆记录）
+                            id: (isModify && window._wrModifyBaseId != null) ? window._wrModifyBaseId : undefined,
                             category: isModify ? (window._wrModifyCategory || 'other') : (template && template.category ? template.category : parsed.reportType),
                             query: enhancedQuery,
                             content: fullText,
@@ -3637,6 +3647,15 @@
                         }
                     }
                     window._wrCurrentReportId = savedId;
+                    // 【2026-10-01】记两份 id：
+                    //   _wrLastSavedId —— "继续修改"当前这份报告时用它当底稿 id（更新同一条）；
+                    //   _wrModifyBaseId —— 连续修改时保持指向同一条记录，避免每次新增一条「（修改版）」。
+                    try {
+                        if (savedId != null) {
+                            window._wrLastSavedId = savedId;
+                            if (isModify) window._wrModifyBaseId = savedId;
+                        }
+                    } catch (e) {}
 
                     // 在气泡下方追加操作按钮
                     if (aiBubble) {
@@ -3844,6 +3863,8 @@
                 window._wrModifyMode = true;
                 window._wrModifyBaseContent = previousReport;
                 window._wrModifyBaseTitle = String(window._wrCurrentReportQuery || '报告').slice(0, 30);
+                // 【2026-10-01】带上当前报告已落库的 id ⇒ 修改结果**更新同一条**（原来每次新增一条）
+                window._wrModifyBaseId = (window._wrLastSavedId != null) ? window._wrLastSavedId : null;
                 window._wrModifyCategory = 'other';
                 window._wrModifySuppMats = suppMats;
                 try {
@@ -3852,6 +3873,7 @@
                     window._wrModifyMode = false;
                     window._wrModifyBaseContent = null;
                     window._wrModifyBaseTitle = null;
+                    window._wrModifyBaseId = null;      // 【2026-10-01】一并清理底稿 id
                     window._wrModifyCategory = null;
                     window._wrModifySuppMats = null;
                 }
@@ -4065,10 +4087,55 @@
             // ================================================================
             // ── 历史报告管理 ──
             // ================================================================
+            /**
+             * 【2026-10-01 用户反馈"将提问作为报告题目感觉不好"】报告题目生成规则（按优先级）：
+             *   ① 用了模板 ⇒ 模板名 +（日期），如「月度安全监察报告（2026-10-01）」；
+             *   ② 正文里模型自己写的首个标题（# 级）⇒ 去 #/书名号后取 ≤40 字；
+             *   ③ AI 判定的报告类型 + 需求摘要（**剥掉"帮我写一份"这类请求词**）；
+             *   ④ 兜底「安全报告（日期）」。
+             *   修改流程 = 底稿题目去掉已存在的「（修改版 …）」后缀 + 追加一次「（修改版 日期）」，
+             *   避免"改一次加一层"变成「原题（修改版）（修改版）」。
+             */
+            function wrStripAskWords(s) {
+                return String(s || '')
+                    .replace(/^\s*(请|帮我|帮忙|麻烦|给我|我要|我想|需要|要求)\s*/g, '')
+                    .replace(/^\s*(写|生成|起草|拟|做|出一份|来一份|整理|汇总|编写)\s*(一份|一个|个|份)?\s*/g, '')
+                    .replace(/[《》"'「」]/g, '')
+                    .trim();
+            }
+            function wrTitleFromContent(text) {
+                var m = String(text || '').match(/^\s{0,3}#{1,3}\s+(.+)$/m);
+                if (!m) return '';
+                return String(m[1]).replace(/[《》"'「」]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+            }
+            function wrTodayCn() {
+                var d = new Date();
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+            function wrBuildReportTitle(ctx) {
+                ctx = ctx || {};
+                var date = wrTodayCn();
+                if (ctx.isModify) {
+                    var base = String(ctx.baseTitle || '报告').replace(/（修改版[^）]*）\s*$/, '').trim() || '报告';
+                    return base.slice(0, 40) + '（修改版 ' + date + '）';
+                }
+                if (ctx.templateTitle) return String(ctx.templateTitle).replace(/[《》]/g, '').slice(0, 30) + '（' + date + '）';
+                var fromBody = wrTitleFromContent(ctx.content);
+                if (fromBody) return fromBody;
+                var core = wrStripAskWords(ctx.query).slice(0, 24);
+                var type = String(ctx.reportType || '').replace(/[《》]/g, '').trim();
+                if (type && core) return type + '：' + core;
+                if (core) return core + '（' + date + '）';
+                if (type) return type + '（' + date + '）';
+                return '安全报告（' + date + '）';
+            }
+
             async function wrSaveReport(report) {
                 const saved = await wrDbPut(WR_RPT_STORE, report);
                 return saved;
             }
+            // 【2026-10-01】题目规则对外暴露：套件/harness 可直接验四级优先级（见 wrBuildReportTitle 注释）
+            try { window.wrBuildReportTitle = wrBuildReportTitle; } catch (e) {}
 
             // ---- 占位符提取函数 ----
             function extractPlaceholders(text) {
@@ -4599,6 +4666,8 @@
                     var input = document.getElementById('wr-query-input');
                     var oldVal = input ? input.value : '';
                     window._wrModifyBaseTitle = r.title || '未命名报告';
+                    // 【2026-10-01】来自历史记录的修改：带上该记录 id ⇒ 直接**更新同一条**（不再新增「（修改版）」）
+                    window._wrModifyBaseId = (r && r.id != null) ? r.id : null;
                     window._wrModifyCategory = r.category || 'other';
                     window._wrModifyBaseContent = r.content || '';
                     window._wrModifySuppMats = suppMats;
@@ -4613,6 +4682,7 @@
                         if (input) input.value = oldVal;
                         window._wrModifyMode = false;
                         window._wrModifyBaseTitle = null;
+                        window._wrModifyBaseId = null;   // 【2026-10-01】一并清理底稿 id
                         window._wrModifyCategory = null;
                         window._wrModifyBaseContent = null;
                         window._wrModifySuppMats = null;

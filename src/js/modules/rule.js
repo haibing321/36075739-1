@@ -708,6 +708,19 @@
                     ctx.shownRanges.forEach(r => { if (r[0] <= ns && r[1] > ns) ns = Math.min(r[1], e); });
                     return ns;
                 };
+                // 【2026-10-01】关键词位置账本的两把尺子（见 generateRuleSnippet 顶部的"去重总原则"）：
+                //   kwUnshown(s,e) = 该区间内**还没露过面**的关键词出现个数；
+                //   markKw(s,e)    = 把该区间内的关键词位置登记为"已露面"（已输出的文本里它们会被 highlightKeywords 高亮）。
+                const kwUnshown = (s, e) => {
+                    if (!ctx || typeof s !== 'number' || typeof e !== 'number' || e <= s) return 0;
+                    let n = 0;
+                    ctx.kwPositions.forEach(p => { if (p >= s && p < e && !ctx.kwShown.has(p)) n++; });
+                    return n;
+                };
+                const markKw = (s, e) => {
+                    if (!ctx || typeof s !== 'number' || typeof e !== 'number') return;
+                    ctx.kwPositions.forEach(p => { if (p >= s && p < e) ctx.kwShown.add(p); });
+                };
                 const spanOf = i => (ctx && ctx.paraSpans && ctx.paraSpans[i]) ? ctx.paraSpans[i] : null;
                 const txtShown = t => !!(ctx && ctx.shownTexts.has(t));
                 const markTxt = t => { if (ctx) ctx.shownTexts.add(t); };
@@ -715,16 +728,23 @@
                 if (len > LONG_THRESHOLD) {
                     const fragments = splitLongParagraphWithAllKeywords(paragraph, keywords, matchMode);
                     let html = '';
-                    fragments.forEach(f => {
+                    // 【2026-10-01】先按起点排序再判重：窗口向标点扩展后，先后顺序可能被打乱，
+                    //   而"裁掉已输出前缀"依赖"先输出的那个在前"，所以排序是必须的（边界本身不变）。
+                    const ordered = fragments.slice().sort((a, b) => (a.start - b.start));
+                    ordered.forEach(f => {
                         // 【2026-10-01】窗口先合并、再各自向标点扩展 ⇒ 扩展后可能互相重叠：
                         //   ① 整段基本已输出（≥80%）⇒ 跳过；② 只是**部分**重叠 ⇒ 裁掉已被输出的前缀再输出。
                         //   裁前缀时用**区间重建文本**，不能按 f.text 做偏移（它带首尾省略号，长度对不上）。
-                        if (covered(f.start, f.end)) return;
                         const fs0 = (typeof f.start === 'number') ? f.start : -1;
                         const fe0 = (typeof f.end === 'number') ? f.end : -1;
+                        // 整段覆盖：里面的关键词位置要么已经随前一块高亮过，要么本来就不在正文可输出范围内 ⇒ 只记账
+                        if (covered(fs0, fe0)) { markKw(fs0, fe0); return; }
                         let fs = trimStart(fs0, fe0);
-                        if (fe0 > 0 && fs >= fe0) return;
-                        markRange(fs, fe0);
+                        if (fe0 > 0 && fs >= fe0) { markKw(fs0, fe0); return; }
+                        // 裁完后若"没露过面"的关键词位置一个都不剩 ⇒ 纯尾巴（无新信息、也没高亮）⇒ 不再开块。
+                        //   注意：前一块的正文里这些关键词会被 highlightKeywords 高亮，所以"不输出"不等于"丢了"。
+                        if (fs > fs0 && kwUnshown(fs, fe0) === 0) { markKw(fs0, fe0); return; }
+                        markRange(fs, fe0); markKw(fs, fe0);
                         let ftext = f.text;
                         if (fs > fs0) {
                             ftext = String(paragraph).substring(fs, fe0);
@@ -737,7 +757,7 @@
                 } else if (len >= SHORT_THRESHOLD && len <= LONG_THRESHOLD) {
                     const sp = spanOf(index);
                     if (txtShown(paragraph) || covered(sp && sp[0], sp && sp[1])) return '';   // 本段已由其它块输出过 ⇒ 不重复
-                    markTxt(paragraph); if (sp) markRange(sp[0], sp[1]);
+                    markTxt(paragraph); if (sp) { markRange(sp[0], sp[1]); markKw(sp[0], sp[1]); }
                     return `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</p>`;
                 } else {
                     // 短段：本段若已输出过（例如作为上一段的"下一段"出现过）就不再重复整块
@@ -750,14 +770,24 @@
                         nextPara = next.length > NEXT_TARGET ? next.substring(0, NEXT_TARGET) + '…' : next;
                     }
                     let html = '';
+                    // 【2026-10-01】关键词位置账本：本块实际输出的区间（前若干段 → 命中段 → 下一段）
+                    let kwS = null, kwE = null;
+                    const track = (s, e) => {
+                        if (typeof s !== 'number' || typeof e !== 'number') return;
+                        kwS = (kwS === null) ? s : Math.min(kwS, s);
+                        kwE = (kwE === null) ? e : Math.max(kwE, e);
+                    };
                     // 【2026-10-01】上下文只输出"尚未出现过"的段落（原来是原样全输出 ⇒ 同一段可能出现两遍）
                     prevParas.forEach(p => {
                         if (txtShown(p)) return;
                         markTxt(p);
+                        const pi = allParagraphs.indexOf(p);
+                        const spPrev = pi >= 0 ? spanOf(pi) : null;
+                        if (spPrev) track(spPrev[0], spPrev[1]);
                         html += `<span class="rule-context">${escapeHtml(p)}</span> `;
                     });
                     markTxt(paragraph);
-                    if (spShort) markRange(spShort[0], spShort[1]);
+                    if (spShort) { markRange(spShort[0], spShort[1]); track(spShort[0], spShort[1]); }
                     html += `<span class="rule-matched-paragraph rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</span>`;
                     if (nextPara) {
                         const nextFull = allParagraphs[index + 1];
@@ -765,10 +795,15 @@
                             // 完整展示的下一段才登记文本（被截断的只登记区间，避免它自己命中时丢掉后半段）
                             if (nextFull.length <= NEXT_TARGET) markTxt(nextFull);
                             const spNext = spanOf(index + 1);
-                            if (spNext) markRange(spNext[0], spNext[0] + Math.min(NEXT_TARGET, nextFull.length));
+                            if (spNext) {
+                                const ne = spNext[0] + Math.min(NEXT_TARGET, nextFull.length);
+                                markRange(spNext[0], ne);
+                                track(spNext[0], ne);
+                            }
                             html += ` <span class="rule-context">${escapeHtml(nextPara)}</span>`;
                         }
                     }
+                    if (kwS !== null) markKw(kwS, kwE);   // 本块已把这些关键词位置"露过面"
                     return `<p>${html}</p>`;
                 }
             }
@@ -795,7 +830,15 @@
                 //     ② 大段落按关键词截多个窗口时，窗口先合并、再各自向标点扩展 ⇒ 扩展后仍会互相重叠；
                 //     ③ 小段落延伸的"下一段"正好是大段落并命中 ⇒ 两条机制交叉重复。
                 //   注意：只影响**显示**，不改命中判定与排序（用户口径：段内 AND / 排序不动）。
-                const ctx = { shownRanges: [], shownTexts: new Set(), paraSpans: buildParaSpans(rule.content, paragraphs) };
+                //   ★ 去重的总原则（2026-10-01 用户点明）：截取**边界由关键词位置与标点决定、且不能改**，
+                //     所以不能靠"挪边界"去重 —— 而是把**截取范围**与**输出范围**分开：
+                //       提取照旧（边界一个字不改）→ 输出时按正文坐标做「候选区间 − 已输出区间」；
+                //       再配一本「关键词出现位置账本」：候选片段里还有"没露过面"的关键词位置 ⇒ 必须输出；
+                //       一个都不剩 ⇒ 纯重复 ⇒ 去掉（这样既不去重掉信息，也不出现两遍）。
+                const ctx = {
+                    shownRanges: [], shownTexts: new Set(), paraSpans: buildParaSpans(rule.content, paragraphs),
+                    kwPositions: findKeywordPositions(rule.content, keywords), kwShown: new Set()
+                };
                 let html = '';
                 matchedIndices.forEach(idx => {
                     html += processParagraph(paragraphs[idx], idx, paragraphs, keywords, ruleIdx, matchMode, absIdx, ctx);
@@ -820,6 +863,25 @@
                     cursor = at + p.length;
                 }
                 return spans;
+            }
+
+            /**
+             * 【2026-10-01】「关键词出现位置账本」：正文里每个关键词出现的**字符下标**。
+             * 这是"不动截取边界也能去重"的关键 —— 判断某个候选片段该不该输出，不再只看区间重叠，
+             * 而是看它里面**还有没有"从没露过面"的关键词位置**：
+             *   · 有 ⇒ 必须输出（否则这个关键词出现的位置就丢了，用户会觉得"明明命中却没标出来"）；
+             *   · 都没有 ⇒ 内容一定已出现过 ⇒ 去掉（这就是"关键词位置小于截取边界"造成重复的解法）。
+             */
+            function findKeywordPositions(content, keywords) {
+                const text = String(content == null ? '' : content).toLowerCase();
+                const out = [];
+                (keywords || []).forEach(kw => {
+                    const k = String(kw || '').toLowerCase();
+                    if (!k) return;
+                    let at = text.indexOf(k);
+                    while (at !== -1) { out.push(at); at = text.indexOf(k, at + k.length); }
+                });
+                return out.sort((a, b) => a - b);
             }
 
             function getKeywords() {

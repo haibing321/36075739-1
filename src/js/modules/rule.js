@@ -680,24 +680,69 @@
                 return collected;
             }
 
-            function processParagraph(paragraph, index, allParagraphs, keywords, ruleIdx, matchMode = 'and', absIdx = -1) {
+            function processParagraph(paragraph, index, allParagraphs, keywords, ruleIdx, matchMode = 'and', absIdx = -1, ctx = null) {
                 const len = paragraph.length;
                 const SHORT_THRESHOLD = 50, LONG_THRESHOLD = 400, PREV_TARGET = 150, NEXT_TARGET = 190, MAX_PREV_PARAS = 6;
                 
                 // 匹配模式标记固定为AND
                 const modeAttr = 'data-match-mode="and"';
                 
+                // 【2026-10-01 用户报「截取段落重复」】两条去重判据（只影响显示，不改命中/排序）：
+                //   · covered(s,e)：区间是否已输出过（≥80% 覆盖算重复）—— 治"大段落多窗口扩展后互相重叠"
+                //     与"小段延伸与相邻命中段重叠"（两者都用原始正文区间，故能跨机制判重）；
+                //   · shownTexts：按**段落文本**判重 —— 上下文段落来自 collectPrevParagraphs（只有文本、
+                //     没有下标），治"上一段的『下一段』正好是本段"这类重复。
+                const covered = (s, e) => {
+                    if (!ctx || !ctx.shownRanges.length || typeof s !== 'number' || typeof e !== 'number' || e <= s) return false;
+                    let hit = 0;
+                    ctx.shownRanges.forEach(r => { const a = Math.max(s, r[0]), b = Math.min(e, r[1]); if (b > a) hit += (b - a); });
+                    return hit / (e - s) >= 0.8;
+                };
+                const markRange = (s, e) => { if (ctx && typeof s === 'number' && typeof e === 'number' && e > s) ctx.shownRanges.push([s, e]); };
+                // 【2026-10-01】部分重叠的**裁剪**：只跳过"≥80% 已输出"的片段还不够 —— 实测（案例2）两个窗口
+                //   向标点扩展后常是**部分重叠**（重叠比例不到 80%），于是同一段中段文字仍出现两遍。
+                //   这里把"已被输出过"的前缀裁掉：返回新的起点（若整段都在里面，调用方会跳过）。
+                const trimStart = (s, e) => {
+                    if (!ctx || typeof s !== 'number' || typeof e !== 'number') return s;
+                    let ns = s;
+                    ctx.shownRanges.forEach(r => { if (r[0] <= ns && r[1] > ns) ns = Math.min(r[1], e); });
+                    return ns;
+                };
+                const spanOf = i => (ctx && ctx.paraSpans && ctx.paraSpans[i]) ? ctx.paraSpans[i] : null;
+                const txtShown = t => !!(ctx && ctx.shownTexts.has(t));
+                const markTxt = t => { if (ctx) ctx.shownTexts.add(t); };
+                
                 if (len > LONG_THRESHOLD) {
                     const fragments = splitLongParagraphWithAllKeywords(paragraph, keywords, matchMode);
                     let html = '';
                     fragments.forEach(f => {
-                        // 函数返回的片段已经包含省略号，直接使用
-                        html += `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(f.text, keywords)}</p>`;
+                        // 【2026-10-01】窗口先合并、再各自向标点扩展 ⇒ 扩展后可能互相重叠：
+                        //   ① 整段基本已输出（≥80%）⇒ 跳过；② 只是**部分**重叠 ⇒ 裁掉已被输出的前缀再输出。
+                        //   裁前缀时用**区间重建文本**，不能按 f.text 做偏移（它带首尾省略号，长度对不上）。
+                        if (covered(f.start, f.end)) return;
+                        const fs0 = (typeof f.start === 'number') ? f.start : -1;
+                        const fe0 = (typeof f.end === 'number') ? f.end : -1;
+                        let fs = trimStart(fs0, fe0);
+                        if (fe0 > 0 && fs >= fe0) return;
+                        markRange(fs, fe0);
+                        let ftext = f.text;
+                        if (fs > fs0) {
+                            ftext = String(paragraph).substring(fs, fe0);
+                            if (fs > 0) ftext = '\u2026' + ftext;
+                            if (fe0 < String(paragraph).length) ftext = ftext + '\u2026';
+                        }
+                        html += `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(ftext, keywords)}</p>`;
                     });
                     return html;
                 } else if (len >= SHORT_THRESHOLD && len <= LONG_THRESHOLD) {
+                    const sp = spanOf(index);
+                    if (txtShown(paragraph) || covered(sp && sp[0], sp && sp[1])) return '';   // 本段已由其它块输出过 ⇒ 不重复
+                    markTxt(paragraph); if (sp) markRange(sp[0], sp[1]);
                     return `<p class="rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</p>`;
                 } else {
+                    // 短段：本段若已输出过（例如作为上一段的"下一段"出现过）就不再重复整块
+                    const spShort = spanOf(index);
+                    if (txtShown(paragraph) || covered(spShort && spShort[0], spShort && spShort[1])) return '';
                     const prevParas = collectPrevParagraphs(allParagraphs, index, PREV_TARGET, MAX_PREV_PARAS);
                     let nextPara = '';
                     if (index < allParagraphs.length - 1) {
@@ -705,9 +750,25 @@
                         nextPara = next.length > NEXT_TARGET ? next.substring(0, NEXT_TARGET) + '…' : next;
                     }
                     let html = '';
-                    prevParas.forEach(p => html += `<span class="rule-context">${escapeHtml(p)}</span> `);
+                    // 【2026-10-01】上下文只输出"尚未出现过"的段落（原来是原样全输出 ⇒ 同一段可能出现两遍）
+                    prevParas.forEach(p => {
+                        if (txtShown(p)) return;
+                        markTxt(p);
+                        html += `<span class="rule-context">${escapeHtml(p)}</span> `;
+                    });
+                    markTxt(paragraph);
+                    if (spShort) markRange(spShort[0], spShort[1]);
                     html += `<span class="rule-matched-paragraph rule-match-para" ${modeAttr} data-para-index="${index}" data-rule-idx="${ruleIdx}" style="cursor:pointer;" onclick="ruleViewFullTextAndScroll(${absIdx}, ${index})">${highlightKeywords(paragraph, keywords)}</span>`;
-                    if (nextPara) html += ` <span class="rule-context">${escapeHtml(nextPara)}</span>`;
+                    if (nextPara) {
+                        const nextFull = allParagraphs[index + 1];
+                        if (!txtShown(nextFull)) {
+                            // 完整展示的下一段才登记文本（被截断的只登记区间，避免它自己命中时丢掉后半段）
+                            if (nextFull.length <= NEXT_TARGET) markTxt(nextFull);
+                            const spNext = spanOf(index + 1);
+                            if (spNext) markRange(spNext[0], spNext[0] + Math.min(NEXT_TARGET, nextFull.length));
+                            html += ` <span class="rule-context">${escapeHtml(nextPara)}</span>`;
+                        }
+                    }
                     return `<p>${html}</p>`;
                 }
             }
@@ -728,11 +789,37 @@
                     if (matched) matchedIndices.push(idx);
                 });
                 if (matchedIndices.length === 0) return '';
+                // 【2026-10-01 用户报「截取段落重复」】同一个规章的渲染上下文：记录"已输出过的正文区间/段落文本"，
+                //   供 processParagraph 去重。重复来源有三处：
+                //     ① 小段落延伸（前若干段 + 下一段）与相邻命中段会**同一段出现两次**；
+                //     ② 大段落按关键词截多个窗口时，窗口先合并、再各自向标点扩展 ⇒ 扩展后仍会互相重叠；
+                //     ③ 小段落延伸的"下一段"正好是大段落并命中 ⇒ 两条机制交叉重复。
+                //   注意：只影响**显示**，不改命中判定与排序（用户口径：段内 AND / 排序不动）。
+                const ctx = { shownRanges: [], shownTexts: new Set(), paraSpans: buildParaSpans(rule.content, paragraphs) };
                 let html = '';
                 matchedIndices.forEach(idx => {
-                    html += processParagraph(paragraphs[idx], idx, paragraphs, keywords, ruleIdx, matchMode, absIdx);
+                    html += processParagraph(paragraphs[idx], idx, paragraphs, keywords, ruleIdx, matchMode, absIdx, ctx);
                 });
                 return html;
+            }
+
+            /**
+             * 【2026-10-01】计算每个段落片段在**原始正文**里的字符区间（顺序扫描，容忍重复文本）。
+             * 用途：判断"这一段是否已经被输出过"——按区间比按文本可靠（大段落窗口是子串，无法用文本判重）。
+             */
+            function buildParaSpans(content, paragraphs) {
+                const text = String(content == null ? '' : content);
+                const spans = [];
+                let cursor = 0;
+                for (let i = 0; i < paragraphs.length; i++) {
+                    const p = paragraphs[i];
+                    let at = text.indexOf(p, cursor);
+                    if (at < 0) at = text.indexOf(p);        // 兜底：段落被 trim/合并过，顺序与原文不完全一致
+                    if (at < 0) { spans.push(null); continue; }
+                    spans.push([at, at + p.length]);
+                    cursor = at + p.length;
+                }
+                return spans;
             }
 
             function getKeywords() {

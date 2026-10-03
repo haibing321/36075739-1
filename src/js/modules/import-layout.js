@@ -111,11 +111,18 @@
      */
     function linesFromBoxes(boxes, opts) {
         opts = opts || {};
+        var _lastY = 0;
         var list = (boxes || []).map(function (b, i) {
             var ang = (typeof b.angle === 'number') ? b.angle : (typeof b.rotate === 'number' ? b.rotate : 0);
+            // 【2026-10-03 用户报「OFD 导入后太乱」】**缺坐标的块必须继承上一块的 Y**（原来给 i*1000 ⇒
+            //   每块自成一"行"，同行的字被打散到不同行；OFD 里部分块确实没带坐标）。
+            var hasY = (typeof b.y === 'number' && isFinite(b.y));
+            var y = hasY ? b.y : _lastY;
+            _lastY = y;
             return {
-                x: (typeof b.x === 'number' && isFinite(b.x)) ? b.x : 0,
-                y: (typeof b.y === 'number' && isFinite(b.y)) ? b.y : (i * 1000),   // 缺坐标：按原顺序逐块成行
+                x: (typeof b.x === 'number' && isFinite(b.x)) ? b.x : null,
+                y: y,
+                size: (typeof b.size === 'number' && b.size > 0) ? b.size : null,
                 text: String(b.text == null ? '' : b.text),
                 angle: ang,
                 rotated: (b.rotated === true) || (Math.abs(ang) > 0.5)
@@ -123,7 +130,13 @@
         }).filter(function (b) { return b.text.trim() !== ''; });
 
         if (!list.length) return [];
-        var tol = (typeof opts.lineTol === 'number' && opts.lineTol > 0) ? opts.lineTol : autoLineTol(list.map(function (b) { return b.y; }));
+        // 【2026-10-03】行容差优先用**字号**（同行的字属于同一字号，|ΔY| < 0.6×字号 即同一行）——
+        //   比"最小 Y 间距×0.45"稳得多：逐字块时同行 Y 有细微差、最小间距极小 ⇒ 老算法会把一行拆成多行。
+        var _sizes = list.map(function (b) { return b.size; }).filter(function (v) { return typeof v === 'number' && v > 0; })
+            .sort(function (a, b) { return a - b; });
+        var _sizeMed = _sizes.length ? _sizes[Math.floor(_sizes.length / 2)] : 0;
+        var tol = (typeof opts.lineTol === 'number' && opts.lineTol > 0) ? opts.lineTol
+            : (_sizeMed > 0 ? Math.max(_sizeMed * 0.6, 0.6) : autoLineTol(list.map(function (b) { return b.y; })));
 
         // 以 Y 为基准聚行（允许先乱序）。
         // ⚠️ 坐标方向必须区分：**PDF 的 Y 轴朝上**（数值越大越靠上 ⇒ 阅读顺序 = Y 从大到小），
@@ -172,8 +185,14 @@
             if (g > 0.01) gaps.push(g);
         }
         var sorted = gaps.slice().sort(function (a, b) { return a - b; });
-        var normalGap = sorted.length ? sorted[0] : 0;
-        var bigGap = normalGap > 0 ? Math.max(normalGap * 1.7, normalGap + 3) : Infinity;
+        // 【2026-10-03 用户报「OFD 导入后太乱」】行距估计改用**众数**（出现最频繁的间距）：
+        //   碎片化输入（逐字/逐词块）里"最小间距"会极小 ⇒ 阈值过小 ⇒ 每行都成段（正文全被打散）；
+        //   "中位数"又会被段间大间距抬高 ⇒ 该分段的不分。只有众数最接近真实的逐行行距。
+        var _bucket = {}, _best = 0, _bestN = 0;
+        gaps.forEach(function (g) { var k = Math.round(g * 2) / 2; _bucket[k] = (_bucket[k] || 0) + 1; });
+        Object.keys(_bucket).forEach(function (k) { if (_bucket[k] > _bestN) { _bestN = _bucket[k]; _best = parseFloat(k); } });
+        var normalGap = _best > 0 ? _best : (sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0);
+        var bigGap = normalGap > 0 ? Math.max(normalGap * 1.7, normalGap + 2) : Infinity;
 
         var paras = [], cur = null;
         for (var j = 0; j < arr.length; j++) {
@@ -216,7 +235,8 @@
                 var b = (typeof tr[1] === 'number') ? tr[1] : 0;
                 var ang = (a === 0 && b === 0) ? 0 : (Math.atan2(b, a) * 180 / Math.PI);
                 if (Math.abs(ang) > 90) ang = ang - (ang > 0 ? 180 : -180);   // 归一化到 -90..90（PDF 里 y 轴朝上，正角常见）
-                return { x: tr[4], y: tr[5], text: it.str, angle: ang };
+                // 带上字号（pdf.js 的 item.height 即字号）：供"按字号聚行"，比按间距估稳得多
+                return { x: tr[4], y: tr[5], text: it.str, angle: ang, size: (typeof it.height === 'number' ? it.height : null) };
             });
         // PDF 的 Y 轴朝上 ⇒ 阅读顺序取 Y 从大到小（flipY）
         var pdfOpts = {};
@@ -256,7 +276,7 @@
         return 'body';
     }
     function formatParagraphs(paras) {
-        return (paras || []).map(function (p) {
+        var out = (paras || []).map(function (p) {
             var t = String((p && p.text) || '').trim();
             var kind = classifyParagraph(t);
             if (kind === 'chapter' || kind === 'section' || kind === 'clause') t = clauseHeadSpace(t);
@@ -265,6 +285,29 @@
             //   两个空类型 + 一个表格，段落全被当成"非表格块"兜底渲染）。
             return { type: 'para', text: t, kind: kind, lines: (p && p.lines) || 1, rotated: !!(p && p.rotated) };
         }).filter(function (p) { return p.text !== ''; });
+        // 【2026-10-03 用户报「OFD 导入后太乱」】把"纯标点/极短"的段并回**前一段**：
+        //   碎片化输入（逐字块、独立标点框）会产生只有"。"\"部"\"“要求"的独立段，单列成段会让正文
+        //   看起来全被打散（用户截图里就是这样）。合并只在"几乎没有正文内容"时发生，不会吃掉信息。
+        var NO_TEXT = /[^\s。，、；：！？…—·（）()《》【】“”‘’"'.,;:!?\-\[\]{}<>\/\\|％%＋+＝=、0-9０-９]/;
+        var merged = [];
+        out.forEach(function (p) {
+            var core = p.text.replace(/[\s。，、；：！？…—·（）()《》【】“”‘’"'.,;:!?\-\[\]{}<>\/\\|％%＋+＝=]/g, '');
+            var tiny = (core.length <= 2 && p.text.length <= 8);
+            if (tiny && merged.length) {
+                var prev = merged[merged.length - 1];
+                prev.text = (prev.text + p.text).replace(/\s+/g, '');
+                prev.kind = classifyParagraph(prev.text);
+                return;
+            }
+            merged.push(p);
+        });
+        // 若第一段本身就是碎片（前面没有可并入的段落）⇒ 并到后一段开头
+        while (merged.length > 1 && merged[0].text.replace(NO_TEXT, '').length === 0 && merged[0].text.length <= 8) {
+            merged[1].text = (merged[0].text + merged[1].text).replace(/\s+/g, '');
+            merged[1].kind = classifyParagraph(merged[1].text);
+            merged.shift();
+        }
+        return merged;
     }
 
     // ============ 表格还原（2026-10-04） ============

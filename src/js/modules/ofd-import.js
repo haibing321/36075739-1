@@ -63,6 +63,30 @@
         return out;
     }
 
+    /**
+     * 【2026-10-03】取一个字块的位置与字号（OFD 里坐标通常在 TextCode 上，TextObject 只带 Boundary）。
+     *   · X/Y：TextCode.X/Y → TextObject.Boundary="x y w h" 的前两位 → TextObject.X/Y；
+     *   · Size：TextObject.Size → Boundary 的第 4 位（高）；
+     *   · 取不到时返回 null（交给 ImportLayout 按"继承上一块坐标"处理，绝不默认 0 —— 默认 0 会把全篇挤乱）。
+     */
+    function xySizeOf(obj, codes) {
+        var c0 = (codes && codes.length) ? codes[0] : null;
+        var x = c0 ? parseFloat(attrAny(c0, ['X', 'x'])) : NaN;
+        var y = c0 ? parseFloat(attrAny(c0, ['Y', 'y'])) : NaN;
+        var bnd = attrAny(obj, ['Boundary', 'boundary']);
+        var bp = bnd ? bnd.split(/\s+/).map(parseFloat) : [];
+        if (!isFinite(x) || !isFinite(y)) {
+            if (bp.length >= 2) { x = bp[0]; y = bp[1]; }
+        }
+        if (!isFinite(x) || !isFinite(y)) {
+            var ox = parseFloat(attrAny(obj, ['X', 'x'])); var oy = parseFloat(attrAny(obj, ['Y', 'y']));
+            if (isFinite(ox)) x = ox; if (isFinite(oy)) y = oy;
+        }
+        var size = parseFloat(attrAny(obj, ['Size', 'size']));
+        if (!(size > 0) && bp.length >= 4 && bp[3] > 0) size = bp[3];
+        return { x: isFinite(x) ? x : null, y: isFinite(y) ? y : null, size: (size > 0) ? size : null };
+    }
+
     function attrAny(el, names) {
         for (var i = 0; i < names.length; i++) {
             var v = el.getAttribute && el.getAttribute(names[i]);
@@ -178,15 +202,19 @@
                 for (var ci = 0; ci < codes.length; ci++) s += (codes[ci].textContent || '');
                 s = s.replace(/\s+$/,'');
                 if (!s.trim()) continue;
-                // 【2026-10-03 用户报】原来这里每行直接 '\n' 拼接 ⇒ **每行一个硬回车**（段内全是硬回车）。
-                //   现在只交出"带坐标的块"，由 ImportLayout 聚行并还原自然段（续行不再加硬回车）。
-                rows.push({ y: num(o, 'Y') || num(o, 'Boundary'), x: num(o, 'X'), s: s });
+                // 【2026-10-03 用户报「OFD 导入后太乱」】坐标取值原来只读 TextObject 的 Y/整串 Boundary ✗，
+                //   而 OFD 标准里字块坐标（X/Y）通常挂在 **ofd:TextCode** 上、TextObject 只带 Boundary="x y w h" ✗
+                //   ⇒ 大量块坐标取成 0 ⇒ 全篇被挤成一行/乱序（用户截图就是这个样子）。
+                //   现在按优先级取值：TextCode 的 X/Y → TextObject 的 Boundary(x y w h) → TextObject 的 X/Y；
+                //   并顺带取字号（TextObject 的 Size 或 Boundary 的第 4 个数），供"按字号聚行"使用。
+                var _xy = xySizeOf(o, codes);
+                rows.push({ y: _xy.y, x: _xy.x, size: _xy.size, s: s });
             }
             // 阅读顺序与分段交给共享模块 ImportLayout（行内按 X、行间按 Y、段落按标点/间距/条款头/缩进）
             var _lay = window.ImportLayout;
             if (_lay) {
                 // 先只聚行，不急着成段 —— 因为**页码/页眉页脚/水印戳的判定要跨页**（见下面 stripRunning）
-                pageLines.push(_lay.linesFromBoxes(rows.map(function (r) { return { x: r.x, y: r.y, text: r.s }; })));
+                pageLines.push(_lay.linesFromBoxes(rows.map(function (r) { return { x: r.x, y: r.y, size: r.size, text: r.s }; })));
             } else {
                 rows.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
                 pageTexts.push(rows.map(function (r) { return r.s; }).join('\n'));

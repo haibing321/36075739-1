@@ -726,7 +726,7 @@
                         </div>
                     </div>
 
-                    <input type="file" id="rule-fileInput" accept=".pdf,.docx,.json,.zip" style="display:none;" multiple>
+                    <input type="file" id="rule-fileInput" accept=".pdf,.docx,.ofd,.json,.zip" style="display:none;" multiple>
 
                     <div class="results-header" style="display: none;">
                         <span class="results-title">📋 查询结果</span>
@@ -1163,7 +1163,7 @@
                                 <!-- 【2026-09-23】原来用 display:none —— iOS Safari / 部分安卓 WebView 下
                                      display:none 的文件输入**点不出选择器**（表现为"点了没反应、时好时坏"）。
                                      改成"视觉隐藏但仍在布局中"的标准写法，各端都能稳定唤起。 -->
-                                <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.xls,.xlsx,.pdf,.csv,.json,image/*"
+                                <input type="file" id="ds-attach-file" multiple accept=".txt,.md,.docx,.ofd,.xls,.xlsx,.pdf,.csv,.json,image/*"
                                     style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;"
                                     aria-hidden="true" tabindex="-1" onchange="dsHandleAttach(this)">
                                 <div id="ds-attach-menu" class="ds-attach-menu-pop">
@@ -1762,6 +1762,8 @@
     <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
     <!-- 本地模块（defer: 并行下载，DOM 解析后按顺序执行） -->
     <script src="src/js/modules/utils.js" defer></script>
+    <!-- OFD（国产版式文档）导入：本地 JSZip 解包抽正文 + 去水印（2026-10-03 用户需求） -->
+    <script src="src/js/modules/ofd-import.js" defer></script>
     <script src="src/js/modules/errorMonitor.js" defer></script>
     <script src="src/js/modules/perfMonitor.js" defer></script>
     <script src="src/js/modules/diary.js" defer></script>

@@ -432,8 +432,15 @@
                 } catch (e) { shareSupported = false; }
             }
 
-            // 桌面端 或 移动端支持系统分享 → 优先 ZIP 打包 + 分享/下载
-            if (!isMobile || shareSupported) {
+            // 【2026-10-04 用户报"手机端华为浏览器无法全局导出、不弹保存按钮"】原来这里是
+            //   `if (!isMobile || shareSupported)` ⇒ 华为浏览器上 `canShare({files})` 常为 false ✗
+            //   ⇒ **跳过 ZIP 分支**、落到"HTML 单文件兜底" ✗ —— 而那条路要把**所有附件 base64 塞进一个 HTML**
+            //   （见上方 base64 兜底注释）⇒ 手机上 4 万条 + 附件极易长时间卡住/OOM ⇒ 用户看到的就是
+            //   "进度条走完或卡住，然后什么都不弹、也没有保存按钮"（因为压根没走到 window.downloadBlob）。
+            //   改为：**永远优先 ZIP**（媒体是独立条目、体积更小、内存友好）；交付交给 downloadBlob 的
+            //   移动端链路 —— 系统分享 →（canShare=false 或失败）→ 「📥 点击下载」按钮（真实手势内重试，
+            //   这就是用户要的"保存按钮"）。HTML 兜底只保留给"JSZip 加载失败（如断网）"这一种情况。
+            if (true) {
                 // 用 requireLib：直接 await loadScript 会在离线时抛错，
                 // 使下面「HTML 单文件兜底」这条退路永远走不到（备份功能整体失效）
                 await window.requireLib(LIB_JSZIP_BK, { feature: 'ZIP 备份', silent: true });

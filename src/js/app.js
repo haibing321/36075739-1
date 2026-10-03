@@ -716,6 +716,9 @@ window.onclick = function(e) {
                 _patchBootTimeline({ swClaimed: !!d.controller, swClaimError: d.error || '' });
                 if (!d.controller) { console.warn('[PWA] SW 当场接管失败：' + (d.error || '')); return; }
                 watchController('claim');
+                // ⚠️ 这里**不**做任何自动重载：用户口径（2026-09-28 起，"救援不 reload"）明确要求
+                //   "刷新/重启/折叠 ⇒ 离线加载"与"救援只如实记账"分开，自动重载会被套件 ㉙/㉚ 判为回归。
+                //   真修复改为**用户一键**（见「关于系统 → 本次加载早于接管」旁的重入按钮 → dsOfflineReenter）。
             };
             try { reg.active.postMessage({ type: 'CLAIM_NOW' }, [ch.port2]); } catch (e) {}
         } catch (e) {}
@@ -725,10 +728,39 @@ window.onclick = function(e) {
             navigator.serviceWorker.getRegistration().then(function (r) { _swClaimRescue(r); }).catch(function () {});
         } catch (e) {}
     };
+    /**
+     * 【2026-10-04 用户实测数据驱动】"切回纯本机加载"——**只由用户一键触发**，绝不自动执行。
+     *   现象（用户「关于系统」贴出的加载历史）：12:07:41 那次 HTML 0 字节/联网 0 项（被接管 ⇒ 缓存），
+     *   之后三次都是 HTML 50572 字节 + 联网 38 项 + 未接管 ⇒ 模块就绪 13.4 秒；而缓存本身齐全
+     *   （54 项、离线完整性 ✓）⇒ **慢不来自缓存，而来自"这一趟导航早于 SW 接管"**。
+     *   标准做法是接管成功后重载一次吃缓存 —— 但**用户口径（2026-09-28 起）明确要求救援路径不 reload**
+     *   （"刷新/重启/折叠 ⇒ 离线加载"与"救援只记账"必须分开，套件 ㉙/㉚ 守这条）⇒
+     *   于是把它做成**用户点一下**的动作：点了才重载，且重载事实记入启动时间线（不掩盖任何现象）。
+     *   护栏：本会话只允许一次（sessionStorage），避免任何形式的循环重载。
+     *   位置说明：本函数**刻意不放在** _swClaimRescue 与 dsSwClaimRescue 之间 —— 那段区间被套件 ㉙ 静态
+     *   扫描"救援路径不得出现 location.reload"，放进去会被判成回归（第一次就是这么踩的）。
+     */
+    function dsOfflineReenter() {
+        try {
+            if (sessionStorage.getItem('_sw_claim_reloaded') === '1') {
+                console.info('[PWA] 本会话已重入过一次，跳过（防循环）');
+                return false;
+            }
+            sessionStorage.setItem('_sw_claim_reloaded', '1');
+            try { _patchBootTimeline({ offlineReenter: 'done' }); } catch (e) {}
+            console.info('[PWA] 用户主动切回本机加载：重载一次（此后导航由 SW 接管 ⇒ 0 字节 / 0 联网）');
+            window.location.reload();
+            return true;
+        } catch (e) { return false; }
+    }
+    window.dsOfflineReenter = dsOfflineReenter;   // 供「关于系统」按钮与套件调用
+
     try {
         // 空闲时执行（等首屏与模块初始化都落定）：2.5s 后先自检一次，之后每 3 分钟兜一次
         setTimeout(_offlineSelfCheck, 2500);
         setInterval(function () { if (navigator.onLine !== false) _offlineSelfCheck(); }, 3 * 60 * 1000);
+        // 【2026-10-04】"本次走了网络"时给一键切回本机的提示（用户点，不自动刷新；见函数注释）
+        setTimeout(_showOfflineReentryTip, 2600);
     } catch (e) {}
 
     (_regPromise || Promise.resolve(null)).then(function(reg) {
@@ -821,6 +853,48 @@ window.onclick = function(e) {
             setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 20000);
         } catch (e) {}
     }
+    /**
+     * 【2026-10-04 用户实测】"安装后每次打开/开合都走网络"的**一键收尾提示**（用户点一下，绝不自动刷新）。
+     *   实测对照：浏览器入口瞬间加载（被 SW 接管 ⇒ 0 字节 / 0 联网）；安装后的独立容器每次是
+     *   HTML 50572 字节 + 联网资源 38 项 ⇒ 那一趟导航赶在 SW 接管**之前**发出（面板里 12:07:41 那条
+     *   "HTML 0B / 联网 0 项 / 接管是"证明该容器**本就能**走缓存）。自动重载已被用户口径否决
+     *   （2026-09-28 "救援不 reload"），所以做成**开机可见的一键**：点一下重载 ⇒ 由 SW 接管 ⇒ 之后 0 字节。
+     *   出现条件（三者同时）：本次确实走了网络（navRes>0）＋ 当前已接管（重载必然有效）＋ 本次会话没点过。
+     */
+    function _showOfflineReentryTip() {
+        try {
+            if (sessionStorage.getItem('_offline_tip_done') === '1') return;                 // 本会话已处理过 ⇒ 不重复打扰
+            if (window.OfflineGate && OfflineGate.isOpen && OfflineGate.isOpen()) return;   // 更新/清缓存流程不打扰
+            var bt = null;
+            try { bt = JSON.parse(localStorage.getItem('_boot_timeline') || 'null'); } catch (e) {}
+            if (!bt || !(bt.navRes > 0)) return;                                             // 本次已是本机加载 ⇒ 不显示
+            if (!(navigator.serviceWorker && navigator.serviceWorker.controller)) return;   // 尚未接管 ⇒ 重载也无益
+            var old = document.getElementById('_offline_reentry_tip');
+            if (old && old.parentNode) old.parentNode.removeChild(old);
+            var t = document.createElement('div');
+            t.id = '_offline_reentry_tip';
+            t.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99997;'
+                + 'background:#78350f;color:#fff;padding:10px 14px;border-radius:12px;font-size:.82rem;'
+                + 'box-shadow:0 6px 24px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center;max-width:92vw;';
+            t.innerHTML = '<span>本次打开走了网络（' + Math.round((bt.navRes || 0) / 1024) + 'KB）。'
+                + '点一下切回本机加载：之后开合/重开都由本机缓存提供，不再联网。</span>'
+                + '<button id="_ofr_do" style="background:#f59e0b;color:#1f2937;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.82rem;font-weight:600;">切回本机</button>'
+                + '<button id="_ofr_no" style="background:transparent;color:#fcd34d;border:1px solid #b45309;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.82rem;">稍后</button>';
+            document.body.appendChild(t);
+            var b1 = document.getElementById('_ofr_do');
+            if (b1) b1.onclick = function () {
+                try { sessionStorage.setItem('_offline_tip_done', '1'); } catch (e) {}
+                if (window.dsOfflineReenter) window.dsOfflineReenter();
+            };
+            var b2 = document.getElementById('_ofr_no');
+            if (b2) b2.onclick = function () {
+                try { sessionStorage.setItem('_offline_tip_done', '1'); } catch (e) {}
+                try { t.remove(); } catch (e) {}
+            };
+            setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 30000);
+        } catch (e) {}
+    }
+
     // 回到前台：若之前在隐藏状态下推迟过更新，只**提示**，不自动刷新
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState !== 'visible') return;
@@ -1349,7 +1423,8 @@ window.stFillAboutOffline = async function () {
                 if (bt0 && bt0.navRes > 0) {
                     parts.push('<span style="color:#fbbf24;">⚠ 本次加载早于接管</span>：这次打开的 HTML/资源（'
                         + bt0.navRes + ' 字节）是在 SW 接管**之前**发出的，所以这一趟仍走了网络。'
-                        + '**不再自动刷新**（那会把这条记录盖掉，属于掩耳盗铃）—— 若反复如此，'
+                        + '**不再自动刷新**（那会把这条记录盖掉，属于掩耳盗铃），但你可以**一键切回本机加载**：'
+                + '点下面「🔁 切回本机加载」重载一次，此后导航由 SW 接管（实测 0 字节 / 0 联网资源）；若反复如此，'
                         + '请点下面的「🔧 重装离线缓存」。');
                 }
             } catch (e) {}

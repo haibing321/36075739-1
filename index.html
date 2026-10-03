@@ -2128,6 +2128,15 @@
 
             <!-- 【2026-09-23】离线状态：用户关心"折叠开合到底走不走离线数据"，这里直接可见 -->
             <div id="about-offline" style="background:#0f172a;color:#cbd5e1;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.76rem;line-height:1.8;">离线状态：检测中…</div>
+            <!-- 【2026-10-04】折叠屏开合实况：形态/视口段数/是否被系统回收/缓存恢复次数/最近事件 ——
+                 用户报"理解与实际不一致"，这一行让触发点直接可见（数据由 page-state.js 写入）。 -->
+            <div id="about-fold" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 13px;margin-bottom:8px;font-size:0.74rem;color:var(--text-secondary);line-height:1.7;">折叠/形态：检测中…</div>
+            <!-- 折叠屏（书本姿态左右两段视口）时避开铰链区域：标准 API，不支持则整段被忽略 -->
+            <style>
+                @media (horizontal-viewport-segments: 2) {
+                    .panel.active { padding-left: env(viewport-segment-left 1 0, 0px); padding-right: calc(100% - env(viewport-segment-right 0 0, 100%)); }
+                }
+            </style>
 <!-- 【2026-09-28】用户批评"自动刷新是掩耳盗铃" → 把真修复交到用户手里：一键重装离线组件（正常导航，不用 reload） -->
 <button type="button" onclick="window.dsRepairOffline && window.dsRepairOffline()"
     style="display:block;width:100%;margin:0 0 14px;padding:9px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:0.8rem;font-weight:600;cursor:pointer;">

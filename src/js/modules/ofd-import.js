@@ -193,15 +193,20 @@
             }
         }
 
-        // 跨页清理：页码（"— — 1 — —"）、重复页眉页脚（如规章编号）、打印水印戳（IP+用户+时间）
+        // 跨页清理（与 PDF 同一套）：页码（"— — 1 — —"）、**行内页码标记**（"…通用规定— — 6 — —"）、
+        //   重复页眉页脚（如规章编号）、打印水印戳（IP+用户+时间）
+        var text = '';
         if (_lay && pageLines.length) {
             var _st = _lay.stripRunning(pageLines);
             pageLines = _st.pages || [];
             if (_st.removed && _st.removed.length) for (var _ri = 0; _ri < _st.removed.length; _ri++) removed.push(_st.removed[_ri]);
-            pageTexts = pageLines.map(function (ls) { return _lay.toText(_lay.paragraphsFromLines(ls)); });
+            var _perPage = pageLines.map(function (ls) { return _lay.paragraphsFromLines(ls); });
+            // 【跨页段落合并】OFD 同样会出现"一段跨页被切成两段"，与 PDF 用同一个合并器
+            var _allParas = (_lay.mergePages ? _lay.mergePages(_perPage) : [].concat.apply([], _perPage));
+            text = _lay.toText(_allParas);
+        } else {
+            text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n');
         }
-
-        var text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n');
 
         // ---------- ④ 把注释水印文字串从整篇正文里剔除 ----------
         var hit = 0;

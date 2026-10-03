@@ -38,16 +38,40 @@
         return true;                                          // 拉丁/数字之间保一个空格，避免粘成一个词
     }
 
+    /**
+     * 行内清理：把 PDF「分散对齐 / 逐字定位」留下的多余空格去掉。
+     * 实测语料（兰州局规章 PDF）："铁 路 按 照 普 速 铁 路 防 护 栅 栏" —— 每个汉字后面一个空格。
+     *   这类空格有时在**块之间**（由 joinRun 决定不插空格即可），但更常见是**块内部就是 '铁 路'**，
+     *   所以必须对每个块自己的文本也做一次清理，否则永远修不掉。
+     * 规则（只做**无歧义**的合并，不做激进的整句重排）：
+     *   · 汉字 + 空白 + 汉字 ⇒ 合并（中文正文里汉字之间不该有空格）；
+     *   · 数字 + 空白 + 数字 ⇒ 合并（"1 20km/h" ⇒ "120km/h"、"3 ≥3 0 分" 里的数字也归位）；
+     *   · 连续多个空白 ⇒ 一个空格。
+     * 不动：字母与字母之间的空格（"the words" 不能被粘成 "thewords"）。
+     */
+    function collapseSpaces(s) {
+        var t = String(s == null ? '' : s);
+        for (var i = 0; i < 4; i++) {
+            var n = t
+                .replace(/([\u3400-\u9fff\uf900-\ufaff])[ \t\u00a0\u3000]+([\u3400-\u9fff\uf900-\ufaff])/g, '$1$2')
+                .replace(/([0-9])[ \t\u00a0\u3000]+([0-9])/g, '$1$2')
+                .replace(/[ \t\u00a0]{2,}/g, ' ');
+            if (n === t) break;
+            t = n;
+        }
+        return t;
+    }
+
     /** 把一行里的若干块按 X 排序拼起来（中文不加空格、拉丁补空格） */
     function joinRun(parts) {
         var s = '';
         for (var i = 0; i < parts.length; i++) {
-            var t = String(parts[i] || '');
+            var t = collapseSpaces(String(parts[i] || ''));   // 块内部先清一次（分散对齐的空格常在这里）
             if (!t) continue;
             if (!s) { s = t; continue; }
             s += (needSpace(s.charAt(s.length - 1), t.charAt(0)) ? ' ' : '') + t;
         }
-        return s;
+        return collapseSpaces(s);
     }
 
     /**
@@ -190,7 +214,122 @@
             .filter(function (t) { return t !== ''; }).join('\n');
     }
 
+    /**
+     * 跨页清理：剔除**页码 / 页眉 / 页脚 / 水印戳**（2026-10-03 用户给的实测语料就是这么露出来的）
+     * 语料证据：
+     *   · 每页都夹着页码行 "— — 1 — —"；
+     *   · 页脚/末尾有打印水印戳 "10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"
+     *     （IP + 用户名 + 机器码 + 时间 ⇒ 属"倾斜排版的水印"那一类，用户要求清掉）；
+     *   · 页眉还有规章编号 "LZG/GW213 - 2026"。
+     * 判据：
+     *   ① 纯页码行（"—— 1 ——"、"第 1 页"、"1/3"）⇒ 直接删；
+     *   ② 水印戳行（含 IPv4 或 "YYYY-MM-DD HH:MM(:SS)"，且短、且不含句末标点）⇒ 直接删；
+     *   ③ **跨页重复**：每页顶部/底部各取 2 行，归一化（数字与分隔符抹掉）后计数，
+     *      出现在 ≥ max(2, 页数×0.6) 页的 ⇒ 判定为页眉/页脚，逐页删掉。
+     */
+    function normRunning(text) {
+        return collapseSpaces(text)
+            .replace(/[0-9０-９]+/g, '#')
+            .replace(/[\s—–\-·．.、,，|│]+/g, '')
+            .slice(0, 40);
+    }
+    function isPageNumberLine(text) {
+        var t = collapseSpaces(text).trim();
+        if (!t) return false;
+        return /^[—\-–\s]*[0-9０-９]{1,4}[—\-–\s]*$/.test(t)
+            || /^第\s*[0-9０-９]{1,4}\s*页(\s*共\s*[0-9０-９]{1,4}\s*页)?$/.test(t)
+            || /^[—\-–]?\s*[0-9０-９]{1,4}\s*\/\s*[0-9０-９]{1,4}\s*[—\-–]?$/.test(t);
+    }
+    function isStampLine(text) {
+        var t = collapseSpaces(text).trim();
+        if (!t || t.length > 80) return false;
+        var hasIp = /\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b/.test(t);
+        var hasStamp = /[0-9]{4}-[0-9]{2}-[0-9]{2}\s+[0-9]{2}:[0-9]{2}(:[0-9]{2})?/.test(t);
+        if (!hasIp && !hasStamp) return false;
+        return !/[。；！？]/.test(t);          // 不含句末标点 ⇒ 不是正文句子
+    }
+    /** @param {Array<Array<{text:string,y:number,x:number}>>} pages 每页的行 */
+    function stripRunning(pages, opts) {
+        opts = opts || {};
+        var zone = (typeof opts.zone === 'number') ? opts.zone : 2;
+        var nPages = (pages || []).length;
+        var counts = {}, exactCounts = {}, removed = [];
+        (pages || []).forEach(function (lines) {
+            // ⚠️ 必须按**行下标去重**：页面行数 ≤ 2·zone 时，"顶部 zone 行"和"底部 zone 行"会重叠，
+            //   直接拼接会把同一行数两次 ⇒ 正文行被误判成"多页都出现的页眉"删掉
+            //   （ofd 套件里 2 页、每页 1~3 行的语料当场就把 BODY2 删没了）。
+            var idx = {}, cand = [];
+            (lines || []).forEach(function (l, i) {
+                var isEdge = (i < zone) || (i >= lines.length - zone);
+                if (isEdge && !idx[i]) { idx[i] = 1; cand.push(l); }
+            });
+            cand.forEach(function (l) {
+                var t = collapseSpaces((l && l.text) || '').trim();
+                var k = normRunning(t);
+                if (k && k.length >= 2) counts[k] = (counts[k] || 0) + 1;
+                if (t) exactCounts[t] = (exactCounts[t] || 0) + 1;
+            });
+        });
+        var need = Math.max(2, Math.ceil(nPages * 0.6));
+        var clean = (pages || []).map(function (lines) {
+            var out = [];
+            (lines || []).forEach(function (l, i) {
+                var t = String((l && l.text) || '');
+                var tt = collapseSpaces(t).trim();
+                if (isPageNumberLine(t)) { removed.push('页码行「' + tt.slice(0, 20) + '」'); return; }
+                if (isStampLine(t)) { removed.push('水印戳「' + tt.slice(0, 40) + '」'); return; }
+                var isEdge = (i < zone) || (i >= lines.length - zone);
+                var k = normRunning(t);
+                // 【判别要收紧】原先把"普通行只差数字"也算重复 ⇒ 像"本条为第1页专有正文…"这种
+                //   每页只差页码的**正文**会被误删（套件 A⑩ 抓到的真 bug）。现在：
+                //   ① 原文**逐字相同**且出现在 ≥need 页 ⇒ 页眉页脚（无数字的页眉靠这条）；
+                //   ② 归一化（数字→#）相同且出现在 ≥need 页、**且归一化后很短（≤12 字）** ⇒ 才是
+                //      页码/单位名之类的页眉页脚；长行不算（正文里带个数字很常见）。
+                var dup = (exactCounts[tt] >= need) || (counts[k] >= need && k.length <= 12);
+                if (isEdge && dup) {
+                    removed.push('页眉/页脚重复行「' + tt.slice(0, 24) + '」（' + Math.max(exactCounts[tt] || 0, counts[k] || 0) + '/' + nPages + ' 页）');
+                    return;
+                }
+                out.push(l);
+            });
+            return out;
+        });
+        return { pages: clean, removed: removed };
+    }
+
+    /**
+     * 一站式：多页 items ⇒ 正文
+     *   = 行内清空格（分散对齐）+ 聚行 + 段落还原 + 丢弃倾斜水印 + 跨页去页眉页脚/页码/水印戳
+     */
+    function buildDocument(pagesItems, opts) {
+        opts = opts || {};
+        var perPage = [], rotatedDropped = 0;
+        (pagesItems || []).forEach(function (items) {
+            var r = fromPdfItems(items, opts);
+            var good = [];
+            r.lines.forEach(function (l) { if (l.rotated) rotatedDropped++; else good.push(l); });
+            perPage.push(good);
+        });
+        var st = stripRunning(perPage, opts);
+        var paras = [], pagesText = [];
+        st.pages.forEach(function (lines) {
+            var ps = paragraphsFromLines(lines, opts);
+            if (ps.length) paras = paras.concat(ps);
+            pagesText.push(toText(ps));
+        });
+        return {
+            text: pagesText.filter(function (t) { return t.trim() !== ''; }).join('\n'),
+            paragraphs: paras, rotatedDropped: rotatedDropped,
+            removed: st.removed, pageCount: st.pages.length
+        };
+    }
+
     window.ImportLayout = {
+        buildDocument: buildDocument,
+        stripRunning: stripRunning,
+        collapseSpaces: collapseSpaces,
+        isPageNumberLine: isPageNumberLine,
+        isStampLine: isStampLine,
         linesFromBoxes: linesFromBoxes,
         paragraphsFromLines: paragraphsFromLines,
         fromPdfItems: fromPdfItems,

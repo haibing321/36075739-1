@@ -158,7 +158,7 @@
         }
 
         // ---------- ③ 逐页抽正文 + 去水印 ----------
-        var pageTexts = [], images = 0;
+        var pageTexts = [], images = 0, pageLines = [];
         for (var pg = 0; pg < pageLocs.length; pg++) {
             var cx = parseXml(await readZipText(zip, pageLocs[pg]));
             if (!cx) { pageTexts.push(''); continue; }
@@ -185,12 +185,20 @@
             // 阅读顺序与分段交给共享模块 ImportLayout（行内按 X、行间按 Y、段落按标点/间距/条款头/缩进）
             var _lay = window.ImportLayout;
             if (_lay) {
-                var _lines = _lay.linesFromBoxes(rows.map(function (r) { return { x: r.x, y: r.y, text: r.s }; }));
-                pageTexts.push(_lay.toText(_lay.paragraphsFromLines(_lines)));
+                // 先只聚行，不急着成段 —— 因为**页码/页眉页脚/水印戳的判定要跨页**（见下面 stripRunning）
+                pageLines.push(_lay.linesFromBoxes(rows.map(function (r) { return { x: r.x, y: r.y, text: r.s }; })));
             } else {
                 rows.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
                 pageTexts.push(rows.map(function (r) { return r.s; }).join('\n'));
             }
+        }
+
+        // 跨页清理：页码（"— — 1 — —"）、重复页眉页脚（如规章编号）、打印水印戳（IP+用户+时间）
+        if (_lay && pageLines.length) {
+            var _st = _lay.stripRunning(pageLines);
+            pageLines = _st.pages || [];
+            if (_st.removed && _st.removed.length) for (var _ri = 0; _ri < _st.removed.length; _ri++) removed.push(_st.removed[_ri]);
+            pageTexts = pageLines.map(function (ls) { return _lay.toText(_lay.paragraphsFromLines(ls)); });
         }
 
         var text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n');

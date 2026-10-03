@@ -1755,6 +1755,9 @@
          （utils.js:safeHtml / unified-enhancements.js:renderCard / smart-writer.js:wrSafeBubbleHtml），
          而恒等实现会让它们误判为已净化、把未经处理的 HTML 直接落地。不定义该属性后，
          各调用方会自动走各自的"转义降级"分支（安全方向），行为与 purify 完全缺失时一致。 -->
+    <!-- 【2026-10-03 用户口径】离线硬门禁必须**第一个**加载（defer 按顺序执行）：
+         只有「检查/执行更新」与「清除缓存」允许联网，其余远程加载一律拦截（AI 推理接口为显式例外）。 -->
+    <script src="src/js/offline-gate.js" defer></script>
     <script src="src/js/vendor/purify.min.js" defer onerror="console.error('[Local] DOMPurify 未加载：净化能力不可用，渲染将自动降级为转义（请检查网络或 SW 缓存）')"></script>
     <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
     <!-- 本地模块（defer: 并行下载，DOM 解析后按顺序执行） -->

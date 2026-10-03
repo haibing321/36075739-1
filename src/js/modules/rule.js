@@ -1138,13 +1138,38 @@
                             if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js 库未加载');
                             const arrayBuffer = await file.arrayBuffer();
                             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                            // 【2026-10-03 用户报】原来 `items.map(str).join(' ')` ✗：①句子中间被塞空格（打断句子）
+                            //   ②整页并成一行 ⇒ 只能被 smartSplitParagraphs 按 300 字硬切（"随意打断"）。
+                            //   现在用 ImportLayout 还原排版：行内按 X 拼（中文不加空格/拉丁补空格）、按 Y 聚行、
+                            //   按标点/行距/条款头/缩进还原自然段；**倾斜文字（水印）丢弃并计数**。
+                            if (!window.ImportLayout) {
+                                try { await window.loadScript('src/js/modules/import-layout.js'); } catch (e) {}
+                            }
+                            const _lay = window.ImportLayout;
+                            const _pageParas = [];
+                            let _pdfRotatedDropped = 0;
                             for (let p = 1; p <= pdf.numPages; p++) {
                                 const page = await pdf.getPage(p);
                                 const content = await page.getTextContent();
-                                searchText += content.items.map(item => item.str).join(' ') + '\n';
+                                if (_lay) {
+                                    const _r = _lay.fromPdfItems(content.items);
+                                    const _good = [];
+                                    _r.lines.forEach(function (l) { if (l.rotated) _pdfRotatedDropped++; else _good.push(l); });
+                                    const _p = _lay.toText(_lay.paragraphsFromLines(_good));
+                                    if (_p.trim()) _pageParas.push(_p);
+                                } else {
+                                    let _flat = content.items.map(item => item.str).join('');
+                                    if (_flat.trim()) _pageParas.push(_flat);
+                                }
                             }
-                            plainText = searchText;  // PDF文本自带换行，直接用作content
-                            contentHtml = '<pre style="white-space:pre-wrap;word-break:break-word;">' + escapeHtml(searchText) + '</pre>';
+                            plainText = _pageParas.join('\n');
+                            searchText = normalizeSearchText(plainText);
+                            // 用 <p> 逐段呈现（原来是整篇一个 <pre>，段落感全无）
+                            contentHtml = plainText.split('\n').map(function (p) { return '<p>' + escapeHtml(p) + '</p>'; }).join('');
+                            if (_pdfRotatedDropped > 0) {
+                                skipNotes.push(file.name + '：已忽略 ' + _pdfRotatedDropped + ' 行倾斜文字（通常为水印）');
+                                try { console.info('[PDF] 已忽略倾斜文字 ' + _pdfRotatedDropped + ' 行（水印）'); } catch (e) {}
+                            }
                         } else if (ext === 'ofd') {
                             // 【2026-10-03 用户需求】OFD（国产版式文档）导入：本地 JSZip 解包 → 抽正文 → **去水印**。
                             //   全程离线；水印判据（注释水印 / 图层名 / 版式特征）见 src/js/modules/ofd-import.js 文件头。

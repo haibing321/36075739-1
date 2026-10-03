@@ -178,14 +178,22 @@
                 for (var ci = 0; ci < codes.length; ci++) s += (codes[ci].textContent || '');
                 s = s.replace(/\s+$/,'');
                 if (!s.trim()) continue;
-                rows.push({ y: num(o, 'Y') || num(o, 'Boundary') , x: num(o, 'X'), s: s });
+                // 【2026-10-03 用户报】原来这里每行直接 '\n' 拼接 ⇒ **每行一个硬回车**（段内全是硬回车）。
+                //   现在只交出"带坐标的块"，由 ImportLayout 聚行并还原自然段（续行不再加硬回车）。
+                rows.push({ y: num(o, 'Y') || num(o, 'Boundary'), x: num(o, 'X'), s: s });
             }
-            // 阅读顺序：先按 Y（上→下），同高度按 X（左→右）；Y 缺失时保持原顺序
-            rows.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
-            pageTexts.push(rows.map(function (r) { return r.s; }).join('\n'));
+            // 阅读顺序与分段交给共享模块 ImportLayout（行内按 X、行间按 Y、段落按标点/间距/条款头/缩进）
+            var _lay = window.ImportLayout;
+            if (_lay) {
+                var _lines = _lay.linesFromBoxes(rows.map(function (r) { return { x: r.x, y: r.y, text: r.s }; }));
+                pageTexts.push(_lay.toText(_lay.paragraphsFromLines(_lines)));
+            } else {
+                rows.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+                pageTexts.push(rows.map(function (r) { return r.s; }).join('\n'));
+            }
         }
 
-        var text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n\n');
+        var text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n');
 
         // ---------- ④ 把注释水印文字串从整篇正文里剔除 ----------
         var hit = 0;

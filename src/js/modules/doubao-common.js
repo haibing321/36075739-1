@@ -588,20 +588,36 @@
                     const pdf = await pdfjsLib.getDocument(typedarray).promise;
                     let result = '[PDF文件] ' + file.name + '\n\n总页数：' + pdf.numPages + '\n\n';
                     const maxPages = Math.min(pdf.numPages, 10);
+                    let _rotatedDropped = 0;
+                    // 【2026-10-03 用户报】原实现：① 直接拼 item.str（拉丁词之间**不加空格**会粘成一个词）；
+                    //   ② 每换一行就 '\n' ⇒ **段内全是硬回车**（甚至一个字也算一段）；
+                    //   ③ 倾斜文字（水印常见画法）照收不误。
+                    //   现在统一交给 ImportLayout：行内按 X 拼（中文不加空格/拉丁补空格）、按 Y 聚行、
+                    //   再按标点/行距/条款头/缩进还原自然段；**倾斜行按水印丢弃并计数**。
+                    const _lay = window.ImportLayout;
                     for (let i = 1; i <= maxPages; i++) {
                         const page = await pdf.getPage(i);
                         const textContent = await page.getTextContent();
                         let pageText = '';
-                        const lastY = { value: -Infinity };
-                        textContent.items.forEach(function(item) {
-                            if (item.str) {
-                                if (lastY.value !== -Infinity && Math.abs(lastY.value - item.transform[5]) > 5) pageText += '\n';
-                                pageText += item.str;
-                                lastY.value = item.transform[5];
-                            }
-                        });
+                        if (_lay) {
+                            const r = _lay.fromPdfItems(textContent.items);
+                            const good = [], drops = [];
+                            r.lines.forEach(function (l) { (l.rotated ? drops : good).push(l); });
+                            _rotatedDropped += drops.length;
+                            pageText = _lay.toText(_lay.paragraphsFromLines(good));
+                        } else {
+                            const lastY = { value: -Infinity };
+                            textContent.items.forEach(function(item) {
+                                if (item.str) {
+                                    if (lastY.value !== -Infinity && Math.abs(lastY.value - item.transform[5]) > 5) pageText += '\n';
+                                    pageText += item.str;
+                                    lastY.value = item.transform[5];
+                                }
+                            });
+                        }
                         result += '--- 第 ' + i + ' 页 ---\n' + pageText + '\n\n';
                     }
+                    if (_rotatedDropped > 0) result += '[已忽略 ' + _rotatedDropped + ' 行倾斜文字（通常为水印）]\n';
                     if (pdf.numPages > maxPages) result += '...[仅显示前' + maxPages + '页]\n';
                     resolve(result);
                 } catch (err) {

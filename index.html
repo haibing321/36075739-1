@@ -1762,7 +1762,8 @@
     <script src="src/js/modules/pinyin.js" defer onerror="console.warn('[Local] pinyin 加载失败')"></script>
     <!-- 本地模块（defer: 并行下载，DOM 解析后按顺序执行） -->
     <script src="src/js/modules/utils.js" defer></script>
-    <!-- OFD（国产版式文档）导入：本地 JSZip 解包抽正文 + 去水印（2026-10-03 用户需求） -->
+    <!-- 导入排版还原（OFD/PDF ⇒ 自然段，段内不留硬回车）与 OFD 导入（抽正文 + 去水印） -->
+    <script src="src/js/modules/import-layout.js" defer></script>
     <script src="src/js/modules/ofd-import.js" defer></script>
     <script src="src/js/modules/errorMonitor.js" defer></script>
     <script src="src/js/modules/perfMonitor.js" defer></script>

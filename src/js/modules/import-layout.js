@@ -287,15 +287,69 @@
     }
     /** 一行 ⇒ 单元格数组（每个单元格是若干文字块） */
     function cellsOfLine(line, opts) {
-        var items = ((line && line.items) || []).slice().sort(function (a, b) { return a.x - b.x; });
-        if (!items.length) return [];
-        var adv = estAvgAdv(items);
+        opts = opts || {};                 // ⚠️ 必须兜底：下面要读 opts.colGapChars，不兜底会在无参调用时直接抛错
+        var raw = ((line && line.items) || []).slice().sort(function (a, b) { return a.x - b.x; });
+        if (!raw.length) return [];
+        var adv0 = estAvgAdv(raw);
+        // 【必须先处理"块内部的列分隔"】用户的附件台账常常整行只有**一个**文字块，
+        //   列与列之间是块文本里的制表符/大段空白（"1兰新\t\t\t\t下左\t\t58.450…"）。
+        //   只在块与块之间找间距 ⇒ 一个块 ⇒ 一个格子 ⇒ 表格永远识别不出来（"有些表格未转化"就是这个）。
+        var items = [];
+        var RE_INNER = new RegExp(WS + '{2,}|' + WS + '*\\t' + WS + '*');
+        for (var ii = 0; ii < raw.length; ii++) {
+            var it = raw[ii], txt = String(it.text || '');
+            var parts = txt.split(RE_INNER);
+            if (parts.length <= 1) { items.push(it); continue; }
+            var consumed = 0, advUse = adv0 || 1;
+            for (var pi = 0; pi < parts.length; pi++) {
+                var p2 = parts[pi];
+                if (p2) items.push({ x: it.x + consumed * advUse, text: p2 });
+                consumed += p2.length + 1;           // +1 近似表示被吞掉的分隔空白
+            }
+        }
+        items.sort(function (a, b) { return a.x - b.x; });
+        var adv = estAvgAdv(items) || adv0;
+        // 【兜底】若上面没能切出 2 格以上，但**整行文本里**本来就有制表符/连续空白（整行只有一个文字块的情形），
+        //   就按这些空白再切一次。用户的附件台账正是这种："1兰新\t\t左\t\t58.450\t\t砼柱金属网" 是一个块。
+        if ((function () {
+            var n = 0, last = -Infinity;
+            for (var q = 0; q < items.length; q++) {
+                if (Math.abs(items[q].x - last) > (adv ? adv * 2.2 : 1) && q > 0) n++;
+                last = items[q].x;
+            }
+            return n < 1;                     // 切点不足 ⇒ 需要兜底
+        })()) {
+            var rawText = raw.map(function (i3) { return String(i3.text || ''); }).join('');
+            var partsFb = rawText.split(RE_INNER).filter(function (s) { return s !== ''; });
+            if (partsFb.length >= 2) {
+                var advFb = adv0 || 1, acc = 0, x0 = raw[0] ? raw[0].x : 0;
+                return partsFb.map(function (p3) {
+                    var cell = [{ x: x0 + acc * advFb, text: p3 }];
+                    acc += p3.length + 1;
+                    return cell;
+                });
+            }
+        }
         var thr = (typeof opts.colGapChars === 'number' ? opts.colGapChars : 2.2) * (adv || 1);
         var cells = [[items[0]]];
         for (var i = 1; i < items.length; i++) {
             var gap = items[i].x - items[i - 1].x;
             if (adv > 0 && gap > thr) cells.push([]);
             cells[cells.length - 1].push(items[i]);
+        }
+        // 【兜底·最终】按"文本里的制表符/连续空白"再切一遍，**取格子更多的那个方案**。
+        //   为什么放在最后：用户台账常见"整行就是一个文字块、列间是 \t 或大段空白"，
+        //   只按坐标找列会得到 1 格；只按文本切又可能把"正文里两个空格"误当列。
+        //   两个方案都算一遍、取格子多的，规则简单、可解释，且不会让原本正确的情况变差。
+        var _rawText = raw.map(function (i9) { return String(i9.text || ''); }).join('');
+        var _partsFb = _rawText.split(RE_INNER).filter(function (s) { return s !== ''; });
+        if (_partsFb.length > cells.length) {
+            var _acc = 0, _x0 = raw[0] ? raw[0].x : 0, _adv = adv0 || 1;
+            return _partsFb.map(function (p9) {
+                var c9 = [{ x: _x0 + _acc * _adv, text: p9 }];
+                _acc += p9.length + 1;
+                return c9;
+            });
         }
         return cells;
     }
@@ -306,9 +360,9 @@
      */
     function linesToBlocks(lines, opts) {
         opts = opts || {};
-        // 行数门槛放宽到 2（用户语料里的附件2 只有 2 行数据，3 行门槛会漏），
-        //   但用"至少 2 列跨行对齐"把关（见下），避免把空格多的正文误判成表格。
-        var minRows = (typeof opts.minTableRows === 'number') ? opts.minTableRows : 2;
+        // 行数门槛=3：用户附件2 是"表头 + 2 行数据"= 3 行，正好够；两行"碰巧对齐"不足以判定为表。
+        //   另有两道体检（≥3 列对齐 / 首格要短 / 单元格普遍偏短），见下 —— 防止把段落误判成表格。
+        var minRows = (typeof opts.minTableRows === 'number') ? opts.minTableRows : 3;
         var minCells = (typeof opts.minTableCells === 'number') ? opts.minTableCells : 3;
         var arr = (lines || []).filter(function (l) { return l && String(l.text || '').trim() !== ''; });
         var rowsCells = arr.map(function (l) { return cellsOfLine(l, opts); });
@@ -345,10 +399,21 @@
                             if (!seen[hit]) { seen[hit] = 1; anchors[hit].count++; }   // 同一行同一列只算一次
                         });
                     });
-                    // 【必须列对齐】至少 2 列在多行里位置一致才算表格 —— 否则可能只是"空格特别多的正文"
-                    //   （只放宽行数门槛、不校验列对齐，会把正文误判成表格）
+                    // 【判据收紧】至少 **3 列**跨行对齐才算表格。
+                    //   ⚠️ 上一版只要求 2 列 ⇒ 段落因为**左缩进相同**天然满足第一列，很容易被误判成表格
+                    //   （用户报："（三）桥梁应急疏散通道兼作作业门时，……" 被改成了表格）。
                     var aligned = anchors.filter(function (a) { return a.count >= minRows; }).length;
-                    if (aligned >= 2) {
+                    // 再加一道"像表格而不是像句子"的体检：每行首格要短、整行格数要多、单元格普遍偏短。
+                    var looksTable = region.every(function (r) {
+                        if (r.length < 3) return false;
+                        if (String(cellText(r[0]) || '').length > 16) return false;     // 首格像句子 ⇒ 不是表格
+                        return true;
+                    });
+                    var lens = [];
+                    region.forEach(function (r) { r.forEach(function (c) { lens.push(String(cellText(c) || '').length); }); });
+                    lens.sort(function (a, b) { return a - b; });
+                    var medLen = lens.length ? lens[Math.floor(lens.length / 2)] : 0;
+                    if (aligned >= 3 && looksTable && medLen <= 12) {
                         flushPending();
                         var cols = Math.max(anchors.length, 1);
                         var grid = region.map(function (r) {
@@ -643,6 +708,7 @@
         buildDocument: buildDocument,
         buildFromPageLines: buildFromPageLines,
         linesToBlocks: linesToBlocks,
+        cellsOfLine: cellsOfLine,          // 供套件直接量"一行被切成几个格子"
         blocksToText: blocksToText,
         blocksToHtml: blocksToHtml,
         stripRunning: stripRunning,

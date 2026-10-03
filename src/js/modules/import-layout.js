@@ -211,6 +211,67 @@
         return { lines: lines, paragraphs: paragraphsFromLines(lines, pdfOpts) };
     }
 
+    // ============ 公文体例：段落分类 + 条款编号后补空格 ============
+    var RE_CHAPTER = /^第[一二三四五六七八九十百千0-9]+章/;
+    var RE_SECTION = /^第[一二三四五六七八九十百千0-9]+节/;
+    var RE_CLAUSE = /^第[一二三四五六七八九十百千0-9]+条/;
+    var RE_ITEM = /^[（(][一二三四五六七八九十0-9]+[）)]/;
+    var RE_ATTACH = /^(附件\s*[0-9]+|附\s*则|附表|附图)/;
+    /**
+     * 条款编号后补一个空格："第一条为加强…" ⇒ "第一条 为加强…"。
+     * 为什么要补：清空格逻辑会把 PDF 分散对齐留下的"第 一 条"合并（正确），但也会把公文里
+     * "第一条 为加强…"本来该有的那一个空格一起吃掉 ⇒ 版式上就成了"第一条为加强"（用户看到的"格式不正常"）。
+     * 这里只在**条/章/节/款编号之后紧跟非空白**时补一个空格，不动其它位置。
+     */
+    function clauseHeadSpace(text) {
+        var m = /^(第[一二三四五六七八九十百千0-9]+[章节条款])(?=[^\s])/.exec(text);
+        return m ? (m[1] + ' ' + text.slice(m[1].length)) : text;
+    }
+    /** 段落分类：chapter/section/clause/attach/item/title/body（供渲染层套公文体例样式） */
+    function classifyParagraph(text) {
+        var t = String(text || '').trim();
+        if (!t) return 'body';
+        if (RE_CHAPTER.test(t)) return 'chapter';
+        if (RE_SECTION.test(t)) return 'section';
+        if (RE_CLAUSE.test(t)) return 'clause';
+        if (RE_ATTACH.test(t)) return 'attach';
+        if (RE_ITEM.test(t)) return 'item';
+        // 标题：偏短、且不含句末标点与逗号（正文段落几乎不可能同时满足）
+        if (t.length <= 30 && !/[。；：！？]/.test(t) && !/[，,]/.test(t)) return 'title';
+        return 'body';
+    }
+    function formatParagraphs(paras) {
+        return (paras || []).map(function (p) {
+            var t = String((p && p.text) || '').trim();
+            var kind = classifyParagraph(t);
+            if (kind === 'chapter' || kind === 'section' || kind === 'clause') t = clauseHeadSpace(t);
+            return { text: t, kind: kind, lines: (p && p.lines) || 1, rotated: !!(p && p.rotated) };
+        }).filter(function (p) { return p.text !== ''; });
+    }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    /**
+     * 段落数组 ⇒ HTML（带公文体例 class）：
+     *   .imp-p 通用（首行缩进 2 字、两端对齐、1.8 倍行距）
+     *   .imp-chapter/.imp-section/.imp-clause 条款标题（不缩进、编号加粗）
+     *   .imp-title 居中标题；.imp-attach 附件标题；.imp-item 列表项（悬挂缩进）
+     * 样式在 index.html 的内联 <style>（.imp-* 段）里，随主页面一起离线缓存。
+     */
+    function paragraphsToHtml(paras) {
+        return (paras || []).map(function (p) {
+            var t = String((p && p.text) || ''), kind = (p && p.kind) || 'body';
+            var inner = esc(t);
+            if (kind === 'chapter' || kind === 'section' || kind === 'clause') {
+                var m = /^(第[一二三四五六七八九十百千0-9]+[章节条款])/.exec(t);
+                if (m) inner = '<b>' + esc(m[1]) + '</b>' + esc(t.slice(m[1].length));
+            }
+            return '<p class="imp-p imp-' + kind + '">' + inner + '</p>';
+        }).join('');
+    }
+
     /** 把段落数组拼成最终正文（段间 **一个** 硬回车；段内没有硬回车） */
     function toText(paras) {
         return (paras || []).map(function (p) { return String(p.text || '').trim(); })
@@ -361,8 +422,9 @@
         });
         var st = stripRunning(perPage, opts);
         var perPageParas = st.pages.map(function (lines) { return paragraphsFromLines(lines, opts); });
-        // 【跨页段落合并】必须在"每页成段之后、拼全文之前"做：否则页尾没写完的段落会被页边界切成两段
-        var paras = mergePages(perPageParas, opts);
+        // 【跨页段落合并】必须在"每页成段之后、拼全文之前"做：否则页尾没写完的段落会被页边界切成两段；
+        // 合并后再做**公文体例格式化**（分类 + 条款编号后补空格），渲染层按 kind 套样式。
+        var paras = formatParagraphs(mergePages(perPageParas, opts));
         return {
             text: toText(paras),
             paragraphs: paras, rotatedDropped: rotatedDropped,
@@ -375,6 +437,10 @@
         stripRunning: stripRunning,
         stripInlinePageMarks: stripInlinePageMarks,
         mergePages: mergePages,
+        formatParagraphs: formatParagraphs,
+        paragraphsToHtml: paragraphsToHtml,
+        classifyParagraph: classifyParagraph,
+        clauseHeadSpace: clauseHeadSpace,
         collapseSpaces: collapseSpaces,
         isPageNumberLine: isPageNumberLine,
         isStampLine: isStampLine,

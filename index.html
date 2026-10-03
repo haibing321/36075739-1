@@ -1755,6 +1755,20 @@
          （utils.js:safeHtml / unified-enhancements.js:renderCard / smart-writer.js:wrSafeBubbleHtml），
          而恒等实现会让它们误判为已净化、把未经处理的 HTML 直接落地。不定义该属性后，
          各调用方会自动走各自的"转义降级"分支（安全方向），行为与 purify 完全缺失时一致。 -->
+    <!-- 【2026-10-04 用户报"PDF 格式不正常"】导入文档（PDF/OFD）的**公文体例**样式。
+         放在 index.html 内联，随主页面一起离线缓存（不必再进 SW 预缓存清单）。
+         .imp-p 正文：首行缩进 2 字、两端对齐、1.8 倍行距（公文通行排法）；
+         条款标题不缩进、编号加粗；附件/标题居中；列表项悬挂缩进。 -->
+    <style>
+        .imp-p { text-indent: 2em; line-height: 1.8; margin: 6px 0; text-align: justify; word-break: break-word; }
+        .imp-chapter, .imp-section { text-indent: 0; font-weight: 700; font-size: 1.02em; margin: 14px 0 8px; }
+        .imp-clause { text-indent: 0; margin: 10px 0 6px; font-weight: 600; }
+        .imp-clause b, .imp-chapter b, .imp-section b { font-weight: 700; }
+        .imp-attach { text-indent: 0; font-weight: 700; text-align: center; margin: 16px 0 8px; }
+        .imp-title { text-indent: 0; font-weight: 700; text-align: center; margin: 12px 0; }
+        .imp-item { text-indent: 0; padding-left: 2em; margin: 4px 0; line-height: 1.8; }
+        .imp-body { }
+    </style>
     <!-- 【2026-10-03 用户口径】离线硬门禁必须**第一个**加载（defer 按顺序执行）：
          只有「检查/执行更新」与「清除缓存」允许联网，其余远程加载一律拦截（AI 推理接口为显式例外）。 -->
     <script src="src/js/offline-gate.js" defer></script>

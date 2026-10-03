@@ -158,7 +158,7 @@
         }
 
         // ---------- ③ 逐页抽正文 + 去水印 ----------
-        var pageTexts = [], images = 0, pageLines = [];
+        var pageTexts = [], images = 0, pageLines = [], paragraphs = [];
         for (var pg = 0; pg < pageLocs.length; pg++) {
             var cx = parseXml(await readZipText(zip, pageLocs[pg]));
             if (!cx) { pageTexts.push(''); continue; }
@@ -203,7 +203,9 @@
             var _perPage = pageLines.map(function (ls) { return _lay.paragraphsFromLines(ls); });
             // 【跨页段落合并】OFD 同样会出现"一段跨页被切成两段"，与 PDF 用同一个合并器
             var _allParas = (_lay.mergePages ? _lay.mergePages(_perPage) : [].concat.apply([], _perPage));
-            text = _lay.toText(_allParas);
+            // 与 PDF 同款公文体例格式化（分类 + 条款编号后补空格），并把结构化段落一并交出去
+            paragraphs = (_lay.formatParagraphs ? _lay.formatParagraphs(_allParas) : _allParas);
+            text = _lay.toText(paragraphs);
         } else {
             text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n');
         }
@@ -227,7 +229,7 @@
         if (!text.trim()) note = '未解析出文字（可能是扫描件/纯图片版 OFD，或文本被画成了矢量路径）';
         if (images > 0) note += (note ? '；' : '') + '文档含 ' + images + ' 张图片，未提取图片内文字';
 
-        return { text: text, pageCount: pageLocs.length, removed: uniq, note: note, images: images };
+        return { text: text, paragraphs: paragraphs, pageCount: pageLocs.length, removed: uniq, note: note, images: images };
     }
 
     window.OFDImport = { extract: extract, version: '1.0', _hint: WATERMARK_HINT };

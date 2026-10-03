@@ -1146,30 +1146,36 @@
                                 try { await window.loadScript('src/js/modules/import-layout.js'); } catch (e) {}
                             }
                             const _lay = window.ImportLayout;
-                            const _pageParas = [];
-                            let _pdfRotatedDropped = 0;
+                            const _items = [];
                             for (let p = 1; p <= pdf.numPages; p++) {
                                 const page = await pdf.getPage(p);
                                 const content = await page.getTextContent();
-                                if (_lay) {
-                                    const _r = _lay.fromPdfItems(content.items);
-                                    const _good = [];
-                                    _r.lines.forEach(function (l) { if (l.rotated) _pdfRotatedDropped++; else _good.push(l); });
-                                    const _p = _lay.toText(_lay.paragraphsFromLines(_good));
-                                    if (_p.trim()) _pageParas.push(_p);
-                                } else {
-                                    let _flat = content.items.map(item => item.str).join('');
-                                    if (_flat.trim()) _pageParas.push(_flat);
-                                }
+                                _items.push(content.items);
                             }
-                            plainText = _pageParas.join('\n');
+                            if (_lay) {
+                                // 【2026-10-03 用户给的实测语料】一次解决四件事：
+                                //   ① 行内清空格（"铁 路 按 照 普 速 铁 路" ⇒ "铁路按照普速铁路"）；
+                                //   ② 段落还原（段内不加硬回车、按标点/行距/条款头分段）；
+                                //   ③ 丢弃倾斜水印行；
+                                //   ④ 跨页剔除页码（"—— 1 ——"）、重复页眉页脚（"LZG/GW213 - 2026"）、
+                                //      打印水印戳（"10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"）。
+                                const _doc = _lay.buildDocument(_items);
+                                plainText = _doc.text;
+                                if (_doc.rotatedDropped > 0) {
+                                    skipNotes.push(file.name + '：已忽略 ' + _doc.rotatedDropped + ' 行倾斜文字（通常为水印）');
+                                }
+                                if (_doc.removed && _doc.removed.length) {
+                                    skipNotes.push(file.name + '：已清理 ' + _doc.removed.length + ' 处页眉页脚/页码/水印戳');
+                                    try { console.info('[PDF] 已清理：' + _doc.removed.slice(0, 8).join('；')); } catch (e) {}
+                                }
+                            } else {
+                                plainText = _items.map(function (its) {
+                                    return its.map(function (i2) { return i2.str; }).join('');
+                                }).join('\n');
+                            }
                             searchText = normalizeSearchText(plainText);
                             // 用 <p> 逐段呈现（原来是整篇一个 <pre>，段落感全无）
                             contentHtml = plainText.split('\n').map(function (p) { return '<p>' + escapeHtml(p) + '</p>'; }).join('');
-                            if (_pdfRotatedDropped > 0) {
-                                skipNotes.push(file.name + '：已忽略 ' + _pdfRotatedDropped + ' 行倾斜文字（通常为水印）');
-                                try { console.info('[PDF] 已忽略倾斜文字 ' + _pdfRotatedDropped + ' 行（水印）'); } catch (e) {}
-                            }
                         } else if (ext === 'ofd') {
                             // 【2026-10-03 用户需求】OFD（国产版式文档）导入：本地 JSZip 解包 → 抽正文 → **去水印**。
                             //   全程离线；水印判据（注释水印 / 图层名 / 版式特征）见 src/js/modules/ofd-import.js 文件头。

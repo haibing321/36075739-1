@@ -595,27 +595,37 @@
                     //   现在统一交给 ImportLayout：行内按 X 拼（中文不加空格/拉丁补空格）、按 Y 聚行、
                     //   再按标点/行距/条款头/缩进还原自然段；**倾斜行按水印丢弃并计数**。
                     const _lay = window.ImportLayout;
-                    for (let i = 1; i <= maxPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const textContent = await page.getTextContent();
-                        let pageText = '';
-                        if (_lay) {
-                            const r = _lay.fromPdfItems(textContent.items);
-                            const good = [], drops = [];
-                            r.lines.forEach(function (l) { (l.rotated ? drops : good).push(l); });
-                            _rotatedDropped += drops.length;
-                            pageText = _lay.toText(_lay.paragraphsFromLines(good));
-                        } else {
+                    if (_lay && _lay.buildDocument) {
+                        // 先收集全部页的 items，再一次性 buildDocument：
+                        //   行内清空格 + 聚行 + 段落还原 + 丢弃倾斜水印 + **跨页**去页码/页眉页脚/打印水印戳
+                        //   （跨页判定必须拿到所有页才能做，逐页处理是判不出来的）
+                        const _allItems = [];
+                        for (let i = 1; i <= maxPages; i++) {
+                            const _p = await pdf.getPage(i);
+                            const _tc = await _p.getTextContent();
+                            _allItems.push(_tc.items);
+                        }
+                        const _doc = _lay.buildDocument(_allItems);
+                        _rotatedDropped = _doc.rotatedDropped || 0;
+                        result += '正文（已还原排版）：\n\n' + _doc.text + '\n';
+                        if (_doc.removed && _doc.removed.length) {
+                            result += '\n[已清理 ' + _doc.removed.length + ' 处页眉页脚/页码/水印戳]\n';
+                        }
+                    } else {
+                        for (let i = 1; i <= maxPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            let pageText = '';
                             const lastY = { value: -Infinity };
-                            textContent.items.forEach(function(item) {
+                            textContent.items.forEach(function (item) {
                                 if (item.str) {
                                     if (lastY.value !== -Infinity && Math.abs(lastY.value - item.transform[5]) > 5) pageText += '\n';
                                     pageText += item.str;
                                     lastY.value = item.transform[5];
                                 }
                             });
+                            result += '--- 第 ' + i + ' 页 ---\n' + pageText + '\n\n';
                         }
-                        result += '--- 第 ' + i + ' 页 ---\n' + pageText + '\n\n';
                     }
                     if (_rotatedDropped > 0) result += '[已忽略 ' + _rotatedDropped + ' 行倾斜文字（通常为水印）]\n';
                     if (pdf.numPages > maxPages) result += '...[仅显示前' + maxPages + '页]\n';

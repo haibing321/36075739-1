@@ -574,6 +574,119 @@
     });
   }
 
+  // ===== 折叠屏开合 · 标准生命周期处置（2026-10-04）=====
+  // 背景：用户指出"折叠开合"指的是**设备形态切换**（折叠屏手机合上/展开，Android WebView/PWA 常销毁重建文档），
+  //   不是界面的折叠面板 —— 之前的修法对不上触发点，所以这次按**业界通行做法**对齐（见下方注释来源）：
+  //   ① 用 Page Lifecycle + bfcache 标准事件接管恢复：pageshow(event.persisted)、freeze/resume、
+  //      document.wasDiscarded —— 恢复时只"按新尺寸重排 + 还原状态"，**不重拉数据、不刷新**；
+  //   ② 恢复路径里**绝不 location.reload()**（reload 绕过 HTTP 缓存 ⇒ 全量重下），
+  //      也**不注册 beforeunload**（会让页面失去 bfcache 资格，Chrome/Firefox/Safari 一致）；
+  //   ③ 开合会让系统**两次**重算 viewport（折叠屏已知现象）⇒ 250ms 与 700ms 各夹一次滚动边界，避免空白区；
+  //   ④ 折叠屏标准 API 只做渐进增强：@media (horizontal-viewport-segments: 2) + env(viewport-segment-*)、
+  //      navigator.devicePosture —— 拿不到就什么都不做，不影响普通手机。
+  //   全过程把事件写进环形轨迹，并在「设置 → 关于系统」显示一行实况 ⇒ 触发点**可见**，不再靠猜。
+  var _foldTrace = [];
+  var _persistedRestores = 0;
+  function _foldLog(ev, extra) {
+    try {
+      _foldTrace.push({ t: Date.now(), ev: ev, extra: extra || '' });
+      if (_foldTrace.length > 40) _foldTrace.shift();
+    } catch (e) {}
+    _renderFoldLine();
+  }
+  function _segments() {
+    try { return (window.matchMedia && window.matchMedia('(horizontal-viewport-segments: 2)').matches) ? 2 : 1; } catch (e) { return 1; }
+  }
+  function _posture() {
+    try { return (navigator.devicePosture && navigator.devicePosture.type) || 'unknown'; } catch (e) { return 'unknown'; }
+  }
+  function stFoldInfo() {
+    return {
+      posture: _posture(), segments: _segments(),
+      viewport: [window.innerWidth, window.innerHeight],
+      visualViewport: window.visualViewport ? [Math.round(window.visualViewport.width), Math.round(window.visualViewport.height)] : null,
+      wasDiscarded: !!document.wasDiscarded,
+      persistedRestores: _persistedRestores,
+      trace: _foldTrace.slice(-10)
+    };
+  }
+  window.stFoldInfo = stFoldInfo;
+  window.stFoldTrace = function () { return _foldTrace.slice(); };
+
+  function _reflowNow(why) {
+    // 只做"便宜且安全"的重排：夹回越界滚动（不动内容、不重拉数据）
+    try {
+      var panel = document.querySelector('.panel.active');
+      if (panel) {
+        var el = panel.querySelector('.module-scroll') || panel.querySelector('.scroll-area') || _findScroller(panel);
+        if (el && el.scrollHeight < el.scrollTop) el.scrollTop = el.scrollHeight;
+      }
+    } catch (e) {}
+    _foldLog(why);
+  }
+  // ① bfcache 恢复（persisted）/ 标签曾被系统回收（wasDiscarded）：只重排 + 更新快照，**不刷新、不重拉**
+  window.addEventListener('pageshow', function (e) {
+    if (e && e.persisted) {
+      _persistedRestores++;
+      _foldLog('pageshow:persisted', '从缓存恢复（零网络）第' + _persistedRestores + '次');
+      _scheduleSave(300);
+      setTimeout(function () { _reflowNow('reflow-after-pageshow'); }, 60);
+    } else if (document.wasDiscarded) {
+      _foldLog('pageshow:wasDiscarded', '标签被系统回收后重建 ⇒ 已用快照还原');
+      setTimeout(function () { _reflowNow('reflow-after-discard'); }, 60);
+    }
+  });
+  // ② Page Lifecycle：冻结/解冻（长时间不可见或低内存时触发）
+  window.addEventListener('freeze', function () { _flushSave(); _foldLog('freeze'); });
+  window.addEventListener('resume', function () {
+    _foldLog('resume');
+    setTimeout(function () { _reflowNow('reflow-after-resume'); }, 60);
+  });
+  // ③ 回到前台：两次夹边界（开合会两次重算 viewport）
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    _foldLog('visible');
+    setTimeout(function () { _reflowNow('reflow-on-visible'); }, 120);
+    setTimeout(function () { _reflowNow('reflow-on-visible-2'); }, 700);
+  });
+  // ④ 形态 / 视口分段变化（标准 API，渐进增强；不支持则完全不动）
+  try {
+    if (navigator.devicePosture && navigator.devicePosture.addEventListener) {
+      navigator.devicePosture.addEventListener('change', function () {
+        _foldLog('posture:' + _posture());
+        setTimeout(function () { _reflowNow('reflow-after-posture'); }, 120);
+      });
+    }
+  } catch (e) {}
+  try {
+    var _mqSeg = window.matchMedia && window.matchMedia('(horizontal-viewport-segments: 2)');
+    if (_mqSeg && _mqSeg.addEventListener) _mqSeg.addEventListener('change', function (ev) {
+      _foldLog('segments:' + (ev.matches ? 2 : 1));
+      setTimeout(function () { _reflowNow('reflow-after-segments'); }, 120);
+    });
+  } catch (e) {}
+
+  // 关于系统里的一行实况（让"到底触发了什么"看得见）
+  function _renderFoldLine() {
+    var el = document.getElementById('about-fold');
+    if (!el) return;
+    try {
+      var last = _foldTrace[_foldTrace.length - 1] || null;
+      el.textContent = '折叠/形态：' + _posture() + ' · 视口段数 ' + _segments()
+        + ' · ' + window.innerWidth + '×' + window.innerHeight
+        + (document.wasDiscarded ? ' · 曾被系统回收' : '')
+        + ' · 缓存恢复 ' + _persistedRestores + ' 次'
+        + (last ? ' · 最近事件 ' + last.ev + (last.extra ? '（' + last.extra + '）' : '') : '');
+    } catch (e) {}
+  }
+  try {
+    var _origShowAbout = window.showAboutPanel;
+    if (typeof _origShowAbout === 'function') {
+      window.showAboutPanel = function () { var r = _origShowAbout.apply(this, arguments); _renderFoldLine(); return r; };
+    }
+    setTimeout(_renderFoldLine, 1200);
+  } catch (e) {}
+
   // ===== 通用「编辑会话」快照协议 =====
   // 问题：折叠屏重建文档后，动态生成的编辑态（如 diary.editDiary 打开的编辑页、
   //       资料库编辑弹窗、写作编辑区）会因 onShow_ 重渲染而丢失，固定 id 的草稿

@@ -450,7 +450,15 @@
         // 持久化做了 30 秒节流，离开/隐藏页面时强制落盘，避免最近的错误丢失
         var flush = function() { try { persist(true); } catch(e) {} };
         window.addEventListener('pagehide', flush);
-        window.addEventListener('beforeunload', flush);
+        // 【2026-10-04 用户报「折叠开合与实际机制不一致」】原来这里还挂了 beforeunload ✗ ——
+        //   **注册 beforeunload 会让页面失去 bfcache 资格**（Chrome / Firefox / Safari 一致的行为，见
+        //   web.dev "bfcache" 的「不要用 beforeunload」一节）：折叠屏开合/返回时本可 0ms 从缓存恢复，
+        //   却被迫整页重载 ⇒ 看起来就是"开合 = 重新联网加载"。
+        //   pagehide（上一行）在卸载/销毁前同样必触发，且**不阻塞、不影响 bfcache** ⇒ 删掉 beforeunload 即可，
+        //   落盘保障不变（visibilitychange→hidden 那一份也在）。
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') flush();
+        });
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'hidden') flush();
         });

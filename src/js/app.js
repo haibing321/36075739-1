@@ -1781,10 +1781,21 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
     }
-    // 【2026-10-03 用户口径·已按要求移除自动联网】原本这里会在启动 12s 后**自动**请求 version.json
-    //   做"静默版本检查"，网络恢复时还会再补一次 —— 这就是"我没点更新，它也在远程加载"的来源之一。
-    //   现在：**不再自动检查**，只有用户在「设置 → 检查更新」里主动点击时才联网（checkForUpdate 里
-    //   用 OfflineGate.run('update', …) 显式放行）。自动联网检查整段删除，不再保留任何定时器/监听器。
+    // 【2026-10-03 用户口径·恢复自动检查】用户明确要求：启动后**自动检查一次系统更新**，发现新版本时
+    //   弹出更新按钮，用户点击即可更新 —— 否则"根本发现不了有没有新版本"。
+    //   这与"只有更新系统/清除缓存允许联网"的口径并不冲突：这条自动检查**本身就是"检查更新"**，
+    //   统一走 OfflineGate 的 update 意图放行，其余远程加载仍一律拦截。
+    //   时点：**启动 30 秒后**（用户指定；离线加载/首屏稳定之后，不抢启动带宽）。
+    //   节流：10 分钟内最多一次（silentCheckUpdate 内部 _last_version_check）；网络恢复时补一次。
+    if (navigator.onLine !== false) {
+        setTimeout(function () {
+            if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') silentCheckUpdate();
+        }, 30000);
+    }
+    // 网络恢复后补一次（此前若离线打开，就不可能收到更新提示）；同样只做"检查更新"这一件事。
+    window.addEventListener('online', function () {
+        try { if (typeof silentCheckUpdate === 'function') silentCheckUpdate(); } catch (e) {}
+    });
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）
@@ -1805,12 +1816,26 @@ async function checkForUpdate() {
     else if (window.triggerApplyUpdate) window.triggerApplyUpdate();
 }
 
-// 静默检查 —— 【2026-10-03】按用户口径**停用**：不再有任何自动版本检查（联网只允许发生在用户
-//   主动点「检查更新 / 立即更新」与「清除缓存」时）。函数保留为显式空实现，避免其它地方调用时
-//   意外联网（旧代码里有"启动 12s 后自动调用""online 事件补一次"两处调用已一并删除）。
+// 静默检查（自动）—— 【2026-10-03 用户口径·恢复】
+//   用户明确要求"启动后自动检查一次系统更新、发现新版本弹更新按钮"，否则发现不了新版本。
+//   这与"只有更新系统/清除缓存允许联网"不冲突：**这条本身就是"检查更新"**，所以统一走
+//   OfflineGate 的 update 意图放行（不这样包一层，会被离线门禁拦下来 ⇒ 自动检查等于失效）。
+//   节流 10 分钟（_last_version_check），避免频繁请求（version.json 很小，但也没必要刷）。
 async function silentCheckUpdate() {
-    try { console.info('[offline-first] 自动版本检查已停用：只有"检查更新/清除缓存"两种情况会联网。'); } catch (e) {}
-    return;
+    const lastCheck = localStorage.getItem('_last_version_check');
+    if (lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) return;
+    try {
+        if (window.OfflineGate) {
+            await window.OfflineGate.run('update', function () { return performUpdateCheck(UPDATE_CHECK_URL, false); });
+        } else {
+            await performUpdateCheck(UPDATE_CHECK_URL, false);
+        }
+    } catch (e) {
+        console.info('[update] 自动检查更新未完成（离线或接口不可达）：' + ((e && e.message) || e));
+    } finally {
+        // 无论成功失败都记时间戳：失败时也节流，避免弱网下反复重试拖慢启动
+        try { localStorage.setItem('_last_version_check', Date.now()); } catch (e) {}
+    }
 }
 
 // 页面顶部更新提示条：发现新版本时弹出小窗，点击即应用更新（离线优先策略下，

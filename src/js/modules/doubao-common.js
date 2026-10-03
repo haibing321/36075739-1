@@ -164,6 +164,23 @@
                     } else {
                         text = await window.dsReadPdfFile(file);
                     }
+                } else if (ext === 'ofd') {
+                    // 【2026-10-03 用户需求】OFD（国产版式文档）导入：本地 JSZip 解包 → 抽正文 → **去水印**。
+                    //   全程离线（只用 src/js/vendor/jszip.min.js），水印判据见 ofd-import.js 文件头。
+                    if (!window.OFDImport) {
+                        try { await window.loadScript('src/js/modules/ofd-import.js'); } catch (e) {}
+                    }
+                    if (!window.OFDImport) {
+                        text = 'OFD 解析模块加载失败（src/js/modules/ofd-import.js）';
+                    } else {
+                        var _ofd = await window.OFDImport.extract(file);
+                        text = _ofd.text || '';
+                        if (_ofd.removed && _ofd.removed.length) {
+                            try { console.info('[OFD] 已去除水印 ' + _ofd.removed.length + ' 处：' + _ofd.removed.join('；')); } catch (e) {}
+                        }
+                        if (!text) text = '（未解析出正文' + (_ofd.note ? '：' + _ofd.note : '') + '）';
+                        else if (_ofd.note) text += '\n\n[提示] ' + _ofd.note;
+                    }
                 } else if (/^image\//.test(file.type) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) {
                     // 图片附件：读取为 dataURL 并获取尺寸，供预览与（支持多模态时）送审
                     text = await window.dsReadImageFile(file);

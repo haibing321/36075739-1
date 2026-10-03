@@ -500,8 +500,98 @@
      * PDF 与 OFD 共用这一条（用户要求"PDF 的修改一并应用到 OFD"）。
      * @returns {{text:string, blocks:Array, paragraphs:Array, tableCount:number}}
      */
+    /**
+     * 【2026-10-03 第二轮，用户贴出 OFD 导入结果】解析层坐标修好后，正文已连贯，但还剩两类"整篇级"问题：
+     *   ① 每页都打的 IP+账号水印戳（如 lanzhl-zhaohaibing 50312910.208.60.183）被**缝进正文行中间** ✗
+     *      —— stripRunning 只按整行比对，戳与正文同行就抓不到 ✗；
+     *   ② 整篇被压成 1~2 行 ⇒ 段落全丢、栏目小标题夹在句中 ✗。
+     * 对策（都在**行级**做 ⇒ 块/段落/文本/HTML 四条下游自动一致）：
+     *   · findStampTokens + 删除：统计"长英文/数字串"在全文出现次数，≥3 次 ⇒ 判为重复素材删掉
+     *     （正文里的编号不会重复三次；实测 9月16日22时25分、T6601、HZ2-24、YZ25G 等都<3 次或长度不够 ⇒ 不动）；
+     *   · splitDegenerateLines：**只在整页 1~2 行时**按明显分段点重新切行（时间点、条款头），
+     *     避免误切正常段落（正常文档这条不生效）；
+     *   · 标题归位：把"XXX关于…的通报/通知…"从夹缝里**摘出来**放到最前（公文标题常被排在正文之后）。
+     */
+    function findStampTokens(flatText) {
+        var s = String(flatText == null ? '' : flatText);
+        var re = /[A-Za-z0-9][A-Za-z0-9._@\-]{5,}/g;
+        var cnt = {}, order = [], m;
+        while ((m = re.exec(s))) { var k = m[0]; if (!cnt[k]) { cnt[k] = 0; order.push(k); } cnt[k]++; }
+        // 判据：长串（≥6 位，字母/数字类）在全文出现 ≥3 次 ⇒ 判为"每页重复的素材"。
+    //   ⚠️ 原来还要求"串里必须含数字"✗ —— 用户那份水印的账号名 "lanzhl-zhaohaibing" 不含数字，
+    //     于是只有 IP 被删、账号名留下（套件 A㉕ 当场抓到）。规则改为：**出现 ≥3 次的长串一律删**
+    //     （中文正文里的编号/型号不会重复三次；即便偶发，重复三次的长串也已是噪声）。
+    return order.filter(function (k) { return cnt[k] >= 3; });
+    }
+    function reEsc(t) { return String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    function splitDegenerateLines(lines) {
+        if (!lines || lines.length > 2) return lines;      // 正常文档：不动
+        var out = [];
+        (lines || []).forEach(function (l) {
+            var t = String((l && l.text) || '');
+            if (!t.trim()) return;
+            t = t.replace(/([。；！？：])\s*(?=\d{1,2}月\d{1,2}日\d{1,2}时)/g, '$1\u0001');               // 每件问题另起段
+            t = t.replace(/(方面)\s*(?=\d{1,2}月\d{1,2}日\d{1,2}时)/g, '$1\u0001');                        // 小标题后紧跟问题 ⇒ 也断开
+            t = t.replace(/([。；！？])\s*(?=[一二三四五六七八九十]{1,3}、[^\u0001]{2,14}方面)/g, '$1\u0001'); // 栏目小标题另起段
+            t = t.replace(/([^\u0001]{2,8}方面)\s*(?=[一二三四五六七八九十]{1,3}、[^\u0001]{2,14}方面)/g, '$1\u0001'); // 小标题连续出现 ⇒ 逐个断开
+            t = t.replace(/([一二三四五六七八九十]{1,3}、[^\u0001]{2,14}方面)(?=[^\u0001])/g, '$1\u0001');    // 小标题自身成段
+            t.split('\u0001').filter(function (x) { return x.trim() !== ''; }).forEach(function (x, i) {
+                out.push({
+                    text: x.trim(),
+                    x: (l && typeof l.x === 'number') ? l.x : null,
+                    y: (l && typeof l.y === 'number') ? (l.y + i * 0.002) : null,
+                    size: (l && l.size) || null, angle: 0, rotated: false
+                });
+            });
+        });
+        return out;
+    }
+
     function buildFromPageLines(pageLines, opts) {
         opts = opts || {};
+        // ① 片段级水印戳剥离：先统计全文重复的长串，再从各行删掉（删完变空的行直接丢弃）
+        var _flat = (pageLines || []).map(function (ls) {
+            return (ls || []).map(function (l) { return String((l && l.text) || ''); }).join(' ');
+        }).join(' ');
+        //   ⚠️ 要**多轮**删：几段水印相邻时，"503129"+"lanzhl-zhaohaibing"会粘成一个**新长串**（只删一轮会留下残渣，
+        //     套件 A㉕ 里 503129 残留 1 次就是这么来的）。每轮删完重新统计，最多 3 轮。
+        var _junkTotal = 0, _junkAll = [];
+        for (var _pass = 0; _pass < 3; _pass++) {
+            var _flat2 = (pageLines || []).map(function (ls) {
+                return (ls || []).map(function (l) { return String((l && l.text) || ''); }).join(' ');
+            }).join(' ');
+            var _jk = findStampTokens(_flat2);
+            if (!_jk.length) break;
+            _junkTotal += _jk.length;
+            _jk.forEach(function (k) { if (_junkAll.indexOf(k) === -1) _junkAll.push(k); });
+            var _re2 = new RegExp(_jk.map(reEsc).join('|'), 'g');
+            pageLines = (pageLines || []).map(function (ls) {
+                return (ls || []).map(function (l) {
+                    // 删掉后**重新做一次中文空格折叠**：戳夹在"未｜使用"之间时才会正确接成"未使用"
+                    l.text = collapseSpaces(String((l && l.text) || '').replace(_re2, ' ').replace(/[ \t]{2,}/g, ' ')).replace(/^\s+|\s+$/g, '');
+                    return l;
+                }).filter(function (l) { return String((l && l.text) || '').trim() !== ''; });
+            });
+        }
+        //   ⚠️ 收尾一刀：被判定为水印的长串，其**前 6 位**也要清掉 —— 因为长串的尾部/前部片段可能因为
+        //     与相邻水印粘贴（"…503129lanzhl-zhaohaibing…"）而**自成新串、次数不够阈值**，
+        //     于是只剩它没删（套件 A㉕ 最后残留的那 1 次 503129 就是这么来的）。判据来自**已确认的水印串**，
+        //     不是随便清短串 ⇒ 不会误伤正文。
+        var _pk = [];
+        (_junkAll || []).forEach(function (k) { if (k.length > 6) _pk.push(k.slice(0, 6)); });
+        if (_pk.length) {
+            var _re3 = new RegExp(_pk.map(reEsc).join('|'), 'g');
+            pageLines = (pageLines || []).map(function (ls) {
+                return (ls || []).map(function (l) {
+                    l.text = collapseSpaces(String((l && l.text) || '').replace(_re3, ' ').replace(/[ \t]{2,}/g, ' ')).replace(/^\s+|\s+$/g, '');
+                    return l;
+                }).filter(function (l) { return String((l && l.text) || '').trim() !== ''; });
+            });
+        }
+        if (_junkTotal) { opts = opts || {}; opts._stampRemoved = _junkTotal; }
+        // ② 退化输入（整篇压成 1~2 行）⇒ 按明显分段点重新切行
+        pageLines = (pageLines || []).map(splitDegenerateLines);
         var pageBlocks = (pageLines || []).map(function (lines) { return linesToBlocks(lines, opts); });
         // 段落公文体例格式化（表格块原样保留）
         pageBlocks = pageBlocks.map(function (bs) {
@@ -526,6 +616,34 @@
         }
         var blocks = [];
         pageBlocks.forEach(function (bs) { blocks = blocks.concat(bs); });
+        // ③ 公文标题归位：标题常被排在正文之后/夹在两栏之间 ⇒ 从块里**摘出来**放到最前（只在标题不在开头时动手）
+        var RE_TITLE = /[\u4e00-\u9fa5A-Za-z0-9（）()]{2,30}关于[\u4e00-\u9fa5A-Za-z0-9、，（）()]{2,60}的(通报|通知|决定|意见|报告|批复|函|公示)/;
+        for (var _bi = 1; _bi < blocks.length; _bi++) {
+            if (blocks[_bi].type !== 'para') continue;
+            var _tm = RE_TITLE.exec(blocks[_bi].text || '');
+            if (!_tm) continue;
+            var _txt = String(blocks[_bi].text);
+            // 前缀原样留在原处（"内部一、作业标准执行方面"这类残字是**多栏排版**造成的，需原 OFD 才能彻底归位）；
+            // 而**标题自身**若被贪婪前缀沾上了小标题尾巴（"…方面安监系统关于…的通报"），把"…方面"之前的摘掉
+            var _before = _txt.slice(0, _tm.index).trim();
+            var _after = _txt.slice(_tm.index + _tm[0].length).trim();
+            var _title = _tm[0];
+            var _pi = _title.lastIndexOf('方面');
+            if (_pi >= 0 && _pi <= 14) {
+                // ⚠️ 剪掉的"…方面"必须**接回前缀**（原来直接丢弃 ⇒ 栏目小标题凭空少一段，套件 A㉘ 抓到）
+                _before = (_before ? _before : '') + _title.slice(0, _pi + 2);
+                _title = _title.slice(_pi + 2);
+            }
+            var _ins = [{ type: 'para', text: _title, kind: 'chapter', lines: 1, rotated: false }];
+            if (_after) _ins.push({ type: 'para', text: _after, kind: 'body', lines: 1, rotated: false });
+            blocks.splice.apply(blocks, [_bi, 1].concat(_ins));
+            if (_before) blocks.splice(_bi, 0, { type: 'para', text: _before, kind: 'body', lines: 1, rotated: false });
+            // 把标题块移到最前
+            var _titleIdx = _bi + (_before ? 1 : 0);
+            var _tb = blocks.splice(_titleIdx, 1)[0];
+            blocks.unshift(_tb);
+            break;
+        }
         var paragraphs = blocks.filter(function (b) { return b.type === 'para'; });
         return {
             text: blocksToText(blocks), blocks: blocks, paragraphs: paragraphs,
@@ -756,6 +874,8 @@
         blocksToHtml: blocksToHtml,
         stripRunning: stripRunning,
         stripInlinePageMarks: stripInlinePageMarks,
+        findStampTokens: findStampTokens,   // 供套件直接核对"哪些片段被判为水印素材"
+        splitDegenerateLines: splitDegenerateLines,
         mergePages: mergePages,
         formatParagraphs: formatParagraphs,
         paragraphsToHtml: paragraphsToHtml,

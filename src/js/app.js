@@ -616,7 +616,14 @@ window.onclick = function(e) {
                                 }
                             } catch (e) {}
                         };
-                        navigator.serviceWorker.controller.postMessage({ type: 'PRECACHE_REST' }, [ch2.port2]);
+                        // 【2026-10-03 用户口径】后台"补齐预缓存"= 会去网上把缺失资源下载一遍 ✗。
+                        // 现在只允许发生在**用户主动更新时**（OfflineGate 的 update 意图开着），
+                        // 平时开机/折叠开合都**不再**触发任何远程补齐。
+                        if (window.OfflineGate && OfflineGate.isOpen()) {
+                            navigator.serviceWorker.controller.postMessage({ type: 'PRECACHE_REST' }, [ch2.port2]);
+                        } else {
+                            try { console.info('[offline-first] 已跳过后台预缓存补齐（非更新流程，严格离线加载）。'); } catch (e) {}
+                        }
                     } catch (e) {}
                 }
             };
@@ -1234,6 +1241,10 @@ document.addEventListener('click', function(e) {
 
 window.clearAllCache = function() {
     if (!confirm('⚠️ 将清除所有缓存数据并刷新页面，确定继续？')) return;
+    // 【2026-10-03 用户口径】这是**唯二允许联网**的入口之二：开 `clear` 意图放行。
+    //   后面 _refreshStaticAssets() 要以 cache:'reload' 强制重取本页 js/css/sw.js —— 否则清完缓存刷新，
+    //   浏览器还会用 HTTP 缓存里的旧副本（"清了缓存脚本还是旧的"就是它）。包外任何远程加载仍被门禁拦截。
+    try { if (window.OfflineGate) OfflineGate.setIntent('clear'); } catch (e) {}
 
     var pending = [];
 
@@ -1463,7 +1474,39 @@ window.stFillAboutOffline = async function () {
         var _aiSum = (typeof window.dsAiMetricsSummary === 'function') ? window.dsAiMetricsSummary(20) : '';
         if (_aiSum) parts.push('AI 对话指标（' + _aiSum + '）');
     } catch (e) {}
+    // 【2026-10-03 用户口径】离线门禁**自证**：折叠开合/切 Tab/重建到底有没有联网，这里给硬数字。
+    //   用户此前的困惑是"感觉一直在远程加载、无解" —— 现在拦截/放行都记账，且提供一键自测（开合两轮，
+    //   数字不应变化），把结论交到可验证的事实上。
+    try {
+        var _og = (window.OfflineGate && OfflineGate.status) ? OfflineGate.status() : null;
+        if (_og) {
+            parts.push('<span style="color:#34d399;font-weight:600;">✓ 离线门禁已启用</span>：只有「检查更新 / 清除缓存」会联网'
+                + '（AI 推理接口按功能必需单列放行）。'
+                + '<br>本次会话：已放行 ' + _og.allowed + ' 次（更新 ' + _og.byIntent.update + ' / 清缓存 ' + _og.byIntent.clear
+                + ' / AI 推理 ' + _og.byIntent.ai + '），<b>已拦截 ' + _og.blocked + ' 次远程加载</b>'
+                + (_og.blocked ? '（最近：' + _og.lastBlocked + '）' : '')
+                + '<br><span style="font-size:.78rem;opacity:.85;">折叠开合、切 Tab/子视图、刷新重建都不会联网。</span>');
+            parts.push('<button type="button" id="about-offline-selftest" class="st-btn" style="margin-top:6px;">🧪 自测开合（联网次数应不变）</button>');
+        }
+    } catch (e) {}
     el.innerHTML = parts.join('<br>');
+    try {
+        var _stbtn = document.getElementById('about-offline-selftest');
+        if (_stbtn) _stbtn.onclick = function () {
+            var b = OfflineGate.status();
+            var before = b.blocked + b.allowed;
+            var list = document.querySelectorAll('details.st-fold[data-fold-key]');
+            for (var r = 0; r < 2; r++) Array.prototype.forEach.call(list, function (d) { d.open = !d.open; });
+            setTimeout(function () {
+                var a = OfflineGate.status();
+                var after = a.blocked + a.allowed;
+                alert(after === before
+                    ? '✓ 开合两轮：网络动作 0 次（放行/拦截计数都没变）—— 严格离线加载。'
+                    : '⚠ 开合期间出现了 ' + (after - before) + ' 次网络动作（放行 ' + (a.allowed - b.allowed)
+                      + ' / 拦截 ' + (a.blocked - b.blocked) + '），请把这一行发我。');
+            }, 900);
+        };
+    } catch (e) {}
 };
 
 /**
@@ -1738,21 +1781,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
     }
-    // 自动检查更新：系统以离线数据完全打开后 12s，再连接远程测试有无新版本；
-    // 仅在线时执行（离线时页面照常使用本地缓存，不打扰、不阻塞）。发现更新在页面顶部弹提示条。
-    // 内置 10 分钟节流（silentCheckUpdate）：避免频繁请求版本服务器（version.json 很小，10 分钟足够省）。
-    // 【2026-09-19】30s→12s / 1h→10min：发补丁当天用户能较快收到"发现新版本"提示（原来 30s+1h 导致当天几乎收不到）。
-    if (navigator.onLine !== false) {
-        setTimeout(function() {
-            if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') {
-                silentCheckUpdate();
-            }
-        }, 12000);
-    }
-    // 网络恢复后立即补一次检查：此前离线打开则不会弹出更新提示
-    window.addEventListener('online', function() {
-        try { if (typeof silentCheckUpdate === 'function') silentCheckUpdate(); } catch (e) {}
-    });
+    // 【2026-10-03 用户口径·已按要求移除自动联网】原本这里会在启动 12s 后**自动**请求 version.json
+    //   做"静默版本检查"，网络恢复时还会再补一次 —— 这就是"我没点更新，它也在远程加载"的来源之一。
+    //   现在：**不再自动检查**，只有用户在「设置 → 检查更新」里主动点击时才联网（checkForUpdate 里
+    //   用 OfflineGate.run('update', …) 显式放行）。自动联网检查整段删除，不再保留任何定时器/监听器。
 });
 
 // 手动检查（点击设置中的检查更新按钮触发）
@@ -1763,20 +1795,22 @@ async function checkForUpdate() {
     if (window.switchUpdateBtn) window.switchUpdateBtn('checking');
     statusEl.textContent = '⏳ 正在检查...';
     statusEl.style.color = 'var(--primary)';
-    await performUpdateCheck(UPDATE_CHECK_URL, true);
+    // 【2026-10-03 用户口径】这是**唯二允许联网**的入口之一：显式开 `update` 意图放行，
+    //   包内的 version.json / sw.js / 更新包请求都会被离线门禁放行；包外任何远程加载仍被拦截。
+    await (window.OfflineGate
+        ? OfflineGate.run('update', function () { return performUpdateCheck(UPDATE_CHECK_URL, true); })
+        : performUpdateCheck(UPDATE_CHECK_URL, true));
     // 同时触发 SW 实际拉取并预备新版本（离线优先策略下，更新只在此时发生）
-    if (window.triggerApplyUpdate) window.triggerApplyUpdate();
+    if (window.OfflineGate) OfflineGate.run('update', function () { if (window.triggerApplyUpdate) window.triggerApplyUpdate(); });
+    else if (window.triggerApplyUpdate) window.triggerApplyUpdate();
 }
 
-// 静默检查
+// 静默检查 —— 【2026-10-03】按用户口径**停用**：不再有任何自动版本检查（联网只允许发生在用户
+//   主动点「检查更新 / 立即更新」与「清除缓存」时）。函数保留为显式空实现，避免其它地方调用时
+//   意外联网（旧代码里有"启动 12s 后自动调用""online 事件补一次"两处调用已一并删除）。
 async function silentCheckUpdate() {
-    const lastCheck = localStorage.getItem('_last_version_check');
-    // 节流 10 分钟（原 1 小时：发补丁当天用户往往一小时内就被节流挡住，收不到更新提示）
-    if (lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) {
-        return;
-    }
-    await performUpdateCheck(UPDATE_CHECK_URL, false);
-    localStorage.setItem('_last_version_check', Date.now());
+    try { console.info('[offline-first] 自动版本检查已停用：只有"检查更新/清除缓存"两种情况会联网。'); } catch (e) {}
+    return;
 }
 
 // 页面顶部更新提示条：发现新版本时弹出小窗，点击即应用更新（离线优先策略下，

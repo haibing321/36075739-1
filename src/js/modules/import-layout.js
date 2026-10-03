@@ -49,13 +49,28 @@
      *   · 连续多个空白 ⇒ 一个空格。
      * 不动：字母与字母之间的空格（"the words" 不能被粘成 "thewords"）。
      */
+    // 空白字符必须认全：半角/不换行/全角之外，PDF 里还常见窄空格、发宽空格、零宽空格、制表符、BOM …
+    //   （用户语料里 "第三\t\t十三条"、"手机\t\t\t\tAPP" 就是这类 —— 只认 [ \t\u00a0\u3000] 会漏）
+    var WS = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000\\u200b\\ufeff]';
+    var CJKc = '[\\u3400-\\u9fff\\uf900-\\ufaff\\u3000-\\u303f\\uff00-\\uffef]';
+    var RE_CJK_WS_CJK = new RegExp(CJKc + '{1,}' + WS + '{1,}(?=' + CJKc + ')', 'g');
+    var RE_CJK_WS_ALNUM = new RegExp(CJKc + '{1,}' + WS + '{1,}(?=[0-9A-Za-z])', 'g');
+    var RE_ALNUM_WS_CJK = new RegExp('([0-9A-Za-z])' + WS + '{1,}(?=' + CJKc + ')', 'g');
+    var RE_WS_RUN = new RegExp(WS + '{2,}', 'g');
     function collapseSpaces(s) {
         var t = String(s == null ? '' : s);
-        for (var i = 0; i < 4; i++) {
+        for (var i = 0; i < 5; i++) {
             var n = t
-                .replace(/([\u3400-\u9fff\uf900-\ufaff])[ \t\u00a0\u3000]+([\u3400-\u9fff\uf900-\ufaff])/g, '$1$2')
-                .replace(/([0-9])[ \t\u00a0\u3000]+([0-9])/g, '$1$2')
-                .replace(/[ \t\u00a0]{2,}/g, ' ');
+                // 汉字 ↔ 汉字：直接合并（"第三 十三条" ⇒ "第三十三条"）
+                .replace(RE_CJK_WS_CJK, function (m) { return m.replace(new RegExp(WS + '+', 'g'), ''); })
+                // 汉字 ↔ 数字/字母：也合并（"附件 1" ⇒ "附件1"、"第三 3 条"；
+                //   中文正文里汉字与紧随的数字/字母之间留空格多为定位残留，不是排版意图）
+                .replace(RE_CJK_WS_ALNUM, function (m) { return m.replace(new RegExp(WS + '+', 'g'), ''); })
+                .replace(RE_ALNUM_WS_CJK, function (m) { return m.replace(new RegExp(WS + '+', 'g'), ''); })
+                // 数字 ↔ 数字："1 20km/h" ⇒ "120km/h"
+                .replace(/([0-9])[ \t\u00a0\u3000]+(?=[0-9])/g, '$1')
+                // 其余连续空白：压成一个空格（避免 "APP\t\t\t进行" 这种大空洞）
+                .replace(RE_WS_RUN, ' ');
             if (n === t) break;
             t = n;
         }
@@ -291,7 +306,9 @@
      */
     function linesToBlocks(lines, opts) {
         opts = opts || {};
-        var minRows = (typeof opts.minTableRows === 'number') ? opts.minTableRows : 3;
+        // 行数门槛放宽到 2（用户语料里的附件2 只有 2 行数据，3 行门槛会漏），
+        //   但用"至少 2 列跨行对齐"把关（见下），避免把空格多的正文误判成表格。
+        var minRows = (typeof opts.minTableRows === 'number') ? opts.minTableRows : 2;
         var minCells = (typeof opts.minTableCells === 'number') ? opts.minTableCells : 3;
         var arr = (lines || []).filter(function (l) { return l && String(l.text || '').trim() !== ''; });
         var rowsCells = arr.map(function (l) { return cellsOfLine(l, opts); });
@@ -310,37 +327,49 @@
                 while (j < arr.length && rowsCells[j].length >= 2) { region.push(rowsCells[j]); j++; }
                 var wide = region.filter(function (r) { return r.length >= minCells; }).length;
                 if (region.length >= minRows && wide >= minRows) {
-                    flushPending();
-                    // 列位置聚类（用每个单元格首块的 x）
+                    // 列位置聚类（用每个单元格首块的 x），并统计每列被多少行命中
                     var anchors = [];
                     region.forEach(function (r) {
+                        var seen = {};
                         r.forEach(function (c) {
                             if (!c.length) return;
-                            var x = c[0].x;
-                            var hit = -1;
-                            for (var k = 0; k < anchors.length; k++) if (Math.abs(anchors[k] - x) <= (opts.colTol || 6)) { hit = k; break; }
-                            if (hit < 0) { anchors.push(x); anchors.sort(function (a, b) { return a - b; }); }
-                        });
-                    });
-                    var cols = Math.max(anchors.length, 1);
-                    var grid = region.map(function (r) {
-                        var line = [];
-                        for (var c2 = 0; c2 < cols; c2++) line.push('');
-                        r.forEach(function (c) {
-                            if (!c.length) return;
-                            var x = c[0].x, best = 0, bestD = Infinity;
-                            for (var k2 = 0; k2 < anchors.length; k2++) {
-                                var d = Math.abs(anchors[k2] - x);
-                                if (d < bestD) { bestD = d; best = k2; }
+                            var x = c[0].x, hit = -1;
+                            for (var k = 0; k < anchors.length; k++) {
+                                if (Math.abs(anchors[k].x - x) <= (opts.colTol || 6)) { hit = k; break; }
                             }
-                            var t = cellText(c);
-                            line[best] = line[best] ? (line[best] + ' ' + t) : t;
+                            if (hit < 0) {
+                                anchors.push({ x: x, count: 0 });
+                                anchors.sort(function (a, b) { return a.x - b.x; });
+                                hit = anchors.findIndex(function (a) { return a.x === x; });
+                            }
+                            if (!seen[hit]) { seen[hit] = 1; anchors[hit].count++; }   // 同一行同一列只算一次
                         });
-                        return line;
                     });
-                    blocks.push({ type: 'table', rows: grid, cols: cols });
-                    i = j;
-                    continue;
+                    // 【必须列对齐】至少 2 列在多行里位置一致才算表格 —— 否则可能只是"空格特别多的正文"
+                    //   （只放宽行数门槛、不校验列对齐，会把正文误判成表格）
+                    var aligned = anchors.filter(function (a) { return a.count >= minRows; }).length;
+                    if (aligned >= 2) {
+                        flushPending();
+                        var cols = Math.max(anchors.length, 1);
+                        var grid = region.map(function (r) {
+                            var line = [];
+                            for (var c2 = 0; c2 < cols; c2++) line.push('');
+                            r.forEach(function (c) {
+                                if (!c.length) return;
+                                var x = c[0].x, best = 0, bestD = Infinity;
+                                for (var k2 = 0; k2 < anchors.length; k2++) {
+                                    var d = Math.abs(anchors[k2].x - x);
+                                    if (d < bestD) { bestD = d; best = k2; }
+                                }
+                                var t = cellText(c);
+                                line[best] = line[best] ? (line[best] + ' ' + t) : t;
+                            });
+                            return line;
+                        });
+                        blocks.push({ type: 'table', rows: grid, cols: cols });
+                        i = j;
+                        continue;
+                    }
                 }
             }
             pending.push(arr[i]);
@@ -481,6 +510,13 @@
         if (!hasIp && !hasStamp) return false;
         return !/[。；！？]/.test(t);          // 不含句末标点 ⇒ 不是正文句子
     }
+    /** 整行只要"几乎只剩水印戳/页码"（去掉数字与空白后长度很短）也判为水印戳行 */
+    function isAlmostStampOnly(text) {
+        var t = collapseSpaces(text);
+        if (!/\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b|[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(t)) return false;
+        var left = t.replace(WM_TOKEN, '').replace(/[\s0-9:.\-—–]/g, '');
+        return left.length <= 4;               // 剩下的基本都是符号/极短 ⇒ 当水印戳整行丢弃
+    }
     // 行内页码标记（2026-10-03 用户语料）："第十九条防护栅栏设置通用规定— — 6 — —"
     //   ⇒ 页码标记和正文**粘在同一行**，原来只删"整行都是页码"的情况，残留的 "— — 6 — —" 会留在正文里，
     //   还会把段落撑断（下一页接不上）。这里把它从行内剔除。
@@ -488,10 +524,13 @@
     //   千万不要顺手把「第 N 页」也删掉 —— 正文里"本条为第1页专有正文…"会被误抠成"本条为专有正文…"
     //   （套件 A⑩ 当场抓到）。
     var INLINE_PAGEMARK = /[\u2014\u2013]{1,2}\s*[\u2014\u2013]{0,2}\s*[0-9０-９]{1,4}\s*[\u2014\u2013]{1,2}\s*[\u2014\u2013]{0,2}/g;
+    // 水印戳标记（打印系统盖的 IP/用户名/机器码/时间戳）：**行内任意位置**都剔掉 —— 用户语料末尾就残留了
+    //   "2026-07-1002:13:41"（日期与时间**之间没有空格**，原来的整行判定要求 \s+ 所以没命中）。
+    var WM_TOKEN = /(\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b)|([0-9]{4}-[0-9]{2}-[0-9]{2}[T\s]?[0-9]{2}:[0-9]{2}(:[0-9]{2})?)/g;
     function stripInlinePageMarks(text) {
         var t = String(text == null ? '' : text);
         var before = collapseSpaces(t);
-        t = collapseSpaces(t.replace(INLINE_PAGEMARK, ' '));
+        t = collapseSpaces(t.replace(INLINE_PAGEMARK, ' ').replace(WM_TOKEN, ' '));
         return { text: t, changed: t !== before };
     }
 
@@ -555,7 +594,7 @@
                 var t = String((l && l.text) || '');
                 var tt = collapseSpaces(t).trim();
                 if (isPageNumberLine(t)) { removed.push('页码行「' + tt.slice(0, 20) + '」'); return; }
-                if (isStampLine(t)) { removed.push('水印戳「' + tt.slice(0, 40) + '」'); return; }
+                if (isStampLine(t) || isAlmostStampOnly(t)) { removed.push('水印戳「' + tt.slice(0, 40) + '」'); return; }
                 // 行内页码标记已在"聚行阶段"（linesFromBoxes）统一清掉，这里不再重复处理；
                 var isEdge = (i < zone) || (i >= lines.length - zone);
                 var k = normRunning(t);

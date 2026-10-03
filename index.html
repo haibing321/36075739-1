@@ -2120,7 +2120,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.13</span> · 2026.09.28</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.14</span> · 2026.10.03</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2137,6 +2137,21 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.14 近期更新（对规截取去重 / 全文定位 / OFD 导入 / 导入提示） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.14 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 修「对规截取段落重复」：小段落的上下段延伸会与相邻命中段重复、大段落多个窗口向标点扩展后会互相重叠、两种机制还会交叉重复 ⇒ 同一段文字出现两遍。改法：**截取边界一个字不动**，只把「截取范围」与「输出范围」分开 —— 按**正文区间**去掉已输出部分（部分重叠裁掉前缀），并用**关键词出现位置账本**保证"还有没露过面的关键词位置就必须输出"，做到**去重不丢内容**。新增常驻套件 rule-snippet 8/8。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 修「关键词全文定位偶发不准（与屏幕大小有关）」：窄屏一行放不下 ⇒ 同一段占的**行数**不同 ⇒ 任何按行数/固定像素折算的定位都会漂。改法：全文渲染补段落下标、定位改「**下标精确优先**」、只在容器内滚动、现场量"已找到 N 处"栏的真实重叠、rAF 与 +120ms/+300ms 三次复核，并在字体晚到/横竖屏切换/图片撑高等布局再变时**有界跟随重定位**（约 2.5 秒，用户一滚动即停）。套件 rule-snippet 扩到 12/12。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 OFD 导入大幅修复（用户实测"导入后太乱"）：① 坐标改从 **ofd:TextCode** 取（原来只读 TextObject 的 Y ⇒ 大量取成 0 ⇒ 全篇挤乱，这是主因）；② 聚行改按**字号**（|ΔY| &lt; 0.6×字号）、行距用**众数**、缺坐标的块不再乱插；③ 每页的 IP+账号**水印戳按片段清除**（多轮 + 前缀补刀，"…未【戳】使用手电…"会正确接回"未使用"）；④ 整篇被压成一行时按时间点/条款头**重新分段**；⑤ 公文标题从夹缝里**提到最前**。套件 import-layout 扩到 37/37。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 导入完成提示不再自相矛盾：「已清理页眉页脚/页码/水印戳」「识别到 N 张表格」这类**成功**文件的处理说明，单列一节「已导入文件的处理说明」，不再被列在「未导入的文件及原因」下；正常完成弹窗 **2 秒**自动消失，仅**真跳过/失败/组件缺库**时才延长到 8 秒并用警示色。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧪 回归：rule-snippet 12/12、import-layout 37/37、ofd-import 7/7、chat-fixes 25/25、autocheck 24/24、agent-tool 21/21。</span></div>
+                </div>
             </div>
 
             <!-- v4.13 近期更新（SW 从未接管的真凶：激活时"接管"被"清理"连累） -->
@@ -2166,7 +2181,7 @@
                 </div>
             </div>
 
-            <!-- v4.11 及以前已归档（最近 2 版本为 v4.13 / v4.12） -->
+            <!-- v4.11 及以前已归档（面板展示最近 3 个版本：v4.14 / v4.13 / v4.12） -->
             <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.11 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
 
 

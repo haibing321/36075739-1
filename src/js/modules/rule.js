@@ -1174,8 +1174,11 @@
                                 }).join('\n');
                             }
                             searchText = normalizeSearchText(plainText);
-                            // 用 <p> 逐段呈现（原来是整篇一个 <pre>，段落感全无）
-                            contentHtml = plainText.split('\n').map(function (p) { return '<p>' + escapeHtml(p) + '</p>'; }).join('');
+                            // 逐段呈现 + **公文体例**（首行缩进 2 字、条款编号加粗、附件/标题居中、列表项缩进）：
+                            //   原来是整篇一个 <pre>（段落感全无）⇒ 用户看到的"PDF 格式不正常"。
+                            contentHtml = (_lay && _lay.paragraphsToHtml && _doc && _doc.paragraphs && _doc.paragraphs.length)
+                                ? _lay.paragraphsToHtml(_doc.paragraphs)
+                                : plainText.split('\n').map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
                         } else if (ext === 'ofd') {
                             // 【2026-10-03 用户需求】OFD（国产版式文档）导入：本地 JSZip 解包 → 抽正文 → **去水印**。
                             //   全程离线；水印判据（注释水印 / 图层名 / 版式特征）见 src/js/modules/ofd-import.js 文件头。
@@ -1188,7 +1191,10 @@
                             if (!_ofdTxt.trim()) throw new Error((_ofdRes && _ofdRes.note) || '未解析出正文（可能是扫描件/纯图片版 OFD）');
                             plainText = _ofdTxt;
                             searchText = normalizeSearchText(_ofdTxt);
-                            contentHtml = _ofdTxt.split(/\n+/).map(function (p) { return '<p>' + escapeHtml(p) + '</p>'; }).join('');
+                            // 与 PDF 同款公文体例渲染（首行缩进 2 字、条款编号加粗、附件/标题居中、列表项缩进）
+                            contentHtml = (window.ImportLayout && window.ImportLayout.paragraphsToHtml && _ofdRes.paragraphs && _ofdRes.paragraphs.length)
+                                ? window.ImportLayout.paragraphsToHtml(_ofdRes.paragraphs)
+                                : _ofdTxt.split(/\n+/).map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
                             if (_ofdRes.removed && _ofdRes.removed.length) {
                                 try { console.info('[OFD] 已去除水印 ' + _ofdRes.removed.length + ' 处：' + _ofdRes.removed.join('；')); } catch (e) {}
                                 skipNotes.push(file.name + '：已去除水印 ' + _ofdRes.removed.length + ' 处');

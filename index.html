@@ -2142,6 +2142,12 @@
     style="display:block;width:100%;margin:0 0 14px;padding:9px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:0.8rem;font-weight:600;cursor:pointer;">
     🔧 重装离线缓存（联网一次后即纯本机加载）
 </button>
+<!-- 【2026-10-04】"本次加载早于接管"时的一键真修复：只重载一次，此后导航由 SW 接管（0 字节/0 联网）。
+     自动重载被用户口径明确否决（救援不 reload），因此只做**用户点一下**的动作，且本会话只允许一次。 -->
+<button type="button" onclick="window.dsOfflineReenter && window.dsOfflineReenter()"
+    style="display:block;width:100%;margin:0 0 14px;padding:9px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#b45309;font-size:0.8rem;font-weight:600;cursor:pointer;">
+    🔁 切回本机加载（本次若走了网络，点一下重载即纯本机）
+</button>
 
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">

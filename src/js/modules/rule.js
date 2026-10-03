@@ -1146,6 +1146,9 @@
                                 try { await window.loadScript('src/js/modules/import-layout.js'); } catch (e) {}
                             }
                             const _lay = window.ImportLayout;
+                            // ⚠️ _pdfDoc 必须声明在 **if 之外**：块级 const 在 if 里声明、块外引用会抛
+                            //   "ReferenceError: _doc is not defined"（用户实测导入直接失败、整份文件被跳过）。
+                            let _pdfDoc = null;
                             const _items = [];
                             for (let p = 1; p <= pdf.numPages; p++) {
                                 const page = await pdf.getPage(p);
@@ -1159,14 +1162,14 @@
                                 //   ③ 丢弃倾斜水印行；
                                 //   ④ 跨页剔除页码（"—— 1 ——"）、重复页眉页脚（"LZG/GW213 - 2026"）、
                                 //      打印水印戳（"10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"）。
-                                const _doc = _lay.buildDocument(_items);
-                                plainText = _doc.text;
-                                if (_doc.rotatedDropped > 0) {
-                                    skipNotes.push(file.name + '：已忽略 ' + _doc.rotatedDropped + ' 行倾斜文字（通常为水印）');
+                                _pdfDoc = _lay.buildDocument(_items);
+                                plainText = _pdfDoc.text;
+                                if (_pdfDoc.rotatedDropped > 0) {
+                                    skipNotes.push(file.name + '：已忽略 ' + _pdfDoc.rotatedDropped + ' 行倾斜文字（通常为水印）');
                                 }
-                                if (_doc.removed && _doc.removed.length) {
-                                    skipNotes.push(file.name + '：已清理 ' + _doc.removed.length + ' 处页眉页脚/页码/水印戳');
-                                    try { console.info('[PDF] 已清理：' + _doc.removed.slice(0, 8).join('；')); } catch (e) {}
+                                if (_pdfDoc.removed && _pdfDoc.removed.length) {
+                                    skipNotes.push(file.name + '：已清理 ' + _pdfDoc.removed.length + ' 处页眉页脚/页码/水印戳');
+                                    try { console.info('[PDF] 已清理：' + _pdfDoc.removed.slice(0, 8).join('；')); } catch (e) {}
                                 }
                             } else {
                                 plainText = _items.map(function (its) {
@@ -1176,11 +1179,11 @@
                             searchText = normalizeSearchText(plainText);
                             // 逐段呈现 + **公文体例**（首行缩进 2 字、条款编号加粗、附件/标题居中、列表项缩进）：
                             //   原来是整篇一个 <pre>（段落感全无）⇒ 用户看到的"PDF 格式不正常"。
-                            contentHtml = (_lay && _lay.blocksToHtml && _doc && _doc.blocks && _doc.blocks.length)
-                                ? _lay.blocksToHtml(_doc.blocks)
+                            contentHtml = (_lay && _lay.blocksToHtml && _pdfDoc && _pdfDoc.blocks && _pdfDoc.blocks.length)
+                                ? _lay.blocksToHtml(_pdfDoc.blocks)
                                 : plainText.split('\n').map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
-                            if (_doc && _doc.blocks) {
-                                var _tc = _doc.blocks.filter(function (b) { return b.type === 'table'; }).length;
+                            if (_pdfDoc && _pdfDoc.blocks) {
+                                var _tc = _pdfDoc.blocks.filter(function (b) { return b.type === 'table'; }).length;
                                 if (_tc > 0) skipNotes.push(file.name + '：识别到 ' + _tc + ' 张表格（已按行列还原）');
                             }
                         } else if (ext === 'ofd') {

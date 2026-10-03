@@ -1121,6 +1121,12 @@
                 // 【2026-09-21】逐文件跳过原因：原来只累计 skipCount → 用户只看到"跳过 2 个"，
                 //   完全不知道是被什么拦下的（后缀不支持？.doc 老格式？解析失败？）
                 const skipNotes = [];
+                // 【2026-10-03 用户报「提示前后矛盾」】原来"成功文件的处理说明"（已清理页眉页脚 / 识别到表格 /
+                //   已去除水印）和"真的没导入"混在 skipNotes 一个数组里 ⇒ 弹窗出现"导入完成：成功 1 个，跳过 0 个"
+                //   紧接着又列在「未导入的文件及原因」下的自相矛盾文案。现在分成两个账：
+                //   · successNotes：**已导入成功**文件的处理说明（信息性，不是失败原因）；
+                //   · skipNotes：真正被跳过/失败的文件与原因。
+                const successNotes = [];
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const ext = file.name.split('.').pop().toLowerCase();
@@ -1165,10 +1171,10 @@
                                 _pdfDoc = _lay.buildDocument(_items);
                                 plainText = _pdfDoc.text;
                                 if (_pdfDoc.rotatedDropped > 0) {
-                                    skipNotes.push(file.name + '：已忽略 ' + _pdfDoc.rotatedDropped + ' 行倾斜文字（通常为水印）');
+                                    successNotes.push(file.name + '：已忽略 ' + _pdfDoc.rotatedDropped + ' 行倾斜文字（通常为水印）');
                                 }
                                 if (_pdfDoc.removed && _pdfDoc.removed.length) {
-                                    skipNotes.push(file.name + '：已清理 ' + _pdfDoc.removed.length + ' 处页眉页脚/页码/水印戳');
+                                    successNotes.push(file.name + '：已清理 ' + _pdfDoc.removed.length + ' 处页眉页脚/页码/水印戳');
                                     try { console.info('[PDF] 已清理：' + _pdfDoc.removed.slice(0, 8).join('；')); } catch (e) {}
                                 }
                             } else {
@@ -1184,7 +1190,7 @@
                                 : plainText.split('\n').map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
                             if (_pdfDoc && _pdfDoc.blocks) {
                                 var _tc = _pdfDoc.blocks.filter(function (b) { return b.type === 'table'; }).length;
-                                if (_tc > 0) skipNotes.push(file.name + '：识别到 ' + _tc + ' 张表格（已按行列还原）');
+                                if (_tc > 0) successNotes.push(file.name + '：识别到 ' + _tc + ' 张表格（已按行列还原）');
                             }
                         } else if (ext === 'ofd') {
                             // 【2026-10-03 用户需求】OFD（国产版式文档）导入：本地 JSZip 解包 → 抽正文 → **去水印**。
@@ -1204,13 +1210,13 @@
                                 : _ofdTxt.split(/\n+/).map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
                             if (_ofdRes.blocks) {
                                 var _tco = _ofdRes.blocks.filter(function (b) { return b.type === 'table'; }).length;
-                                if (_tco > 0) skipNotes.push(file.name + '：识别到 ' + _tco + ' 张表格（已按行列还原）');
+                                if (_tco > 0) successNotes.push(file.name + '：识别到 ' + _tco + ' 张表格（已按行列还原）');
                             }
                             if (_ofdRes.removed && _ofdRes.removed.length) {
                                 try { console.info('[OFD] 已去除水印 ' + _ofdRes.removed.length + ' 处：' + _ofdRes.removed.join('；')); } catch (e) {}
-                                skipNotes.push(file.name + '：已去除水印 ' + _ofdRes.removed.length + ' 处');
+                                successNotes.push(file.name + '：已去除水印 ' + _ofdRes.removed.length + ' 处');
                             }
-                            if (_ofdRes.note) skipNotes.push(file.name + '：' + _ofdRes.note);
+                            if (_ofdRes.note) successNotes.push(file.name + '：' + _ofdRes.note);
                         } else if (ext === 'docx' || ext === 'doc') {
                             if (typeof mammoth === 'undefined') throw new Error('mammoth 库未加载');
                             const arrayBuffer = await file.arrayBuffer();
@@ -1335,19 +1341,43 @@
                 refreshTradeSelect(); updateTotalBadge(); renderResults();
                 if (btn) btn.innerHTML = '📥 导入';
                 isProcessing = false;
-                var libTip = missingLibs.length
-                    ? '\n\n以下类型的解析组件未能联网加载，相关文件已跳过：' + missingLibs.join('、') +
-                      '\n（联网成功加载一次后会自动缓存，之后可离线使用）'
-                    : '';
-                // 【2026-09-21】完成提示从**阻塞 alert** 改为"进度条收尾 + 非阻塞 toast"（失败/缺库时用错误色并延长显示）
-                var _skipTip = skipNotes.length ? '\n\n未导入的文件及原因：\n· ' + skipNotes.slice(0, 6).join('\n· ') + (skipNotes.length > 6 ? '\n· …等共 ' + skipNotes.length + ' 个' : '') : '';
-                var _doneMsg = '导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个' + (_skipTip ? '（原因见下）' : '');
+                var _doneMsg = '导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个' + (skipNotes.length ? '（原因见下）' : '');
                 try { window.finishProgress('✅ ' + _doneMsg); } catch (e) {}
                 try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
-                var _fullMsg = (skipCount === 0 ? '✅ ' : '⚠️ ') + _doneMsg + _skipTip + libTip;
-                if (window.showToast) window.showToast(_fullMsg, missingLibs.length > 0 || skipCount > 0, (missingLibs.length || skipNotes.length) ? 14000 : 6000);
-                else alert(_doneMsg + _skipTip + libTip);
+                var _sum = buildRuleImportSummary({
+                    successCount: successCount, skipCount: skipCount,
+                    successNotes: successNotes, skipNotes: skipNotes, missingLibs: missingLibs
+                });
+                if (window.showToast) window.showToast(_sum.msg, _sum.isError, _sum.duration);
+                else alert(_sum.msg);
             }
+            /**
+             * 【2026-10-03 用户报「提示前后矛盾 + 停留太长」】导入完成提示的拼装（**纯函数**，模块作用域便于套件断言）：
+             *   · 「已导入文件的处理说明」单列一节（已清理页眉页脚 / 识别到表格 / 已去水印 —— 这些是**成功**
+             *     文件的处理记录），**不再**混进「未导入的文件及原因」（原来两者混用一个数组 ⇒ 弹窗出现
+             *     "导入完成：成功 1 个，跳过 0 个"却又把该文件列在「未导入的文件及原因」下的自相矛盾）；
+             *   · 停留时长：正常完成 **2 秒**（用户要求），只有**真跳过/失败/组件缺库**时才延长到 8 秒。
+             */
+            function buildRuleImportSummary(opt) {
+                opt = opt || {};
+                var sc = opt.successCount || 0, kc = opt.skipCount || 0;
+                var sN = opt.successNotes || [], kN = opt.skipNotes || [], mL = opt.missingLibs || [];
+                var sect = function (arr, head, unit) {
+                    if (!arr.length) return '';
+                    return '\n\n' + head + '\n· ' + arr.slice(0, 6).join('\n· ') +
+                        (arr.length > 6 ? '\n· …等共 ' + arr.length + ' ' + unit : '');
+                };
+                var msg = (kc === 0 ? '✅ ' : '⚠️ ')
+                    + '导入完成：成功 ' + sc + ' 个，跳过 ' + kc + ' 个' + (kN.length ? '（原因见下）' : '')
+                    + sect(sN, '已导入文件的处理说明：', '条')
+                    + sect(kN, '未导入的文件及原因：', '个')
+                    + (mL.length ? '\n\n以下类型的解析组件未能联网加载，相关文件已跳过：' + mL.join('、') +
+                        '\n（联网成功加载一次后会自动缓存，之后可离线使用）' : '');
+                var bad = (mL.length > 0) || (kc > 0) || (kN.length > 0);
+                return { msg: msg, isError: bad, duration: bad ? 8000 : 2000 };
+            }
+            window.__ruleImportSummary = buildRuleImportSummary;   // 供套件断言
+
             window.doExport = async function(format, forceAll) {
                 // 用 requireLib：直接 await loadScript 会在离线时抛错，
                 // 使下面 1054 行写好的「自动降级为 JSON 导出」兜底永远走不到

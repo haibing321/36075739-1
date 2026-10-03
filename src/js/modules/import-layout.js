@@ -131,7 +131,10 @@
             ln.items.sort(function (a, b) { return a.x - b.x; });
             ln.x = ln.items.length ? ln.items[0].x : 0;
             ln.n = ln.items.length;
-            ln.text = joinRun(ln.items.map(function (t) { return t.text; }));
+            var _joined = joinRun(ln.items.map(function (t) { return t.text; }));
+            // 行内页码标记（"…通用规定— — 6 — —"）在**聚行阶段**就清掉：这样 buildDocument、
+            // stripRunning、以及任何直接调 paragraphsFromLines 的路径都会生效，不会漏。
+            ln.text = stripInlinePageMarks(_joined).text;
         });
         return lines.filter(function (ln) { return ln.text.trim() !== ''; });
     }
@@ -248,6 +251,51 @@
         if (!hasIp && !hasStamp) return false;
         return !/[。；！？]/.test(t);          // 不含句末标点 ⇒ 不是正文句子
     }
+    // 行内页码标记（2026-10-03 用户语料）："第十九条防护栅栏设置通用规定— — 6 — —"
+    //   ⇒ 页码标记和正文**粘在同一行**，原来只删"整行都是页码"的情况，残留的 "— — 6 — —" 会留在正文里，
+    //   还会把段落撑断（下一页接不上）。这里把它从行内剔除。
+    // ⚠️ 只认"两侧带破折号"的**无歧义**形式："— — 6 — —" / "– 12 –"。
+    //   千万不要顺手把「第 N 页」也删掉 —— 正文里"本条为第1页专有正文…"会被误抠成"本条为专有正文…"
+    //   （套件 A⑩ 当场抓到）。
+    var INLINE_PAGEMARK = /[\u2014\u2013]{1,2}\s*[\u2014\u2013]{0,2}\s*[0-9０-９]{1,4}\s*[\u2014\u2013]{1,2}\s*[\u2014\u2013]{0,2}/g;
+    function stripInlinePageMarks(text) {
+        var t = String(text == null ? '' : text);
+        var before = collapseSpaces(t);
+        t = collapseSpaces(t.replace(INLINE_PAGEMARK, ' '));
+        return { text: t, changed: t !== before };
+    }
+
+    /**
+     * 【跨页段落合并】上一页最后一段若不是"句子已结束"，且下一页第一段不是条款/标题开头
+     *   ⇒ 说明这一段**跨页被切成两段**，合并回一段（用户 2026-10-03 报的问题）。
+     * 判据与段内续行一致：只在句末标点/条款头处断开；页眉页脚与页码此时已被剔除，所以拼接是干净的。
+     * @param {Array<Array<{text:string,lines:number}>>} pagesParagraphs 每页的段落数组
+     */
+    function mergePages(pagesParagraphs, opts) {
+        opts = opts || {};
+        var out = [];
+        (pagesParagraphs || []).forEach(function (paras) {
+            paras = (paras || []).slice();
+            if (!paras.length) return;
+            // 与上一页末尾相接：没结束就并进去
+            if (out.length) {
+                var prev = out[out.length - 1];
+                var first = paras[0];
+                var prevText = String(prev.text || '').replace(/\s+$/, '');
+                var firstText = String(first.text || '');
+                var prevEnded = SENT_END.test(prevText);
+                var newClause = CLAUSE_HEAD.test(firstText);
+                if (!prevEnded && !newClause) {
+                    prev.text = prevText + (needSpace(prevText.charAt(prevText.length - 1), firstText.charAt(0)) ? ' ' : '') + firstText;
+                    prev.lines = (prev.lines || 1) + (first.lines || 1);
+                    paras = paras.slice(1);
+                }
+            }
+            for (var i = 0; i < paras.length; i++) out.push(paras[i]);
+        });
+        return out;
+    }
+
     /** @param {Array<Array<{text:string,y:number,x:number}>>} pages 每页的行 */
     function stripRunning(pages, opts) {
         opts = opts || {};
@@ -278,6 +326,7 @@
                 var tt = collapseSpaces(t).trim();
                 if (isPageNumberLine(t)) { removed.push('页码行「' + tt.slice(0, 20) + '」'); return; }
                 if (isStampLine(t)) { removed.push('水印戳「' + tt.slice(0, 40) + '」'); return; }
+                // 行内页码标记已在"聚行阶段"（linesFromBoxes）统一清掉，这里不再重复处理；
                 var isEdge = (i < zone) || (i >= lines.length - zone);
                 var k = normRunning(t);
                 // 【判别要收紧】原先把"普通行只差数字"也算重复 ⇒ 像"本条为第1页专有正文…"这种
@@ -311,14 +360,11 @@
             perPage.push(good);
         });
         var st = stripRunning(perPage, opts);
-        var paras = [], pagesText = [];
-        st.pages.forEach(function (lines) {
-            var ps = paragraphsFromLines(lines, opts);
-            if (ps.length) paras = paras.concat(ps);
-            pagesText.push(toText(ps));
-        });
+        var perPageParas = st.pages.map(function (lines) { return paragraphsFromLines(lines, opts); });
+        // 【跨页段落合并】必须在"每页成段之后、拼全文之前"做：否则页尾没写完的段落会被页边界切成两段
+        var paras = mergePages(perPageParas, opts);
         return {
-            text: pagesText.filter(function (t) { return t.trim() !== ''; }).join('\n'),
+            text: toText(paras),
             paragraphs: paras, rotatedDropped: rotatedDropped,
             removed: st.removed, pageCount: st.pages.length
         };
@@ -327,6 +373,8 @@
     window.ImportLayout = {
         buildDocument: buildDocument,
         stripRunning: stripRunning,
+        stripInlinePageMarks: stripInlinePageMarks,
+        mergePages: mergePages,
         collapseSpaces: collapseSpaces,
         isPageNumberLine: isPageNumberLine,
         isStampLine: isStampLine,

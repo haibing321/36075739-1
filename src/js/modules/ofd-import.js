@@ -195,17 +195,22 @@
 
         // 跨页清理（与 PDF 同一套）：页码（"— — 1 — —"）、**行内页码标记**（"…通用规定— — 6 — —"）、
         //   重复页眉页脚（如规章编号）、打印水印戳（IP+用户+时间）
-        var text = '';
+        var text = '', blocks = [];
         if (_lay && pageLines.length) {
             var _st = _lay.stripRunning(pageLines);
             pageLines = _st.pages || [];
             if (_st.removed && _st.removed.length) for (var _ri = 0; _ri < _st.removed.length; _ri++) removed.push(_st.removed[_ri]);
-            var _perPage = pageLines.map(function (ls) { return _lay.paragraphsFromLines(ls); });
-            // 【跨页段落合并】OFD 同样会出现"一段跨页被切成两段"，与 PDF 用同一个合并器
-            var _allParas = (_lay.mergePages ? _lay.mergePages(_perPage) : [].concat.apply([], _perPage));
-            // 与 PDF 同款公文体例格式化（分类 + 条款编号后补空格），并把结构化段落一并交出去
-            paragraphs = (_lay.formatParagraphs ? _lay.formatParagraphs(_allParas) : _allParas);
-            text = _lay.toText(paragraphs);
+            if (_lay.buildFromPageLines) {
+                // PDF 的全套处理（跨页段落合并 + 公文体例 + 表格还原）走**同一个**入口，避免两套实现漂移
+                var _built = _lay.buildFromPageLines(pageLines);
+                text = _built.text;
+                blocks = _built.blocks || [];
+                paragraphs = _built.paragraphs || [];
+            } else {
+                var _perPage = pageLines.map(function (ls) { return _lay.paragraphsFromLines(ls); });
+                paragraphs = (_lay.mergePages ? _lay.mergePages(_perPage) : [].concat.apply([], _perPage));
+                text = _lay.toText(paragraphs);
+            }
         } else {
             text = pageTexts.filter(function (t) { return t.trim() !== ''; }).join('\n');
         }
@@ -229,7 +234,7 @@
         if (!text.trim()) note = '未解析出文字（可能是扫描件/纯图片版 OFD，或文本被画成了矢量路径）';
         if (images > 0) note += (note ? '；' : '') + '文档含 ' + images + ' 张图片，未提取图片内文字';
 
-        return { text: text, paragraphs: paragraphs, pageCount: pageLocs.length, removed: uniq, note: note, images: images };
+        return { text: text, paragraphs: paragraphs, blocks: blocks, pageCount: pageLocs.length, removed: uniq, note: note, images: images };
     }
 
     window.OFDImport = { extract: extract, version: '1.0', _hint: WATERMARK_HINT };

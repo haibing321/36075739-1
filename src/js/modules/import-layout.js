@@ -245,8 +245,177 @@
             var t = String((p && p.text) || '').trim();
             var kind = classifyParagraph(t);
             if (kind === 'chapter' || kind === 'section' || kind === 'clause') t = clauseHeadSpace(t);
-            return { text: t, kind: kind, lines: (p && p.lines) || 1, rotated: !!(p && p.rotated) };
+            // ⚠️ 必须保留 type（块类型）：格式化会把段落块**替换**成这里的返回值，若丢掉 type，
+            //   下游 blocksToText/blocksToHtml 就认不出"段落"块了（套件里块序列一度变成 ",table," ＝
+            //   两个空类型 + 一个表格，段落全被当成"非表格块"兜底渲染）。
+            return { type: 'para', text: t, kind: kind, lines: (p && p.lines) || 1, rotated: !!(p && p.rotated) };
         }).filter(function (p) { return p.text !== ''; });
+    }
+
+    // ============ 表格还原（2026-10-04） ============
+    // 用户语料里的附件台账（附件2/3/4）导进来是一团文字："1兰新下左58.450 58.800 350砼柱金属网2.3刺丝滚笼堤2021年改造兰州西示例"
+    //   原因是表格在 PDF/OFD 里只是"一堆带坐标的文字块"，行内拼接把列都粘在了一起。
+    // 这里按**坐标**把文字块聚成"行 × 列"：
+    //   ① 判断一行里有哪些"单元格"：相邻文字块的起点间距 > 平均字宽 × 2.2 ⇒ 认为跨了列；
+    //      （平均字宽用 (最右-最左)/总字数 现场估，不依赖单位 —— PDF 用点、OFD 用毫米都能算）
+    //   ② 连续 ≥3 行且每行都有 ≥3 个单元格 ⇒ 认定是表格区域；
+    //   ③ 列位置聚类得到列边界，单元格各归其列，空单元格留空 —— 输出可读的表格骨架。
+    function estAvgAdv(items) {
+        if (!items || items.length < 2) return 0;
+        var minX = Infinity, maxX = -Infinity, chars = 0;
+        items.forEach(function (b) {
+            if (b.x < minX) minX = b.x;
+            if (b.x > maxX) maxX = b.x;
+            chars += Math.max(1, String(b.text || '').length);
+        });
+        return (maxX - minX) / Math.max(1, chars);
+    }
+    /** 一行 ⇒ 单元格数组（每个单元格是若干文字块） */
+    function cellsOfLine(line, opts) {
+        var items = ((line && line.items) || []).slice().sort(function (a, b) { return a.x - b.x; });
+        if (!items.length) return [];
+        var adv = estAvgAdv(items);
+        var thr = (typeof opts.colGapChars === 'number' ? opts.colGapChars : 2.2) * (adv || 1);
+        var cells = [[items[0]]];
+        for (var i = 1; i < items.length; i++) {
+            var gap = items[i].x - items[i - 1].x;
+            if (adv > 0 && gap > thr) cells.push([]);
+            cells[cells.length - 1].push(items[i]);
+        }
+        return cells;
+    }
+    function cellText(cell) { return joinRun((cell || []).map(function (b) { return b.text; })); }
+    /**
+     * 逐行扫描 ⇒ 有序块序列：[{type:'para', text}...] 与 [{type:'table', rows:[[..]], cols:n}]
+     * 表格区域前后的文字行照常按段落还原；表格本身保持原样插在中间。
+     */
+    function linesToBlocks(lines, opts) {
+        opts = opts || {};
+        var minRows = (typeof opts.minTableRows === 'number') ? opts.minTableRows : 3;
+        var minCells = (typeof opts.minTableCells === 'number') ? opts.minTableCells : 3;
+        var arr = (lines || []).filter(function (l) { return l && String(l.text || '').trim() !== ''; });
+        var rowsCells = arr.map(function (l) { return cellsOfLine(l, opts); });
+        var blocks = [], pending = [], i = 0;
+        function flushPending() {
+            if (!pending.length) return;
+            var paras = paragraphsFromLines(pending, opts);
+            paras.forEach(function (p) { blocks.push({ type: 'para', text: p.text, kind: p.kind || 'body', lines: p.lines }); });
+            pending = [];
+        }
+        while (i < arr.length) {
+            var rc = rowsCells[i];
+            if (rc.length >= minCells) {
+                // 往后找连续的"多列行"，看长度是否够成表
+                var j = i, region = [];
+                while (j < arr.length && rowsCells[j].length >= 2) { region.push(rowsCells[j]); j++; }
+                var wide = region.filter(function (r) { return r.length >= minCells; }).length;
+                if (region.length >= minRows && wide >= minRows) {
+                    flushPending();
+                    // 列位置聚类（用每个单元格首块的 x）
+                    var anchors = [];
+                    region.forEach(function (r) {
+                        r.forEach(function (c) {
+                            if (!c.length) return;
+                            var x = c[0].x;
+                            var hit = -1;
+                            for (var k = 0; k < anchors.length; k++) if (Math.abs(anchors[k] - x) <= (opts.colTol || 6)) { hit = k; break; }
+                            if (hit < 0) { anchors.push(x); anchors.sort(function (a, b) { return a - b; }); }
+                        });
+                    });
+                    var cols = Math.max(anchors.length, 1);
+                    var grid = region.map(function (r) {
+                        var line = [];
+                        for (var c2 = 0; c2 < cols; c2++) line.push('');
+                        r.forEach(function (c) {
+                            if (!c.length) return;
+                            var x = c[0].x, best = 0, bestD = Infinity;
+                            for (var k2 = 0; k2 < anchors.length; k2++) {
+                                var d = Math.abs(anchors[k2] - x);
+                                if (d < bestD) { bestD = d; best = k2; }
+                            }
+                            var t = cellText(c);
+                            line[best] = line[best] ? (line[best] + ' ' + t) : t;
+                        });
+                        return line;
+                    });
+                    blocks.push({ type: 'table', rows: grid, cols: cols });
+                    i = j;
+                    continue;
+                }
+            }
+            pending.push(arr[i]);
+            i++;
+        }
+        flushPending();
+        return blocks;
+    }
+    function blocksToText(blocks, opts) {
+        opts = opts || {};
+        return (blocks || []).map(function (b) {
+            if (b.type === 'table') {
+                return b.rows.map(function (r) { return r.join(' | ').replace(/\s+\|\s*$/, ''); }).join('\n');
+            }
+            return String(b.text || '');
+        }).filter(function (t) { return String(t).trim() !== ''; }).join('\n');
+    }
+    /**
+     * 多页（已清理过的）行 ⇒ 文档块：段落按公文体例格式化 + **跨页段落合并** + 表格识别。
+     * PDF 与 OFD 共用这一条（用户要求"PDF 的修改一并应用到 OFD"）。
+     * @returns {{text:string, blocks:Array, paragraphs:Array, tableCount:number}}
+     */
+    function buildFromPageLines(pageLines, opts) {
+        opts = opts || {};
+        var pageBlocks = (pageLines || []).map(function (lines) { return linesToBlocks(lines, opts); });
+        // 段落公文体例格式化（表格块原样保留）
+        pageBlocks = pageBlocks.map(function (bs) {
+            return bs.map(function (b) {
+                if (b.type !== 'para') return b;
+                var f = formatParagraphs([b])[0];
+                return f || b;
+            });
+        });
+        // 跨页段落合并：只处理"上一页最后一块/下一页第一块都是段落"的情形（表格不参与）
+        for (var p = 0; p + 1 < pageBlocks.length; p++) {
+            var last = pageBlocks[p][pageBlocks[p].length - 1];
+            var first = pageBlocks[p + 1][0];
+            if (!last || !first || last.type !== 'para' || first.type !== 'para') continue;
+            var lt = String(last.text || '').replace(/\s+$/, '');
+            var ft = String(first.text || '');
+            if (SENT_END.test(lt) || CLAUSE_HEAD.test(ft)) continue;
+            last.text = lt + (needSpace(lt.charAt(lt.length - 1), ft.charAt(0)) ? ' ' : '') + ft;
+            last.lines = (last.lines || 1) + (first.lines || 1);
+            if (last.kind === 'body' && first.kind && first.kind !== 'body') last.kind = first.kind;
+            pageBlocks[p + 1].shift();
+        }
+        var blocks = [];
+        pageBlocks.forEach(function (bs) { blocks = blocks.concat(bs); });
+        var paragraphs = blocks.filter(function (b) { return b.type === 'para'; });
+        return {
+            text: blocksToText(blocks), blocks: blocks, paragraphs: paragraphs,
+            tableCount: blocks.filter(function (b) { return b.type === 'table'; }).length
+        };
+    }
+
+    /** 块序列 ⇒ HTML：段落走公文体例，表格输出真正的 <table>（可横向滚动、不撑破版面） */
+    function blocksToHtml(blocks, opts) {
+        return (blocks || []).map(function (b) {
+            if (b.type === 'table') {
+                var head = b.rows[0] || [];
+                var body = b.rows.slice(1);
+                var h = head.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('');
+                var bd = body.map(function (r) {
+                    return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+                }).join('');
+                return '<div class="imp-table-wrap"><table class="imp-table"><thead><tr>' + h + '</tr></thead><tbody>' + bd + '</tbody></table></div>';
+            }
+            var kind = b.kind || 'body';
+            var inner = esc(b.text || '');
+            if (kind === 'chapter' || kind === 'section' || kind === 'clause') {
+                var m = /^(第[一二三四五六七八九十百千0-9]+[章节条款])/.exec(b.text || '');
+                if (m) inner = '<b>' + esc(m[1]) + '</b>' + esc(String(b.text || '').slice(m[1].length));
+            }
+            return '<p class="imp-p imp-' + kind + '">' + inner + '</p>';
+        }).join('');
     }
 
     function esc(s) {
@@ -421,19 +590,22 @@
             perPage.push(good);
         });
         var st = stripRunning(perPage, opts);
-        var perPageParas = st.pages.map(function (lines) { return paragraphsFromLines(lines, opts); });
-        // 【跨页段落合并】必须在"每页成段之后、拼全文之前"做：否则页尾没写完的段落会被页边界切成两段；
-        // 合并后再做**公文体例格式化**（分类 + 条款编号后补空格），渲染层按 kind 套样式。
-        var paras = formatParagraphs(mergePages(perPageParas, opts));
+        var built = buildFromPageLines(st.pages, opts);
         return {
-            text: toText(paras),
-            paragraphs: paras, rotatedDropped: rotatedDropped,
+            text: built.text,
+            blocks: built.blocks,
+            paragraphs: built.paragraphs,
+            rotatedDropped: rotatedDropped,
             removed: st.removed, pageCount: st.pages.length
         };
     }
 
     window.ImportLayout = {
         buildDocument: buildDocument,
+        buildFromPageLines: buildFromPageLines,
+        linesToBlocks: linesToBlocks,
+        blocksToText: blocksToText,
+        blocksToHtml: blocksToHtml,
         stripRunning: stripRunning,
         stripInlinePageMarks: stripInlinePageMarks,
         mergePages: mergePages,

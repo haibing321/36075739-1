@@ -1176,9 +1176,13 @@
                             searchText = normalizeSearchText(plainText);
                             // 逐段呈现 + **公文体例**（首行缩进 2 字、条款编号加粗、附件/标题居中、列表项缩进）：
                             //   原来是整篇一个 <pre>（段落感全无）⇒ 用户看到的"PDF 格式不正常"。
-                            contentHtml = (_lay && _lay.paragraphsToHtml && _doc && _doc.paragraphs && _doc.paragraphs.length)
-                                ? _lay.paragraphsToHtml(_doc.paragraphs)
+                            contentHtml = (_lay && _lay.blocksToHtml && _doc && _doc.blocks && _doc.blocks.length)
+                                ? _lay.blocksToHtml(_doc.blocks)
                                 : plainText.split('\n').map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
+                            if (_doc && _doc.blocks) {
+                                var _tc = _doc.blocks.filter(function (b) { return b.type === 'table'; }).length;
+                                if (_tc > 0) skipNotes.push(file.name + '：识别到 ' + _tc + ' 张表格（已按行列还原）');
+                            }
                         } else if (ext === 'ofd') {
                             // 【2026-10-03 用户需求】OFD（国产版式文档）导入：本地 JSZip 解包 → 抽正文 → **去水印**。
                             //   全程离线；水印判据（注释水印 / 图层名 / 版式特征）见 src/js/modules/ofd-import.js 文件头。
@@ -1192,9 +1196,13 @@
                             plainText = _ofdTxt;
                             searchText = normalizeSearchText(_ofdTxt);
                             // 与 PDF 同款公文体例渲染（首行缩进 2 字、条款编号加粗、附件/标题居中、列表项缩进）
-                            contentHtml = (window.ImportLayout && window.ImportLayout.paragraphsToHtml && _ofdRes.paragraphs && _ofdRes.paragraphs.length)
-                                ? window.ImportLayout.paragraphsToHtml(_ofdRes.paragraphs)
+                            contentHtml = (window.ImportLayout && window.ImportLayout.blocksToHtml && _ofdRes.blocks && _ofdRes.blocks.length)
+                                ? window.ImportLayout.blocksToHtml(_ofdRes.blocks)
                                 : _ofdTxt.split(/\n+/).map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
+                            if (_ofdRes.blocks) {
+                                var _tco = _ofdRes.blocks.filter(function (b) { return b.type === 'table'; }).length;
+                                if (_tco > 0) skipNotes.push(file.name + '：识别到 ' + _tco + ' 张表格（已按行列还原）');
+                            }
                             if (_ofdRes.removed && _ofdRes.removed.length) {
                                 try { console.info('[OFD] 已去除水印 ' + _ofdRes.removed.length + ' 处：' + _ofdRes.removed.join('；')); } catch (e) {}
                                 skipNotes.push(file.name + '：已去除水印 ' + _ofdRes.removed.length + ' 处');

@@ -79,7 +79,7 @@
          app.js 正常加载后会用同名函数覆盖本兜底版，行为一致、零冲突。 -->
     <script>
       (function () {
-        // v3.63：设置面板改为「遮罩 + 对话框」模态，分类导航（通用/数据/接口/关于）。
+        // v3.63：设置面板改为「遮罩 + 对话框」模态，分类导航（通用/数据/接口/调试/关于）。
         function stGo(key) {
           var panel = document.getElementById('settings-panel');
           if (!panel || !key) return;
@@ -1685,7 +1685,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-info" onclick="ruleExportSingleHtml(window.__ruleFvIdx)">📄 导出本条(含图片)</button>
+                <!-- 【2026-10-04 用户口径】单条规章导出改为 **DOCX（含图片）**，复用资料库/历史报告那套导出链路
+                     （window.wrExportHtmlToDocx → exportDocxFromHtml → RGDocx 真·OOXML，失败降级 html-docx-js / .doc）。 -->
+                <button class="btn btn-info" onclick="ruleExportSingleDocx(window.__ruleFvIdx)">📄 导出本条 DOCX（含图片）</button>
             </div>
         </div>
     </div>
@@ -1864,6 +1866,17 @@
                                 <input type="checkbox" id="memoryEnable" checked style="width:18px;height:18px;cursor:pointer;">
                             </span>
                         </div>
+
+                        <!-- 【2026-10-04 用户口径】调试开关放在**通用**里（原「设置 → 调试」独立分类已按用户要求取消）：
+                             打开时「关于系统」里显示离线诊断，否则一律不显示
+                             （用户原话："默认以后不显示了，只有调试时显示" / "将设置中的调试按钮放置到通用中"）。
+                             文案由 app.js 的 dsSyncDebugModeBtn() 同步（打开设置/切换后各一次）。 -->
+                        <div class="st-group-title">调试</div>
+                        <button id="set-debug-mode-btn" onclick="window.dsToggleDebugMode && window.dsToggleDebugMode()" class="st-btn">
+                            <span id="set-debug-mode-label">🐞 调试：关闭</span>
+                            <span class="st-btn-arrow" id="set-debug-mode-arrow">点击开启 →</span>
+                        </button>
+                        <div class="st-hint">打开后：「关于系统」里显示离线诊断（缓存项数 / 本次是否走了网络 / SW 接管详情 / 加载历史），并给出「🔧 重装离线缓存」「🔁 切回本机加载」两个一键修复入口；关闭则完全隐藏。</div>
                     </section>
 
                     <!-- ========== 数据 ========== -->
@@ -2090,6 +2103,9 @@
                         <div class="st-hint">支持 DeepSeek / 豆包 / OpenAI 等兼容接口；密钥仅保存在本机浏览器，不会上传。</div>
                     </section>
 
+                    <!-- 【2026-10-04】原独立「调试」分类已按用户要求取消（"将设置中的调试按钮放置到通用中"），
+                         开关现在位于上方「通用」分类末尾的「调试」分组里。 -->
+
                     <!-- ========== 关于 ========== -->
                     <section class="st-sec" data-sec="about">
                         <div class="st-group-title">版本</div>
@@ -2126,26 +2142,31 @@
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
             </div>
 
-            <!-- 【2026-09-23】离线状态：用户关心"折叠开合到底走不走离线数据"，这里直接可见 -->
-            <div id="about-offline" style="background:#0f172a;color:#cbd5e1;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.76rem;line-height:1.8;">离线状态：检测中…</div>
+            <!-- 【2026-09-23】离线状态：用户关心"折叠开合到底走不走离线数据"，这里直接可见。
+                 【2026-10-04 用户口径】改为**默认隐藏**、由「设置 → 🐞 调试」开关控制显隐
+                 （用户："默认以后不显示了，只有调试时显示"）—— 初始 display:none 避免闪一下"检测中…"。 -->
+            <div id="about-offline" style="display:none;background:#0f172a;color:#cbd5e1;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.76rem;line-height:1.8;">离线状态：检测中…</div>
             <!-- 【2026-10-04】折叠屏开合实况：形态/视口段数/是否被系统回收/缓存恢复次数/最近事件 ——
-                 用户报"理解与实际不一致"，这一行让触发点直接可见（数据由 page-state.js 写入）。 -->
-            <div id="about-fold" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 13px;margin-bottom:8px;font-size:0.74rem;color:var(--text-secondary);line-height:1.7;">折叠/形态：检测中…</div>
+                 用户报"理解与实际不一致"，这一行让触发点直接可见（数据由 page-state.js 写入）。
+                 同样归入调试信息：默认隐藏（同上开关控制）。 -->
+            <div id="about-fold" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 13px;margin-bottom:8px;font-size:0.74rem;color:var(--text-secondary);line-height:1.7;">折叠/形态：检测中…</div>
             <!-- 折叠屏（书本姿态左右两段视口）时避开铰链区域：标准 API，不支持则整段被忽略 -->
             <style>
                 @media (horizontal-viewport-segments: 2) {
                     .panel.active { padding-left: env(viewport-segment-left 1 0, 0px); padding-right: calc(100% - env(viewport-segment-right 0 0, 100%)); }
                 }
             </style>
-<!-- 【2026-09-28】用户批评"自动刷新是掩耳盗铃" → 把真修复交到用户手里：一键重装离线组件（正常导航，不用 reload） -->
-<button type="button" onclick="window.dsRepairOffline && window.dsRepairOffline()"
-    style="display:block;width:100%;margin:0 0 14px;padding:9px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:0.8rem;font-weight:600;cursor:pointer;">
+<!-- 【2026-09-28】用户批评"自动刷新是掩耳盗铃" → 把真修复交到用户手里：一键重装离线组件（正常导航，不用 reload）
+     【2026-10-04】随诊断块一起由「设置 → 🐞 调试」控制显隐（默认 display:none）。
+     ⚠️ 显示态必须是 display:block（原样），故 app.js 里用 _aboutSetDisplay(id, on, 'block') 还原，不能用 ''。 -->
+<button type="button" id="about-repair-btn" onclick="window.dsRepairOffline && window.dsRepairOffline()"
+    style="display:none;width:100%;margin:0 0 14px;padding:9px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:0.8rem;font-weight:600;cursor:pointer;">
     🔧 重装离线缓存（联网一次后即纯本机加载）
 </button>
 <!-- 【2026-10-04】"本次加载早于接管"时的一键真修复：只重载一次，此后导航由 SW 接管（0 字节/0 联网）。
      自动重载被用户口径明确否决（救援不 reload），因此只做**用户点一下**的动作，且本会话只允许一次。 -->
-<button type="button" onclick="window.dsOfflineReenter && window.dsOfflineReenter()"
-    style="display:block;width:100%;margin:0 0 14px;padding:9px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#b45309;font-size:0.8rem;font-weight:600;cursor:pointer;">
+<button type="button" id="about-reenter-btn" onclick="window.dsOfflineReenter && window.dsOfflineReenter()"
+    style="display:none;width:100%;margin:0 0 14px;padding:9px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#b45309;font-size:0.8rem;font-weight:600;cursor:pointer;">
     🔁 切回本机加载（本次若走了网络，点一下重载即纯本机）
 </button>
 
@@ -2161,6 +2182,8 @@
                     <span>v4.14 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 规章制度「查看 → 导出本条」由 HTML 单文件改为 **DOCX（含图片）**：复用资料库 / 历史报告同一套导出引擎（RGDocx 真·OOXML，排版偏好一致；图片照旧内嵌，失败自动降级 html-docx-js / .doc）；按钮文案同步为「📄 导出本条 DOCX（含图片）」。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 离线诊断信息改为**默认不显示**：开关在「设置 → 通用 → 🐞 调试」—— 关闭时「关于系统」只剩版本与更新日志；打开才显示缓存项数 / 本次是否走了网络 / SW 接管详情，以及「🔧 重装离线缓存」「🔁 切回本机加载」两个一键修复入口（手机端不再需要控制台）。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 修「对规截取段落重复」：小段落的上下段延伸会与相邻命中段重复、大段落多个窗口向标点扩展后会互相重叠、两种机制还会交叉重复 ⇒ 同一段文字出现两遍。改法：**截取边界一个字不动**，只把「截取范围」与「输出范围」分开 —— 按**正文区间**去掉已输出部分（部分重叠裁掉前缀），并用**关键词出现位置账本**保证"还有没露过面的关键词位置就必须输出"，做到**去重不丢内容**。新增常驻套件 rule-snippet 8/8。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 修「关键词全文定位偶发不准（与屏幕大小有关）」：窄屏一行放不下 ⇒ 同一段占的**行数**不同 ⇒ 任何按行数/固定像素折算的定位都会漂。改法：全文渲染补段落下标、定位改「**下标精确优先**」、只在容器内滚动、现场量"已找到 N 处"栏的真实重叠、rAF 与 +120ms/+300ms 三次复核，并在字体晚到/横竖屏切换/图片撑高等布局再变时**有界跟随重定位**（约 2.5 秒，用户一滚动即停）。套件 rule-snippet 扩到 12/12。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 OFD 导入大幅修复（用户实测"导入后太乱"）：① 坐标改从 **ofd:TextCode** 取（原来只读 TextObject 的 Y ⇒ 大量取成 0 ⇒ 全篇挤乱，这是主因）；② 聚行改按**字号**（|ΔY| &lt; 0.6×字号）、行距用**众数**、缺坐标的块不再乱插；③ 每页的 IP+账号**水印戳按片段清除**（多轮 + 前缀补刀，"…未【戳】使用手电…"会正确接回"未使用"）；④ 整篇被压成一行时按时间点/条款头**重新分段**；⑤ 公文标题从夹缝里**提到最前**。套件 import-layout 扩到 37/37。</span></div>

@@ -4342,6 +4342,17 @@
                 return exportDocxFromHtml(wrMdToDocxHtml(String(md)), name || '智能对话');
             };
 
+            // 【2026-10-04 用户口径】对外通用入口：任意 **HTML** → DOCX（与历史报告 / 资料库导出**同一套链路**）。
+            //   用途：规章制度「导出本条」这类"自带结构化 HTML + 内嵌图片"的内容（<h1>/<p>/<br>/<img src="data:...">）。
+            //   为什么不直接用 wrExportMdToDocx：那个入口把输入按 **Markdown** 处理（对结构化 HTML 只是兜底原样返回），
+            //   语义上不该依赖兜底；这里给"HTML 进、DOCX 出"的明确契约。
+            //   链路/排版偏好/提示完全一致：RGDocx 真·OOXML（读 localStorage `wr_docx_style`，images:true 内嵌图片）
+            //   → html-docx-js(altChunk) → HTML 版 .doc 兜底；opts.templateBytes 可选（历史报告导出用的就是它）。
+            window.wrExportHtmlToDocx = function(html, name, opts) {
+                if (!html || !String(html).trim()) { alert('没有可导出的内容'); return Promise.resolve(false); }
+                return exportDocxFromHtml(String(html), name || '文档', opts || {});
+            };
+
             // ---- 导出 DOCX ----
             // 通道优先级（v3.69 起）：
             //   A1 真·OOXML 引擎 + 上传模板填充（保住模板原版式，模板内无 {{占位符}} 时自动跳过）

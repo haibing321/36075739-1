@@ -1220,7 +1220,7 @@ function setUpdateBadge(on) {
 }
 
 // ==================== 设置面板分类导航（v3.63） ====================
-// 面板结构：通用 / 数据 / 接口 / 关于 四类，HTML 中 .st-nav-item 与 .st-sec 以 data-sec 成对匹配。
+// 面板结构：通用 / 数据 / 接口 / 调试 / 关于 五类，HTML 中 .st-nav-item 与 .st-sec 以 data-sec 成对匹配。
 // 切换只改 is-active，不重建 DOM —— 避免打断输入框焦点、滚动位置与已展开的折叠项。
 window.stGoSection = function(key) {
     var panel = document.getElementById('settings-panel');
@@ -1282,6 +1282,8 @@ window.toggleSettingsPanel = function() {
     var isOpening = (p.style.display === 'none' || p.style.display === '');
     if (isOpening) {
         p.style.display = 'flex';   // 模态：外层是遮罩容器，用 flex 让对话框居中
+        // 【2026-10-04】调试开关文案同步（手机端唯一入口，必须在打开设置时就反映真实状态）
+        try { if (window.dsSyncDebugModeBtn) window.dsSyncDebugModeBtn(); } catch (e) {}
         if (window.updateDataManagementStats) window.updateDataManagementStats();
         if (window.syncDarkModeToggle) window.syncDarkModeToggle();
         if (window.syncCapabilityToggles) window.syncCapabilityToggles();
@@ -1369,6 +1371,58 @@ window.clearAllCache = function() {
     });
 };
 
+/**
+ * 【2026-10-04 用户口径】离线诊断信息「默认不显示，只有调试时显示」——开关放在**设置**里，不在关于系统里。
+ *   口径原文（用户两条反馈）："默认以后不显示了，只有调试时显示" / "在设置中设置一个调试模式按钮，
+ *   打开时就显示，否则不显示，不要在关于系统里显示"。
+ *   因此「设置 → 通用 → 🐞 调试」是**唯一开关**（位置经用户两轮调整：独立分类 → 最终放进「通用」分类），
+ *   只有它控制关于系统里的诊断块：
+ *     ① 开关关闭（默认）⇒ 诊断块（离线状态 / 折叠形态 / 重装·切回按钮）一律不显示，也不做检测收集；
+ *     ② 开关打开 ⇒ 完整详情照常显示（SW 详情 / 加载历史 / AI 指标 / 离线门禁 / 自测 / 一键修复）。
+ *   实现沿用全局同一把钥匙 `console_debug_v1`（enableDebugLogs/disableDebugLogs 写的就是它），
+ *   本机开发地址（localhost/127.0.0.1）默认视为调试（写 '0' 可显式关闭；只关本面板，不改 head 的日志策略）。
+ *   ⚠️ 注意：真正需要用户动手的提示不走这里 —— 「本次打开走了网络」的一键切回仍由启动提示
+ *   `_showOfflineReentryTip`（页面底部浮层）承担，与本开关无关。
+ */
+window.dsIsDebugMode = function () {
+    try {
+        var v = localStorage.getItem('console_debug_v1');
+        if (v === '1') return true;
+        if (v === '0') return false;
+    } catch (e) {}
+    try { return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname || ''); } catch (e) { return false; }
+};
+function _aboutSetDisplay(id, on, showVal) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = on ? (showVal || '') : 'none';
+}
+/** 同步「设置 → 调试」按钮的文案（打开设置面板时、切换后各调一次） */
+window.dsSyncDebugModeBtn = function () {
+    var on = window.dsIsDebugMode();
+    var l = document.getElementById('set-debug-mode-label');
+    var a = document.getElementById('set-debug-mode-arrow');
+    if (l) l.textContent = on ? '🐞 调试：已开启' : '🐞 调试：关闭';
+    if (a) a.textContent = on ? '点击关闭' : '点击开启 →';
+    return on;
+};
+/** 「设置 → 调试」开关：开/关诊断面板（与 console_debug_v1 同一把钥匙）；返回切换后的状态 */
+window.dsToggleDebugMode = function () {
+    var on = !window.dsIsDebugMode();
+    try {
+        if (on) { if (window.enableDebugLogs) window.enableDebugLogs(); else localStorage.setItem('console_debug_v1', '1'); }
+        else { if (window.disableDebugLogs) window.disableDebugLogs(); else localStorage.setItem('console_debug_v1', '0'); }
+    } catch (e) {}
+    try { window.dsSyncDebugModeBtn(); } catch (e) {}
+    try { window.stFillAboutOffline(); } catch (e) {}
+    try { if (window.stRenderFoldLine) window.stRenderFoldLine(); } catch (e) {}
+    return on;
+};
+// 首屏同步一次「设置 → 调试」按钮文案（defer 脚本下 DOM 已就绪；若已过 DCL 也立即同步一次）
+try {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { window.dsSyncDebugModeBtn(); });
+    else window.dsSyncDebugModeBtn();
+} catch (e) {}
+
 window.showAboutPanel = function() {
     var p = document.getElementById('about-panel');
     if (p) p.style.display = 'flex';
@@ -1385,6 +1439,14 @@ window.showAboutPanel = function() {
 window.stFillAboutOffline = async function () {
     var el = document.getElementById('about-offline');
     if (!el) return;
+    // 【2026-10-04 用户口径】诊断块**完全由「设置 → 调试」开关控制**（开=显示，关=一律不显示）：
+    //   关闭时连检测都不做（省掉 caches/SW 查询），也不把详情留在 DOM 里 —— 用户："打开时就显示，否则不显示"。
+    var _dbg = window.dsIsDebugMode();
+    _aboutSetDisplay('about-offline', _dbg);
+    _aboutSetDisplay('about-fold', _dbg);
+    _aboutSetDisplay('about-repair-btn', _dbg, 'block');    // 这两个按钮的内联显示态原本是 display:block
+    _aboutSetDisplay('about-reenter-btn', _dbg, 'block');
+    if (!_dbg) { el.innerHTML = ''; return; }
     var parts = [];
     // 【2026-09-28 用户实测定位】入口形态必须写出来 —— 这是本轮把问题定死的关键：
     //   浏览器标签打开 ⇒ 瞬间加载（SW 正常接管）；**从桌面图标打开（安装的应用实例）⇒ 远程加载**。

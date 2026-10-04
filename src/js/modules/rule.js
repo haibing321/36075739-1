@@ -1494,11 +1494,22 @@
                 }
             };
 
-            // 单条规章导出为 HTML（含图片，base64 内联，单文件，不依赖 ZIP/JSZip，手机端直接打开即看图）
-            window.ruleExportSingleHtml = async function(idx) {
+            // 【2026-10-04 用户口径】单条规章导出：由「HTML 单文件（含图片）」改为 **DOCX（含图片）**。
+            //   复用资料库 / 历史报告那套导出链路（用户指定）：
+            //     window.wrExportHtmlToDocx(html, name)  →  smart-writer.js 的 exportDocxFromHtml
+            //       → ① RGDocx 真·OOXML（同一排版偏好 `wr_docx_style`：公文格式/通用排版；images:true 内嵌图片）
+            //       → ② html-docx-js（altChunk）→ ③ HTML 版 .doc 离线兜底
+            //   提示、"另存为"行为、失败降级都与资料库导出一致（不再自己拼 HTML 文件、不再额外 alert）。
+            //   图片：依旧逐张从 IndexedDB 取原图 → base64 内联（<img src="data:...">），走 A 通道时会真正嵌进 docx；
+            //   若降级到 ②/③ 通道，Word 对 data: 图片支持有限（已知局限，与资料库导出的行为相同）。
+            window.ruleExportSingleDocx = async function(idx) {
                 var rule = rules[idx];
                 if (!rule) { alert('未找到该规章'); return; }
                 try {
+                    if (typeof window.wrExportHtmlToDocx !== 'function') {
+                        alert('DOCX 导出组件未就绪（写作模块未加载），请刷新页面后重试');
+                        return;
+                    }
                     var imgHtml = '';
                     if (rule.imageIds && rule.imageIds.length) {
                         for (var i = 0; i < rule.imageIds.length; i++) {
@@ -1511,33 +1522,23 @@
                                         r.onerror = function() { res(''); };
                                         r.readAsDataURL(blob);
                                     });
-                                    imgHtml += '<p style="text-align:center;"><img src="' + b64 + '" style="max-width:100%;border:1px solid #ddd;border-radius:6px;"></p>';
+                                    if (b64) imgHtml += '<p><img src="' + b64 + '" alt="规章附图"></p>';
                                 }
                             } catch (e) {}
                         }
                     }
                     var title = rule.title || '规章';
                     var safeTitle = title.replace(/[\\/:*?"<>|]/g, '_');
-                    var html = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
-                        + '<meta name="viewport" content="width=device-width,initial-scale=1">'
-                        + '<title>' + escapeHtml(title) + '</title>'
-                        + '<style>body{font-family:-apple-system,"Microsoft YaHei",sans-serif;line-height:1.9;padding:24px;color:#222;max-width:900px;margin:auto}'
-                        + 'h1{font-size:1.4rem;border-bottom:3px solid #2563eb;padding-bottom:8px}'
-                        + '.meta{color:#666;font-size:.85rem;margin:6px 0 16px}'
-                        + '.content{white-space:pre-wrap;word-break:break-word}'
-                        + 'img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:8px 0}</style></head><body>'
-                        + '<h1>' + escapeHtml(title) + '</h1>'
-                        + '<div class="meta">专业：' + escapeHtml(rule.trade || '') + '</div>'
-                        + '<div class="content">' + escapeHtml(rule.content || '') + '</div>'
-                        + imgHtml
-                        + '</body></html>';
-                    var outBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
-                    window.downloadBlob(outBlob, safeTitle + '.html');
-                    if (!/Mobi|Android/i.test(navigator.userAgent)) {
-                        alert('已导出：' + title + '.html（含 ' + (rule.imageIds ? rule.imageIds.length : 0) + ' 张图片）');
-                    }
+                    // 只给语义标签（h1/p/br/img）—— 与资料库导出共用同一条 HTML→DOCX 解析链，不塞内联样式/整页骨架
+                    var html = '<h1>' + escapeHtml(title) + '</h1>'
+                        + '<p>专业：' + escapeHtml(rule.trade || '') + '</p>'
+                        + '<p>' + escapeHtml(rule.content || '').replace(/\r?\n/g, '<br>') + '</p>'
+                        + imgHtml;
+                    await window.wrExportHtmlToDocx(html, safeTitle);
                 } catch (e) { alert('导出失败：' + e.message); }
             };
+            // 旧名兼容（历史调用点/外部脚本仍可能用旧名；行为已按用户口径改为导出 DOCX）
+            window.ruleExportSingleHtml = window.ruleExportSingleDocx;
 
             // ========== ZIP 导出/导入功能 ==========
             window.exportToZip = async function() {

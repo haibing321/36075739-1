@@ -679,6 +679,8 @@
         + (last ? ' · 最近事件 ' + last.ev + (last.extra ? '（' + last.extra + '）' : '') : '');
     } catch (e) {}
   }
+  // 【2026-10-04】供「设置 → 🐞 调试」开关切换后立即回填这一行（app.js 的 dsToggleDebugMode 调用）
+  window.stRenderFoldLine = _renderFoldLine;
   try {
     var _origShowAbout = window.showAboutPanel;
     if (typeof _origShowAbout === 'function') {

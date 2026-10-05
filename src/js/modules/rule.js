@@ -1169,6 +1169,28 @@
                                 //   ④ 跨页剔除页码（"—— 1 ——"）、重复页眉页脚（"LZG/GW213 - 2026"）、
                                 //      打印水印戳（"10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"）。
                                 _pdfDoc = _lay.buildDocument(_items);
+                                // 【2026-10-05 用户需求】导入时自动去掉各种水印与"内部资料 不得外传"字样。
+                                //   与 OFD / DOCX 共用 ImportLayout 的水印清洗（整行水印删掉、长行内水印只记录不删）。
+                                if (_lay.stripWatermarkBlocks) {
+                                    var _rb = _lay.stripWatermarkBlocks(_pdfDoc.blocks || []);
+                                    var _wmAll = _rb.removed.slice();
+                                    if (_rb.removed.length) {
+                                        _pdfDoc.blocks = _rb.blocks;
+                                        // ⚠️ 两点讲究：
+                                        //   ① 不用 blocksToText 重算正文 —— _pdfDoc.text 是**跨页合并**后的高质量结果，重算会丢合并效果；
+                                        //   ② 也不用 split(w).join('') 全局抹除同一串 —— 那会连**正文中间**的同名字样一起删掉，
+                                        //      与用户口径（"其余的就是原文，不要删"）冲突。正文里的清理交给下面的行级窗口判断。
+                                    }
+                                    if (_lay.stripWatermarkText) {
+                                        var _rt = _lay.stripWatermarkText(plainText);
+                                        if (_rt.removed.length) { plainText = _rt.text; _wmAll = _wmAll.concat(_rt.removed); }
+                                    }
+                                    if (_wmAll.length) {
+                                        _pdfDoc.text = plainText;
+                                        successNotes.push(file.name + '：已自动清除 ' + _wmAll.length + ' 处水印/“内部资料 不得外传”类字样');
+                                        try { console.info('[PDF] 已清除水印：' + _wmAll.slice(0, 8).join('；')); } catch (e) {}
+                                    }
+                                }
                                 plainText = _pdfDoc.text;
                                 if (_pdfDoc.rotatedDropped > 0) {
                                     successNotes.push(file.name + '：已忽略 ' + _pdfDoc.rotatedDropped + ' 行倾斜文字（通常为水印）');
@@ -1230,11 +1252,30 @@
                                         r.title.toLowerCase().trim() === section.title.toLowerCase().trim() && 
                                         r.trade === trade
                                     );
+                                    // 【2026-10-05 用户需求】DOCX 导入同样去水印：与 PDF / OFD 共用 ImportLayout 的清洗，
+                                    //   口径 = 只删**开头/结尾 1~5 行**里"内部资料 不得外传"这类整行，**正文中间的一律当原文保留**。
+                                    var _wmL = window.ImportLayout;
+                                    var _wmC = (_wmL && _wmL.stripWatermarkText) ? _wmL.stripWatermarkText(section.content) : null;
+                                    var _wmH = _ruleSanitizeForStore(section.contentHtml);
+                                    if (_wmL && _wmL.isWatermarkLine) {
+                                        var _ps = _wmH.match(/<p[^>]*>[\s\S]*?<\/p>/g) || [];
+                                        if (_ps.length) {
+                                            // 只丢"整段就是水印"且落在**开头/结尾 5 段**内的段落；其余原样保留（不做重建，零格式风险）
+                                            var _keep = _ps.filter(function (p, i) {
+                                                var _pl = String(p).replace(/<[^>]+>/g, '').trim();
+                                                return !(_wmL.shouldDropLine(_pl, i < 5 || i >= _ps.length - 5));
+                                            });
+                                            _wmH = _wmH.replace(/<p[^>]*>[\s\S]*?<\/p>/g, function (m) { return _keep.indexOf(m) !== -1 ? m : ''; });
+                                        }
+                                    }
+                                    if (_wmC && _wmC.removed.length) {
+                                        successNotes.push(file.name + '：已自动清除 ' + _wmC.removed.length + ' 处水印/“内部资料 不得外传”类字样');
+                                    }
                                     const ruleData = {
                                         trade,
                                         title: section.title,
-                                        content: section.content,  // 保留换行的纯文本（stripHtml结果）
-                                        contentHtml: _ruleSanitizeForStore(section.contentHtml),
+                                        content: _wmC ? _wmC.text : section.content,  // 保留换行的纯文本（stripHtml结果）
+                                        contentHtml: _wmH,
                                         imageIds: section.imageIds || []
                                     };
                                     if (dupIdx !== -1) rules[dupIdx] = ruleData;
@@ -1271,6 +1312,23 @@
                             // smartSplitParagraphs 按 \n 分段失效，整篇规章退化成一整段）
                             plainText = stripHtml(contentHtml);  // 保留换行的纯文本
                             searchText = normalizeSearchText(plainText);  // 无换行，用于分数计算
+                            // 【2026-10-05 用户需求】单文件兜底路径也要去水印（口径同章节分支：只删开头/结尾 1~5 行）
+                            if (window.ImportLayout && window.ImportLayout.stripWatermarkText) {
+                                var _wm2 = window.ImportLayout.stripWatermarkText(plainText);
+                                if (_wm2.removed.length) {
+                                    var _ps2 = contentHtml.match(/<p[^>]*>[\s\S]*?<\/p>/g) || [];
+                                    if (_ps2.length) {
+                                        var _k2 = _ps2.filter(function (p, i) {
+                                            var _pl2 = String(p).replace(/<[^>]+>/g, '').trim();
+                                            return !(window.ImportLayout.shouldDropLine(_pl2, i < 5 || i >= _ps2.length - 5));
+                                        });
+                                        contentHtml = contentHtml.replace(/<p[^>]*>[\s\S]*?<\/p>/g, function (m) { return _k2.indexOf(m) !== -1 ? m : ''; });
+                                    }
+                                    successNotes.push(file.name + '：已自动清除 ' + _wm2.removed.length + ' 处水印/“内部资料 不得外传”类字样');
+                                }
+                                plainText = _wm2.text;
+                                searchText = normalizeSearchText(plainText);
+                            }
                         } else if (ext === 'json') {
                             const textContent = await file.text();
                             const data = JSON.parse(textContent);

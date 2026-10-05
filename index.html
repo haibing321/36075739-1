@@ -2136,7 +2136,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.14</span> · 2026.10.03</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.15</span> · 2026.10.05</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2173,6 +2173,18 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.15 近期更新（规章导入自动去水印） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.15 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 规章制度导入**自动去水印**（PDF / OFD / DOCX 三条路径**同一把尺子**，之前只有 OFD 有判据、PDF 只丢倾斜行、DOCX 完全没有）：① **水印本体全文清** —— 文中带"水印/watermark"标记的行、图形水印、倾斜水印、IP+账号打印戳；② **"内部资料 不得外传"这类保密字样只在开头/结尾 5 行清**，出现在**正文中间的一律当原文保留**（很多规程正文里真的会写这类条款，删了就是破坏原文）；③ 表格整块不动。长句里顺带提到这些字样（如"违反内部资料不得外传规定的按考核办法处理"）**不会**被误删。删了几处会在导入完成提示里**如实写明**。套件 import-layout 42/42、pdf-import-e2e 6/6。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 离线诊断开关位置更正：v4.14 记的是「设置 → 通用」，实际已改成**独立「调试」分类**，位置在「接口」与「关于」之间。</span></div>
+                </div>
             </div>
 
             <!-- v4.14 近期更新（对规截取去重 / 全文定位 / OFD 导入 / 导入提示） -->

@@ -22,7 +22,13 @@
 (function () {
     'use strict';
 
-    var WATERMARK_HINT = /水印|watermark|内部资料|内部文件|严禁|禁止外传|仅供|样张|副本|机密|秘密|绝密|confidential|internal\s*use|specimen|copy\s*only/i;
+    // 【2026-10-05】水印词表**统一到 ImportLayout**（同一把尺子，比原表多了"不得外传/不得传播/不得复制/禁止复制/内部使用"等）。
+    //   ⚠️ 注意分工：本文件只用它匹配**元素属性**（注释 Type/ID、图层名）与**整条注释里的文字**，
+    //   不作用于正文文本流 ⇒ 因此**不受** ImportLayout 里"只删开头/结尾 1-5 行"的窗口限制
+    //   （那三个图形/版式判据命中的本来就不是正文，是非正文元素）。
+    //   落空（ImportLayout 未加载，套件单跑时）回退到自带表，功能不丢。
+    var _WM_FALLBACK = /水印|watermark|内部资料|内部文件|严禁|禁止外传|不得外传|不得传播|不得复制|禁止复制|仅供|样张|副本|机密|秘密|绝密|confidential|internal\s*use|specimen|copy\s*only/i;
+    var WATERMARK_HINT = (typeof window !== 'undefined' && window.ImportLayout && window.ImportLayout.WATERMARK_HINT) || _WM_FALLBACK;
 
     function ensureJSZip() {
         return new Promise(function (resolve) {

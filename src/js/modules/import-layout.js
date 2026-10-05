@@ -865,6 +865,107 @@
         };
     }
 
+    /* =======================================================================
+     * 十三、水印文字清洗（2026-10-05 用户需求）
+     *   用户原话："导入规章时自动去掉各种水印和『内部资料 不得外传』字样"。
+     *   为什么抽到共用层：原来只有 OFD 有水印判据（注释水印 / 图层名 / 版式特征），
+     *   PDF 只丢"倾斜行"、DOCX 完全没有 ⇒ **同一份文件换个格式导进来水印残留都不一样**。
+     *   现在 PDF / OFD / DOCX 三条规章导入路径共用这一把尺子。
+     *   口径（沿用本模块"宁可记录清楚，也不悄悄删"的作风）：
+     *     ① **整行**命中水印特征 ⇒ 删整行，并记入 removed（导入完成提示里如实告知用户删了什么）；
+     *     ② 水印字样只出现在**长行内部**（正文里顺带提到的）⇒ **只记录不删**，避免误伤正文；
+     *     ③ 特征词表**只在这里维护一份**，`ofd-import.js` 引用同一份（见其 WATERMARK_HINT）。
+     * ===================================================================== */
+    // 注：比 ofd-import.js 原词表多了「不得外传 / 不得传播 / 不得复制 / 禁止复制 / 内部使用 / 仅限 / 传阅 / 交流 / 注意保密」
+    // ⚠️ 本表是**合并词表**，只用于**元素级**匹配（OFD 注释 Type/ID、图层名 —— 那些不是正文，删掉不算删原文）。
+    //    文本级判定请用下面的 watermarkKind / shouldDropLine（那里区分了"全文水印"与"只头尾的保密字样"）。
+    var WATERMARK_HINT = /水印|watermark|内部资料|内部文件|内部使用|仅供|仅限|样张|副本|传阅|交流|严禁|禁止外传|不得外传|不得传播|不得复制|禁止复制|注意保密|机密|秘密|绝密|confidential|internal\s*use|specimen|copy\s*only|do\s*not\s*copy/i;
+
+    // 【2026-10-05 用户口径·第三轮，把两类水印分开】
+    //   用户原话："水印在全文都有，但『内部资料 不得外传』只在开头和结尾，大部分在开头"。
+    //   ⇒ **A 类 水印本体**（文中带"水印"标记的）全文都该清；
+    //     **B 类 保密/限制字样**（内部资料、不得外传、严禁、机密…）**只在开头/结尾窗口内**清 —— 
+    //     因为很多规程正文里真的会写"内部资料不得外传"这类条款，删了就是破坏原文。
+    var SECRET_HINT = /内部资料|内部文件|内部使用|仅供|仅限|样张|副本|传阅|交流|严禁|禁止外传|不得外传|不得传播|不得复制|禁止复制|注意保密|机密|秘密|绝密|confidential|internal\s*use|specimen|copy\s*only|do\s*not\s*copy/i;
+
+    /**
+     * 文本行归类。
+     * @returns {number} 0=不是水印；1=A 类水印本体（**全文**可删）；2=B 类保密字样（**只头尾窗口**可删）
+     */
+    function watermarkKind(line) {
+        var t = String(line == null ? '' : line).replace(/[\s　]/g, '');
+        if (!t) return 0;
+        if (t.length <= 40 && WATERMARK_HINT.test(t) && /水印|watermark/i.test(t)) return 1;   // A 类：带"水印"标记
+        if (!SECRET_HINT.test(t)) return 0;
+        var hit = (t.match(new RegExp(SECRET_HINT.source, 'gi')) || []).join('').length;
+        return (t.length <= 60 && hit / t.length >= 0.3) ? 2 : 0;                              // B 类：短行 + 占比够高
+    }
+
+    /**
+     * 最终判定：这一行该不该删。
+     * @param {string} line 行/段文本
+     * @param {boolean} atEdge 是否落在「开头 5 行 / 结尾 5 行」窗口内
+     * @returns {boolean} A 类全文删；B 类只有落在窗口内才删
+     */
+    function shouldDropLine(line, atEdge) {
+        var k = watermarkKind(line);
+        return k === 1 || (k === 2 && !!atEdge);
+    }
+
+    /**
+     * 判定"整行像水印"（A 或 B 类都算，**不含窗口判断**）。
+     * ⚠️ 窗口判断在 stripWatermarkText / stripWatermarkBlocks 内部做，调用方一般不需要它。
+     */
+    function isWatermarkLine(line) {
+        return watermarkKind(line) > 0;
+    }
+
+    // 【2026-10-05 用户口径·第三轮】**"水印"本体全文清；"内部资料 不得外传"这类保密字样只清开头/结尾 5 行**
+    //   （用户说这类字样"大部分在开头"⇒ 开头窗口给足 5 行；连续水印块超过 5 行时宁可留着，也不误伤正文）。
+    //   注意：这条只管**文字**；OFD 的注释/图层/旋转水印、PDF 的倾斜行与打印戳都是**非正文元素**，不受窗口限制。
+    var WATERMARK_EDGE = 5;
+    function _inEdgeWindow(i, n) {
+        return i < WATERMARK_EDGE || i >= n - WATERMARK_EDGE;
+    }
+
+    /**
+     * 纯文本清洗：A 类水印**全文删**；B 类保密字样**只在开头/结尾窗口内删**（窗口外只记录，一个字都不动）。
+     * @returns {{text:string, removed:string[], noted:string[]}}
+     */
+    function stripWatermarkText(text) {
+        var lines = String(text == null ? '' : text).split(/\r?\n/);
+        var n = lines.length, kept = [], removed = [], noted = [];
+        for (var i = 0; i < n; i++) {
+            var ln = lines[i];
+            if (shouldDropLine(ln, _inEdgeWindow(i, n))) { removed.push(String(ln).trim()); continue; }
+            if (watermarkKind(ln)) { noted.push(String(ln).trim().slice(0, 60)); kept.push(ln); continue; }
+            kept.push(ln);
+        }
+        return { text: kept.join('\n'), removed: removed, noted: noted };
+    }
+
+    /**
+     * 块级清洗：剔掉"整段就是水印"的块（A 类全文剔；B 类只剔开头/结尾 5 块内的），表格不动，避免破坏结构。
+     * 兼容两种块形状：ImportLayout 用 {type,text}，RGDocx 用 {t,runs}。
+     * @returns {{blocks:Array, removed:string[]}}
+     */
+    function stripWatermarkBlocks(blocks) {
+        var list = blocks || [], n = list.length, out = [], removed = [];
+        for (var i = 0; i < n; i++) {
+            var b = list[i];
+            if (!b) continue;
+            var isTbl = b.type === 'table' || b.t === 'table';
+            var txt = b.text != null ? b.text
+                : (b.runs || []).map(function (r) { return r.text || ''; }).join('');
+            if (!isTbl && shouldDropLine(txt, _inEdgeWindow(i, n))) {
+                removed.push(String(txt).trim().slice(0, 40));
+                continue;
+            }
+            out.push(b);
+        }
+        return { blocks: out, removed: removed };
+    }
+
     window.ImportLayout = {
         buildDocument: buildDocument,
         buildFromPageLines: buildFromPageLines,
@@ -886,6 +987,14 @@
         isStampLine: isStampLine,
         linesFromBoxes: linesFromBoxes,
         paragraphsFromLines: paragraphsFromLines,
+        // 【2026-10-05】水印清洗（PDF / OFD / DOCX 三条导入路径共用；A 类水印全文删、B 类保密字样只删头尾）
+        WATERMARK_HINT: WATERMARK_HINT,     // 合并词表，**只用于元素级匹配**（OFD 注释 Type/ID、图层名）
+        SECRET_HINT: SECRET_HINT,
+        watermarkKind: watermarkKind,       // 0 非水印 / 1 A 类水印本体（全文可删）/ 2 B 类保密字样（只头尾可删）
+        shouldDropLine: shouldDropLine,     // 最终判定：shouldDropLine(line, 是否在头尾窗口)
+        isWatermarkLine: isWatermarkLine,
+        stripWatermarkText: stripWatermarkText,
+        stripWatermarkBlocks: stripWatermarkBlocks,
         fromPdfItems: fromPdfItems,
         toText: toText,
         joinRun: joinRun,

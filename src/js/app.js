@@ -1853,7 +1853,11 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v4.14'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v4.15'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+// ⚠️【2026-10-05 用户实测踩坑】"手机提示发现 v4.15，更新后仍显示 v4.14" —— 就是因为这里没跟着改：
+//   提示更新靠的是 **SW 缓存时间戳**（version.json 的 sw / sw.js 的 CACHE_VERSION），
+//   而界面上显示的版本号读的是**这个常量**。**发版必须同时改三处**：
+//     ① 这里 APP_VERSION ② version.json 的 version ③ version.json 的 sw + sw.js 的 CACHE_VERSION
 // 检查更新源：读取「当前部署站点同源」的 version.json（./version.json，随 CloudStudio/EdgeOne 等部署环境自动指向当前域名）
 // 注意：version.json 在 SW 中走网络策略（不读缓存，fetch 落入“其他请求”分支直连网络），可拿到最新部署版本
 const UPDATE_CHECK_URL = './version.json';

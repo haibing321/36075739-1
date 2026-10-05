@@ -1226,10 +1226,26 @@
                             if (!_ofdTxt.trim()) throw new Error((_ofdRes && _ofdRes.note) || '未解析出正文（可能是扫描件/纯图片版 OFD）');
                             plainText = _ofdTxt;
                             searchText = normalizeSearchText(_ofdTxt);
+                            // 【2026-10-05】OFD 也接上共用水印清洗（此前只接了 PDF/DOCX，OFD 漏了）。
+                            //   坐标修复后"内部资料 不得外传"已能聚成整行 ⇒ 这里才真正删得掉（之前逐字散着，判据抓不到）。
+                            try {
+                                var _ol = window.ImportLayout;
+                                if (_ol && _ol.stripWatermarkText) {
+                                    var _owm = _ol.stripWatermarkText(_ofdTxt);
+                                    if (_owm.removed.length) {
+                                        if (_ol.stripWatermarkBlocks && _ofdRes.blocks && _ofdRes.blocks.length) {
+                                            _ofdRes.blocks = _ol.stripWatermarkBlocks(_ofdRes.blocks).blocks;
+                                        }
+                                        successNotes.push(file.name + '：已自动清除 ' + _owm.removed.length + ' 处水印/“内部资料 不得外传”类字样');
+                                    }
+                                    plainText = _owm.text;
+                                    searchText = normalizeSearchText(plainText);
+                                }
+                            } catch (e) {}
                             // 与 PDF 同款公文体例渲染（首行缩进 2 字、条款编号加粗、附件/标题居中、列表项缩进）
                             contentHtml = (window.ImportLayout && window.ImportLayout.blocksToHtml && _ofdRes.blocks && _ofdRes.blocks.length)
                                 ? window.ImportLayout.blocksToHtml(_ofdRes.blocks)
-                                : _ofdTxt.split(/\n+/).map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
+                                : plainText.split(/\n+/).map(function (p) { return '<p class="imp-p">' + escapeHtml(p) + '</p>'; }).join('');
                             if (_ofdRes.blocks) {
                                 var _tco = _ofdRes.blocks.filter(function (b) { return b.type === 'table'; }).length;
                                 if (_tco > 0) successNotes.push(file.name + '：识别到 ' + _tco + ' 张表格（已按行列还原）');

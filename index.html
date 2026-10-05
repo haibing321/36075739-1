@@ -2183,7 +2183,8 @@
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 规章制度导入**自动去水印**（PDF / OFD / DOCX 三条路径**同一把尺子**，之前只有 OFD 有判据、PDF 只丢倾斜行、DOCX 完全没有）：① **水印本体全文清** —— 文中带"水印/watermark"标记的行、图形水印、倾斜水印、IP+账号打印戳；② **"内部资料 不得外传"这类保密字样只在开头/结尾 5 行清**，出现在**正文中间的一律当原文保留**（很多规程正文里真的会写这类条款，删了就是破坏原文）；③ 表格整块不动。长句里顺带提到这些字样（如"违反内部资料不得外传规定的按考核办法处理"）**不会**被误删。删了几处会在导入完成提示里**如实写明**。套件 import-layout 42/42、pdf-import-e2e 6/6。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 离线诊断开关位置更正：v4.14 记的是「设置 → 通用」，实际已改成**独立「调试」分类**，位置在「接口」与「关于」之间。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修「OFD 导入后正文有内容丢失/串行」（用户实测反馈）：真根因是**坐标**——OFD 规范里 `TextCode` 的 X/Y 是**相对该字块的偏移**，绝对位置要由 `TextObject.Boundary` 的起点加上它（再乘 CTM 缩放）。此前把偏移当成了绝对坐标，导致全篇字块坐标雷同 ⇒ 聚行失效 ⇒ 一行被拆成几十行、段落碎裂、半句被当页眉清掉，看起来就是"内容丢了"；逐字水印（"内部资料 不得外传"被拆成"内""部"…）也因此聚不成行而残留。现已按规范合成坐标，并用真实文件验证：93 个字块 → 21 行，标题/时间字样/正文全部归位。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 OFD 导入也接上水印清洗（此前只有 PDF/DOCX 接了）：因坐标修复后水印能聚成整行，才真正删得掉；并放开 OFD 的"删斜体/旋转水印"性能开销不变。</span></div>
                 </div>
             </div>
 

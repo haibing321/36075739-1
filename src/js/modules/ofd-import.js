@@ -70,23 +70,40 @@
     }
 
     /**
-     * 【2026-10-03】取一个字块的位置与字号（OFD 里坐标通常在 TextCode 上，TextObject 只带 Boundary）。
-     *   · X/Y：TextCode.X/Y → TextObject.Boundary="x y w h" 的前两位 → TextObject.X/Y；
-     *   · Size：TextObject.Size → Boundary 的第 4 位（高）；
-     *   · 取不到时返回 null（交给 ImportLayout 按"继承上一块坐标"处理，绝不默认 0 —— 默认 0 会把全篇挤乱）。
+     * 【2026-10-05 用户报「OFD 导入后水印处内容丢失」→ 真根因在此，**不是**删斜体、也不是水印判据】
+     *   OFD 规范：**TextCode.X/Y 是相对该 TextObject 的偏移**，绝对位置 = TextObject.Boundary 的起点 + 偏移
+     *   （横向还要乘 CTM 的 a、纵向乘 d）。实测本项目样本：每个 TextCode 都是 `X="0" Y="2.8399"`（同一偏移），
+     *   真实位置在 Boundary（如"内"=27.0669 60.2578、"部"=35.5336 60.2578，y 相同、x 递增 ⇒ 应聚成一行）。
+     *   ⚠️ 2026-10-03 那次"坐标改从 ofd:TextCode 取"把**偏移当成了绝对坐标** ⇒ 全篇字块坐标雷同
+     *      ⇒ 聚行/阅读顺序失效 ⇒ 一行被拆成多行 ⇒ 段落碎裂 + 半句被当页眉页脚清掉 ⇒ 用户看到"内容丢失"；
+     *      逐字水印（"内部资料 不得外传"被拆成"内""部"…）也聚不成行 ⇒ 残留在正文中间。
+     *   现在按规范合成绝对坐标；只有取不到 Boundary 时才退回 TextCode / TextObject 的 X/Y。
      */
     function xySizeOf(obj, codes) {
-        var c0 = (codes && codes.length) ? codes[0] : null;
-        var x = c0 ? parseFloat(attrAny(c0, ['X', 'x'])) : NaN;
-        var y = c0 ? parseFloat(attrAny(c0, ['Y', 'y'])) : NaN;
         var bnd = attrAny(obj, ['Boundary', 'boundary']);
         var bp = bnd ? bnd.split(/\s+/).map(parseFloat) : [];
-        if (!isFinite(x) || !isFinite(y)) {
-            if (bp.length >= 2) { x = bp[0]; y = bp[1]; }
+        var c0 = (codes && codes.length) ? codes[0] : null;
+        // CTM="a b c d e f"：横向缩放 a、纵向缩放 d（缺省 1）
+        var sx = 1, sy = 1;
+        var ctm = attrAny(obj, ['CTM', 'ctm']);
+        if (ctm) {
+            var cp = ctm.split(/\s+/).map(parseFloat);
+            if (cp.length >= 4 && isFinite(cp[0]) && cp[0] !== 0) sx = cp[0];
+            if (cp.length >= 4 && isFinite(cp[3]) && cp[3] !== 0) sy = cp[3];
         }
-        if (!isFinite(x) || !isFinite(y)) {
-            var ox = parseFloat(attrAny(obj, ['X', 'x'])); var oy = parseFloat(attrAny(obj, ['Y', 'y']));
-            if (isFinite(ox)) x = ox; if (isFinite(oy)) y = oy;
+        var ox = c0 ? parseFloat(attrAny(c0, ['X', 'x'])) : NaN;   // 相对偏移
+        var oy = c0 ? parseFloat(attrAny(c0, ['Y', 'y'])) : NaN;
+        var x = NaN, y = NaN;
+        if (bp.length >= 2 && isFinite(bp[0]) && isFinite(bp[1])) {
+            x = bp[0] + (isFinite(ox) ? ox * sx : 0);
+            y = bp[1] + (isFinite(oy) ? oy * sy : 0);
+        } else {
+            if (isFinite(ox)) x = ox;
+            if (isFinite(oy)) y = oy;
+            if (!isFinite(x) || !isFinite(y)) {
+                var tx = parseFloat(attrAny(obj, ['X', 'x'])); var ty = parseFloat(attrAny(obj, ['Y', 'y']));
+                if (isFinite(tx)) x = tx; if (isFinite(ty)) y = ty;
+            }
         }
         var size = parseFloat(attrAny(obj, ['Size', 'size']));
         if (!(size > 0) && bp.length >= 4 && bp[3] > 0) size = bp[3];

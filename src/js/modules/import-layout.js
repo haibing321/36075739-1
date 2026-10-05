@@ -456,7 +456,21 @@
                     region.forEach(function (r) { r.forEach(function (c) { lens.push(String(cellText(c) || '').length); }); });
                     lens.sort(function (a, b) { return a - b; });
                     var medLen = lens.length ? lens[Math.floor(lens.length / 2)] : 0;
-                    if (aligned >= 3 && looksTable && medLen <= 12) {
+                    // 【2026-10-05 用户报「OFD 导入后标题被卷进表格」】正文小标题（"三、施工维修管理方面"这类）
+                    //   **绝不能进表格**：用户真实 OFD 里它被当成表头，标题与后面整段正文一起被表格化
+                    //   （正文里被插满 "|" 分隔符）。这里加一道闸门——区域里只要有**标题行**就整区不成表，
+                    //   这些行继续按段落处理（保守优先：宁可少识别一张表，也不破坏正文结构）。
+                    var hasHeadLine = region.some(function (r) {
+                        if (!r || !r.length) return false;
+                        var _t = r.map(cellText).join('').replace(/\s+/g, '');
+                        // ⚠️ 这里**不能**用 classifyParagraph：实测它把真表格的表头
+                        //   （"序号线名行别侧别起点里程…"）也判成 'title' ⇒ 整张表被否决、
+                        //   套件 4 条表格断言一起挂（38/42）。只用**公文式小标题**的正则：
+                        //   "一、xxx / 三、施工维修管理方面" 这类（这类才绝不能进表格）。
+                        return /^[一二三四五六七八九十百]+[、.．]/.test(_t)
+                            || /^（[一二三四五六七八九十]+）/.test(_t);
+                    });
+                    if (aligned >= 3 && looksTable && medLen <= 12 && !hasHeadLine) {
                         flushPending();
                         var cols = Math.max(anchors.length, 1);
                         var grid = region.map(function (r) {

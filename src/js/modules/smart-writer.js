@@ -1007,8 +1007,11 @@
             };
 
             // 读取纯文本文件
+            // 【2026-10-05 逻辑统一】改走公共择码读取 window.dsReadTextFileAutoEnc（UTF-8/GBK 自动识别）：
+            //   原来强制 UTF-8，中文 Windows 导出的 GBK txt/csv/md 会**整篇乱码**。
             window.wrReadTextFile = function(file) {
-                return new Promise((resolve, reject) => {
+                if (typeof window.dsReadTextFileAutoEnc === 'function') return window.dsReadTextFileAutoEnc(file);
+                return new Promise((resolve, reject) => {          // 兜底：公共件未加载时退回 UTF-8
                     const reader = new FileReader();
                     reader.onload = e => resolve(e.target.result || '');
                     reader.onerror = () => reject(new Error('文件读取失败'));
@@ -1016,62 +1019,10 @@
                 });
             };
 
-            // 读取Word文件
-            window.wrReadWordFile = function(file) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        try {
-                            // 尝试解析docx（简化版：提取文本）
-                            const arrayBuffer = e.target.result;
-                            // 注意：纯JS无法完美解析docx，这里使用简化方案
-                            // 如果需要完整解析，需要引入mammoth.js等库
-                            resolve('[Word文件] ' + file.name + '\n\n注意：当前环境仅支持提取文本内容，完整格式需要引入专业库。\n\n文件大小：' + (file.size / 1024).toFixed(2) + ' KB');
-                        } catch (err) {
-                            reject(new Error('Word文件解析失败'));
-                        }
-                    };
-                    reader.onerror = () => reject(new Error('文件读取失败'));
-                    reader.readAsArrayBuffer(file);
-                });
-            };
-
-            // 读取Excel文件
-            window.wrReadExcelFile = function(file) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        try {
-                            const data = new Uint8Array(e.target.result);
-                            // 注意：纯JS无法完美解析xlsx，这里使用简化方案
-                            // 如果需要完整解析，需要引入xlsx.js等库
-                            resolve('[Excel文件] ' + file.name + '\n\n注意：当前环境仅支持显示文件信息，完整数据需要引入专业库。\n\n文件大小：' + (file.size / 1024).toFixed(2) + ' KB');
-                        } catch (err) {
-                            reject(new Error('Excel文件解析失败'));
-                        }
-                    };
-                    reader.onerror = () => reject(new Error('文件读取失败'));
-                    reader.readAsArrayBuffer(file);
-                });
-            };
-
-            // 读取PDF文件
-            window.wrReadPdfFile = function(file) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        try {
-                            // 注意：纯JS无法完美解析PDF，这里使用简化方案
-                            // 如果需要完整解析，需要引入pdf.js等库
-                            resolve('[PDF文件] ' + file.name + '\n\n注意：当前环境仅支持显示文件信息，完整内容需要引入专业库。\n\n文件大小：' + (file.size / 1024).toFixed(2) + ' KB');
-                        } catch (err) {
-                            reject(new Error('PDF文件解析失败'));
-                        }
-                    };
-                    reader.onerror = () => reject(new Error('文件读取失败'));
-                    reader.readAsArrayBuffer(file);
-                });
-            };
+            // 【2026-10-05 删除】原 wrReadWordFile / wrReadExcelFile / wrReadPdfFile 三个函数：
+            //   ① 全仓 grep 确认**无任何调用点**；② 它们只是"返回一段假说明文字"（注释里自己写着
+            //   "纯JS无法完美解析docx/xlsx/pdf"）⇒ 留着会被误当成可用解析器。
+            //   真正的解析统一走：docx → mammoth、xlsx → XLSX、pdf → pdf.js（均在 wrImportFiles 里按需 requireLib）。
 
             // 显示上传的文件到对话框内
             window.wrShowUploadedFileInChat = function(fileName, content) {
@@ -1566,7 +1517,8 @@
                 }
                 // 【2026-09-21】入库后立即失效检索索引：knowledge.js 的 materials/reports 是**异步源**，
                 //   其列表被缓存，原来导完资料不改索引 → 新资料可能检索不到（智能写作/智能体都用不上）
-                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('materials'); } catch (e) {}
+                // 【2026-10-05 逻辑统一】改走公共收尾 afterDataWrite（= 索引失效 + 条数统计刷新）
+                try { if (typeof window.afterDataWrite === 'function') window.afterDataWrite({ kb: 'materials' }); else if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('materials'); } catch (e) {}
                 return { saved: saved, errors: errors, processed: files.length, libFail: false, skipped: skipped };
             };
 
@@ -1703,9 +1655,9 @@
                     } else if (file.name.endsWith('.docx')) {
                         // 使用mammoth解析DOCX
                         if (typeof mammoth === 'undefined') {
-                            console.warn('[导入] mammoth 库未加载，尝试直接读取文件信息');
-                            item.rawText = '[DOCX文件 - 需要mammoth库解析内容]';
-                            item.content = '[DOCX文件内容暂无法解析]';
+                            // 【2026-10-05】原来把"[DOCX文件内容暂无法解析]"当**正文**存进资料库 ⇒ 库里出现假正文，
+                            //   后续写作/检索都会引用它。改为抛错 → 由 wrImportWithType 统一收进 errors 并跳过该文件。
+                            throw new Error('DOCX 解析组件未加载（mammoth），请联网后重试或先转成 txt/md 导入');
                         } else {
                             try {
                                 const arrayBuffer = await file.arrayBuffer();
@@ -1717,16 +1669,15 @@
                                 if (matType === 'template') item.templateBuffer = arrayBuffer;
                             } catch (err) {
                                 console.error('[导入] DOCX解析失败:', err);
-                                item.rawText = '[DOCX解析失败: ' + (err.message || '未知错误') + ']';
-                                item.content = item.rawText;
+                                // 【2026-10-05】同上：不再把错误信息当正文入库
+                                throw new Error('DOCX 解析失败：' + (err.message || '未知错误'));
                             }
                         }
                     } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
                         // 使用xlsx解析Excel
                         if (typeof XLSX === 'undefined') {
-                            console.warn('[导入] XLSX 库未加载，尝试直接读取文件信息');
-                            item.rawText = '[Excel文件 - 需要XLSX库解析内容]';
-                            item.content = '[Excel文件内容暂无法解析]';
+                            // 【2026-10-05】同 DOCX：不再把占位说明当正文入库，改为失败上报
+                            throw new Error('Excel 解析组件未加载（XLSX），请联网后重试或改用 CSV 导入');
                         } else {
                             try {
                                 const arrayBuffer = await file.arrayBuffer();
@@ -1749,16 +1700,15 @@
                                 item.rowCount = sheets.reduce((sum, s) => sum + s.rows, 0);
                             } catch (err) {
                                 console.error('[导入] Excel解析失败:', err);
-                                item.rawText = '[Excel解析失败: ' + (err.message || '未知错误') + ']';
-                                item.content = item.rawText;
+                                // 【2026-10-05】不再把错误信息当正文入库
+                                throw new Error('Excel 解析失败：' + (err.message || '未知错误'));
                             }
                         }
                     } else if (file.name.endsWith('.pdf')) {
                         // 使用 pdf.js 提取 PDF 文字内容
                         if (typeof pdfjsLib === 'undefined') {
-                            console.warn('[导入] pdf.js 库未加载');
-                            item.rawText = '[PDF文件 - 需要 pdf.js 库解析内容]';
-                            item.content = '[PDF文件内容暂无法解析]';
+                            // 【2026-10-05】同 DOCX/Excel：不再把占位说明当正文入库
+                            throw new Error('PDF 解析组件未加载（pdf.js），请联网后重试或先转成 txt/docx 导入');
                         } else {
                             try {
                                 const arrayBuffer = await file.arrayBuffer();
@@ -1774,13 +1724,14 @@
                                 item.rawText = fullText.trim().slice(0, 10000);
                             } catch (err) {
                                 console.error('[导入] PDF解析失败:', err);
-                                item.rawText = '[PDF解析失败]';
-                                item.content = item.rawText;
+                                // 【2026-10-05】不再把错误信息当正文入库
+                                throw new Error('PDF 解析失败：' + (err.message || '未知错误') + '（若为扫描件/加密件，请先做 OCR 或解密）');
                             }
                         }
                     } else if (file.name.endsWith('.doc') && !file.name.endsWith('.docx')) {
-                        item.content = '[暂不支持 .doc 格式（旧版Word二进制格式）。请将文件另存为 .docx 格式后重新导入。]';
-                        item.rawText = '[不支持的文档格式: .doc，请转换为 .docx]';
+                        // 【2026-10-05】原来把"不支持 .doc"的提示当**正文**存进库 ⇒ 资料库里出现一条假资料。
+                        //   现在明确失败并告知用户怎么办。
+                        throw new Error('暂不支持 .doc（旧版 Word 二进制格式），请另存为 .docx 或 .txt 后重新导入');
                     } else {
                         // 其他类型，尝试读取为文本
                         try {

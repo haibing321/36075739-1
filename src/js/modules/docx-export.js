@@ -361,6 +361,24 @@
         return false;
     }
 
+    /**
+     * 【2026-10-05 新增】class → 语义标题层级。
+     *   背景：导入链路（`ImportLayout.blocksToHtml`）把还原好的排版写成 **class**
+     *   （`imp-title` / `imp-h1` / `imp-h2` / `imp-h3`），而本引擎此前只认 `<h1>~<h6>` 语义标签
+     *   ⇒ 这类内容导出 DOCX 时层级**全部退化成正文**，"一、""（一）"拿不到规范要求的
+     *   **黑体 / 楷体_GB2312**（GB/T 9704-2012 层级字体）。
+     *   在**引擎层**一次性补齐：规章「导出本条」/ 资料库 / 历史报告 / 对话气泡**所有导出路径同时受益**。
+     *   映射：imp-title→1（方正小标宋简体 二号居中）、imp-h1→2（黑体）、imp-h2→3（楷体_GB2312）、imp-h3→4。
+     */
+    function classHeadingLevel(el) {
+        var cls = el && el.attrs && el.attrs.class ? String(el.attrs.class) : '';
+        if (!cls) return 0;
+        var m = cls.match(/(?:^|\s)imp-(title|h1|h2|h3|h4)(?=\s|$)/i);
+        if (!m) return 0;
+        var k = m[1].toLowerCase();
+        return k === 'title' ? 1 : k === 'h1' ? 2 : k === 'h2' ? 3 : k === 'h3' ? 4 : 2;
+    }
+
     function walkBlocks(container, blocks) {
         var buf = [], bufImgs = [];
 
@@ -383,11 +401,12 @@
                 return;
             }
 
-            // —— 标题
-            if (/^h[1-6]$/.test(t)) {
+            // —— 标题：语义标签 <h1>~<h6>，**或**带 imp-title / imp-h1…class 的段落（导入链路产物，见 classHeadingLevel）
+            var _hLvl = /^h[1-6]$/.test(t) ? parseInt(t.charAt(1), 10) : classHeadingLevel(el);
+            if (_hLvl > 0) {
                 flush();
                 var hr = trimRuns(inlineOf(el));
-                if (runsText(hr).trim()) blocks.push({ t: 'h', tagLevel: parseInt(t.charAt(1), 10), runs: hr });
+                if (runsText(hr).trim()) blocks.push({ t: 'h', tagLevel: _hLvl, runs: hr });
                 return;
             }
             // —— 段落（内含 figure/div 等块级子元素时下钻，保证图注与图片的先后顺序）

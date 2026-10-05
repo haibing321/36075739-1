@@ -1343,7 +1343,9 @@
                 isProcessing = false;
                 var _doneMsg = '导入完成：成功 ' + successCount + ' 个，跳过 ' + skipCount + ' 个' + (skipNotes.length ? '（原因见下）' : '');
                 try { window.finishProgress('✅ ' + _doneMsg); } catch (e) {}
-                try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+                // 【2026-10-05 逻辑统一】导入成功后走统一收尾：**让知识库索引失效** + 刷条数统计。
+                //   这条路径此前**只刷了统计、漏了索引失效** ⇒ 导入成功的规章在智能检索/对规里搜不到（旧索引）。
+                try { window.afterDataWrite({ kb: 'rules' }); } catch (e) { try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e2) {} }
                 var _sum = buildRuleImportSummary({
                     successCount: successCount, skipCount: skipCount,
                     successNotes: successNotes, skipNotes: skipNotes, missingLibs: missingLibs
@@ -1529,11 +1531,24 @@
                     }
                     var title = rule.title || '规章';
                     var safeTitle = title.replace(/[\\/:*?"<>|]/g, '_');
-                    // 只给语义标签（h1/p/br/img）—— 与资料库导出共用同一条 HTML→DOCX 解析链，不塞内联样式/整页骨架
-                    var html = '<h1>' + escapeHtml(title) + '</h1>'
-                        + '<p>专业：' + escapeHtml(rule.trade || '') + '</p>'
-                        + '<p>' + escapeHtml(rule.content || '').replace(/\r?\n/g, '<br>') + '</p>'
-                        + imgHtml;
+                    // 【2026-10-05 修正·规范性】**优先用导入时还原好的 contentHtml**：
+                    //   它带 imp-title / imp-clause（粗体条款）/ imp-table（表格）等层级信息，而引擎
+                    //   （docx-export.js 的 classHeadingLevel）已能识别这些 class ⇒ "一、""（一）"能拿到
+                    //   GB/T 9704 要求的**黑体 / 楷体_GB2312**，表格也原样带出。
+                    //   原来这里自己按字段拼 h1+p，等于把层级全压平成正文 ⇒ 导出不符合规范文格式。
+                    //   没有 contentHtml 的旧数据/手工新增条目，才回退到按字段拼装。
+                    var _hasHtml = !!(rule.contentHtml && /<[a-z][^>]*>/i.test(String(rule.contentHtml)));
+                    var html;
+                    if (_hasHtml) {
+                        html = String(rule.contentHtml);
+                        if (rule.trade) html += '<p>（专业：' + escapeHtml(rule.trade) + '）</p>';
+                    } else {
+                        html = '<h1>' + escapeHtml(title) + '</h1>'
+                            + '<p>专业：' + escapeHtml(rule.trade || '') + '</p>'
+                            + '<p>' + escapeHtml(rule.content || '').replace(/\r?\n/g, '<br>') + '</p>';
+                    }
+                    // 图片始终追加：导入不把图片写进 contentHtml（图片单独存在 imageIds → IndexedDB）
+                    html += imgHtml;
                     await window.wrExportHtmlToDocx(html, safeTitle);
                 } catch (e) { alert('导出失败：' + e.message); }
             };
@@ -1718,7 +1733,9 @@
                     refreshTradeSelect();
                     updateTotalBadge();
                     renderResults();
-                    
+                    // 【2026-10-05 逻辑统一】ZIP 导入同样要走统一收尾（此前这条路径**既没失效索引、也没刷统计**）
+                    try { window.afterDataWrite({ kb: 'rules' }); } catch (e) {}
+
                     // 【2026-09-21】ZIP 导入原为**全无进度 + 阻塞 alert**（含图备份可能要几秒~十几秒，用户以为卡死）
                     var _zipMsg = '导入完成：成功 ' + successCount + ' 条' +
                           (imageCount > 0 ? '，图片 ' + imageCount + ' 张' : '') +

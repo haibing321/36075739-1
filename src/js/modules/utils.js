@@ -1005,6 +1005,28 @@
                 };
             };
 
+            // ========== 写库后的统一收尾（2026-10-05 逻辑统一） ==========
+            /**
+             * 任何模块「导入 / 恢复 / 批量写库」完成后调一次，把三件必做的事一次做完：
+             *   ① 让知识库索引失效（dsInvalidateRagCache）—— **不失效就会出现"导入成功了但搜不到新内容"**：
+             *      智能检索 / 智能对规 / 一键修改读的都是索引，不看原始数据；
+             *   ② 刷新设置面板的条数统计（updateDataManagementStats）；
+             *   ③ 可选：重绘当前视图（opts.render）。
+             * 为什么要收口：全仓原有 12 处手写「失效 + 统计」，其中 4 处**漏了索引失效**
+             *   （规章 processFiles / 规章 importFromZip / 应急电话 / 备忘录）⇒ 漏一处就是一处隐蔽故障。
+             * @param {{kb?:string, stats?:boolean, render?:Function}} opts
+             *        kb = 知识库源 key（'rules'|'handbook'|'accidents'|'issues'|…），传 falsy 则只刷统计
+             */
+            window.afterDataWrite = function (opts) {
+                opts = opts || {};
+                try { if (opts.kb && typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache(opts.kb); } catch (e) {}
+                if (opts.stats !== false) {
+                    try { if (typeof window.updateDataManagementStats === 'function') window.updateDataManagementStats(); } catch (e) {}
+                }
+                try { if (typeof opts.render === 'function') opts.render(); } catch (e) {}
+                return true;
+            };
+
             // ========== 设置面板 — 各模块数据计数更新 ==========
             window.updateDataManagementStats = async function() {
                 var els = { handbook: 'set-handbook-count', accident: 'set-accident-count', issue: 'set-issue-count', rule: 'set-rule-count', diary: 'set-diary-count', phone: 'set-phone-count', wrmat: 'set-wr-count', wrrpt: 'set-wrhist-count', term: 'set-term-count', memo: 'set-memo-count' };

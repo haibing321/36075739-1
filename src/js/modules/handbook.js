@@ -203,22 +203,31 @@
             }
 
             // 解析单个JSON文件
+            // 【2026-10-05 逻辑统一】改走公共择码读取 window.dsReadTextFileAutoEnc（UTF-8/GBK 自动识别）。
+            //   原来是裸 FileReader.readAsText(**不择码**) ⇒ 中文 Windows 导出的 GBK JSON 整篇乱码、
+            //   直接 JSON.parse 失败被当"坏文件"跳过，用户看不出真实原因。公共件位置：doubao-common.js。
             function _parseJsonFile(file) {
-                return new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onload = function(ev) {
-                        try {
-                            const imported = JSON.parse(ev.target.result);
-                            if (!Array.isArray(imported)) throw new Error('数据必须是JSON数组');
-                            if (imported.length > 0 && !imported[0].chapter) throw new Error('缺少必要字段 chapter');
-                            resolve(imported);
-                        } catch (err) {
-                            alert(`文件 "${file.name}" 解析失败: ${err.message}`);
-                            resolve(null);
-                        }
-                    };
-                    reader.onerror = () => { alert(`读取文件 "${file.name}" 失败`); resolve(null); };
-                    reader.readAsText(file);
+                var read = (typeof window.dsReadTextFileAutoEnc === 'function')
+                    ? window.dsReadTextFileAutoEnc(file)
+                    : new Promise(function (res, rej) {          // 兜底：公共件未加载时退回 UTF-8
+                        var r = new FileReader();
+                        r.onload = function (e) { res(e.target.result || ''); };
+                        r.onerror = function () { rej(new Error('文件读取失败')); };
+                        r.readAsText(file);
+                    });
+                return read.then(function (text) {
+                    try {
+                        const imported = JSON.parse(text);
+                        if (!Array.isArray(imported)) throw new Error('数据必须是JSON数组');
+                        if (imported.length > 0 && !imported[0].chapter) throw new Error('缺少必要字段 chapter');
+                        return imported;
+                    } catch (err) {
+                        alert(`文件 "${file.name}" 解析失败: ${err.message}`);
+                        return null;
+                    }
+                }).catch(function (err) {
+                    alert(`读取文件 "${file.name}" 失败: ${(err && err.message) || err}`);
+                    return null;
                 });
             }
 

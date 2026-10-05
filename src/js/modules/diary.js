@@ -192,10 +192,31 @@
                                 if (String(t.value || '').trim() === issueText) dup = true;
                             });
                         }
-                        if (container && !dup && issueCount < MAX_ISSUES) {
-                            addIssueFieldToDOM(issueText, issueCount, regText || '');
-                            issueCount++;
-                            updateAddIssueButton();
+                        // 【2026-10-05 用户报】检查信息「记入日志」后，表单**第 1 行空着、内容从第 2 行开始**。
+                        //   根因：原实现无脑 `addIssueFieldToDOM(issueText, issueCount)`（**新建一行**追加），
+                        //   而表单初始就有 1 个空行 ⇒ 新内容被放到第 2 行 ⇒ 看起来"第一条空着"。
+                        //   修法：**优先填进已存在的空行**（问题与规章都为空的第一个行），没有空行才新建一行。
+                        //   ⚠️ 沿用原设计的红线：只做"填空行/追加"，**绝不重载整个表单**，不覆盖用户正在输入的内容。
+                        if (container && !dup && issueCount > 0) {
+                            var _targetRow = -1;
+                            for (var _ri = 0; _ri < issueCount; _ri++) {
+                                var _tq = document.getElementById('diary-issue-' + _ri);
+                                var _trg = document.getElementById('diary-regulation-' + _ri);
+                                var _vq = _tq ? String(_tq.value || '').trim() : '';
+                                var _vr = _trg ? String(_trg.value || '').trim() : '';
+                                if (!_vq && !_vr) { _targetRow = _ri; break; }
+                            }
+                            if (_targetRow >= 0) {
+                                // 填进空行（触发 input ⇒ 自动缩放 + 自动保存，与手动输入一致）
+                                var _fq = document.getElementById('diary-issue-' + _targetRow);
+                                var _fr = document.getElementById('diary-regulation-' + _targetRow);
+                                if (_fq) { _fq.value = issueText; _fq.dispatchEvent(new Event('input')); }
+                                if (_fr) { _fr.value = regText || ''; _fr.dispatchEvent(new Event('input')); }
+                            } else if (issueCount < MAX_ISSUES) {
+                                addIssueFieldToDOM(issueText, issueCount, regText || '');
+                                issueCount++;
+                                updateAddIssueButton();
+                            }
                         }
                     }
                     // ② 历史视图：今日记录列表 + 日历（记录点/考勤统计）

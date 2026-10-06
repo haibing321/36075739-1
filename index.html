@@ -2154,7 +2154,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.21</span> · 2026.10.06</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.22</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2197,6 +2197,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.22 近期更新（本地资料 × 联网：协同规则） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.22 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🤝 补上「**本地资料 × 联网**」的协同规则（此前两段提示词互不知情，组合时全靠模型自由发挥）：**分工** —— 本单位业务问题（规章条款 / 检查台账 / 事故案例 / 工作日志 / 应急电话 / 写作资料）**以本地为准、不为这类问题联网**，联网只用于外部时效信息；**冲突** —— 涉及条款「现行有效性」时以联网最新为准并说明"本地库收录版本可能未更新"，其余以本地为准（本单位口径优先）；**来源分清** —— 本地标「规章制度：XXX」、联网标「据联网检索」，不混成一段；**顺序** —— 两者都用时先给本地结论，再补联网时效信息。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📎 「本次参考」补上**联网维度**：`📎 本次参考：规章制度 · 检查台账 ｜🌐 联网：已检索 2 次`。三档如实显示：**已检索 N 次** / **已启用但本轮未检索** / **未启用** —— 其中"开着却一次没检索"最该标出来，这正是最容易误解的地方。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 本地与联网**都**没有时，明确告知"本次回答基于模型内部知识（**可能已过时**），不能作为规章依据，正式依据请以文件或原文为准" —— 对安监业务，拿模型记忆当规章依据是必须堵住的风险。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 新增诊断入口：控制台 `__dsBuildPrompt('问题', {rules:true, issue:true})` **不调用模型**即可查看"这一问到底注入了什么"（本地段 / 联网段 / 两者关系），便于核对与排查。</span></div>
+                </div>
             </div>
 
             <!-- v4.21 近期更新（回答尾部「本次参考」一行） -->

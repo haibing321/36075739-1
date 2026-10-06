@@ -801,8 +801,70 @@
   ];
 
   // ========== 转换为 DeepSeek tools 参数 ==========
-  function _toolsParam() {
-    return TOOLS.map(function(t) {
+  /**
+   * 【2026-10-06 优化：工具按意图召回（tool routing）】
+   *   背景：22 个工具 schema 原来**每轮全量**挂载，两个代价 ——
+   *     ① 固定开销：每轮请求都带上全部 schema；
+   *     ② 选择噪声：search_rules / search_handbook / kb_search / autocheck 语义相近，
+   *        全量挂载时模型容易"随手挑一个"，只能靠 system 规则事后纠偏。
+   *   业界做法（tool routing / tool retrieval）：先按意图把候选缩到相关子集，长尾按需展开。
+   *   本实现严守**"只优化、不劣化"**红线：
+   *     · 命中意图分组 ⇒ 挂「常驻核心 + 该组工具」（多组命中取并集）；
+   *     · **未命中任何分组 ⇒ 返回 null ⇒ 调用方保持原样全量挂载**（绝不因召回少给工具）；
+   *     · 没有传入文本（如旧的 `_agentToolsParam()` 调用）⇒ 同样返回 null（全量）；
+   *     · `window.__agentToolsForceAll = true` 可强制全量（排查/对照）；
+   *     · 命中结果写入 `window.__agentToolsPicked`（可观测，便于核对召回是否合理）。
+   *   ⚠️ 本轮**只在 agent 侧**（`_callLLMOnce`）启用；chat 侧 `_toolsParam()` 仍不带参数 ⇒ 全量，
+   *     避免影响"智能对话工具挂载 ≥16"等既有断言。
+   */
+  var TOOLS_CORE = ['search_issues', 'count_issues', 'kb_search'];
+  var TOOL_GROUPS = [
+    { re: /检查信息|问题|隐患|违章|台账|检查记录|检查数据|整改|哪一条|第几条|条数|统计|导出/,
+      tools: ['search_issues', 'count_issues', 'get_issue_detail', 'get_issue_details', 'export_issues'] },
+    { re: /规章|制度|办法|规程|依据|对规|条款|标准|规定|要求/,
+      tools: ['search_rules', 'get_rule_detail', 'autocheck'] },
+    { re: /手册|作业标准|作业指导|检查项/,
+      tools: ['search_handbook', 'get_handbook_detail'] },
+    { re: /案例|事故|典型|通报/,
+      tools: ['search_accidents', 'get_accident_detail'] },
+    { re: /日志|写实|记入|今天干了|工作总结|工作内容/,
+      tools: ['write_diary', 'read_diary'] },
+    { re: /报告|写作|汇报|总结材料/,
+      tools: ['save_report', 'search_material', 'get_material_detail'] },
+    { re: /电话|联系方式|号码/,
+      tools: ['search_phone'] },
+    { re: /资料|素材|知识库|索引|入库|载入/, 
+      tools: ['search_material', 'get_material_detail', 'kb_status', 'kb_warm', 'kb_search'] },
+    { re: /天气|气温|下雨|大风|降雨/,
+      tools: ['get_weather'] }
+  ];
+
+  /** 按意图挑工具：返回工具数组；**返回 null 表示"调用方应全量挂载"**（未命中/无文本/强制全量） */
+  function _pickTools(userText) {
+    try {
+      if (window.__agentToolsForceAll) return null;
+      var t = String(userText || '').trim();
+      if (!t) return null;
+      var names = TOOLS_CORE.slice(), hitGroups = 0;
+      TOOL_GROUPS.forEach(function (g) {
+        if (!g.re.test(t)) return;
+        hitGroups++;
+        g.tools.forEach(function (n) { if (names.indexOf(n) === -1) names.push(n); });
+      });
+      if (!hitGroups) { try { window.__agentToolsPicked = null; } catch (e) {} return null; }   // 未命中 ⇒ 全量兜底
+      var out = TOOLS.filter(function (x) { return names.indexOf(x.name) !== -1; });
+      if (!out.length) return null;
+      try {
+        window.__agentToolsPicked = out.map(function (x) { return x.name; });
+        window.__agentToolsPickInfo = { query: t.slice(0, 40), hitGroups: hitGroups, picked: out.length, total: TOOLS.length };
+      } catch (e) {}
+      return out;
+    } catch (e) { return null; }
+  }
+
+  function _toolsParam(userText) {
+    var list = (arguments.length > 0) ? (_pickTools(userText) || TOOLS) : TOOLS;
+    return list.map(function(t) {
       return { type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } };
     });
   }
@@ -1067,7 +1129,18 @@
     // 【2026-09-30】max_tokens 4000 → 6000：智能体要产出"多工具汇总 + 报告式回答"，4000 常在结尾被截断
     //   （对话侧 8192 起、风险研判 6000；思考模式下面另有 body.max_tokens = 8192 的抬升）。
     var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 6000 };
-    if (withTools) body.tools = _toolsParam();
+    if (withTools) {
+      // 【2026-10-06 工具按意图召回】用本轮**最后一条 user 消息**做意图匹配：
+      //   命中 ⇒ 只挂「常驻核心 + 该组工具」（`__agentToolsPicked` 可核对）；
+      //   未命中/无文本 ⇒ `_pickTools` 返回 null ⇒ `_toolsParam` 回退**全量**（不劣化）。
+      var _toolQuery = '';
+      for (var _qi = messages.length - 1; _qi >= 0; _qi--) {
+        if (messages[_qi] && messages[_qi].role === 'user' && typeof messages[_qi].content === 'string') {
+          _toolQuery = messages[_qi].content; break;
+        }
+      }
+      body.tools = _toolsParam(_toolQuery);
+    }
     // 思考模式：跟随设置页开关（默认开）。开启后思维链占用生成预算、首 token 明显变慢，
     // 且 temperature 不再生效（官方行为）。非 DeepSeek 端点下该函数返回 {}，不会误传参数。
     var _agThinking = false;
@@ -2078,5 +2151,10 @@
 
   // 暴露工具注册表与执行器，供「智能对话」模块 P1 Tool Calls 复用（与智能体共用同一套 schema 与本地实现，单点维护，避免重复定义）
   window._agentToolsParam = _toolsParam;
+  // 【2026-10-06】工具按意图召回的探针：`window.__agentPickTools('查一下规章怎么规定的')` 返回该次召回结果
+  //   （数组）；未命中返回 null（表示"按全量挂载"）。供套件与线上排查核对召回是否合理。
+  window.__agentPickTools = _pickTools;
+  window.__agentToolsCore = TOOLS_CORE.slice();
+  window.__agentToolGroups = TOOL_GROUPS.map(function (g) { return { re: g.re.source, tools: g.tools.slice() }; });
   window._agentExecuteTool = _executeTool;
 })();

@@ -2154,7 +2154,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.22</span> · 2026.10.06</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.23</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2197,6 +2197,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.23 近期更新（联网=理论 / 本地=举证） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.23 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 **重新定位联网与本地资料的分工**（用户提出：**联网只负责理论、本地数据负责举证**）—— 比 v4.22 的"业务问题不为它联网"准确得多：<br>· **联网 = 理论**：通用规范 / 行业标准 / 最新政策 / 外部做法；<br>· **本地 = 举证**：本单位台账、案例、日志、电话、本单位规章收录版本（有出处、可追溯）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 三条硬口径：① **本单位事实只能来自本地**（不得用联网结果代替，也不必为查这些去联网）；② **规定/标准/理论/最新政策可以用联网补充**（不再因为"属于业务问题"就完全放弃联网 —— 这是 v4.22 写得太绝对的地方，已修正）；③ **结论要两边都用上**：只给理论不给本单位实际、或只给数据不给依据，都算不完整。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 **推荐的回答结构**：先给理论/规定依据，再用本地数据举证。例：<i>"按规定应……（依据：XX 规范，据联网检索）。本单位近一年检查信息中此类问题共 N 条，典型如……（检查信息：XXX）"</i>。冲突处理：条款**现行有效性**以联网为准（并说明本地库版本可能未更新）；**本单位事实**以本地为准（联网不可能更准）。</span></div>
+                </div>
             </div>
 
             <!-- v4.22 近期更新（本地资料 × 联网：协同规则） -->

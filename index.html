@@ -2136,7 +2136,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.17</span> · 2026.10.06</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.18</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2179,6 +2179,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.18 近期更新（智能对话「本地资料」三种静默情况改为如实告知） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.18 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗣 修「智能对话回答里出现『本地数据库未提供检索工具，只有 web_search』」：**本地资料是系统自动检索后注入的**，模型侧本来就没有"检索本地库"的工具 —— 这不是缺陷，但旧提示词没交代这一点，模型便自行推断成"没有工具"，把人误导了。现在明确告知：不要声称"本地没有检索工具"；真没命中就说"本地资料未检索到相关内容"，并提示可勾选更多数据源、或改用「智能体」（只有智能体具备工具调用能力）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 **把三种静默情况改成如实告知**（以前手机上根本看不出原因）：① **「关联数据」一个源都没勾** ⇒ 原来完全不提示，现在明确说明并指出去哪里勾；② **本地检索层异常** ⇒ 原来只 `console.warn`（手机没有控制台 = 静默失败），现在把**原因写进回答**；③ 检索正常但未命中 ⇒ 沿用"本地资料未检索到相关内容（可能尚未导入资料）"。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 排查提示（本轮实测）：数据源配置存在本机 `ds_datasource_v1`，**每台设备各一份**（默认只勾「规章制度 + 检查信息」）；手机端若看不到本地资料，先看输入框上方「关联数据」勾了哪些、再看「设置 → 知识库」各源的条数与索引状态。</span></div>
+                </div>
             </div>
 
             <!-- v4.17 近期更新（知识库缓存失效范围 + 汇编源预热 + 真实数据基准复测） -->

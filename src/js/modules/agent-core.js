@@ -1190,6 +1190,23 @@
       throw _he;
     }
     var data = await resp.json();
+    // 【2026-10-06 建议③ · usage 采集】此前 `usage` 被直接丢弃 ⇒ 无法量化"工具按意图召回"等优化的收益
+    //   （prompt_tokens 是否真的降了、缓存命中多少）。这里只做**统计累加**，不改请求/响应行为：
+    //   · `window.__agentUsage`      —— 本次会话累计（calls / prompt / completion / total / cached）
+    //   · `window.__agentUsageLast`  —— 最近一次原始 usage（排查对照用）
+    //   · 收口时写进 `taskRecord.usage`（随任务记录落库，可与 chat 侧 `ds_ai_metrics_v1` 对照）
+    try {
+      var _u = data.usage || {};
+      var _acc = window.__agentUsage || { calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
+      _acc.calls++;
+      _acc.prompt_tokens += (_u.prompt_tokens || 0);
+      _acc.completion_tokens += (_u.completion_tokens || 0);
+      _acc.total_tokens += (_u.total_tokens || 0);
+      _acc.cached_tokens += ((_u.prompt_tokens_details && _u.prompt_tokens_details.cached_tokens)
+        || _u.prompt_cache_hit_tokens || 0);
+      window.__agentUsage = _acc;
+      window.__agentUsageLast = _u;
+    } catch (e) {}
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       var _fe = new Error('API 返回格式异常'); _fe.retryable = true; throw _fe;
     }
@@ -1533,9 +1550,35 @@
           messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(_resForModel) });
         }
       } else {
-        taskRecord.finalOutput = assistantMsg.content || '';
-        renderMsgs.push({ role: 'assistant', content: assistantMsg.content || '' });
-        _emit({ phase: 'answer', content: assistantMsg.content || '' });
+        // 【2026-10-06 建议① · 完成度门禁】程序化校验"真的做完"：
+        //   `taskRecord.steps` 里已逐条记录 `ok`（1512 行），但此前**没有任何程序化拦截** ——
+        //   "AI 说做完、其实有工具失败"只能靠 system 规则 14/15（prompt 约束）兜。
+        //   现在：收口前若本轮存在工具失败，而模型回答里又**没如实提到失败** ⇒
+        //   在回答末尾**追加系统的"未成功项"清单**（明确标注"非模型输出"，与模型口吻区分），
+        //   确保用户一定看到"哪些没做成、可以怎么重试"。
+        //   ⚠️ 只补不拦：不改模型原文；若模型已如实说明（含"失败/未成功/未完成"或点到该工具名）则不追加，避免啰嗦。
+        var _finalAnswer = assistantMsg.content || '';
+        try {
+          var _failedSteps = (taskRecord.steps || []).filter(function (s) { return s && s.ok === false; });
+          if (_failedSteps.length) {
+            var _alreadyTold = /失败|未成功|没成功|未完成|未能|无法完成|错误|异常/.test(_finalAnswer)
+              || _failedSteps.some(function (s) { return s.tool && _finalAnswer.indexOf(s.tool) !== -1; });
+            if (!_alreadyTold) {
+              var _failList = _failedSteps.map(function (s) {
+                var why = String(s.summary || '').replace(/^❌\s*/, '') || '执行未成功';
+                return '· ' + s.tool + '：' + why;
+              }).join('\n');
+              _finalAnswer += '\n\n---\n⚠️ **系统提示（非模型输出）**：本轮有 ' + _failedSteps.length
+                + ' 项工具调用未成功，结果可能不完整：\n' + _failList
+                + '\n\n可换个关键词 / 放宽条件重试，或让我分批处理。';
+            }
+          }
+        } catch (e) { console.warn('[agent] 完成度门禁校验失败（不影响回答本身）：' + ((e && e.message) || e)); }
+        // 【2026-10-06 建议③】把本次会话累计 usage 写进任务记录（落库后可与 chat 侧 ds_ai_metrics 对照）
+        try { taskRecord.usage = window.__agentUsage ? JSON.parse(JSON.stringify(window.__agentUsage)) : null; } catch (e) {}
+        taskRecord.finalOutput = _finalAnswer;
+        renderMsgs.push({ role: 'assistant', content: _finalAnswer });
+        _emit({ phase: 'answer', content: _finalAnswer });
         break;
       }
     }

@@ -722,6 +722,99 @@
         }
       }
     },
+    // 【v4.25 用户口径：联网=理论 / 本地=举证 + Anthropic 官方工具设计原则】综合研究工具。
+    //   ⚠️ 设计依据（Anthropic《Writing effective tools for agents》）：
+    //     "**避免把多个数据源的工具堆在一起让模型自行分辨**；更好的做法是把跨源聚合逻辑下沉到工具内部。"
+    //   所以这里**不给**模型挂一个 web_search 让它自己决定何时联网，而是把"先本地分层检索 → 按需补外部理论 →
+    //   分区返回并标注来源"整套编排**封装在工具内**：口径由代码保证，不依赖模型自律。
+    //   与既有工具的分工（用途唯一，避免重叠）：
+    //     · kb_search        = 纯本地检索（已知只要本地依据时用）
+    //     · search_issues    = 本单位台账精确统计（要数字用这个）
+    //     · research（本工具）= 要"规定依据 + 本单位实际"的**完整回答**时一次拿全
+    {
+      name: 'research',
+      description: '【综合研究：外部理论 + 本单位举证】一次拿到两类依据 —— 内部自动**先做本地分层检索**（规章制度/法规案例汇编/检查信息台账/检查手册/事故案例），'
+        + '再**按问题需要补充外部理论检索**（通用规范/行业标准/最新政策动态）。'
+        + '何时必用：用户问"怎么规定/有什么要求/依据是什么/是否现行有效"这类既要依据框架、又要本单位实际的完整问题；'
+        + '或你不确定该查本地还是外部时，直接用它可以（它自己判断，不用你选来源）。'
+        + '何时不必用：只要本单位数字（用 count_issues/search_issues 更精确）、纯闲聊、纯逻辑推理。'
+        + '返回分区给出：本地举证（带出处）/ 外部理论（带来源，或说明为何未检索）/ 使用建议。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '要研究的问题（尽量完整，如"信号机械室消防安全检查如何规定"）' },
+          needExternal: { type: 'boolean', description: '是否补充外部理论检索（可选；不传则按问题自动判断：涉及规定/标准/依据/现行有效性等会补，纯本单位数据统计则不补）' },
+          topK: { type: 'number', description: '每个本地源返回条数（可选，默认 4，最大 6）' }
+        },
+        required: ['query']
+      },
+      handler: async function(args) {
+        var q = String(args.query || '').trim();
+        if (!q) return { error: '缺少 query（要研究的问题）' };
+        var topK = Math.min(Math.max(parseInt(args.topK, 10) || 4, 1), 6);
+        var out = {
+          source_type: 'mixed',   // ⚠️ 显式声明：本地举证 + 外部理论（_withKbNote 只在**缺省**时才补 local_evidence，故不会被覆盖）
+          依据分工: '本地 = 举证（本单位事实，有出处可追溯）；外部 = 理论（通用规范/标准/最新政策）',
+          query: q
+        };
+
+        // ── ① 本地分层检索（口径与 kb_search 完全一致：同一 KB.ensure + KB.search）──
+        var localSrcs = ['rules', 'cases', 'issues', 'handbook', 'accidents'];
+        try {
+          if (window.KB && typeof window.KB.search === 'function') {
+            if (typeof window.KB.ensure === 'function') { window.__agentPhase('research', '正在检索本地知识库…'); await window.KB.ensure(localSrcs); }
+            var res = window.KB.search(q, { sources: localSrcs, topK: topK }) || [];
+            var bySrc = [], total = 0, wNotes = [];
+            res.forEach(function(r) {
+              if (r.windowed) wNotes.push(r.label + ' 索引仅覆盖最近 ' + r.indexed + '/' + r.total + ' 条' + (r.fallback ? '（本次已用全量兜底命中窗口外数据）' : ''));
+              var hits = (r.hits || []).map(function(h) { return { 出处: h.path, 内容: h.text, 摘要: String(h.text).slice(0, 60) }; });
+              total += hits.length;
+              if (hits.length) bySrc.push({ 来源: r.label, 条数: hits.length, 片段: hits });
+            });
+            out.本地举证 = { total: total, 分组: bySrc };
+            if (wNotes.length) out.本地举证.口径提醒 = wNotes.join('；');
+            if (!total) out.本地举证.note = '本地库未检索到相关内容（可能尚未导入资料；要查更早的明细可用 search_issues 全量精确查询）';
+          } else {
+            out.本地举证 = { error: '知识库未就绪（knowledge.js 未加载）' };
+          }
+        } catch (e) { out.本地举证 = { error: '本地检索失败：' + ((e && e.message) || e) }; }
+
+        // ── ② 是否需要外部理论：**工具内部判断**，不让模型选（口径由代码保证）──
+        var needExt = (typeof args.needExternal === 'boolean') ? args.needExternal : (function (t) {
+          // 纯本单位数据统计（多少条/哪个单位/占比…）且不涉及规定标准 ⇒ 不补外部，联网只会拖慢
+          if (/多少|几条|几次|几起|条数|统计|占比|排名|哪个单位|哪几个单位|分布|同比|环比/.test(t)
+            && !/规定|标准|依据|要求|是否|现行/.test(t)) return false;
+          return true;   // 其余（多数业务问法）默认补：用户口径是"联网负责理论"，业务问题也需要依据框架
+        })(q);
+
+        if (!needExt) {
+          out.外部理论 = { skipped: '本问题以本单位数据为主，无需外部检索（如需外部规范，可显式要求补充）' };
+        } else if (typeof window.dsWebSearchOnce !== 'function') {
+          out.外部理论 = { error: '联网检索不可用（dsWebSearchOnce 未加载）—— 请只依据本地举证作答，并说明未取得外部依据' };
+        } else {
+          try {
+            window.__agentPhase('research', '正在补充外部理论检索…');
+            var sys = '你是铁路安全监察业务助手。请**联网检索**与问题相关的**外部规范 / 行业标准 / 最新政策**，'
+              + '只输出客观检索到的内容，分条列出并注明来源（规范名称、发布单位、年份/文号）。'
+              + '⚠️ 只给"规定/标准/理论"层面的内容，**绝不臆测任何单位的具体数据**（台账条数、某局某段的具体问题）。'
+              + '查不到就明确说"未检索到相关外部规范"，**绝不编造条款号、文件名或发布日期**。';
+            var r = await window.dsWebSearchOnce(sys, '问题：' + q, { timeoutMs: 15000, maxTokens: 1200, maxUses: 2 });
+            var _txt = String((r && r.text) || '').trim();
+            // 防编造门禁（沿用查天气那处的实测经验）：模型明确说"查不到"时不当依据，如实降级
+            var _notFound = /(未检索到|查不到|未查到|无法获取|没有找到|未找到|暂无数据)/.test(_txt) && _txt.length < 220;
+            if (r && r.ok && !_notFound) {
+              out.外部理论 = { source_type: 'external_theory', ok: true, 内容: _txt.slice(0, 3000), 说明: '外部理论（通用规范/政策）：引用时标注「据联网检索」；若与本地条款冲突，涉及**现行有效性**以外部最新为准并说明本地库版本可能未更新' };
+            } else {
+              out.外部理论 = { source_type: 'external_theory', ok: false, note: (r && r.ok) ? '外部检索未取得相关规范（模型明确表示查不到），请只依据本地举证作答并如实说明' : ('外部检索失败（' + ((r && r.error) || 'unknown') + '）—— 请只依据本地举证作答，并说明未取得外部依据') };
+            }
+          } catch (e) { out.外部理论 = { source_type: 'external_theory', ok: false, note: '外部检索异常：' + ((e && e.message) || e) + ' —— 请只依据本地举证作答' }; }
+        }
+
+        out.使用建议 = '表述结构：先给外部理论依据（若有），再用本地举证说明本单位实际情况；'
+          + '引用分别标注「据联网检索」与「规章制度：XXX」「检查信息：XXX」；本地未命中就如实说明"未检索到"，不要编造。';
+        return out;
+      }
+    },
     // 【2026-09-19 用户口径 A】对规工具：**不自己搜规章**，而是调「智能对规」同一套召回
     //   （window.acRecallCandidates）—— 保证智能体拿到的候选与对规模块完全同源；也不再另调 AI
     //   （挑选交给智能体自己那一轮推理）。结论式句式由本地拼装 → 引号内原文与条号逐字可靠。
@@ -826,8 +919,11 @@
   var TOOL_GROUPS = [
     { re: /检查信息|问题|隐患|违章|台账|检查记录|检查数据|整改|哪一条|第几条|条数|统计|导出/,
       tools: ['search_issues', 'count_issues', 'get_issue_detail', 'get_issue_details', 'export_issues'] },
+    // 【v4.25】`research`（综合研究：外部理论 + 本单位举证）挂在本组：该组正则已覆盖
+    //   "规定/要求/依据/标准/条款"等**要依据框架**的问法，正是 research 的典型场景；
+    //   不放进 TOOLS_CORE，避免常驻 schema 变胖（未命中本组时它不会被挂载，属预期）。
     { re: /规章|制度|办法|规程|依据|对规|条款|标准|规定|要求/,
-      tools: ['search_rules', 'get_rule_detail', 'autocheck'] },
+      tools: ['search_rules', 'get_rule_detail', 'autocheck', 'research'] },
     { re: /手册|作业标准|作业指导|检查项/,
       tools: ['search_handbook', 'get_handbook_detail'] },
     { re: /案例|事故|典型|通报/,

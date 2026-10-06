@@ -229,6 +229,24 @@
     st.平均耗时s = durN ? Math.round(dur / durN / 1000) : 0;
     st.失败最多的工具 = Object.keys(failCount).sort(function(a, b) { return failCount[b] - failCount[a]; })
       .slice(0, 3).map(function(k) { return k + '×' + failCount[k]; });
+    // 【v4.24 依据 Anthropic《Writing effective tools for agents》第 6 条】冗余调用统计：
+    //   同一任务内"同工具 + 同参数"重复调用 ⇒ 通常说明**工具描述不清或参数设计不合理**（模型在试错），
+    //   是优化工具的高信号指标（官方："大量冗余调用说明分页/截断参数需调整；大量无效参数报错说明描述不清"）。
+    //   ⚠️ 参数按 JSON 序列化比较，键序不同会被判为不同调用 ⇒ 只会**少计**、不会多计（保守口径）。
+    var _redunTotal = 0, _redunByTool = {};
+    tasks.forEach(function (t) {
+      var seen = {};
+      (t.steps || []).forEach(function (s) {
+        var name = s.tool || '?';
+        var raw = s.args || s.params || s.input || s.arguments || {};
+        var key = name + '|' + JSON.stringify(raw);
+        if (seen[key]) { _redunTotal++; _redunByTool[name] = (_redunByTool[name] || 0) + 1; }
+        seen[key] = 1;
+      });
+    });
+    st.冗余调用 = _redunTotal;
+    st.冗余最多的工具 = Object.keys(_redunByTool).sort(function (a, b) { return _redunByTool[b] - _redunByTool[a]; })
+      .slice(0, 3).map(function (k) { return k + '×' + _redunByTool[k]; });
     return st;
   };
 })();

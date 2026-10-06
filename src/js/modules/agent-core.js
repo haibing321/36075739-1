@@ -78,7 +78,8 @@
   var TOOLS = [
     {
       name: 'search_issues',
-      description: '搜索检查信息数据库，按关键词查找问题记录（支持单位/类别/日期/性质筛选）。返回精简列表(id=全量数据中的下标+性质+时间+单位+摘要)；total 是「含关键词字面」的精确计数（要数字以它为准），items 是关键词召回样例（含近似命中，可能少于 total）。需要全文请用 get_issue_detail(id)',
+      description: '搜索检查信息数据库，按关键词查找问题记录（支持单位/类别/日期/性质筛选）。返回精简列表(id=全量数据中的下标+性质+时间+单位+摘要)；total 是「含关键词字面」的精确计数（要数字以它为准），items 是关键词召回样例（含近似命中，可能少于 total）。需要全文请用 get_issue_detail(id)。'
+        + '⚠️ 这是**本单位台账事实**（source_type=local_evidence）：条数与明细只能来自本地，不得用外部信息推断或代替；引用时注明出处（如"检查信息：XXX"）',
       parameters: {
         type: 'object',
         properties: {
@@ -138,7 +139,8 @@
     },
     {
       name: 'search_rules',
-      description: '搜索规章制度数据库。给出关键词时优先走统一检索层（命中条款级片段+出处，摘要即为命中的那一条），无命中才回退关键词模糊匹配。返回精简列表(id=全量下标+标题+专业+摘要)，需要全文请用 get_rule_detail(id)',
+      description: '搜索规章制度数据库。给出关键词时优先走统一检索层（命中条款级片段+出处，摘要即为命中的那一条），无命中才回退关键词模糊匹配。返回精简列表(id=全量下标+标题+专业+摘要)，需要全文请用 get_rule_detail(id)。'
+        + '⚠️ 这是**本地收录版本**（source_type=local_evidence）：引用时标注"规章制度：XXX"；若需核实某条款是否现行有效或已修订，本地库可能未更新，应说明"请以现行有效文件为准"',
       parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词(可选，不传返回最近条目)'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:[] },
       handler: async function(args) {
         var full = [];
@@ -677,12 +679,15 @@
     // "引用依据、查条款原文"这类需求。
     {
       name: 'kb_search',
-      description: '统一检索本地知识库（规章制度/检查手册/事故案例/检查信息/写作资料/历史报告/应急电话/工作日志），返回命中片段（带出处路径，规章精确到条款、手册与事故案例精确到项点、资料精确到段落）。用于引用依据、查条款原文、找相似案例（事故案例用 sources="accidents" 或专用工具 search_accidents）；比 search_rules / search_issues 覆盖面更全、粒度更细',
+      description: '统一检索本地知识库（规章制度/法规案例汇编/检查信息台账/检查手册/事故案例/写作资料/历史报告/应急电话/工作日志）——**这是本单位事实的唯一来源**，返回命中片段（带出处路径，规章精确到条款、手册与事故案例精确到项点、资料精确到段落）。'
+        + '何时必用：要引用条款原文或依据、要"本单位实际数据"（问题条数/单位分布/高发类别/历史记录）、要找相似案例或事故教训 —— 这类**本单位事实外网查不到、只能来自这里**，不要凭记忆回答。'
+        + '何时不必用：打招呼、闲聊、纯逻辑推理、与本单位无关的通用常识。'
+        + '返回的每条都带 source_type=local_evidence（本地举证，引用时须标注具体出处）；覆盖比 search_rules / search_issues 更全、粒度更细；事故案例也可指定 sources="accidents" 或用专用工具 search_accidents',
       parameters: {
         type: 'object',
         properties: {
           query: { type: 'string', description: '检索问题或关键词（尽量用业务用词，越具体越准）' },
-          sources: { type: 'string', description: '要检索的源，逗号分隔(可选)：rules,cases,issues,handbook,accidents,materials,reports,phone,diary；默认 rules,cases,issues,handbook,accidents,materials,reportsls,reports' },
+          sources: { type: 'string', description: '要检索的源，逗号分隔(可选)：rules,cases,issues,handbook,accidents,materials,reports,phone,diary；默认 rules,cases,issues,handbook,accidents,materials,reports（materials/reports 为异步源，首次较慢）' },
           topK: { type: 'number', description: '每个源返回条数(可选，默认 4，最大 8)' }
         },
         required: ['query']
@@ -951,6 +956,20 @@
       } else if (out && out.ok && _kbDegradeReason && Array.isArray(out.result)) {
         // 数组结果：包一层，既不改调用方语义（items 仍是原数组）也能把降级说明带给模型
         out.result = { items: out.result, 检索降级: '知识库检索失败（' + _kbDegradeReason + '），本结果来自关键词/本地回退检索，召回可能不全；回答时请注明依据范围。' };
+      }
+      // 【v4.24 依据来源标注·Anthropic《Writing effective tools for agents》原则】把"这条结果属于哪类依据"
+      //   直接放进**工具返回**，而不是只靠 prompt 约束 —— 官方明确指出"工具响应本身可以引导下一步决策"，
+      //   且让模型"自己分辨多来源"容易出错。
+      //   现状：**所有现有工具都查本地库**（本单位台账/规章/手册/案例/电话/日志/写作资料）
+      //     ⇒ 未显式声明的一律标 `local_evidence`（本地举证：可直接引用，须标出处）。
+      //   ⚠️ 将来新增**联网**类工具时，其 handler 必须显式返回 `source_type: 'external_theory'`
+      //     （外部理论：通用规范/行业标准/最新政策），本函数**不覆盖已有值**。
+      //   分工口径与「智能对话」一致：**本地 = 举证，联网 = 理论**（前者可追溯，后者补依据框架）。
+      if (out && out.ok && out.result && typeof out.result === 'object' && !Array.isArray(out.result) && !out.result.source_type) {
+        out.result = Object.assign({}, out.result, {
+          source_type: 'local_evidence',
+          依据类型: '本地举证（本单位数据，引用请标具体出处；"本单位事实"只能来自本地结果，不得用外部信息替代或编造）'
+        });
       }
     } catch (e) {}
     _kbDegradeReason = '';

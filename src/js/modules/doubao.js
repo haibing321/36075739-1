@@ -2968,7 +2968,13 @@
                     //   → 因此联网时本地工具不参与（本地资料仍通过 system/instructions 注入，能力不丢）。
                     //   这里打印一条诊断日志，避免"静默降级"难以排查；界面上也有对应说明（联网菜单）。
                     if (useWebSearch && _useTools && typeof console !== 'undefined') {
-                        console.warn('[ds] 联网已开启：本轮只带服务端 web_search，本地检索工具（search_issues/search_rules 等）不参与；需要精确查台账明细请先关闭联网。');
+                        // 【2026-10-07 用户反馈修复】级别 warn → info，并把文案改准：
+                        //   ① 这是**设计取舍的说明**、不是异常 ⇒ 原来用 console.warn 在控制台显示成醒目警告，
+                        //     用户误以为出错（与"静默检查更新打 warn"同类问题，一并修正）；
+                        //   ② 原文案说"本地检索工具不参与"容易被读成"本地资料也不参与" —— 事实是
+                        //      本地资料**仍会由系统检索后注入 system**（能力不丢），只是**不能按条件精确统计**。
+                        console.info('[ds] 联网已开启：本轮只带服务端 web_search；本地资料仍会自动检索后注入（'
+                            + '但不能按条件精确统计台账）。需要精确查明细：关闭联网，或用「/agent 任务」。');
                     }
                     var _toolExec = (typeof window._agentExecuteTool === 'function') ? window._agentExecuteTool : null;
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断

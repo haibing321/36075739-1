@@ -1872,7 +1872,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v4.25'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v4.26'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // ⚠️【2026-10-05 用户实测踩坑】"手机提示发现 v4.15，更新后仍显示 v4.14" —— 就是因为这里没跟着改：
 //   提示更新靠的是 **SW 缓存时间戳**（version.json 的 sw / sw.js 的 CACHE_VERSION），
 //   而界面上显示的版本号读的是**这个常量**。**发版必须同时改三处**：
@@ -1962,6 +1962,14 @@ document.addEventListener('DOMContentLoaded', function() {
 async function checkForUpdate() {
     const statusEl = document.getElementById('update-status');
     if (!statusEl) return;
+    // 【2026-10-07 修复】以本地文件方式打开（file://）时给出**明确原因**，而不是让 fetch 抛 CORS 错误：
+    //   实测报错 `Access to fetch at 'file:///…/version.json' from origin 'null' has been blocked by CORS policy`。
+    //   这不是部署问题，是浏览器对 file:// 的硬限制（fetch / Service Worker / manifest 全被禁）。
+    if (typeof location !== 'undefined' && location.protocol === 'file:') {
+        statusEl.textContent = 'ℹ️ 当前以本地文件方式打开（file://），浏览器禁止读取 version.json；请用 http(s) 地址访问站点后再检查更新';
+        statusEl.style.color = '#64748b';
+        return;
+    }
     // v3.26：检查中按钮显示为「⏳ 正在检查…」
     if (window.switchUpdateBtn) window.switchUpdateBtn('checking');
     statusEl.textContent = '⏳ 正在检查...';
@@ -1982,6 +1990,12 @@ async function checkForUpdate() {
 //   OfflineGate 的 update 意图放行（不这样包一层，会被离线门禁拦下来 ⇒ 自动检查等于失效）。
 //   节流 10 分钟（_last_version_check），避免频繁请求（version.json 很小，但也没必要刷）。
 async function silentCheckUpdate() {
+    // 【2026-10-07 修复】以**本地文件**方式直接双击打开（`file://`）时提前返回：
+    //   浏览器对 file:// 页面禁止 fetch（报 "Cross origin requests are only supported for
+    //   protocol schemes: http, https…"）、也禁用 Service Worker 与 manifest ⇒ 更新检查**必然失败**，
+    //   发这个请求只会白等 8 秒超时并在控制台刷出红色报错，让用户误以为应用坏了。
+    //   正式使用请通过 http(s) 地址访问站点（本地验证可 `npx serve -s . -l 8080`）。
+    if (typeof location !== 'undefined' && location.protocol === 'file:') return;
     const lastCheck = localStorage.getItem('_last_version_check');
     if (lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) return;
     try {
@@ -2152,7 +2166,12 @@ async function performUpdateCheck(url, showStatus) {
         }
         // v3.26：检查失败恢复「检查更新」按钮
         if (window.switchUpdateBtn) window.switchUpdateBtn('normal');
-        console.warn('[Update]', err);
+        // 【2026-10-07 修复】日志分级：静默检查（自动、后台）失败属**预期**（离线 / 弱网 / file:// 打开），
+        //   原实现一律 `console.warn('[Update]', err)` 打印**完整错误对象（含调用堆栈）** ⇒ 控制台一片红，
+        //   用户会误以为应用出错（实测反馈的 `app.js:2155 [Update] TypeError: Failed to fetch` 就是它）。
+        //   现在：手动检查（用户主动点击）保留 warn 便于排查部署/网络；静默检查降为 info 且只留一行摘要。
+        if (showStatus) console.warn('[Update]', err);
+        else console.info('[Update] 静默检查未完成（离线或接口不可达）：' + ((err && err.message) || err));
     }
 }
 

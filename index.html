@@ -1118,6 +1118,11 @@
                                         <div class="ds-dropdown-menu ds-datasource-menu" id="ds-datasource-menu">
                                             <div class="ds-datasource-head">🔗 关联数据（本次使用的本地资料）</div>
                                             <div class="ds-datasource-head" style="font-weight:400;font-size:0.72rem;opacity:0.75;margin-top:-2px;">仅控制本地资料注入；联网请用 🌐 地球按钮</div>
+                                            <!-- 【v4.20 用户需求】"自动关联"：勾上后由系统按问题内容自动挑选数据源，
+                                                 逐项勾选会变灰（交给系统决定）；面板下方会显示**本次实际选了哪些源**，
+                                                 保证"自动"也不是黑箱（用户对看不见的隐含行为很敏感）。
+                                                 ⚠️ 不劣化兜底：问题没命中任何意图时 ⇒ 全部源都用（绝不少给资料）。 -->
+                                            <label class="ds-datasource-row ds-datasource-auto"><input type="checkbox" id="ds-dialog-auto" value="auto" checked> 🔮 自动关联（按问题智能选择）</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-all"> ☑️ 全选 / 全不选</label>
                                             <!-- 【v4.19 用户口径】用户指出"关联数据的类型比资料中心少"：
                                                  原来只有 6 项，且 cases（法规/案例汇编）隐含在"规章制度"里、
@@ -1136,6 +1141,8 @@
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-reports" value="reports"> 📄 历史报告</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-phone" value="phone"> 📞 应急电话</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-diary" value="diary"> 📝 工作日志</label>
+                                            <!-- 【v4.20】自动关联时显示"本次实际选了哪些源"（由 doubao.js 在打开面板/应用时更新） -->
+                                            <div class="ds-datasource-hint" id="ds-auto-hint">🔮 自动关联：将按你的问题自动挑选数据源</div>
                                             <hr class="ds-datasource-sep">
                                             <label class="ds-datasource-row ds-datasource-remember"><input type="checkbox" id="ds-dialog-remember" checked> ✅ 记住此次选择</label>
                                             <div class="ds-datasource-actions">
@@ -2147,7 +2154,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.19</span> · 2026.10.06</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.20</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2190,6 +2197,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.20 近期更新（关联数据 · 自动关联） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.20 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔮 「关联数据」新增 **自动关联**（默认开启）：按你的问题内容**自动挑选数据源**，不必每次手勾。逐项勾选会变灰，随时取消勾选即回到手选（行为与 v4.19 完全一致）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 **不做黑箱**：面板底部会显示"**本次将使用** 规章制度 · 检查台账 · 法规/案例汇编…"，控制台 `__dsAutoPick('一句话')` 可预演选择结果、`__dsAutoPicked` 看最近一次**实际**用到的源。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 **不劣化兜底**：问题没命中任何意图（如"你好"、闲聊）⇒ **不擅自缩小范围**，直接退回你自己的勾选；命中意图时以「规章制度 + 检查台账（常驻核心）+ 该问题相关的源」为准。例："消防安全检查如何规定" ⇒ 自动带上 规章制度 / 法规案例汇编 / 检查台账。</span></div>
+                </div>
             </div>
 
             <!-- v4.19 近期更新（关联数据类型补全：6 项 → 9 项） -->

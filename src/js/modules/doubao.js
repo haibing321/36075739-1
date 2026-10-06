@@ -1311,10 +1311,68 @@
             //   ⚠️ 老配置（localStorage 的 ds_datasource_v1 里没有新字段）由 loadDsCfg 按同样关系回填勾选状态，
             //      保证"界面上看到的"与"实际注入的"一致（不再出现看着没勾、其实带上了的静默不一致）。
             var DS_DEFAULT_CFG = {
+                // 【v4.20 用户需求】auto=自动关联：按问题内容自动挑选数据源（逐项勾选变灰，交给系统）。
+                //   默认**开**：用户要的就是"感觉更好"的自动模式，且有三重兜底 ——
+                //    ① 问题没命中任何意图 ⇒ 全部源都用（绝不少给资料）；
+                //    ② 面板明确显示**本次实际选了哪些源**（不是黑箱）；
+                //    ③ 随时可关闭，关闭后回到逐项手选（行为与 v4.19 完全一致）。
+                auto: true,
                 rules: true, cases: true, issue: true, handbook: false, accidents: false,
                 materials: false, reports: false, phone: false, diary: false, remember: true,
                 wrAll: false   // 兼容字段：老代码/旧备份读取用；保存时由 getDsCfg 同步为 materials 的值
             };
+
+            /* ==================== 【v4.20】「自动关联」按问题挑源 ====================
+             * 思路与智能体的"工具按意图召回"一致：先按问题里的业务词判断意图，只挂相关源。
+             * ⚠️ 不劣化红线（与工具召回同一口径）：
+             *   · 命中意图 ⇒ 「核心源（规章制度 + 检查台账）+ 命中组」的并集；
+             *   · **未命中任何意图 / 空问题 ⇒ 返回 null ⇒ 调用方全开**（绝不因自动挑选而少给资料）；
+             *   · 结果写入 `window.__dsAutoPicked`，并显示在面板的「自动关联」提示行上（可见、可核对）。
+             * 词表按**真实安监问法**写（"消防安全检查如何规定"这类不带"规章"二字的也要能命中）。
+             * ===================================================================== */
+            var _DS_AUTO_CORE = ['rules', 'issues'];
+            var _DS_AUTO_RULES = [
+                { re: /规章|制度|办法|规程|规范|标准|依据|条款|规定|要求|细则|文件|汇编|怎么规定|如何规定/, srcs: ['rules', 'cases'] },
+                { re: /检查|问题|隐患|违章|台账|记录|整改|多少|几条|几次|统计|频次|高发|典型问题/, srcs: ['issues'] },
+                { re: /手册|项点|作业标准|作业指导|检查项|指导/, srcs: ['handbook'] },
+                { re: /事故|案例|教训|险性|伤亡/, srcs: ['accidents'] },
+                { re: /电话|联系|值班|调度|号码/, srcs: ['phone'] },
+                { re: /日志|记入|我今天|今天干|工作记录|写日志/, srcs: ['diary'] },
+                { re: /报告|汇报|总结|月报|周报|通报|写作|材料|模板|撰写|起草/, srcs: ['materials', 'reports'] }
+            ];
+            /** 按问题挑源；返回源数组，**返回 null 表示"应使用全部源"**（未命中/空问题） */
+            function _dsAutoPickSources(q) {
+                try {
+                    var t = String(q || '').trim();
+                    if (!t) return null;
+                    var picked = _DS_AUTO_CORE.slice(), hit = 0;
+                    _DS_AUTO_RULES.forEach(function (g) {
+                        if (!g.re.test(t)) return;
+                        hit++;
+                        g.srcs.forEach(function (s) { if (picked.indexOf(s) === -1) picked.push(s); });
+                    });
+                    if (!hit) { try { window.__dsAutoPicked = null; } catch (e) {} return null; }   // 未命中 ⇒ 全开兜底
+                    try {
+                        window.__dsAutoPicked = picked.slice();
+                        window.__dsAutoPickInfo = { query: t.slice(0, 40), hitGroups: hit, picked: picked.length };
+                    } catch (e) {}
+                    return picked;
+                } catch (e) { return null; }
+            }
+            /** 源 key → 面板上的中文名（提示行展示用） */
+            var _DS_SRC_LABEL = { rules: '规章制度', cases: '法规/案例汇编', issues: '检查台账', handbook: '检查手册', accidents: '事故案例', materials: '写作资料库', reports: '历史报告', phone: '应急电话', diary: '工作日志' };
+            /** 更新面板上的「自动关联」提示行（auto 开时显示当前问题会选什么；关时说明已交给手选） */
+            function _dsUpdateAutoHint(q, autoOn) {
+                var el = document.getElementById('ds-auto-hint');
+                if (!el) return;
+                if (!autoOn) { el.textContent = '🔮 自动关联：已关闭（手动勾选上方各项）'; return; }
+                var picked = _dsAutoPickSources(q);
+                if (!picked) { el.textContent = '🔮 自动关联：未识别到特定意图 → 本次使用全部数据源'; return; }
+                el.textContent = '🔮 自动关联：本次将使用 ' + picked.map(function (k) { return _DS_SRC_LABEL[k] || k; }).join(' · ');
+            }
+            // 诊断入口（与智能体的 __agentPickTools 对称）：控制台执行 `__dsAutoPick('一句话')` 可预演自动关联结果；
+            // `__dsAutoPicked` 是**最近一次实际**用到的源列表，便于核对"自动到底选了啥"。
+            try { window.__dsAutoPick = _dsAutoPickSources; window.__dsSrcLabel = _DS_SRC_LABEL; } catch (e) {}
             (function initDataSourceDropdown() {
                 var btn = document.getElementById('ds-datasource-btn');
                 var menu = document.getElementById('ds-datasource-menu');
@@ -1326,6 +1384,7 @@
                 var _DS_CFG_KEYMAP = { 'wr-all': 'materials' };   // 面板「写作资料库」对应 KB 的 materials 源
                 function getDsCfg() {
                     var cfg = {
+                        auto: document.getElementById('ds-dialog-auto').checked,
                         rules: document.getElementById('ds-dialog-rules').checked,
                         cases: document.getElementById('ds-dialog-cases').checked,
                         issue: document.getElementById('ds-dialog-issue').checked,
@@ -1347,14 +1406,29 @@
                         var el = document.getElementById('ds-dialog-' + k); return el && el.checked;
                     });
                 }
+                /** 【v4.20】自动关联开关的联动：开 ⇒ 逐项（含全选）变灰不可点，提示行说明本次会选什么；关 ⇒ 恢复手选 */
+                function _dsApplyAutoMode(autoOn, q) {
+                    _DS_CFG_KEYS.forEach(function (k) {
+                        var el = document.getElementById('ds-dialog-' + k);
+                        if (!el) return;
+                        el.disabled = !!autoOn;
+                        var row = el.closest ? el.closest('.ds-datasource-row') : null;
+                        if (row) { row.style.opacity = autoOn ? '0.45' : ''; row.style.cursor = autoOn ? 'not-allowed' : ''; }
+                    });
+                    var allEl = document.getElementById('ds-dialog-all');
+                    if (allEl) {
+                        allEl.disabled = !!autoOn;
+                        var allRow = allEl.closest ? allEl.closest('.ds-datasource-row') : null;
+                        if (allRow) allRow.style.opacity = autoOn ? '0.45' : '';
+                    }
+                    _dsUpdateAutoHint(q, autoOn);
+                }
                 function loadDsCfg() {
                     var def = _sessionDataSource || DS_DEFAULT_CFG;
                     // 【v3.76】确认按钮文案随场景：输入框有内容 → 点它会「应用并发送」，如实标注，避免"只想保存却被发出去"的误解
                     var _cf = document.querySelector('.ds-ds-btn--confirm');
-                    if (_cf) {
-                        var _iv = (document.getElementById('ds-user-input') || {}).value || '';
-                        _cf.textContent = _iv.trim() ? '应用并发送' : '应用';
-                    }
+                    var _iv = (document.getElementById('ds-user-input') || {}).value || '';
+                    if (_cf) _cf.textContent = _iv.trim() ? '应用并发送' : '应用';
                     // 【v4.19 迁移】老配置里没有 cases/accidents/materials/reports 四个字段，它们原来是**隐含**的：
                     //   勾「规章制度」⇒ 附带法规/案例汇编；勾「检查手册」⇒ 附带事故案例；勾「写作资料库」⇒ 附带历史报告。
                     //   这里按同样的隐含关系回填勾选状态 ⇒ 老用户在面板上看到的就是实际会注入的内容（不再静默不一致）。
@@ -1367,6 +1441,20 @@
                         var el = document.getElementById('ds-dialog-' + k);
                         if (el) el.checked = !!(def2[_DS_CFG_KEYMAP[k] || k]);
                     });
+                    // 【v4.20】自动关联：实现里 auto 缺省视为**开**（与 DS_DEFAULT_CFG 一致）⇒ 老设备升级后即进入自动模式，
+                    //   逐项勾选变灰、由提示行说明本次会选什么；用户取消勾选即回到手选（行为与 v4.19 完全一致）。
+                    var autoOn = (def2.auto !== false);
+                    var autoEl = document.getElementById('ds-dialog-auto');
+                    if (autoEl) {
+                        autoEl.checked = autoOn;
+                        // ⚠️ 用 onchange=（覆盖式）而不是 addEventListener：面板 DOM 会被折叠屏/整页 DOM 还原重建，
+                        //    addEventListener 会重复叠加（点一次跳多次），覆盖式赋值天然幂等。
+                        autoEl.onchange = function () {
+                            var _iv2 = (document.getElementById('ds-user-input') || {}).value || '';
+                            _dsApplyAutoMode(!!autoEl.checked, _iv2);
+                        };
+                    }
+                    _dsApplyAutoMode(autoOn, _iv);
                     syncAllBox();
                 }
 
@@ -1520,7 +1608,15 @@
                 try { _kbOnP = localStorage.getItem('kb_prompt') !== '0'; } catch (e) {}
                 if (!_skipData && _kbOnP && window.KB && typeof window.KB.search === 'function') {
                     var _kbSrcs = [];
-                    // 【v4.19】改为逐源独立判断。原来 cases 跟着 rules、accidents 跟着 handbook、reports 跟着 wrAll，
+                    // 【v4.20 用户需求：自动关联】开 auto 且问题**命中意图** ⇒ 用按问题挑出的源；
+                    //   关掉 auto 或**未命中意图**（含空问题）⇒ 走下面的逐项手选（即 v4.19 的原行为）。
+                    //   ⇒ 这样"自动"只在有把握时生效，没把握时退回用户自己的选择，绝不因自动而少给资料。
+                    //   实际挑了哪些源可在 `window.__dsAutoPicked` 与面板「自动关联」提示行核对（不做黑箱）。
+                    var _autoSrcs = (dataSource.auto !== false) ? _dsAutoPickSources(userQuery) : null;
+                    if (_autoSrcs) {
+                        _kbSrcs = _autoSrcs.slice();
+                    } else {
+                    // 【v4.19】逐源独立判断。原来 cases 跟着 rules、accidents 跟着 handbook、reports 跟着 wrAll，
                     //   用户在「关联数据」里**无法单独控制**、界面上也看不出它们会被带上 —— 这正是用户反馈
                     //   "关联数据项点与资料中心数据类型不一致、类型少"的根因。现在 9 个源各有独立开关。
                     if (useRules) _kbSrcs.push('rules');
@@ -1532,6 +1628,7 @@
                     if (useReports) _kbSrcs.push('reports');
                     if (usePhone) _kbSrcs.push('phone');
                     if (useDiary) _kbSrcs.push('diary');
+                    }
                     if (_kbSrcs.length) {
                         try {
                             // 先确保索引就绪：资料库/历史报告需从 IndexedDB 预载；大源（检查信息）分片异步建索引

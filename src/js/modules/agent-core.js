@@ -1408,6 +1408,13 @@
     var _budgetTxt = _toolBudget >= 1000 ? (Math.round(_toolBudget / 1000) + 's') : (_toolBudget + 'ms');
     var _toolSpent = 0, _budgetSkipRounds = 0;
     var _t0 = Date.now();   // 【2026-09-21】任务耗时（写入任务记录，供"进化"统计与面板展示）
+    // 【2026-10-06 建议④·消耗可视化】usage 基准快照。
+    //   为什么需要：`window.__agentUsage` 是**本次会话累计**（每调一次 API 就往上加），
+    //   若收口时直接把它写进 taskRecord，则同一会话里第 2、3 个任务记的都是"到那一刻为止的总和"，
+    //   ⇒ 汇总时会**重复累加**（跑得越多虚高得越离谱）。这里记下任务起点读数，收口时做差，
+    //   让 taskRecord.usage 成为**本任务真实消耗**（可安全相加）。
+    var _usageBase = { calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
+    try { (function () { for (var _bk in _usageBase) { _usageBase[_bk] = (window.__agentUsage && window.__agentUsage[_bk]) || 0; } })(); } catch (e) {}
     // 工具进度回传（配合 _executeTool 的每秒心跳）：UI 据此显示"正在调用 X（阶段文案）已等 Ns"
     window.__agentProgress = function (tool, ms, text) {
       _emit({ phase: 'tool-progress', tool: tool, ms: ms, text: text || '' });
@@ -1616,8 +1623,18 @@
             }
           }
         } catch (e) { console.warn('[agent] 完成度门禁校验失败（不影响回答本身）：' + ((e && e.message) || e)); }
-        // 【2026-10-06 建议③】把本次会话累计 usage 写进任务记录（落库后可与 chat 侧 ds_ai_metrics 对照）
-        try { taskRecord.usage = window.__agentUsage ? JSON.parse(JSON.stringify(window.__agentUsage)) : null; } catch (e) {}
+        // 【2026-10-06 建议③】usage 落库。⚠️ 口径修正（同日）：原来写的是**会话累计**，同会话多任务会重复累加
+        //   ⇒ 现在写**本任务增量**（收口读数 − 任务起点基准），可安全跨任务求和；
+        //   会话累计另存 usageSessionTotal 留档（排查对照用，不参与统计）。
+        try {
+            var _uAcc = window.__agentUsage || {};
+            var _uTask = { calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
+            (function () {
+                for (var _uk in _uTask) { _uTask[_uk] = Math.max(0, (_uAcc[_uk] || 0) - (_usageBase[_uk] || 0)); }
+            })();
+            taskRecord.usage = _uTask;
+            taskRecord.usageSessionTotal = JSON.parse(JSON.stringify(_uAcc));
+        } catch (e) {}
         taskRecord.finalOutput = _finalAnswer;
         renderMsgs.push({ role: 'assistant', content: _finalAnswer });
         _emit({ phase: 'answer', content: _finalAnswer });

@@ -232,3 +232,49 @@
     return st;
   };
 })();
+
+// ========== 【2026-10-06 建议④】智能体消耗汇总（「关于系统」一行可见 + 控制台可查）==========
+//   用户口径："不用开控制台也能看本机智能体累计消耗 / 平均每轮"。
+//   数据来源：agent_tasks 每条记录的 usage（**本任务增量** —— 见 agent-core.js 任务起点的基准快照注释）。
+//   ⚠️ 只统计**新口径**记录（带 usageSessionTotal 标记）：v4.16 之前落库的是"会话累计"，
+//      直接相加会重复累加（同一会话跑得越多虚高越厉害）⇒ 跳过并如实标出条数，不糊弄。
+(function() {
+  function _fmt(n) {
+    return n >= 1000000 ? (Math.round(n / 10000) / 100) + 'M' : (n >= 1000 ? (Math.round(n / 100) / 10) + 'k' : String(n));
+  }
+  window.getAgentUsageStats = async function() {
+    var tasks = [];
+    try { tasks = await window.getAgentTasks(200); } catch (e) { tasks = []; }
+    var st = {
+      任务数: 0, 旧口径未计入: 0, calls: 0,
+      prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0,
+      平均每任务tokens: 0, 平均每轮tokens: 0, 缓存命中率: '—'
+    };
+    tasks.forEach(function(t) {
+      if (!t || !t.usage) return;
+      if (!t.usageSessionTotal) { st.旧口径未计入++; return; }
+      st.任务数++;
+      ['calls', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cached_tokens'].forEach(function(k) {
+        st[k] += (t.usage[k] || 0);
+      });
+    });
+    if (st.任务数) {
+      st.平均每任务tokens = Math.round(st.total_tokens / st.任务数);
+      st.平均每轮tokens = st.calls ? Math.round(st.total_tokens / st.calls) : 0;
+      st.缓存命中率 = st.prompt_tokens ? Math.round(st.cached_tokens / st.prompt_tokens * 100) + '%' : '—';
+    }
+    return st;
+  };
+  /** 一行文案（「关于系统」用）。无数据时给明确引导，不留白。 */
+  window.getAgentUsageLine = async function() {
+    var s = await window.getAgentUsageStats();
+    if (!s.任务数) {
+      return s.旧口径未计入
+        ? '暂无新口径记录（旧记录 ' + s.旧口径未计入 + ' 条不计入，跑一次智能体任务后开始统计）'
+        : '暂无记录（跑一次智能体任务后开始统计）';
+    }
+    return s.任务数 + ' 次任务 · ' + s.calls + ' 轮模型调用 · 累计 ' + _fmt(s.total_tokens) + ' tokens'
+      + '（平均每任务 ' + _fmt(s.平均每任务tokens) + '、每轮 ' + s.平均每轮tokens + '）'
+      + (s.缓存命中率 !== '—' ? ' · 缓存命中 ' + s.缓存命中率 : '');
+  };
+})();

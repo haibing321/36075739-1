@@ -1427,6 +1427,25 @@ window.showAboutPanel = function() {
     var p = document.getElementById('about-panel');
     if (p) p.style.display = 'flex';
     try { window.stFillAboutOffline(); } catch (e) {}
+    try { window.stFillAboutAgentUsage(); } catch (e) {}
+};
+
+/**
+ * 【2026-10-06 用户口径】「关于系统」里显示**本机智能体累计消耗**（不用开控制台就能看）。
+ *   与诊断信息的分工：这一行**不受「设置 → 调试」开关控制** —— 它是用户关心的常规信息，
+ *   不是缓存/SW 那类细节（后者关闭时连检测都不做）。
+ *   数据来源：agent-memory.js 的 getAgentUsageLine()（聚合任务记录里的**本任务增量** usage）。
+ *   失败时如实写出原因，不留白也不假装"暂无记录"。
+ */
+window.stFillAboutAgentUsage = async function () {
+    var el = document.getElementById('about-agent-usage');
+    if (!el) return;
+    try {
+        var line = (typeof window.getAgentUsageLine === 'function') ? await window.getAgentUsageLine() : '';
+        el.innerHTML = '🤖 智能体消耗：' + (line || '暂无记录（跑一次智能体任务后开始统计）');
+    } catch (e) {
+        el.innerHTML = '🤖 智能体消耗：读取失败（' + ((e && e.message) || e) + '）';
+    }
 };
 
 /**

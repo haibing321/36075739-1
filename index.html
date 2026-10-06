@@ -2136,11 +2136,17 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.15</span> · 2026.10.05</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.16</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
             </div>
+
+            <!-- 【2026-10-06 用户口径】本机智能体消耗：一行可见，**不受「设置 → 调试」开关控制**
+                 （它是用户关心的常规信息，不是诊断细节；用户原话"不用开控制台也能看"）。
+                 数据由 agent-memory.js 的 getAgentUsageLine() 给出：任务数 / 模型调用轮数 / 累计 tokens
+                 / 平均每任务与每轮 / 缓存命中率。跑过任务后才有数字，无记录时给出明确引导。 -->
+            <div id="about-agent-usage" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:9px 13px;margin-bottom:8px;font-size:0.76rem;color:#166534;line-height:1.7;">🤖 智能体消耗：统计中…</div>
 
             <!-- 【2026-09-23】离线状态：用户关心"折叠开合到底走不走离线数据"，这里直接可见。
                  【2026-10-04 用户口径】改为**默认隐藏**、由「设置 → 🐞 调试」开关控制显隐
@@ -2173,6 +2179,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.16 近期更新（智能体消耗可见 + usage 口径修正） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.16 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🤖 「关于系统」新增**智能体消耗**一行（**不用开控制台就能看**，且不受「设置 → 调试」开关控制）：N 次任务 · 模型调用轮数 · 累计 tokens（平均每任务 / 平均每轮）· 缓存命中率。数据来自历史任务记录，跑一次智能体后开始统计；无记录时给出明确引导而不是留白。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 usage 口径（会虚高）：此前落库写的是**本次会话累计** ⇒ 同一会话里跑第 2、3 个任务时记的都是"到那一刻为止的总和"，汇总会**重复累加**（跑得越多虚高越离谱）。改为**本任务增量**（任务起点快照做差），旧记录汇总时**跳过并如实标注条数**，不糊弄。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 本机实测优化效益：工具按意图召回后，每轮模型调用少挂 **61%~71%** 的工具声明（约 **1.7k~2.5k tokens/轮**，一次 4 轮任务省 **6.7k~10k tokens**）；意图识别不准时自动退回全量，不劣化。这批数字现在可以直接在「关于系统」里对照实机消耗。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 承 v4.15：规章导入去水印（PDF / OFD / DOCX 同一把尺子）。本轮套件 agent-core 扩到含「消耗口径」守护断言（验证增量落库、旧记录不虚加、关于面板可见）。</span></div>
+                </div>
             </div>
 
             <!-- v4.15 近期更新（规章导入自动去水印） -->

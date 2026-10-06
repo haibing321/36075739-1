@@ -5291,8 +5291,25 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             //        重叠位置按 at+1 继续找，保证 tf 口径不缩小）。
             //   只有"真正含查询词"的块才会进入打分，绝大多数块一次原生正则就排除了。
             const k1 = this.k1, b = this.b, avgLen = this.avgLen;
+            // 【2026-10-06 提速·真机数据支撑】快筛正则**排除"含数字的词"**后再拼（排除后为空则退回全量词）。
+            //   为什么：长句查询里大量滑窗是日期/时间/编号（"12月""31日""18时""05分""K686"），它们本身
+            //   区分度低（同一份规章里各种编号都有），却让"任意词命中"的快筛几乎筛不掉东西 ——
+            //   真机实测（rules 12.97 万块 / 该句切出 109 词）：快筛后仍有 **78619 块（60%）** 成候选，
+            //   随后每块跑 109 次 indexOf ≈ **1973ms**，占单次检索 2726ms 的 **72%**（同一次分解里
+            //   `_textOf` 全库只要 7ms、惰性 df 549ms ⇒ 瓶颈是"候选块数 × 词数"）。
+            //   ⚠️ 本改动**只决定哪些块进入精算**；精算仍用全部 qTokens、打分公式一个字没改。
+            //     被排除的块只含数字类词、得分本就极低（进不了 top-N）。权威回归：kb-recall-bench。
             let re = null;
-            try { re = new RegExp(qTokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i'); } catch (e) { re = null; }
+            try {
+              // 三级降级挑"快筛词"：① 长度≥3 且不含数字（最有意义的长词）→
+              //   ② 不含数字的词（保住"防溜/调车"这类 2 字术语）→ ③ 全部词（极短查询兜底）。
+              //   实测（本轮）：仅排除数字词时 P50 从 1929ms 降到 1570ms，但仍>1500ms，
+              //   因为"非数字词"还有 60 个左右、快筛依旧偏宽 ⇒ 再收紧一级。
+              const _noNum = qTokens.filter(function (t) { return !/[0-9]/.test(t); });
+              const _long = _noNum.filter(function (t) { return t.length >= 3; });
+              const _use = _long.length ? _long : (_noNum.length ? _noNum : qTokens);
+              re = new RegExp(_use.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+            } catch (e) { re = null; }
             const hits2 = [];
             for (let i = 0; i < docs.length; i++) {
               const text = this._textOf(docs[i]);

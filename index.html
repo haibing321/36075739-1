@@ -1119,10 +1119,21 @@
                                             <div class="ds-datasource-head">🔗 关联数据（本次使用的本地资料）</div>
                                             <div class="ds-datasource-head" style="font-weight:400;font-size:0.72rem;opacity:0.75;margin-top:-2px;">仅控制本地资料注入；联网请用 🌐 地球按钮</div>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-all"> ☑️ 全选 / 全不选</label>
+                                            <!-- 【v4.19 用户口径】用户指出"关联数据的类型比资料中心少"：
+                                                 原来只有 6 项，且 cases（法规/案例汇编）隐含在"规章制度"里、
+                                                 accidents（事故案例）隐含在"检查手册"里、reports（历史报告）隐含在
+                                                 "智能写作资料"里 —— 用户**无法单独控制**，也没法从界面上知道它们会被带上。
+                                                 现在拆成 9 项独立可勾（与「设置 → 数据管理」的数据类型对齐）；
+                                                 顺序也与数据管理一致，便于逐项对照。
+                                                 ⚠️ 老配置（localStorage ds_datasource_v1 里没有新字段）由 doubao.js 的
+                                                 loadDsCfg 按原隐含关系回填勾选状态，保证"看到的 = 实际注入的"。 -->
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-rules" value="rules" checked> 📋 规章制度</label>
+                                            <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-cases" value="cases"> 📚 法规/案例汇编</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-issue" value="issue" checked> 📊 检查台账</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-handbook" value="handbook"> 📖 检查手册</label>
-                                            <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-wr-all" value="wr_all"> ✍️ 智能写作资料</label>
+                                            <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-accidents" value="accidents"> 🚨 事故案例</label>
+                                            <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-wr-all" value="wr_all"> ✍️ 写作资料库</label>
+                                            <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-reports" value="reports"> 📄 历史报告</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-phone" value="phone"> 📞 应急电话</label>
                                             <label class="ds-datasource-row"><input type="checkbox" id="ds-dialog-diary" value="diary"> 📝 工作日志</label>
                                             <hr class="ds-datasource-sep">
@@ -2136,7 +2147,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.18</span> · 2026.10.06</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.19</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2179,6 +2190,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.19 近期更新（关联数据类型补全：6 项 → 9 项） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.19 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔗 补全「关联数据」类型（用户反馈"项点与资料中心数据类型不一致、类型少"）：**6 项 → 9 项**，把原来**藏在别的项里、无法单独控制**的三个源拆成独立开关 —— 📚 **法规/案例汇编**（原来跟着"规章制度"）、🚨 **事故案例**（原来跟着"检查手册"）、📄 **历史报告**（原来跟着"写作资料库"）。同时把"智能写作资料"更名为**写作资料库**，并把整个列表顺序与「设置 → 数据管理」对齐，便于逐项对照。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔁 **老配置自动迁移**：老设备上存的是旧字段，打开面板时会按原来的隐含关系**回填勾选状态**（勾了规章制度就显示汇编也勾上）⇒ **界面上看到的 = 实际会注入的**，且行为与升级前**一字不变**；新保存的配置同时写新老字段，旧备份导入也照常可用。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 为何仍不是"全部数据类型"：**术语库**与**备忘录**属工具类数据（不进知识库索引、不参与检索），故不列入「关联数据」；其余 9 类已与数据管理一一对应。</span></div>
+                </div>
             </div>
 
             <!-- v4.18 近期更新（智能对话「本地资料」三种静默情况改为如实告知） -->

@@ -1306,26 +1306,44 @@
             })();
             // 【v3.76】数据源默认值的**唯一**定义。此前 loadDsCfg()、_dsRunStream()、dsBuildSystemPrompt()
             //   各写一份，且 remember 默认值不一致（面板默认 true、会话兜底默认 false）—— 三处漂移的典型隐患。
-            var DS_DEFAULT_CFG = { rules: true, issue: true, handbook: false, wrAll: false, phone: false, diary: false, remember: true };
+            // 【v4.19 用户口径：关联数据类型与资料中心不一致】把原来的"隐含关系"拆成独立项后，默认值保持与老行为等价：
+            //   老默认 rules=true ⇒ cases（法规/案例汇编）跟着 rules；handbook/wrAll 默认 false ⇒ 对应新项也 false。
+            //   ⚠️ 老配置（localStorage 的 ds_datasource_v1 里没有新字段）由 loadDsCfg 按同样关系回填勾选状态，
+            //      保证"界面上看到的"与"实际注入的"一致（不再出现看着没勾、其实带上了的静默不一致）。
+            var DS_DEFAULT_CFG = {
+                rules: true, cases: true, issue: true, handbook: false, accidents: false,
+                materials: false, reports: false, phone: false, diary: false, remember: true,
+                wrAll: false   // 兼容字段：老代码/旧备份读取用；保存时由 getDsCfg 同步为 materials 的值
+            };
             (function initDataSourceDropdown() {
                 var btn = document.getElementById('ds-datasource-btn');
                 var menu = document.getElementById('ds-datasource-menu');
                 if (!btn || !menu) return;
 
+                // 【v4.19】面板项清单（DOM id；顺序与 index.html 一致）与"DOM id → 持久化字段"映射表。
+                //   注意 DOM 用连字符、字段用驼峰，必须显式映射：`def['wr-all']` 恒为 undefined 是历史 bug（已修勿改回）。
+                var _DS_CFG_KEYS = ['rules','cases','issue','handbook','accidents','wr-all','reports','phone','diary'];
+                var _DS_CFG_KEYMAP = { 'wr-all': 'materials' };   // 面板「写作资料库」对应 KB 的 materials 源
                 function getDsCfg() {
-                    return {
+                    var cfg = {
                         rules: document.getElementById('ds-dialog-rules').checked,
+                        cases: document.getElementById('ds-dialog-cases').checked,
                         issue: document.getElementById('ds-dialog-issue').checked,
                         handbook: document.getElementById('ds-dialog-handbook').checked,
-                        wrAll: document.getElementById('ds-dialog-wr-all').checked,
+                        accidents: document.getElementById('ds-dialog-accidents').checked,
+                        materials: document.getElementById('ds-dialog-wr-all').checked,
+                        reports: document.getElementById('ds-dialog-reports').checked,
                         phone: document.getElementById('ds-dialog-phone').checked,
                         diary: document.getElementById('ds-dialog-diary').checked,
                         remember: document.getElementById('ds-dialog-remember').checked
                     };
+                    // 兼容字段：老代码/旧备份读的是 wrAll（当年"写作资料库"同时含 materials+reports）
+                    cfg.wrAll = cfg.materials;
+                    return cfg;
                 }
                 function syncAllBox() {
                     var all = document.getElementById('ds-dialog-all');
-                    if (all) all.checked = ['rules','issue','handbook','wr-all','phone','diary'].every(function(k){
+                    if (all) all.checked = _DS_CFG_KEYS.every(function(k){
                         var el = document.getElementById('ds-dialog-' + k); return el && el.checked;
                     });
                 }
@@ -1337,13 +1355,17 @@
                         var _iv = (document.getElementById('ds-user-input') || {}).value || '';
                         _cf.textContent = _iv.trim() ? '应用并发送' : '应用';
                     }
-                    // ⚠️ DOM 后缀是 wr-all，而持久化字段名是 wrAll：
-                    // 原先 def['wr-all'] 恒为 undefined，等于每次打开「关联数据」面板都把这一项强制取消勾选，
-                    // 用户勾选并「记住此次选择」后刷新即静默失效（会话内因 _sessionDataSource 仍带 wrAll 而看不出来）。
-                    var _DS_CFG_KEYMAP = { 'wr-all': 'wrAll' };
-                    ['rules','issue','handbook','wr-all','phone','diary','remember'].forEach(function(k){
+                    // 【v4.19 迁移】老配置里没有 cases/accidents/materials/reports 四个字段，它们原来是**隐含**的：
+                    //   勾「规章制度」⇒ 附带法规/案例汇编；勾「检查手册」⇒ 附带事故案例；勾「写作资料库」⇒ 附带历史报告。
+                    //   这里按同样的隐含关系回填勾选状态 ⇒ 老用户在面板上看到的就是实际会注入的内容（不再静默不一致）。
+                    var def2 = Object.assign({}, def || {});
+                    if (def2.cases === undefined) def2.cases = !!def2.rules;
+                    if (def2.accidents === undefined) def2.accidents = !!def2.handbook;
+                    if (def2.materials === undefined) def2.materials = !!def2.wrAll;   // 老字段名是 wrAll
+                    if (def2.reports === undefined) def2.reports = !!def2.wrAll;
+                    _DS_CFG_KEYS.concat(['remember']).forEach(function(k){
                         var el = document.getElementById('ds-dialog-' + k);
-                        if (el) el.checked = !!(def[_DS_CFG_KEYMAP[k] || k]);
+                        if (el) el.checked = !!(def2[_DS_CFG_KEYMAP[k] || k]);
                     });
                     syncAllBox();
                 }
@@ -1461,6 +1483,14 @@
                 var _skipData = !!(opts && opts.skipData);
                 var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
                 var useWrAll = dataSource.wrAll, usePhone = dataSource.phone, useDiary = dataSource.diary;
+                // 【v4.19 用户口径：关联数据类型比资料中心少】四个原来是"隐含跟随"的源拆成独立开关：
+                //   ⚠️ 老配置（localStorage 里没有这些字段）必须**回退到原来的隐含关系**，保证老设备行为一字不变：
+                //     勾规章制度 ⇒ 带法规/案例汇编；勾检查手册 ⇒ 带事故案例；勾写作资料库 ⇒ 带历史报告。
+                //   新配置（面板"应用"后写入）则四个字段各自独立生效。
+                var useCases = (dataSource.cases === undefined) ? !!useRules : !!dataSource.cases;
+                var useAccidents = (dataSource.accidents === undefined) ? !!useHandbook : !!dataSource.accidents;
+                var useMaterials = (dataSource.materials === undefined) ? !!useWrAll : !!dataSource.materials;
+                var useReports = (dataSource.reports === undefined) ? !!useWrAll : !!dataSource.reports;
 
                 let sysParts = [
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
@@ -1490,10 +1520,16 @@
                 try { _kbOnP = localStorage.getItem('kb_prompt') !== '0'; } catch (e) {}
                 if (!_skipData && _kbOnP && window.KB && typeof window.KB.search === 'function') {
                     var _kbSrcs = [];
-                    if (useRules) _kbSrcs.push('rules', 'cases');   // 【2026-09-22】案例/汇编类已从 rules 拆出为独立源（避免挤占条款召回），对话仍可按需参考
+                    // 【v4.19】改为逐源独立判断。原来 cases 跟着 rules、accidents 跟着 handbook、reports 跟着 wrAll，
+                    //   用户在「关联数据」里**无法单独控制**、界面上也看不出它们会被带上 —— 这正是用户反馈
+                    //   "关联数据项点与资料中心数据类型不一致、类型少"的根因。现在 9 个源各有独立开关。
+                    if (useRules) _kbSrcs.push('rules');
+                    if (useCases) _kbSrcs.push('cases');           // 法规/案例汇编（2026-09-22 从 rules 拆出的独立源）
                     if (useIssue) _kbSrcs.push('issues');
-                    if (useHandbook) _kbSrcs.push('handbook', 'accidents');   // 【2026-09-22】事故案例与手册同为四级目录数据，随手册开关一起纳入
-                    if (useWrAll) _kbSrcs.push('materials', 'reports');
+                    if (useHandbook) _kbSrcs.push('handbook');
+                    if (useAccidents) _kbSrcs.push('accidents');   // 事故案例（与手册平行的第二份四级目录数据）
+                    if (useMaterials) _kbSrcs.push('materials');
+                    if (useReports) _kbSrcs.push('reports');
                     if (usePhone) _kbSrcs.push('phone');
                     if (useDiary) _kbSrcs.push('diary');
                     if (_kbSrcs.length) {

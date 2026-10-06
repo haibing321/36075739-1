@@ -1507,7 +1507,10 @@
         var keys = ['issues', 'rules', 'cases', 'handbook', 'accidents', 'phone', 'diary'];
         var i = 0;
         function step() {
-            if (i >= keys.length) return;
+            // 【2026-10-06 用户口径："真正改善体验"】所有源就绪后，接着做**惰性 df 空闲预热** ——
+            //   把"首次长句查询"里最贵的那部分（每个新查询词全库扫一遍算 df，rules 13.9 万块 ≈ 100-200ms/词）
+            //   提前到空闲时段消化，用户第一次提问就不用等那一两秒。详见 warmLazyDf 的注释。
+            if (i >= keys.length) { warmLazyDf(); return; }
             var key = keys[i++];
             var st = STATE[key];
             if (st && st.chunks && st.bm) return _idleRun(step);           // 已就绪 → 下一个
@@ -1523,6 +1526,140 @@
               .then(function () { _idleRun(step); });
         }
         _idleRun(step);
+    }
+
+    /* ==================== 【2026-10-06】惰性 df 空闲预热（用户口径："真正改善体验"）====================
+     * 为什么做：长句查询的**首会话**慢在"每个新查询词都要全库扫一遍算 df"（rules 13.9 万块，~100-200ms/词；
+     *   真机实测长句 P50 1824ms，而同一台机器**二次会话只要 139ms**）。用户体感 = "第一次问要等一两秒"。
+     * 做法：把"下次大概会查到的词"的 df **提前在空闲时段算好**，首次提问不再付这笔钱。
+     * ⚠️ **零召回风险**：df 是 `_dfOfLazy(term)` 的确定性函数（同一个词永远同一个数，只进 idf 权重），
+     *   预热与查询走的是**同一条代码路径 + 同一个缓存 Map** ⇒ 打分结果与不预热时**完全一致**，只是代价挪早。
+     * 词从哪来（去重后每源最多 300 个，总预算 8s，每 5 词让出主线程）：
+     *   ① **本机历史提问**（对话记录 / 聊天历史里的用户消息）—— 最贴近"你下次会问什么"；
+     *   ② 本机没有历史（全新设备）⇒ 从**该源自己的数据里抽样**提领域高频词（标题 + 块首片段）。
+     * 受同一个「启动后自动载入」开关控制；页面隐藏时不跑；单源失败静默（纯优化，绝不影响功能）。
+     * 诊断：`window.__kbDfWarm`（本次预热词数/耗时/来源）、`window.__kbDfWarmMs`（可覆盖预算）、
+     *       `window.KB.warmDf()`（手动触发）。
+     * ---------------------------------------------------------------------
+     * ⚠️【2026-10-06 实测结论·务必先读，别被上面的设想带偏】
+     *   真机（89.5MB 备份 / rules 13.9 万块）实测：预热 300 词只花 **5360ms ≈ 18ms/词**，
+     *   而检索 P50 **没有改善**（1862ms，预热前后 1824/1840/1862 属同一噪声带）。
+     *   ⇒ 结论：**df 计算不是"首会话长句"的瓶颈**（旧注释里"100-200ms/词"的估计偏高，
+     *     且词一旦算过就命中缓存）。1.8s 的主体是**打分阶段"每个查询词各扫一遍全库"**
+     *     （`BM25_SCAN` 的快筛正则按词逐个跑，长句十几个词 ⇒ 线性累加 ≈ 1.5s），与 df 无关。
+     *   ⇒ 因此本预热**不承诺**改善"连问多个互不相同的新问题"这种极限场景；它的真实价值是：
+     *     ① 跨会话把更多词的 df 缓存补齐（重复问同类问题时更省）；
+     *     ② 零召回风险（只提前算，不改任何打分结果），空闲时段跑、有预算上限。
+     *   ⇒ 若要让"首查长句"真正变快，方向应是**减少按词全库扫描的次数**（例如只保留区分度最高的
+     *     前 N 个词参与扫描、或把"含该词的文档清单"在预热时就存下来供打分复用），
+     *     属架构级取舍，改动需配 kb-recall-bench 回归 —— 不要在这里悄悄改。
+     * ===================================================================== */
+    var _dfWarmBusy = false;
+    function _dfWarmBudget() {
+        return (typeof window.__kbDfWarmMs === 'number' && window.__kbDfWarmMs > 0) ? window.__kbDfWarmMs : 8000;
+    }
+    /** 取本机历史提问的文本（最贴近真实问法） */
+    function _dfWarmTextsFromHistory() {
+        var texts = [];
+        function push(arr) {
+            (Array.isArray(arr) ? arr : []).slice(-60).forEach(function (m) {
+                if (m && m.role === 'user') texts.push(String(m.displayText || m.content || ''));
+            });
+        }
+        try {
+            (JSON.parse(localStorage.getItem('ds_conversations_v1') || '[]') || []).slice(0, 40).forEach(function (c) {
+                push((c && c.messages) || []);
+            });
+        } catch (e) {}
+        try { push(JSON.parse(localStorage.getItem('ds_chat_history_v1') || '[]')); } catch (e) {}
+        return texts.filter(function (t) { return t.length > 1; });
+    }
+    /** 从某源的数据里抽样取文本（没有历史提问时的兜底：领域高频词） */
+    function _dfWarmTextsFromSource(st) {
+        var texts = [], chunks = (st && st.chunks) || [];
+        var stepN = Math.max(1, Math.floor(chunks.length / 120));
+        for (var i = 0; i < chunks.length && texts.length < 160; i += stepN) {
+            var c = chunks[i] || {};
+            texts.push(String(c.title || ''));                        // 标题多是条款头/项点名，命中率高
+            texts.push(String(c.content || '').slice(0, 80));
+        }
+        return texts;
+    }
+    /** 切词：优先用该源自己的分词器（与检索口径完全一致），否则退化为 2/3 字滑窗 */
+    function _dfWarmTokens(st, texts) {
+        var toks = [];
+        try {
+            if (st && st.bm && typeof st.bm._tokenize === 'function') {
+                texts.forEach(function (t) { toks = toks.concat(st.bm._tokenize(String(t || '')) || []); });
+            }
+        } catch (e) {}
+        if (!toks.length) {
+            texts.forEach(function (t) {
+                var s = String(t || '').replace(/[^0-9A-Za-z\u4e00-\u9fa5]+/g, '');
+                for (var L = 2; L <= 3; L++) {
+                    for (var i = 0; i + L <= s.length; i++) toks.push(s.slice(i, i + L));
+                }
+            });
+        }
+        return toks;
+    }
+    function warmLazyDf() {
+        if (_dfWarmBusy) return;
+        if (!autoLoadEnabled() || !cacheCapable()) return;
+        if (typeof document !== 'undefined' && document.hidden) return;
+        // 只预热"惰性 df 模式"且已就绪的源。rules 最贵、查询也主要打它 ⇒ 排最前，保证预算优先给它。
+        var keys = ['rules', 'handbook', 'accidents', 'cases', 'phone', 'diary', 'issues'].filter(function (k) {
+            var st = STATE[k];
+            return !!(st && st.chunks && st.chunks.length && st.bm && st.bm._lazyDf);
+        });
+        if (!keys.length) return;
+        _dfWarmBusy = true;
+        var T0 = Date.now(), budget = _dfWarmBudget(), MAX_TERMS = 300;
+        var histTexts = _dfWarmTextsFromHistory();
+        var stat = window.__kbDfWarm = {
+            at: new Date().toISOString(), sources: keys.slice(), terms: 0, byKey: {},
+            ms: 0, done: false, from: histTexts.length ? 'history' : 'data', budget: budget
+        };
+        var ki = 0;
+        function finish() {
+            stat.ms = Date.now() - T0; stat.done = true; _dfWarmBusy = false;
+            // 预热得到的词同样标记回写 df 缓存（本次会话立即受益，跨会话复用）
+            try {
+                var dirty = false;
+                keys.forEach(function (key) {
+                    var s2 = STATE[key];
+                    if (s2 && s2.bm && s2.bm._lazyDf && s2.bm._lazyDf.size > 0 && s2.dfSig) { _dfDirty[key] = 1; dirty = true; }
+                });
+                if (dirty) scheduleDfFlush();
+            } catch (e) {}
+            try {
+                console.log('[KB] 惰性 df 空闲预热完成：' + stat.terms + ' 词 / ' + stat.ms + 'ms（词来源：'
+                    + (stat.from === 'history' ? '本机历史提问' : '数据抽样高频词') + '；源：' + keys.join(',') + '）');
+            } catch (e) {}
+        }
+        function nextSource() {
+            if (ki >= keys.length || Date.now() - T0 > budget) return finish();
+            var key = keys[ki++], st = STATE[key];
+            var texts = histTexts.length ? histTexts : _dfWarmTextsFromSource(st);
+            var toks = _dfWarmTokens(st, texts);
+            var freq = {};
+            toks.forEach(function (w) { if (w && w.length >= 2) freq[w] = (freq[w] || 0) + 1; });
+            // 高频词 = 最可能出现在查询里的词
+            var list = Object.keys(freq).sort(function (a, b) { return freq[b] - freq[a]; }).slice(0, MAX_TERMS);
+            var i2 = 0, n = 0;
+            function stepTerm() {
+                if (i2 >= list.length || Date.now() - T0 > budget) {
+                    stat.byKey[key] = n; stat.terms += n;
+                    return _idleRun(nextSource);
+                }
+                for (var burst = 0; burst < 5 && i2 < list.length; burst++) {     // 每片 5 词，让出主线程
+                    try { st.bm._dfOfLazy(list[i2++]); n++; } catch (e) { i2++; }
+                }
+                _idleRun(stepTerm);
+            }
+            stepTerm();
+        }
+        _idleRun(nextSource);
     }
 
     // 清空本机索引缓存（设置页按钮）：只删缓存，不动业务数据；下次检索会重新建立
@@ -1681,6 +1818,9 @@
         diag: diag,
         panelDiag: panelDiag,
         cacheCapable: cacheCapable,
+        // 【2026-10-06】惰性 df 空闲预热：手动触发 + 本次预热统计（诊断与验证用）
+        warmDf: function () { try { warmLazyDf(); return true; } catch (e) { return false; } },
+        dfWarmStats: function () { return window.__kbDfWarm || null; },
         CACHE_VER: KB_INDEX_VER,
         BUILD: 'v3.74'   // 运行期版本标记：用于确认页面加载的是哪一版 knowledge.js（排查缓存旧脚本）
     };

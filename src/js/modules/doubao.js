@@ -1569,6 +1569,9 @@
                 //   首字更快；也避免模型拿着台账数据去回答一句问候（跑题式啰嗦的常见来源）。
                 //   判定与「思考模式自动档」复用同一个函数，保证两者档位一致。
                 var _skipData = !!(opts && opts.skipData);
+                // 【v4.20 用户需求】每轮重置"本次参考"记录 —— 供回答尾部的系统行使用（下面各分支分别写入，
+                //   三种状态都如实记录：已注入哪些源 / 未启用任何源 / 检索层异常；skipData 时保持 null）。
+                try { window.__dsLastSrcs = null; } catch (e) {}
                 var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
                 var useWrAll = dataSource.wrAll, usePhone = dataSource.phone, useDiary = dataSource.diary;
                 // 【v4.19 用户口径：关联数据类型比资料中心少】四个原来是"隐含跟随"的源拆成独立开关：
@@ -1648,6 +1651,8 @@
                             }
                             var _kbTxt = window.KB.buildRefText(_kbR, { totalBudget: DS_KB_TOTAL_BUDGET });
                             sysParts.push(_kbTxt || '【本地资料】本次未检索到相关内容（可能尚未导入资料）。');
+                            // 【v4.20】记录本轮**实际注入**的源（含是否走自动关联）⇒ 回答尾部那行"本次参考"取它
+                            try { window.__dsLastSrcs = { srcs: _kbSrcs.slice(), auto: !!_autoSrcs }; } catch (e2) {}
                         } catch (e) {
                             // 【2026-10-06 用户反馈修复】原先这里只 `console.warn` ⇒ **手机上根本没有控制台**，
                             //   于是静默回退旧逻辑，用户只看到回答里说"本地没有资料/工具"，完全无从判断原因。
@@ -1656,9 +1661,12 @@
                             sysParts.push('【本地资料】本次本地检索层异常，未能使用本地资料（原因：' + _kbErr + '）。'
                                 + '请如实告诉用户"本地资料本次不可用（' + _kbErr + '）"，不要声称"本地没有检索工具"，也不要编造内容。');
                             console.warn('[dsBuildSystemPrompt] 统一检索层失败，回退旧逻辑：', _kbErr);
+                            try { window.__dsLastSrcs = { error: _kbErr }; } catch (e3) {}
                             _kbOnP = false;
                         }
                     } else {
+                        // 【v4.20】未启用任何数据源 ⇒ 同样记入"本次参考"，回答尾部会如实告诉用户
+                        try { window.__dsLastSrcs = { srcs: [] }; } catch (e4) {}
                         // 【2026-10-06】一个数据源都没启用时，原来**完全不提示** ⇒ 模型只能自己猜"本地没资料"。
                         //   明确写出来，并指出用户该去哪里开启（输入框上方的「关联数据」）。
                         sysParts.push('【本地资料】当前会话未启用任何本地数据源，本次回答不含本地库内容。'
@@ -2188,6 +2196,36 @@
                 var t = e.target;
                 if (t && t.id === 'ds-user-input' && e.key === 'Enter' && !e.shiftKey) dsChoiceHide();
             }, true);
+
+            /* ==================== 【v4.20】回答尾部「本次参考」一行 ====================
+             * 为什么做：用户两轮反馈都围绕同一件事 —— **不知道本地资料到底有没有被用上**
+             *   （先出现"本地数据库未提供检索工具"的误导表述，后是"关联数据看不见隐含注入"）。
+             * 做法：每轮回答结束后，以**系统行**（非模型输出、不进历史、不会被重新生成带出）如实标出
+             *   本轮实际注入了哪些本地源；三种状态都呈现（已注入 / 未启用任何源 / 检索层异常）。
+             * 关闭方式：`localStorage.setItem('ds_kb_badge','0')`（默认开）。
+             * ===================================================================== */
+            window.__dsAppendKbBadge = function () {
+                try {
+                    try { if (localStorage.getItem('ds_kb_badge') === '0') return; } catch (e) { return; }
+                    // 只在本轮**正常产出回答**时追加：失败（❌ 开头）、空回答、被用户停止（无内容）都不打扰
+                    var last = dsHistory[dsHistory.length - 1] || {};
+                    if (last.role !== 'assistant') return;
+                    var txt = String(last.content || '');
+                    if (!txt || /^❌/.test(txt)) return;
+                    var info = window.__dsLastSrcs || null, line;
+                    var _label = function (k) { return (window.__dsSrcLabel && window.__dsSrcLabel[k]) || k; };
+                    if (info && info.error) {
+                        line = '📎 本次参考：本地资料不可用（' + info.error + '）';
+                    } else if (info && info.srcs && info.srcs.length) {
+                        line = '📎 本次参考：' + info.srcs.map(_label).join(' · ') + (info.auto ? '（自动关联）' : '');
+                    } else if (info && info.srcs && !info.srcs.length) {
+                        line = '📎 本次参考：未启用任何本地数据源（可在输入框上方「关联数据」勾选）';
+                    } else {
+                        line = '📎 本次参考：未使用本地资料（寒暄/闲聊类问题不检索）';
+                    }
+                    dsAppendMsg('system', line);
+                } catch (e) {}
+            };
 
             window.dsSendMsg = async function() {
                 if (dsStreaming) return;
@@ -3339,6 +3377,9 @@
                         try { _turnMetrics.outChars = String((dsHistory[assistantIdx] || {}).content || '').length; } catch (e4) {}
                         if (typeof window.dsRecordAiMetrics === 'function') window.dsRecordAiMetrics(_turnMetrics);
                     } catch (e) {}
+                    // 【v4.20 用户需求】回答结束后附一行「本次参考」（系统行、不进历史）：让用户不必开面板就知道
+                    //   本轮实际用了哪些本地资料。只在本轮**正常产出回答**时追加（失败/停止/空回答不打扰）。
+                    try { window.__dsAppendKbBadge && window.__dsAppendKbBadge(); } catch (e) {}
                 }
             };
 

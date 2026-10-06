@@ -2136,7 +2136,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.16</span> · 2026.10.06</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.17</span> · 2026.10.06</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2179,6 +2179,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.17 近期更新（知识库缓存失效范围 + 汇编源预热 + 真实数据基准复测） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.17 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 修「知识库缓存被无关写入清空」：导入/编辑检查信息时，原来会把**全部 9 个源**的知识库索引与惰性 df 缓存一起清掉（真机实测一次导入产生 **18 次缓存删除**）⇒ 规章 / 手册 / 电话 / 日志的缓存全被牵连，下一次首次检索又要重付全价。现在**按类只清对应源**。实测删除次数 **18 → 2**（剩下 2 次是检查信息自己的索引与 df 缓存，属正确行为）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📚 修「汇编文档源漏配预热」：`cases`（法规 / 案例汇编）是之前从规章里拆出的独立源，拆分时漏进了两处「启动预载 / 空闲预热」名单 ⇒ 它永远只能等首次检索现建索引（实测 `cases:0/1`，其余有数据的源都是 `1/xxx`）。现已补入，实测 **`cases:1/1`**。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 真实数据基准复测（89.5MB 备份 / 4 万条检查信息）：冷启动台账就绪 **1.0s**、堆 **242MB**（门禁 350MB ✓）；4 万条 Excel 覆盖导入 **2s**（修复前 317s ✓）；备份恢复 **8s**。**修正一处误报**：此前"恢复丢 59 条"实为基准套件期望值过期（写死 43585，而备份已随使用变为 43526）⇒ 已改为**从备份动态读取**期望值，数据再变也不会误报。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⏱ 已知未达标（如实记录，不掩盖）：检索**首会话**长句 P50 **1.8s**（门禁 1.5s；同一机器上二次会话 **139ms**）—— 属「内存优先」取舍下惰性 df 全库扫描的固有代价（每个新词扫一遍 13.9 万块），**非退化**（修复前为 5.9s/次）。待评估方向：把 df 预热挪进空闲时段，或另立"稳态"指标与冷启动指标分开考核。</span></div>
+                </div>
             </div>
 
             <!-- v4.16 近期更新（智能体消耗可见 + usage 口径修正） -->

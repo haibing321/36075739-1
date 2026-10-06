@@ -1452,7 +1452,11 @@
         // 【启动优化 2026-09-18】顺序调整：轻的源在前（规章/手册/电话 → 资料/报告），
         // **最重的检查信息放最后**。这样用户在这批恢复进行到一半时就开始用系统，
         // 先有的也是"千条级小源"，4 万条的大源（缓存 33MB 级）在最后单独跑，不挡前面的。
-        var keys = ['rules', 'handbook', 'phone', 'diary', 'materials', 'reports', 'issues'];
+        // 【2026-10-06】`cases` 补入本名单。它是 2026-09-22 从 rules 拆出的"汇编文档"源
+        //   （见下方 SOURCES 定义：从 getRulesData 里按标题挑 CASE_DOC_RE），拆出时**漏配**了这两处预载/预热名单，
+        //   于是它永远只能等首次检索被懒建 ⇒ 实测 `cases:0/1`（其余有数据的源都 1/xxx），
+        //   首次检索还要现付一次 chunkRules。放在 rules 之后：两者同源、语义相邻。
+        var keys = ['rules', 'cases', 'handbook', 'phone', 'diary', 'materials', 'reports', 'issues'];
         var i = 0, loaded = 0;
         function step() {
             if (i >= keys.length) {
@@ -1499,7 +1503,8 @@
     function warmCommonSources() {
         if (!autoLoadEnabled() || !cacheCapable()) return;
         if (typeof document !== 'undefined' && document.hidden) return;    // 页面在后台先不做
-        var keys = ['issues', 'rules', 'handbook', 'accidents', 'phone', 'diary'];
+        // 【2026-10-06】`cases` 同补入（原因见 autoLoadCaches 同处注释：拆源时漏配预热名单）。
+        var keys = ['issues', 'rules', 'cases', 'handbook', 'accidents', 'phone', 'diary'];
         var i = 0;
         function step() {
             if (i >= keys.length) return;

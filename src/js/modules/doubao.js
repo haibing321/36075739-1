@@ -5388,7 +5388,14 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           if (k === 'all' || k === 'rules') { bm25Rules = null; bm25RulesRef = null; bm25RulesLen = 0; }
           if (k === 'all' || k === 'issues') { bm25Issues = null; bm25IssuesRef = null; bm25IssuesLen = 0; }
           // 【v3.73】统一检索层（knowledge.js）的条款分块索引走同一套失效契约
-          if (typeof window.KB === 'object' && window.KB && typeof window.KB.invalidate === 'function') window.KB.invalidate();
+          // 【2026-10-06 修复·真机实测定位】原实现**不透传 kind** ⇒ 调 KB.invalidate() 无参 = 清**全部 9 个源**的
+          //   索引与 df 缓存（每源索引 + dfcache 两个键，实测一次检查信息导入产生 18 次缓存 delete）。
+          //   后果：写一次检查信息，就把规章/手册/电话/日志等无关源的缓存一并废掉 ⇒ 下次"首会话长句"检索
+          //   又要付"全库扫描 + 每个词惰性 df"的全价（真机实测 P50 1872ms；历史记录首会话长句约 900ms）。
+          //   改为按类透传：knowledge.js 的 invalidate(key) 本就支持单源，'all' 时仍清全（原语义不变）。
+          if (typeof window.KB === 'object' && window.KB && typeof window.KB.invalidate === 'function') {
+            window.KB.invalidate(k === 'all' ? undefined : k);
+          }
         } catch (e) {}
       }
       window.dsInvalidateRagCache = dsInvalidateRagCache;

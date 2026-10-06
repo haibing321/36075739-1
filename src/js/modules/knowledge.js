@@ -1603,6 +1603,48 @@
         }
         return toks;
     }
+    /* ==================== 【2026-10-06】检索耗时分解（纯诊断，给优化定方向）====================
+     * 为什么需要：本轮先怀疑"惰性 df 贵"，实测发现 300 词只要 5.4s（≈18ms/词），**方向错了**。
+     *   教训：别再靠代码注释里的量级估计猜瓶颈（那是不同数据规模下的旧数字），**要在这台机器、这份数据上量**。
+     * 用法：`KB.profileSearch('一段长句查询', 'rules')` —— 返回各阶段耗时，不参与任何业务逻辑。
+     *   · textOfMs  ：全库取文本（`_textOf`）的耗时 —— 退化模式的第一道代价
+     *   · scanMs    ：合并正则快筛全库的耗时（含 textOf）
+     *   · candidates：快筛后剩下多少块要精算（长句词多时这个数决定后面的成本）
+     *   · dfMs      ：对本次查询词逐个惰性算 df 的总耗时
+     *   · searchMs  ：完整一次 search 的耗时（用于验证"分项之和 ≈ 总耗时"）
+     * 只读内部状态，不写任何缓存、不改任何结果。
+     * ===================================================================== */
+    function profileSearch(query, key) {
+        key = key || 'rules';
+        var st = STATE[key];
+        if (!st || !st.bm) return { error: 'no-bm:' + key };
+        var bm = st.bm, docs = bm.docs || [];
+        var out = { key: key, docs: docs.length, mode: bm.postings ? 'postings' : 'scan', query: String(query || '').slice(0, 60) };
+        var t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        for (var i = 0; i < docs.length; i++) { try { bm._textOf(docs[i]); } catch (e) {} }
+        out.textOfMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+        var toks = [];
+        try { toks = bm._tokenize(String(query || '')) || []; } catch (e) {}
+        out.tokens = toks.length;
+        var re = null;
+        try { re = new RegExp(toks.map(function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|'), 'i'); } catch (e) {}
+        t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        var cand = 0;
+        for (var j = 0; j < docs.length; j++) {
+            var text = bm._textOf(docs[j]);
+            if (text && re && re.test(text)) cand++;
+        }
+        out.scanMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+        out.candidates = cand;
+        t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        toks.slice(0, 30).forEach(function (t) { try { bm._dfOfLazy(t); } catch (e) {} });
+        out.dfMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+        t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        try { bm.search(String(query || ''), 5); } catch (e) {}
+        out.searchMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+        return out;
+    }
+
     function warmLazyDf() {
         if (_dfWarmBusy) return;
         if (!autoLoadEnabled() || !cacheCapable()) return;
@@ -1821,6 +1863,8 @@
         // 【2026-10-06】惰性 df 空闲预热：手动触发 + 本次预热统计（诊断与验证用）
         warmDf: function () { try { warmLazyDf(); return true; } catch (e) { return false; } },
         dfWarmStats: function () { return window.__kbDfWarm || null; },
+        // 【2026-10-06】检索耗时分解（诊断用，给优化定方向；不参与业务逻辑）
+        profileSearch: profileSearch,
         CACHE_VER: KB_INDEX_VER,
         BUILD: 'v3.74'   // 运行期版本标记：用于确认页面加载的是哪一版 knowledge.js（排查缓存旧脚本）
     };

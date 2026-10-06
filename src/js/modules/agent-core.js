@@ -1331,6 +1331,48 @@
 
     if (_visionUnsupported) system += '【提示】用户本轮附带了图片，但当前模型不支持图片输入，你无法看到图片内容；请如实告知，并建议改用支持视觉的模型或补充文字描述。\n';
 
+    // 【2026-10-06 建议② · system 段预算】此前**只有工具结果**有上限（TOOL_RESULT_MAX=12000 字符），
+    //   system（规则 + 数据概览 + 界面上下文 + 记忆/偏好画像）**没有配额** —— 记忆积累后每轮都要把整段
+    //   system 重新发一遍，首 token 成本与延迟被推高，却没有任何一处会收敛它。
+    //   这里加一道**软预算**（默认 12000 字符，可用 `window.__agentSystemMax` 覆盖）：
+    //     · 未超限 ⇒ **一个字不动**；
+    //     · 超限 ⇒ 按行裁剪：**保护行永不裁**（含"必须/不得/禁止/口径/规则/如实/自检"等硬约束词的行），
+    //       开头规则区（约 45%）与结尾提醒区（约 15%）保留，其余**中段**（记忆/画像/上下文）抽掉，
+    //       缺口留一行省略提示；裁剪统计写 `window.__agentSystemClip` 便于核对。
+    //   ⚠️ 只裁提示性内容，硬约束与口径类一律保留（安全优先：宁可少裁，不可丢约束）。
+    try {
+      var _sysMax = (typeof window.__agentSystemMax === 'number' && window.__agentSystemMax > 0) ? window.__agentSystemMax : 12000;
+      if (system.length > _sysMax) {
+        var _sysLines = system.split('\n');
+        var _SYS_GUARD = /必须|不得|禁止|口径|规则|硬约束|如实|自检|务必|不允许|只能/;
+        var _headKeep = Math.floor(_sysMax * 0.45), _tailKeep = Math.floor(_sysMax * 0.15);
+        var _sysAcc = 0, _sysStart = 0, _sysEnd = _sysLines.length;
+        for (var _sa = 0; _sa < _sysLines.length; _sa++) {
+          if (_sysAcc >= _headKeep) { _sysStart = _sa; break; }
+          _sysAcc += _sysLines[_sa].length + 1;
+        }
+        _sysAcc = 0;
+        for (var _sb = _sysLines.length - 1; _sb >= 0; _sb--) {
+          if (_sysAcc >= _tailKeep) { _sysEnd = _sb + 1; break; }
+          _sysAcc += _sysLines[_sb].length + 1;
+        }
+        var _sysKept = [], _sysCut = [];
+        for (var _sc = 0; _sc < _sysLines.length; _sc++) {
+          _sysKept.push(_sysLines[_sc]);
+          if (_sc >= _sysStart && _sc < _sysEnd && !_SYS_GUARD.test(_sysLines[_sc])) {
+            _sysCut.push(_sysKept.pop());   // 中段且不受保护 ⇒ 抽出
+          }
+        }
+        if (_sysCut.length) {
+          var _sysCutChars = _sysCut.join('\n').length;
+          var _sysOrigin = system.length;
+          system = _sysKept.join('\n') + '\n（系统提示：已省略约 ' + _sysCutChars + ' 字的记忆/画像/上下文内容以控制预算；如需细节请直接说明）\n';
+          try { window.__agentSystemClip = { before: _sysOrigin, after: system.length, removed: _sysCutChars, cutLines: _sysCut.length }; } catch (e) {}
+        }
+      }
+      try { window.__agentSystemLen = system.length; } catch (e) {}
+    } catch (e) { console.warn('[agent] system 预算裁剪失败（不影响运行）：' + ((e && e.message) || e)); }
+
     var messages = [
       { role: 'system', content: system },
       { role: 'user', content: userMessage }

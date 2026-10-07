@@ -431,6 +431,56 @@
     }
     function cellText(cell) { return joinRun((cell || []).map(function (b) { return b.text; })); }
     /**
+     * 【2026-10-07 新增】"**两列版式**"识别 —— 技术作业程序图（流程图）这类。
+     *
+     * 真机实证（《铁路车号员作业标准》PDF 第 3-5 页）：程序图在 PDF 里是**二维**的 ——
+     *   左列 x≈105 是阶段名（"一、收取确报""二、核对现车及票据"…），右列 x≈277~344 是步骤名
+     *   （"1.准备作业""2.接收票据"…），二者**不同行**（左列顶格在阶段的起始行、右列每步一行）。
+     *   按行线性化后必然"交错乱序"：`1.分放票据 / 一、票据管理 / 2.管理现车`（用户报的现象），
+     *   而且同一文字在图上出现两次（阶段名与方框名）⇒ 还会出现"一、准备作业准备作业"这类**重复**。
+     *
+     * 判据（保守，专防"缩进段落被误判"）：
+     *   · 连续行，每行**最多 2 格**、文本**短（≤10 字）**且**不以标点收尾**（流程图文字不带句号）；
+     *   · 遇到小节标题（"2.2 始发列车技术作业程序图"）或 ≥3 格行（那是表格的地盘）**立即结束区域**；
+     *   · 区域 ≥4 行，且格子的 x 能分成**左右两簇**（间距 ≥40pt —— 缩进段落的 11pt 差会被挡掉），
+     *     两簇**各自覆盖 ≥3 行**，并**至少 1 行同时含左右两列**（并列版式的特征）。
+     * @returns {{rows:Array<Array<string>>, end:number}|null}
+     */
+    function twoColRegion(arr, rowsCells, i, opts) {
+        var j = i, cand = [];
+        while (j < arr.length) {
+            var r = rowsCells[j];
+            if (!r.length || r.length > 2) break;                       // 3 格以上 ⇒ 交给表格识别
+            var t = String(arr[j].text || '').trim();
+            if (!t || t.length > 10) break;                             // 偏长（标题/正文）⇒ 结束
+            if (/[。；，,、：]$/.test(t)) break;                          // 以标点收尾 ⇒ 正文
+            if (/程序图/.test(t)) break;                                 // 小节标题（"2.2 始发列车技术作业程序图"）
+            cand.push({ cells: r, y: arr[j].y });
+            j++;
+        }
+        if (cand.length < 4) return null;
+        var xs = [];
+        cand.forEach(function (c) { c.cells.forEach(function (cc) { if (cc.length) xs.push(cc[0].x); }); });
+        xs.sort(function (a, b) { return a - b; });
+        var lo = xs[0], hi = xs[xs.length - 1];
+        if (!(hi - lo >= 40)) return null;                              // 两列间距不足（缩进段落）⇒ 不判
+        var mid = (lo + hi) / 2, left = 0, right = 0, both = 0, rows = [];
+        cand.forEach(function (c) {
+            var L = '', R = '';
+            c.cells.forEach(function (cc) {
+                if (!cc.length) return;
+                var t2 = cellText(cc);
+                if (cc[0].x < mid) L = L ? (L + t2) : t2; else R = R ? (R + t2) : t2;
+            });
+            if (L && R) both++;
+            if (L) left++;
+            if (R) right++;
+            rows.push([L, R]);
+        });
+        if (left < 3 || right < 3 || both < 1) return null;
+        return { rows: rows, end: j };
+    }
+    /**
      * 逐行扫描 ⇒ 有序块序列：[{type:'para', text}...] 与 [{type:'table', rows:[[..]], cols:n}]
      * 表格区域前后的文字行照常按段落还原；表格本身保持原样插在中间。
      */
@@ -532,14 +582,17 @@
                             return true;                            // 存在"落不到任何列"的格子 ⇒ 这行不是表行
                         });
                     });
-                    // ⚠️【2026-10-07 实测结论·**不要改成按"有效列"计数**】曾经试过把这里改成
-                    //   `colCount = anchors.filter(a => a.count >= 2).length`（想放过"列位置漂移"的真表格），
-                    //   结果**正文被大面积表格化**：第 2 页整段正文变成 8×23、第 9 页附近出现 17×24 的假表格
-                    //   （`maxCols` 24）。原因是正文被"分散对齐"切出的碎片锚点里，也有相当一部分 count ≥ 2。
-                    //   **用 anchors.length（全部锚点）虽然会误杀"列漂移严重"的真表格（如第 9 页 3.4 表），
-                    //   但那是"少识别一张表"，而放宽的代价是"把正文变成假表格"—— 后者严重得多。**
-                    //   列漂移合并（把 count=1 的孤立锚点并入最近主列）也试过：正文同样能被放行。
-                    //   ⇒ 保持保守：宁可少识别，不可误判正文。
+                    // ⚠️⚠️【2026-10-07 判据取舍·三次尝试的最终结论 —— **不要再放宽这条**】
+                    //   本想救"**列位置漂移**"的真表格（第 9 页 3.4 途中摘挂列车表：同一列文字块 x 漂移
+                    //   243/249/254/259 ⇒ anchors 高达 33 ⇒ 被下面的 ≤12 挡掉、整表打成长串）。
+                    //   三次尝试**全部失败并回退**，每次都救回那张表、但代价都是**误伤别的文档**：
+                    //     ① 按"有效列"（count ≥ 2）计数 ⇒ 第 2 页整段正文被表格化（8×23 假表、maxCols=24）；
+                    //     ② 锚点漂移合并（count=1 的孤立锚点并入最近主列）⇒ 正文同样被放行；
+                    //     ③ 换"逐页实测"特征：每行格数中位数 ≤4 + "格数 ≥8 的行占比" ≤20%
+                    //        （数据确有区分力：第 9 页表 4 / 3.7%，第 10 页正文 7 / 36%）
+                    //        ⇒ 但**套件里的 8 列台账表被误杀**（宽表每行天然就是 8 格）⇒ A⑮/A⑯/A⑰ + pdf⑤ 齐红。
+                    //   ⇒ 最终结论：**宁可少数一张表，也不能误判正文、也不能误杀其它表格**。
+                    //     第 9 页那类表按段落输出（内容不丢，只是不是表格形态），列为**已知限制**。
                     var looksTable = region.length > 0 && anchors.length <= 12 && !offCol
                         && region.every(function (r) {
                             if (!r.length) return false;
@@ -604,6 +657,17 @@
                         i = j;
                         continue;
                     }
+                }
+            }
+            // 【2026-10-07 新增】两列版式（技术作业程序图）：放在"表格识别"之后 ——
+            //   3 格以上的行归表格；1~2 格的**短行**且左右成簇的，才归这里（见 twoColRegion 判据）。
+            if (rc.length <= 2) {
+                var _tc = twoColRegion(arr, rowsCells, i, opts);
+                if (_tc) {
+                    flushPending();
+                    blocks.push({ type: 'table', rows: _tc.rows, cols: 2 });
+                    i = _tc.end;
+                    continue;
                 }
             }
             pending.push(arr[i]);

@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.29</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.30</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2225,7 +2225,21 @@
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v4.29 近期更新（PDF 表格识别：修"整张表被打平成一行长串"） -->
+            <!-- v4.30 近期更新（PDF 技术作业程序图：还原成「阶段 | 步骤」两列表） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.30 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修 **PDF「技术作业程序图」（流程图）还原错乱**：这类图在 PDF 里是**二维**的 —— 左列是阶段名（"一、收取确报"）、右列是步骤名（"1.准备作业"），二者**不在同一行** ⇒ 按行线性化必然交错乱序（表现为 `1.分放票据 / 一、票据管理 / 2.管理现车`，还会出现"一、准备作业准备作业"这类重复）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠 现按「**阶段 | 步骤**」**两列表格**还原。判据保守、专防误判：连续短行（≤10 字、不以标点收尾）+ 左右两簇（间距 ≥40pt，缩进段落的 ~11pt 会被挡掉）+ 至少一行同时含两列 + 遇小节标题或 ≥3 格行立即结束（那是表格的地盘）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📈 效果（真机 PDF 实测）：程序图 **3 张**还原为两列表；**正文 / 缩进段落 / 同列短行都不被误判**（断言 A⑲ 内含两个反例）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 **已知限制**（诚实说明）：个别表格因「**列位置漂移严重**」（同一列文字 x 在 243/249/254/259 间浮动）仍按段落输出 —— 试过三种放宽方案都能救回那张表，但都会**误伤其它文档**（正文被表格化 / 宽表被误杀）⇒ 按"宁可少数一张表，不可误判正文"取舍，暂列为已知限制（内容不丢，只是不是表格形态）。</span></div>
+                </div>
+            </div>
+
+            <!-- v4.29 近期更新（PDF 表格识别：修"整张表格被打平成一行长串"） -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>

@@ -664,10 +664,21 @@
             if (st.after) sp += ' w:after="' + st.after + '"';
             sp += '/>';
             p += sp;
+            // 【2026-10-07 真机修复·"表格单元内容首行缩进"】缩进为 0 时**必须显式写 firstLine=0**。
+            //   真因（用户实测 + XML 取证实证）：本文件默认段落样式 Normal 定义为
+            //   `<w:ind w:firstLineChars="200" w:firstLine="640"/>`（正文首行缩进 2 字），
+            //   而 OOXML 语义里段落**不写 <w:ind> ≠ 无缩进**，而是**继承所引用样式的缩进**；
+            //   表格单元格段落既无 <w:ind> 也无 <w:pStyle> ⇒ 继承默认样式 Normal ⇒
+            //   每个单元格内容的第一行都缩进 2 字（用户报"每个表格单元中的内容首行缩进"），
+            //   且在 Word 里点"取消缩进"（Word 会往该段落写入 firstLine=0 去**覆盖继承**）后立刻对齐。
+            //   ⚠️ firstLineChars 与 firstLine 必须**同时写 0**：Word 对二者取"Chars 优先"，
+            //   只写 firstLine="0" 而样式里 firstLineChars="200" 仍在 ⇒ 依旧按 2 字符缩进。
             var ind = '';
             var indCh = st.indent == null ? 0 : st.indent;
             if (indCh > 0) {
                 ind += ' w:firstLineChars="' + (indCh * 100) + '" w:firstLine="' + (indCh * sizeHalfPt * 10) + '"';
+            } else {
+                ind += ' w:firstLineChars="0" w:firstLine="0"';
             }
             if (st.indLeftChars > 0) {
                 ind += ' w:leftChars="' + (st.indLeftChars * 100) + '" w:left="' + (st.indLeftChars * sizeHalfPt * 10) + '"';
@@ -823,8 +834,11 @@
         if (b.head) x += rowXml(b.head, true);
         (b.rows || []).forEach(function (r) { x += rowXml(r, false); });
         x += '</w:tbl>';
-        // Word 建议表格后跟一个空段，避免表格贴到节末
-        x += '<w:p><w:pPr><w:spacing w:line="240" w:lineRule="auto"/></w:pPr></w:p>';
+        // Word 建议表格后跟一个空段，避免表格贴到节末。
+        // 【2026-10-07 同上】空段也显式写 firstLine=0：它同样会继承默认样式 Normal 的 2 字符首行缩进
+        //   （不写 ind ⇒ 显示编辑标记时段落标记会右移 2 字，且与"表格内一律顶格"的约定不一致）。
+        x += '<w:p><w:pPr><w:spacing w:line="240" w:lineRule="auto"/>' +
+            '<w:ind w:firstLineChars="0" w:firstLine="0"/></w:pPr></w:p>';
         return x;
     }
 

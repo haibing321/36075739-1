@@ -811,7 +811,7 @@
                                 <!-- 【2026-09-18】一键 AI 修改放在编辑界面：只改「当前这一天」的写实与检查问题（不改事实）；
                                      规章依据只纠错、可回库校对；缺规章依据时给候选条款。改完自动保存，回执里可一键撤销 -->
                                 <button type="button" class="btn btn-secondary btn-small" id="diary-ai-fix-btn" onclick="diaryAiFix()"
-                                    title="用 AI 把这一天的写实与检查问题改得更通顺、纠正错别字/多字少字/标点（不改事实）；规章依据按「不符合《X》第X条“原文”的规定」规范改写且引文正文逐字保留；缺规章依据时从知识库索引给候选条款。改完自动保存，可一键撤销">✨ 一键修改</button>
+                                    title="用 AI 把这一天的写实与检查问题改得更通顺、纠正错别字/多字少字/标点（不改事实）；规章依据按「不符合《X》第X条"原文"的规定」规范改写且引文正文逐字保留；缺规章依据时从知识库索引给候选条款。改完自动保存，可一键撤销">✨ 一键修改</button>
                                 <!-- 进度直接显示在按钮旁边（点击后立即出现，秒表刷新；不受横幅/滚动影响） -->
                                 <span id="diary-ai-fix-inline" style="font-size:0.78rem;color:#2563eb;font-weight:600;white-space:nowrap;"></span>
                                 <button class="btn btn-secondary btn-small" id="diary-copy-work-btn" onclick="copyWorkOrAll(this)" title="复制：全部（工作写实 + 检查问题 + 规章）或 仅工作写实">📋 复制▾</button>
@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.32</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.33</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2223,6 +2223,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.33 近期更新（DOCX 表格排版两处修复：单元格首行缩进 + 表格列错位） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.33 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修**转换出的 DOCX 里表格单元格内容"首行缩进"**（真机现象：每个格子里的文字都不顶格，在 Word 里点"取消缩进"才对齐）：**"不写缩进"在 Word 里不等于"无缩进"，而是继承文档默认样式** —— 本引擎默认样式带"正文首行缩进 2 字符"，表格段落没显式覆盖就把它继承了过去。现改为**缩进为 0 时也显式写 0** ⇒ 表格内容全部顶格，正文仍保留 2 字符缩进（两条路径都带断言）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修**表格列错位**（转换后表格凭空多出空列、内容散落在中间列、看起来像"缩进"）：列边界过去由"**文字起点**"聚类得出，而**居中 / 右对齐**的格子会把文字起点推到格内偏移处 ⇒ 同一列分裂成两列（实测一张 4 列的表被撑成 8~9 列）。现改为**列边界只允许落在"格与格之间的空隙"里**（集合覆盖求解，与文字对齐方式完全解耦）⇒ 列数收敛、**空列不再产生**、居中数据也归回正确的列。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔒 列算法带**安全阀**：若新算法得出的列数多于旧算法的锚点数（异常情形）⇒ 自动回退旧路径，保证任何情况下都不退步。**PDF / OFD / DOCX 三条导入路径共用同一套排版逻辑，一并受益。**</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 两处修复都补了回归断言：DOCX 导出断言"表格内每段必须显式 firstLine=0，且默认样式仍保留 2 字符给正文"；排版断言"表头左对齐 + 数据行居中时，4 列的表必须仍是 4 列、居中数据仍归回原列"。</span></div>
+                </div>
             </div>
 
             <!-- v4.32 近期更新（PDF 表格识别：放宽"跨行单元格"判据，表头不再被打平） -->

@@ -446,6 +446,108 @@
      *     两簇**各自覆盖 ≥3 行**，并**至少 1 行同时含左右两列**（并列版式的特征）。
      * @returns {{rows:Array<Array<string>>, end:number}|null}
      */
+    /**
+     * 【2026-10-07 用户报「表格列错位」】按**单元格区间**定义列边界（替代"按单元格起点单点聚类"）。
+     *
+     * 旧实现（`anchors`）：把每个单元格的**起点 x** 塞进一个自增锚点表，±6pt 命中即复用，否则**新建一列**。
+     *   真机后果（《高速铁路接触网运行维修规则》第 25 页"装置名称"表）：
+     *     表头行 x = 118 / 207 / 335 / 433   （左对齐 ⇒ 文字起点 = 列左边缘）
+     *     数据行 x = 174 / 335 / 445 / 453   （**居中 / 右对齐** ⇒ 文字起点被推到格内偏移处）
+     *   ⇒ 118 与 174、207 与 335/445/453 之间谁都不在 ±6pt 内 ⇒ 各建一列 ⇒
+     *     一张 **4 列**的表被撑成 **9 列**，内容散落在第 3/6/7 列（用户截图：前两列全空、文字像"缩进"）。
+     *   ⚠️ 根因一句话：**文字块的 x 只是"文字起点"，它不等于列边界** —— 居中/右对齐的格子里两者天然不同。
+     *
+     * 新判据（本函数）：**列边界只能落在"单元格之间的空隙"里**。
+     *   ① 同一行相邻两个单元格之间必然存在一段空隙（列分隔线只能在这段空隙内）
+     *      —— 这与文字居中与否无关：居中只会让空隙变窄，不会让它消失；
+     *   ② 把全区域所有空隙当作"必须被打断的区间"，做**集合覆盖**（贪心：每次选"被最多空隙包含"的位置
+     *      作为一条列边界），直到每条空隙都被某条边界穿过；
+     *   ③ 边界集 ⇒ 列数 = 边界数 + 1。全程只用"格与格之间的空隙"，与文字起点完全解耦
+     *      ⇒ 同一列的文字无论左对齐/居中/右对齐，都只会落在同一列里。
+     *   附带收益：① **空列不再产生**（整列无内容时，它的"空隙"没有来源，不会生成边界）；
+     *             ② 跨列合并格不会多造列（它的空隙横跨多条边界，但由同一条边界覆盖即可）。
+     *
+     * @returns {{bounds:number[], cols:number, colOf:function(Array):number, adv:number}}
+     */
+    function columnsFromCells(region, opts) {
+        opts = opts || {};
+        var tol = opts.colTol || 6;
+        var all = [];
+        region.forEach(function (r) {
+            r.forEach(function (c) { for (var i = 0; i < c.length; i++) all.push(c[i]); });
+        });
+        var adv = estAvgAdv(all) || 6;      // 平均字宽：把"文字长度"折算成"右边界"用
+        // ① 收集所有"行内相邻格之间的空隙"
+        var gapList = [];
+        region.forEach(function (r) {
+            var prevRight = null;
+            r.forEach(function (c) {
+                if (!c || !c.length) return;
+                var x0 = c[0].x;
+                var lastIt = c[c.length - 1];
+                var x1 = lastIt.x + Math.max(1, String(lastIt.text || '').length) * adv;
+                if (prevRight != null && (x0 - prevRight) > 0.5) gapList.push({ lo: prevRight, hi: x0 });
+                prevRight = (prevRight == null || x1 > prevRight) ? x1 : prevRight;
+            });
+        });
+        // ② 候选边界 = 每条空隙的 **左端 / 中点 / 右端**（三倍密度；容差内合并）。
+        //   ⚠️ 只取中点是不够的：表头与数据行的空隙**区间**重合但**中点**可能相差很远
+        //      （实测用例：表头空隙 (125,220)、居中数据空隙 (165,260) ⇒ 中点 172.5 vs 212.5 差 40pt）
+        //      ⇒ 若按"中点编号相同"判定覆盖，会误当成两条边界、凭空多出一列。
+        var cands = [];
+        function candIdx(x) {
+            for (var i = 0; i < cands.length; i++) if (Math.abs(cands[i].x - x) <= tol) return i;
+            cands.push({ x: x, dead: false });
+            return cands.length - 1;
+        }
+        var covs = [];
+        for (var gi = 0; gi < gapList.length; gi++) {
+            var g = gapList[gi];
+            covs.push({ lo: g.lo, hi: g.hi, done: false });
+            candIdx(g.lo); candIdx((g.lo + g.hi) / 2); candIdx(g.hi);
+        }
+        // ③ 贪心集合覆盖：**只要边界 x 落在某条空隙的区间内，就算这条空隙被它打断**
+        //    （不要求"同一条候选"）—— 这正是"列边界只看空隙、与文字起点无关"的落实：
+        //    同一条物理列分隔线，无论每行的空隙是宽是窄、偏左偏右，都能被同一个 x 覆盖。
+        var bounds = [], remain = covs.length, guard = 0;
+        while (remain > 0 && guard++ < 200) {
+            var bestX = null, bestN = 0;
+            for (var ci2 = 0; ci2 < cands.length; ci2++) {
+                if (cands[ci2].dead) continue;
+                var px = cands[ci2].x, n = 0;
+                for (var vi = 0; vi < covs.length; vi++) {
+                    if (!covs[vi].done && px >= covs[vi].lo && px <= covs[vi].hi) n++;
+                }
+                if (n > bestN) { bestN = n; bestX = px; }
+            }
+            if (bestX == null || bestN === 0) break;
+            bounds.push(bestX);
+            for (var vj = 0; vj < covs.length; vj++) {
+                if (!covs[vj].done && bestX >= covs[vj].lo && bestX <= covs[vj].hi) { covs[vj].done = true; remain--; }
+            }
+            // 容差内的候选视为同一条边界（不再重复选点）
+            for (var ck2 = 0; ck2 < cands.length; ck2++) {
+                if (!cands[ck2].dead && Math.abs(cands[ck2].x - bestX) <= tol) cands[ck2].dead = true;
+            }
+        }
+        // ④ 保险：仍有未覆盖的空隙（极端情形，如两格区间重叠导致空 lo>hi）⇒ 取其中点
+        for (var vk = 0; vk < covs.length; vk++) {
+            if (!covs[vk].done) bounds.push((covs[vk].lo + covs[vk].hi) / 2);
+        }
+        bounds.sort(function (a, b) { return a - b; });
+        var merged = [];
+        for (var bi = 0; bi < bounds.length; bi++) {
+            if (!merged.length || (bounds[bi] - merged[merged.length - 1]) > tol) merged.push(bounds[bi]);
+        }
+        // ⑤ 归位：单元格**起点**落在哪两段边界之间 ⇒ 就是哪一列（与文字对齐方式无关）
+        function colOf(c) {
+            var x0 = c[0].x, col = 0;
+            while (col < merged.length && merged[col] < x0 + tol) col++;
+            return col;
+        }
+        return { bounds: merged, cols: merged.length + 1, colOf: colOf, adv: adv };
+    }
+
     function twoColRegion(arr, rowsCells, i, opts) {
         var j = i, cand = [];
         while (j < arr.length) {
@@ -568,6 +670,19 @@
                             if (!seen[hit]) { seen[hit] = 1; anchors[hit].count++; }   // 同一行同一列只算一次
                         });
                     });
+                    // ⚠️⚠️【2026-10-07 失败尝试·已回退，勿重蹈】曾在这里做"**表格边界修剪**"：
+                    //   收集完 region 后，把"首格 x 不在首列锚点上 / 格数≥3 且落在列上占比<50%"的首尾行
+                    //   剔掉（双向交替、最多 25%），想削掉"表格吞进的正文行"（真机实证：成本费用表表头里
+                    //   混着"第四十七条供电段应建立以预算管理为核心的…"）。
+                    //   **实测：能削正文（接触网表内段落 1667→1323），但会连带削掉真实内容** ——
+                    //   车号员 PDF 的作业程序表**表头行**（"作业程序/作业人员/岗位/…"）被一并剔掉
+                    //   （表头变成"程序项目"）。三版判据全试过、全有两难：
+                    //     · "整行含句读⇒正文" ⇒ 误杀说明事项列（套件 A⑱ 的"(4)与司机办理交接手续。"当场挂）；
+                    //     · "首格 >16 字" ⇒ 失效（首格只是被列切出的片段，"对成本费用预测"仅 7 字）；
+                    //     · "首格 x 在首列锚点上" ⇒ 仍会把"跨列合并表头"当成越界行剔掉。
+                    //   ⇒ 结论：**表格边界必须靠结构信号（列区间 / y 间距突变）系统性重构**，
+                    //     "逐行打分 + 修剪"的补丁方式在"表头 vs 正文"之间必然两难。原则不变：
+                    //     **宁可少识别，不可误伤**。
                     // 【判据收紧】至少 **3 列**跨行对齐才算表格。
                     //   ⚠️ 上一版只要求 2 列 ⇒ 段落因为**左缩进相同**天然满足第一列，很容易被误判成表格
                     //   （用户报："（三）桥梁应急疏散通道兼作作业门时，……" 被改成了表格）。
@@ -668,18 +783,31 @@
                     });
                     if (aligned >= 3 && looksTable && medLen <= 12 && !hasHeadLine) {
                         flushPending();
-                        var cols = Math.max(anchors.length, 1);
+                        // 【2026-10-07 用户报「表格列错位」】列定义改用"**单元格区间**"（见 columnsFromCells）：
+                        //   旧法按"单元格起点 x"单点聚类 ⇒ 居中/右对齐的格子里文字起点被推到格内偏移处，
+                        //   同一列会分裂成多列（真机：4 列的表撑成 9 列、前两列全空、内容像"缩进"）。
+                        //   新法只用"格与格之间的空隙"定边界 ⇒ 与文字对齐方式无关。
+                        //   ⚠️ 安全阀：新法列数理论上**不会多于**旧锚点数（旧法见 x 就建列，只会更多）；
+                        //     一旦出现"更多"（说明判据异常），回退旧路径 —— 保证任何情况下不退步。
+                        var _cd = columnsFromCells(region, opts);
+                        var _useNew = _cd.cols >= 1 && _cd.cols <= Math.max(1, anchors.length);
+                        var cols = _useNew ? _cd.cols : Math.max(anchors.length, 1);
+                        var colOfCell = function (c) {
+                            if (_useNew) return Math.min(_cd.colOf(c), cols - 1);
+                            var x = c[0].x, best = 0, bestD = Infinity;
+                            for (var k2 = 0; k2 < anchors.length; k2++) {
+                                var d = Math.abs(anchors[k2].x - x);
+                                if (d < bestD) { bestD = d; best = k2; }
+                            }
+                            return Math.min(best, cols - 1);
+                        };
                         var grid = [];
                         region.forEach(function (r) {
                             var line = [];
                             for (var c2 = 0; c2 < cols; c2++) line.push('');
                             r.forEach(function (c) {
                                 if (!c.length) return;
-                                var x = c[0].x, best = 0, bestD = Infinity;
-                                for (var k2 = 0; k2 < anchors.length; k2++) {
-                                    var d = Math.abs(anchors[k2].x - x);
-                                    if (d < bestD) { bestD = d; best = k2; }
-                                }
+                                var best = colOfCell(c);
                                 var t = cellText(c);
                                 line[best] = line[best] ? (line[best] + ' ' + t) : t;
                             });

@@ -452,9 +452,35 @@
         while (i < arr.length) {
             var rc = rowsCells[i];
             if (rc.length >= minCells) {
-                // 往后找连续的"多列行"，看长度是否够成表
-                var j = i, region = [];
-                while (j < arr.length && rowsCells[j].length >= 2) { region.push(rowsCells[j]); j++; }
+                // 往后找"表格区域"：以多列行为主体，**允许单列行夹在中间**（跨行合并单元格 / 竖排字）。
+                //   【2026-10-07 真机实证】《铁路车号员作业标准》PDF 的作业程序表里，"一收取确报"是**竖排**的
+                //   （每个字各自成行、每行只有 1 格）⇒ 旧实现（`while (rowsCells[j].length >= 2)`）遇到它
+                //   当场把表格切断，切出来的碎片被打平成段落 —— 用户 DOCX 里那句
+                //   "作业程序作业人员岗位作业技术要求说明事项程序项目一收取确报车号员…" 就是这么来的。
+                //   准入条件严格：单列行的 x 必须**命中区域已有的列种子**（±colTol），否则视为区域结束。
+                var j = i, region = [], seeds = [];
+                var _seed = function (r2) { r2.forEach(function (c) { if (c.length) seeds.push(c[0].x); }); };
+                while (j < arr.length) {
+                    var rj = rowsCells[j];
+                    if (rj.length >= 2) { region.push(rj); _seed(rj); j++; continue; }
+                    if (rj.length === 1 && rj[0].length && seeds.length) {
+                        // ⚠️ 必须**只收"像单元格续行"的短文本**（竖排字 / 合并单元格残行，如"确""（长）"）：
+                        //   若不加这条，区域会一路吞掉**表后的正文行**（正文里大量行本身就是 1 格），
+                        //   把区域的体检（medLen / 首格短 / looksTable）拖垮 ⇒ **整张表反而识别不出来**
+                        //   （套件 A⑮/A⑯/A⑰ 与 pdf 端到端 ⑤ 一起抓到的就是这个回归：表数=0）。
+                        var _t1 = String(cellText(rj[0]) || '').trim();
+                        // ≤4 字是"竖排字 / 合并单元格残行"的典型长度（"确""报""（长）"）；
+                        //   正文里的单格行普遍更长 ⇒ 一律不准入，区域当场结束（与改动前行为一致，保住防误判）。
+                        if (_t1.length <= 4 && !/[。；！？：，,、]/.test(_t1)) {
+                            var sx = rj[0][0].x, onCol = false;
+                            for (var s3 = 0; s3 < seeds.length; s3++) {
+                                if (Math.abs(seeds[s3] - sx) <= (opts.colTol || 6)) { onCol = true; break; }
+                            }
+                            if (onCol) { region.push(rj); j++; continue; }
+                        }
+                    }
+                    break;
+                }
                 var wide = region.filter(function (r) { return r.length >= minCells; }).length;
                 if (region.length >= minRows && wide >= minRows) {
                     // 列位置聚类（用每个单元格首块的 x），并统计每列被多少行命中
@@ -480,11 +506,46 @@
                     //   （用户报："（三）桥梁应急疏散通道兼作作业门时，……" 被改成了表格）。
                     var aligned = anchors.filter(function (a) { return a.count >= minRows; }).length;
                     // 再加一道"像表格而不是像句子"的体检：每行首格要短、整行格数要多、单元格普遍偏短。
-                    var looksTable = region.every(function (r) {
-                        if (r.length < 3) return false;
-                        if (String(cellText(r[0]) || '').length > 16) return false;     // 首格像句子 ⇒ 不是表格
-                        return true;
+                    // 【2026-10-07 最终判据·两次迭代的结论】表格识别的真实难点是"**1 格行**"（竖排字 / 合并单元格），
+                    //   而"**2 格行**"恰恰是"正文被误切"的典型特征 ⇒ 因此：
+                    //     · 单格行**豁免**（它在区域扫描阶段已被严格准入：≤4 字、无标点、x 命中列种子）；
+                    //     · 2 格及以上行**仍必须 ≥3 格**（保持原有防误判强度）。
+                    //   —— 上一版把这条放宽成"≥3 格的行占 60% 即可"，结果第 2 页整段正文（分散对齐被切成
+                    //      一堆碎片格）通过体检，被判成 8×23 的"表格"，正文散成一地碎片 ☠️。
+                    // 【2026-10-07 判据重做·三次迭代的结论】用"**行内格数**"判断表格行行不通 ——
+                    //   真实表格里**合并单元格 / 空列 / 竖排字**会让同一张表出现 1~3 格的杂行（真机实证：
+                    //   作业程序表既有 5 格行，也有 2 格行「取 | 容通知）相关岗位。」和 1 格竖排行「确」「报」）
+                    //   ⇒ 旧判据"每行都必须 ≥3 格"必然把整张表否掉。
+                    //   改为**按列锚点判断**（先聚类列，再看行）：
+                    //     · 少格行（<3 格）的每个格子必须**命中已有列锚点**（±colTol）——
+                    //       被"分散对齐"切出来的正文碎片，其 x 与表格列不对齐 ⇒ 在这里被挡掉；
+                    //     · **列数上限 12** —— 正文碎片化往往产生几十列（上一版就是 8×23 的假表格）；
+                    //     · 每行首格仍要短（不像句子）。
+                    var offCol = region.some(function (r) {
+                        if (!r.length || r.length >= 3) return false;
+                        return r.some(function (c) {
+                            if (!c.length) return false;
+                            var x = c[0].x;
+                            for (var k4 = 0; k4 < anchors.length; k4++) {
+                                if (Math.abs(anchors[k4].x - x) <= (opts.colTol || 6)) return false;
+                            }
+                            return true;                            // 存在"落不到任何列"的格子 ⇒ 这行不是表行
+                        });
                     });
+                    // ⚠️【2026-10-07 实测结论·**不要改成按"有效列"计数**】曾经试过把这里改成
+                    //   `colCount = anchors.filter(a => a.count >= 2).length`（想放过"列位置漂移"的真表格），
+                    //   结果**正文被大面积表格化**：第 2 页整段正文变成 8×23、第 9 页附近出现 17×24 的假表格
+                    //   （`maxCols` 24）。原因是正文被"分散对齐"切出的碎片锚点里，也有相当一部分 count ≥ 2。
+                    //   **用 anchors.length（全部锚点）虽然会误杀"列漂移严重"的真表格（如第 9 页 3.4 表），
+                    //   但那是"少识别一张表"，而放宽的代价是"把正文变成假表格"—— 后者严重得多。**
+                    //   列漂移合并（把 count=1 的孤立锚点并入最近主列）也试过：正文同样能被放行。
+                    //   ⇒ 保持保守：宁可少识别，不可误判正文。
+                    var looksTable = region.length > 0 && anchors.length <= 12 && !offCol
+                        && region.every(function (r) {
+                            if (!r.length) return false;
+                            if (String(cellText(r[0]) || '').length > 16) return false;     // 首格像句子 ⇒ 不是表格
+                            return true;
+                        });
                     var lens = [];
                     region.forEach(function (r) { r.forEach(function (c) { lens.push(String(cellText(c) || '').length); }); });
                     lens.sort(function (a, b) { return a - b; });
@@ -506,7 +567,8 @@
                     if (aligned >= 3 && looksTable && medLen <= 12 && !hasHeadLine) {
                         flushPending();
                         var cols = Math.max(anchors.length, 1);
-                        var grid = region.map(function (r) {
+                        var grid = [];
+                        region.forEach(function (r) {
                             var line = [];
                             for (var c2 = 0; c2 < cols; c2++) line.push('');
                             r.forEach(function (c) {
@@ -519,7 +581,24 @@
                                 var t = cellText(c);
                                 line[best] = line[best] ? (line[best] + ' ' + t) : t;
                             });
-                            return line;
+                            // 【2026-10-07】"单格且很短"的行 = 竖排字的续行 ⇒ 回溯接进该列**最近一次有内容**的
+                            //   单元格，不再单独占一行（否则表里会多出"确""报"这类碎片行）。
+                            //   限 ≤4 字 ⇒ 不会把成段的正文行误并进上一格。
+                            if (r.length === 1 && grid.length) {
+                                var _k = -1;
+                                for (var c3 = 0; c3 < cols; c3++) if (line[c3]) { _k = c3; break; }
+                                if (_k >= 0 && String(line[_k]).length <= 4) {
+                                    for (var g3 = grid.length - 1; g3 >= 0; g3--) {
+                                        if (grid[g3][_k]) {
+                                            var _a = String(grid[g3][_k]), _b = String(line[_k]);
+                                            var _sp = (/[\u4e00-\u9fff]$/.test(_a) && /^[\u4e00-\u9fff]/.test(_b)) ? '' : ' ';
+                                            grid[g3][_k] = _a + _sp + _b;
+                                            return;                       // 已并入，不新增行
+                                        }
+                                    }
+                                }
+                            }
+                            grid.push(line);
                         });
                         blocks.push({ type: 'table', rows: grid, cols: cols });
                         i = j;

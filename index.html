@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.30</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.31</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2223,6 +2223,20 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.31 近期更新（PDF 表格识别：跨列合并表头 / 宽表更完整） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.31 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **表格被切成碎片**（表头有合并单元格时整表退化成段落）：这类表格的表头常有**跨列合并格**（如"技术资料名称"横跨多列，x 落在两列之间）与**竖排字**，而旧判据要求"单格行的 x 必须命中已有列" ⇒ 当场把表格切断。现放宽为「**x 落在表格列跨度内也算命中**（跨列合并格）+ 邻近行仍有表格行即可」。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📈 实测（《高速铁路接触网运行维修规则》PDF，87 页）：原先"被切成多张小表"的部位现在连成**完整大表**（26×11、22×9、15×10）；正文（981 段，980 段带首行缩进，符合公文格式）不受影响。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 顺带为**"打勾表"**（技术资料对照表，内容列是 √）加了判据（单字符打勾格 ≥5 个时放宽列数上限）。⚠️ 诚实说明：该判据**尚未完全生效** —— 表格后紧跟的多格正文行会把扫描区域延伸、锚点数暴增；试过"按命中率判定表格结束"会立刻误伤其它表格（已回退）。彻底解决需重构**表格边界检测**，列为下一步。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 说明：**已识别为表格的内容一律没有首行缩进**（实测 12 个表、702 个单元格段落，含 <code>w:ind</code> 的 = 0）；"看着像表格却有缩进"的部位，是**未被识别成表格**的段落 —— 上一条待办（打勾表等）修好后会一并变整齐。</span></div>
+                </div>
             </div>
 
             <!-- v4.30 近期更新（PDF 技术作业程序图：还原成「阶段 | 步骤」两列表） -->

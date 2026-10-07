@@ -512,21 +512,38 @@
                 var _seed = function (r2) { r2.forEach(function (c) { if (c.length) seeds.push(c[0].x); }); };
                 while (j < arr.length) {
                     var rj = rowsCells[j];
-                    if (rj.length >= 2) { region.push(rj); _seed(rj); j++; continue; }
+                    if (rj.length >= 2) {
+                        // ⚠️【2026-10-07 失败尝试·已回退，勿重蹈】曾想在这里加"表格结束判定"——按
+                        //   "该行落在已知列上的格子占比 <60% 即视为跑偏、连续跑偏则结束区域"来阻止
+                        //   region 吞进表后正文（动机：打勾表后方紧跟 2 格正文行，把锚点数撑爆）。
+                        //   **实测立刻翻车**：`seeds` 是**渐进积累**的，表格头几行的"新列"天然命中率低
+                        //   ⇒ 被判成"连续跑偏"⇒ region 只剩 1 行 ⇒ 表格全部消失
+                        //   （套件 A⑱/A⑳/A⑮ + pdf⑤ 齐挂；接触网 PDF 表格 14 张 → 6 张且只剩两列表）。
+                        //   ⇒ 要保持"≥2 格行无条件接受"这一简单规则；表格边界的事交给下面的体检判据。
+                        region.push(rj); _seed(rj); j++; continue;
+                    }
                     if (rj.length === 1 && rj[0].length && seeds.length) {
-                        // ⚠️ 必须**只收"像单元格续行"的短文本**（竖排字 / 合并单元格残行，如"确""（长）"）：
-                        //   若不加这条，区域会一路吞掉**表后的正文行**（正文里大量行本身就是 1 格），
-                        //   把区域的体检（medLen / 首格短 / looksTable）拖垮 ⇒ **整张表反而识别不出来**
-                        //   （套件 A⑮/A⑯/A⑰ 与 pdf 端到端 ⑤ 一起抓到的就是这个回归：表数=0）。
+                        // ⚠️ 单格行 = 竖排字 / **跨列合并格**（表头常见）。准入必须严，否则区域会一路吞掉
+                        //   表后的正文行（正文里大量行本身就是 1 格），把体检拖垮 ⇒ 整张表反而识别不出来
+                        //   （套件 A⑮/A⑯/A⑰ + pdf⑤ 抓到的那个回归：表数=0）。
+                        //   三次迭代后的判据（2026-10-07）：
+                        //     ① 短（≤12 字）且无标点 —— 正文单格行普遍更长或带标点；
+                        //     ② x **命中已有列**，或**落在表格列跨度内**（= 跨列合并格：真机实证"技术资料名称"
+                        //        在 x=169，而列在 75/317/… ⇒ 命中判定会失败，整表打平）；
+                        //     ③ 紧邻行里**还有表格行**（≥2 格）—— 专挡"表后正文行"（它旁边通常是纯正文行）。
                         var _t1 = String(cellText(rj[0]) || '').trim();
-                        // ≤4 字是"竖排字 / 合并单元格残行"的典型长度（"确""报""（长）"）；
-                        //   正文里的单格行普遍更长 ⇒ 一律不准入，区域当场结束（与改动前行为一致，保住防误判）。
-                        if (_t1.length <= 4 && !/[。；！？：，,、]/.test(_t1)) {
-                            var sx = rj[0][0].x, onCol = false;
+                        if (_t1.length <= 12 && !/[。；！？：，,、]/.test(_t1)) {
+                            var sx = rj[0][0].x, onCol = false, _lo = Infinity, _hi = -Infinity;
                             for (var s3 = 0; s3 < seeds.length; s3++) {
-                                if (Math.abs(seeds[s3] - sx) <= (opts.colTol || 6)) { onCol = true; break; }
+                                if (Math.abs(seeds[s3] - sx) <= (opts.colTol || 6)) onCol = true;
+                                if (seeds[s3] < _lo) _lo = seeds[s3];
+                                if (seeds[s3] > _hi) _hi = seeds[s3];
                             }
-                            if (onCol) { region.push(rj); j++; continue; }
+                            if (!onCol && sx > _lo && sx < _hi) onCol = true;      // 跨列合并格
+                            if (onCol) {
+                                var _pv = rowsCells[j - 1], _nx = rowsCells[j + 1];
+                                if ((_pv && _pv.length >= 2) || (_nx && _nx.length >= 2)) { region.push(rj); j++; continue; }
+                            }
                         }
                     }
                     break;
@@ -593,7 +610,29 @@
                     //        ⇒ 但**套件里的 8 列台账表被误杀**（宽表每行天然就是 8 格）⇒ A⑮/A⑯/A⑰ + pdf⑤ 齐红。
                     //   ⇒ 最终结论：**宁可少数一张表，也不能误判正文、也不能误杀其它表格**。
                     //     第 9 页那类表按段落输出（内容不丢，只是不是表格形态），列为**已知限制**。
-                    var looksTable = region.length > 0 && anchors.length <= 12 && !offCol
+                    // 【2026-10-07 旁路·"打勾表"】内容列是 √ / × / ○ 这类**单字符**的表格（技术资料对照表），
+                    //   真机实证（《高速铁路接触网运行维修规则》第 10 页"技术资料名称"表）：7 列 × 26 行、
+                    //   列位置有漂移（75/78、317/325、353/361…）⇒ anchors 15+、且"跨行名称续行"的 x 落不到锚点上
+                    //   ⇒ 被"列数上限 12 + offCol"两道闸门挡住、整表打平成长串
+                    //   （"技术资料名称号车间工区车间工区车间工区1供电分段示意图√ √ √ √ √ √…"）。
+                    //   判据：区域内"单字符打勾格"≥5 个 —— **正文里几乎不可能出现这种形态** ⇒ 放宽是安全的
+                    //   （正文/条文里不会有整片 √）。
+                    var _marks = 0;
+                    region.forEach(function (r) {
+                        r.forEach(function (c) {
+                            if (!c || !c.length) return;
+                            var _mt = String(cellText(c) || '').trim();
+                            if (_mt.length === 1 && /[\u221a\u2713\u00d7\u2717\u25cb\u25cf\u25b3\u25b2\u2014\uff0d\-]/.test(_mt)) _marks++;
+                        });
+                    });
+                    //   ⚠️ 现状（2026-10-07）：这条旁路**尚未完全生效** —— 打勾表后面紧跟的多格正文行
+                    //     会把 region 一路延伸、锚点暴增（远超上限），所以那张表目前**仍按段落输出**。
+                    //     已试过"表格结束判定（按命中率）"⇒ 立刻翻车（seeds 渐进积累 ⇒ 表头前几行被判跑偏、
+                    //     表格全消失，套件 A⑱/A⑳/A⑮ + pdf⑤ 齐挂）⇒ 已回退。彻底解决需要重构表格**边界检测**，
+                    //     属较大改动。这里先把判据保留（对正文零影响：正文的"单字符打勾格"恒为 0）。
+                    var _maxAnchors = _marks >= 5 ? 40 : 12;
+                    var _offColOk = _marks >= 5 ? true : !offCol;   // 打勾表：跨行名称的续行位置漂移属常态
+                    var looksTable = region.length > 0 && anchors.length <= _maxAnchors && _offColOk
                         && region.every(function (r) {
                             if (!r.length) return false;
                             if (String(cellText(r[0]) || '').length > 16) return false;     // 首格像句子 ⇒ 不是表格

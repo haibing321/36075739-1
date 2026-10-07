@@ -1834,6 +1834,10 @@
     <script src="src/js/modules/memo.js" defer></script>
     <script src="src/js/modules/phone.js" defer></script>
     <script src="src/js/modules/handbook.js" defer></script>
+    <!-- 【2026-10-07 用户需求】格式转换共用件：PDF / OFD / TXT-MD → DOCX（只做编排，解析与导出全部复用既有能力）。
+         放在 import-layout / ofd-import / handbook 之后：它运行时调用这几位的 blocksToHtml / extract / 分级函数，
+         顺序靠后更稳（都是运行时调用，不是加载时依赖）。 -->
+    <script src="src/js/modules/format-convert.js" defer></script>
     <script src="src/js/modules/swipe.js" defer></script>
     <script src="src/js/modules/doubao-common.js" defer></script>
     <script src="src/js/modules/smart-check.js" defer></script>
@@ -2176,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.26</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.27</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2219,6 +2223,21 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.27 近期更新（格式转换：PDF/OFD/TXT → DOCX/Excel + 三处导入导出修复） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.27 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 新增**格式转换**：在智能对话里上传 **PDF / OFD / TXT / Markdown**，附件标签上会出现 **📥（转成规范 DOCX）** 与 **📊（转成 Excel）** 两个按钮。**全程本地转换、不上传**；DOCX 按公文格式（含章 / 节 / 条层级），Excel **仅在文档含表格时**才导出（多表分多个 sheet），没有表格会**明确告诉你原因**，不会产出一个没意义的表。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **OFD 打印水印漏删**（真机实测定位）：这类水印的旋转写在 **CTM 矩阵**、半透明写在**子元素 FillColor** 上，而旧判据只认 `Rotate` 属性与 `Alpha&lt;1` ⇒ 两条都落空。现已补齐判据（实测可清除每页的斜排 IP 戳与编号戳）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **OFD 页码粘进正文**：页码对象（约 3.2pt 的纯数字）在聚行前会与同高度页眉文字粘成一行，使"整行就是页码"的判据失效 ⇒ 页码残留并混入正文（表现为出现 <code>5031291使用手电观察…</code> 这类怪串）。现已改为在**聚行前单独剔除**页码对象。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修**导出 Word 表格合并单元格丢失**：`colspan/rowspan` 会导致合并走样（列数也错位）。现按 OOXML 规范生成 `w:gridSpan` / `w:vMerge`，列宽按**展开后**计算。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修两处**导入/导出图片问题**：① Word 导入去水印时，界面渲染用的 HTML 层**漏删**（纯文本已清、但界面上还看得到水印）；② 导入的图片导出时被**统一堆到文末**并多出一行"原图无法获取"占位文字 ⇒ 改为**就地在原位还原**。</span></div>
+                </div>
             </div>
 
             <!-- v4.25 近期更新（智能体新增「综合研究」工具：外部理论 + 本单位举证） -->

@@ -324,7 +324,17 @@
                     var cells = [];
                     (ch.children || []).forEach(function (td) {
                         if (td.tag !== 'td' && td.tag !== 'th') return;
-                        cells.push({ runs: trimRuns(inlineOf(td)), head: td.tag === 'th' || !!inHead });
+                        // 【2026-10-07 修复·与 DOCX 套件联动发现】原实现只存 `{runs, head}` —— **合并信息在收集阶段就丢了**：
+                        //   进库白名单是允许 colspan/rowspan 的（库里数据确实有），但导出侧全程 0 处理 ⇒ 合并单元格走样。
+                        //   这里把"横向合并（gridSpan）/ 纵向合并（vMerge）"所需的数量一并带上，交给 tableXml 生成。
+                        var _a = td.attrs || {};
+                        var _cs = parseInt(_a.colspan, 10), _rs = parseInt(_a.rowspan, 10);
+                        cells.push({
+                            runs: trimRuns(inlineOf(td)),
+                            head: td.tag === 'th' || !!inHead,
+                            colspan: (_cs > 1 ? _cs : 1),
+                            rowspan: (_rs > 1 ? _rs : 1)
+                        });
                     });
                     if (!cells.length) return;
                     if (inHead) head = cells; else rows.push(cells);
@@ -335,9 +345,12 @@
         }
         collect(el, false);
         if (!head && rows.length && rows[0].every(function (c) { return c.head; })) head = rows.shift();
+        // ⚠️ 列数必须按**展开后**算：有 colspan 时 `row.length` 只是"格数"、不是"列数"，
+        //   若按格数建 tblGrid，会与 gridSpan 不匹配 ⇒ Word 里表格错位。
+        function spanCount(cs) { var n = 0; (cs || []).forEach(function (c) { n += (c.colspan || 1); }); return n; }
         var cols = 0;
-        if (head) cols = Math.max(cols, head.length);
-        rows.forEach(function (r) { cols = Math.max(cols, r.length); });
+        if (head) cols = Math.max(cols, spanCount(head));
+        rows.forEach(function (r) { cols = Math.max(cols, spanCount(r)); });
         return { t: 'table', head: head, rows: rows, cols: cols || 1 };
     }
 
@@ -755,15 +768,54 @@
             '<w:bottom w:w="28" w:type="dxa"/><w:right w:w="57" w:type="dxa"/>' +
             '</w:tblCellMar></w:tblPr><w:tblGrid>' + grid + '</w:tblGrid>';
 
+        // 列宽工具（单列 / 跨 N 列的合计）
+        function colW(c) { return (c >= cols - 1) ? (total - base * (cols - 1)) : base; }
+        function spanW(from, n) { var s = 0; for (var k = 0; k < n; k++) s += colW(Math.min(from + k, cols - 1)); return s; }
+
+        // 【2026-10-07 修复】合并单元格导出（colspan → w:gridSpan；rowspan → w:vMerge）。
+        //   背景：进库白名单允许 colspan/rowspan（库里数据有），但导出侧原先 0 处理 ⇒ 合并走样。
+        //   OOXML 的合并模型要点：
+        //     · 横向：被**吸收**的列不再输出 <w:tc>；起始格写 <w:gridSpan w:val="N"/> 且宽度取 N 列合计；
+        //     · 纵向：起始格写 <w:vMerge w:val="restart"/>；其**后续行**同列输出空 tc + <w:vMerge/>（继续）；
+        //     · 两者可叠加 ⇒ 用"网格 + 待续列计数"统一处理（_vLeft 为本表状态，逐行递减）。
+        var _vLeft = {};
+        function gridOf(cells) {
+            var g = [], col = 0;
+            (cells || []).forEach(function (cell) {
+                var cs = Math.max(1, cell.colspan || 1);
+                g[col] = cell;
+                for (var k = 1; k < cs; k++) g[col + k] = null;   // null = 被横向吸收，不再输出 tc
+                col += cs;
+            });
+            return g;
+        }
         function rowXml(cells, isHead) {
             var r = '<w:tr>';
             if (isHead) r += '<w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>';
-            for (var c = 0; c < cols; c++) {
-                var cell = cells[c] || { runs: [] };
-                var cw = (c === cols - 1) ? (total - base * (cols - 1)) : base;
-                r += '<w:tc><w:tcPr><w:tcW w:w="' + cw + '" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>' +
+            var g = gridOf(cells), col = 0;
+            while (col < cols) {
+                // ① 上一行 rowspan 未结束：输出"继续"格（空内容 + <w:vMerge/>，不带 w:val = continue）
+                if (_vLeft[col] > 0) {
+                    _vLeft[col]--;
+                    r += '<w:tc><w:tcPr><w:tcW w:w="' + colW(col) + '" w:type="dxa"/><w:vMerge/><w:vAlign w:val="center"/></w:tcPr><w:p/></w:tc>';
+                    col++; continue;
+                }
+                // ② 被横向吸收 / 行尾空位：跳过
+                if (g[col] === null || g[col] === undefined) { col++; continue; }
+                var cell = g[col];
+                var cs = Math.max(1, cell.colspan || 1);
+                var rs = Math.max(1, cell.rowspan || 1);
+                var tcPr = '<w:tcW w:w="' + spanW(col, cs) + '" w:type="dxa"/>';
+                if (cs > 1) tcPr += '<w:gridSpan w:val="' + cs + '"/>';
+                if (rs > 1) {
+                    tcPr += '<w:vMerge w:val="restart"/>';
+                    for (var k2 = 0; k2 < cs; k2++) _vLeft[col + k2] = rs - 1;   // 后续 rs-1 行在这些列继续
+                }
+                tcPr += '<w:vAlign w:val="center"/>';
+                r += '<w:tc><w:tcPr>' + tcPr + '</w:tcPr>' +
                     paraXml(cell.runs || [], isHead ? (S.cellHead || S.cell) : S.cell,
                         inherit ? { inheritPPr: inherit.pPr, inheritRPr: inherit.rPr, noIndent: true } : {}) + '</w:tc>';
+                col += cs;
             }
             return r + '</w:tr>';
         }

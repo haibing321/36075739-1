@@ -191,7 +191,11 @@
                 const maxLen = 8000;
                 const truncated = text.length > maxLen ? text.slice(0, maxLen) + '\n...[内容过长，已截取前' + maxLen + '字]' : text;
                 const isImage = !!((/^image\//.test(file.type) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) && (file.attachDataUrl));
-                window._dsAttachments.push({ name: file.name, text: truncated, dataUrl: file.attachDataUrl || null, isImage: isImage });
+                // 【2026-10-07 用户需求】额外保留**原始 File 引用**（`_file`）：附件原本只留 name/text，
+                //   而"格式转换"（PDF/OFD/TXT → DOCX）必须拿到原始文件重新走解析 ⇒ 没有它就做不了。
+                //   附件是临时对象、发送后立即清空（见 _dsRunStream 的 `_dsAttachments = []`），
+                //   保留引用不构成内存负担；图片仍走 dataUrl，行为不变。
+                window._dsAttachments.push({ name: file.name, text: truncated, dataUrl: file.attachDataUrl || null, isImage: isImage, _file: file });
 
                 const icon = ext === 'pdf' ? '📕' : ext === 'docx' || ext === 'doc' ? '📘' : ext === 'xlsx' || ext === 'xls' ? '📊' : isImage ? '🖼️' : '📎';
                 const tagText = ' [' + icon + ' ' + file.name + '] ';
@@ -566,6 +570,49 @@
             label.textContent = (a.isImage ? '🖼️ ' : '📎 ') + (a.name || '附件');
             label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             tag.appendChild(label);
+            // 【2026-10-07 用户需求】把"上传文件转成规范格式"做成**对话内可达的出口** ——
+            //   用户口径："转化的文件主要 PDF、OFD、TXT，一般都是转换成 DOCX/Excel"，且要"能在智能对话中调用"。
+            //   设计：① 只对**确实可转换的文档**显示（图片不显示，避免点了没用）；
+            //        ② 两个出口各司其职 —— 📥 规范 DOCX（公文格式，PDF/OFD/TXT 都行）；
+            //           📊 Excel（**仅当文档有表格结构**；没有表格会如实说明，绝不产出没意义的表）；
+            //        ③ 转换走共用件 FmtConv（用 _file 原始引用），全程本地、不上传；
+            //           失败**如实报原因**（含"未识别到表格"这类），不留哑按钮。
+            try {
+                if (a._file && window.FmtConv && typeof window.FmtConv.isSupported === 'function' && window.FmtConv.isSupported(a.name)) {
+                    var _mkConvBtn = function (icon, title, target) {
+                        var b = document.createElement('span');
+                        b.textContent = icon;
+                        b.title = title;
+                        b.style.cssText = 'cursor:pointer;flex-shrink:0;padding:0 2px;';
+                        b.onclick = async function() {
+                            if (b.dataset.busy === '1') return;
+                            b.dataset.busy = '1';
+                            var _old = b.textContent;
+                            b.textContent = '⏳';
+                            try {
+                                var r = await window.FmtConv.convertAndSave(a._file, {
+                                    title: String(a.name || '').replace(/\.[^/.]+$/, ''),
+                                    target: target
+                                });
+                                var _ok = !!(r && r.ok);
+                                var _m = _ok
+                                    ? ('✅ 已转成 ' + (target === 'xlsx' ? 'Excel' : 'DOCX') + '：' + r.name + (r.note ? '（' + r.note + '）' : ''))
+                                    : ('未转换：' + ((r && r.note) || '未知原因'));
+                                if (window.showToast) window.showToast(_m, !_ok, _ok ? 6000 : 9000); else alert(_m);
+                            } catch (e) {
+                                var _m2 = '转换异常：' + ((e && e.message) || e);
+                                if (window.showToast) window.showToast(_m2, true, 8000); else alert(_m2);
+                            } finally {
+                                b.dataset.busy = '0';
+                                b.textContent = _old;
+                            }
+                        };
+                        return b;
+                    };
+                    tag.appendChild(_mkConvBtn('📥', '转成规范 DOCX（本地转换，不上传）', 'docx'));
+                    tag.appendChild(_mkConvBtn('📊', '转成 Excel（仅当文档含表格；本地转换，不上传）', 'xlsx'));
+                }
+            } catch (e) {}
             var x = document.createElement('span');
             x.textContent = '✕';
             x.style.cssText = 'cursor:pointer;color:#94a3b8;flex-shrink:0;padding:0 2px;';

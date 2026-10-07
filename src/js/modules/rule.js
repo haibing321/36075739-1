@@ -1277,11 +1277,20 @@
                                         var _ps = _wmH.match(/<p[^>]*>[\s\S]*?<\/p>/g) || [];
                                         if (_ps.length) {
                                             // 只丢"整段就是水印"且落在**开头/结尾 5 段**内的段落；其余原样保留（不做重建，零格式风险）
-                                            var _keep = _ps.filter(function (p, i) {
+                                            // ⚠️【2026-10-07 修复·DOCX 套件实测暴露】原实现把结果存成**字符串数组**再用
+                                            //   `_keep.indexOf(m)` 反查 —— 两段 HTML 完全相同时会**互相顶替**：
+                                            //   实测用例（首部与中部都写"内部资料 不得外传"，首部该删、中部该留）结果为
+                                            //   **纯文本层剩 1 处（正确）而 HTML 层剩 3 处（首/尾两处全漏删）**。
+                                            //   隐蔽之处：纯文本已由 stripWatermarkText 清掉，检索/导出正文看不出问题，
+                                            //   但**界面渲染用的正是 contentHtml** ⇒ 用户仍会看到水印。
+                                            //   改为按**段落序号**判定：语义精确，且与段落文本是否重复无关。
+                                            var _keepIdx = {};
+                                            _ps.forEach(function (p, i) {
                                                 var _pl = String(p).replace(/<[^>]+>/g, '').trim();
-                                                return !(_wmL.shouldDropLine(_pl, i < 5 || i >= _ps.length - 5));
+                                                if (!_wmL.shouldDropLine(_pl, i < 5 || i >= _ps.length - 5)) _keepIdx[i] = 1;
                                             });
-                                            _wmH = _wmH.replace(/<p[^>]*>[\s\S]*?<\/p>/g, function (m) { return _keep.indexOf(m) !== -1 ? m : ''; });
+                                            var _pIdx = -1;
+                                            _wmH = _wmH.replace(/<p[^>]*>[\s\S]*?<\/p>/g, function (m) { _pIdx++; return _keepIdx[_pIdx] ? m : ''; });
                                         }
                                     }
                                     if (_wmC && _wmC.removed.length) {
@@ -1334,11 +1343,14 @@
                                 if (_wm2.removed.length) {
                                     var _ps2 = contentHtml.match(/<p[^>]*>[\s\S]*?<\/p>/g) || [];
                                     if (_ps2.length) {
-                                        var _k2 = _ps2.filter(function (p, i) {
+                                        // 同章节分支：按**段落序号**判定（原因见上方注释 —— _k2.indexOf(m) 在段落重复时会互相顶替）
+                                        var _keepIdx2 = {};
+                                        _ps2.forEach(function (p, i) {
                                             var _pl2 = String(p).replace(/<[^>]+>/g, '').trim();
-                                            return !(window.ImportLayout.shouldDropLine(_pl2, i < 5 || i >= _ps2.length - 5));
+                                            if (!window.ImportLayout.shouldDropLine(_pl2, i < 5 || i >= _ps2.length - 5)) _keepIdx2[i] = 1;
                                         });
-                                        contentHtml = contentHtml.replace(/<p[^>]*>[\s\S]*?<\/p>/g, function (m) { return _k2.indexOf(m) !== -1 ? m : ''; });
+                                        var _pIdx2 = -1;
+                                        contentHtml = contentHtml.replace(/<p[^>]*>[\s\S]*?<\/p>/g, function (m) { _pIdx2++; return _keepIdx2[_pIdx2] ? m : ''; });
                                     }
                                     successNotes.push(file.name + '：已自动清除 ' + _wm2.removed.length + ' 处水印/“内部资料 不得外传”类字样');
                                 }
@@ -1586,7 +1598,15 @@
                         alert('DOCX 导出组件未就绪（写作模块未加载），请刷新页面后重试');
                         return;
                     }
-                    var imgHtml = '';
+                    // 【2026-10-07 修复·与 DOCX 套件联动发现】先把图片读成 data: URI 存表（不直接拼 HTML）：
+                    //   原实现把真图 base64 **统一追加到文末**，导致两个用户可见问题 ——
+                    //   ① contentHtml 里的占位是 `<img src="" data-img-id="img_x">`，导出引擎
+                    //      loadImageInfo('') 返回 null ⇒ 落成文字「［图片（原图无法获取，可能受跨域限制）］」，
+                    //      用户导出的 Word 里**每张图位置凭空多出这行**；
+                    //   ② 图片与正文的相对位置全部丢失（全跑到文末）。
+                    //   现在改为**就地替换**：把 html 里的 data-img-id 换成 data: URI（下文），
+                    //   未能就地替换的才兜底追加，保证既不丢图也不留噪声。
+                    var _imgMap = {};
                     if (rule.imageIds && rule.imageIds.length) {
                         for (var i = 0; i < rule.imageIds.length; i++) {
                             try {
@@ -1598,7 +1618,7 @@
                                         r.onerror = function() { res(''); };
                                         r.readAsDataURL(blob);
                                     });
-                                    if (b64) imgHtml += '<p><img src="' + b64 + '" alt="规章附图"></p>';
+                                    if (b64) _imgMap[rule.imageIds[i]] = b64;
                                 }
                             } catch (e) {}
                         }
@@ -1621,8 +1641,21 @@
                             + '<p>专业：' + escapeHtml(rule.trade || '') + '</p>'
                             + '<p>' + escapeHtml(rule.content || '').replace(/\r?\n/g, '<br>') + '</p>';
                     }
-                    // 图片始终追加：导入不把图片写进 contentHtml（图片单独存在 imageIds → IndexedDB）
-                    html += imgHtml;
+                    // 图片：**原地还原**（把占位 <img src="" data-img-id="X"> 换成真 data: URI），
+                    //   这样导出件里图片就在它原本的位置上，不再统一堆到文末、也不再留"原图无法获取"文字。
+                    var _used = {};
+                    var _esc = function (s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+                    Object.keys(_imgMap).forEach(function (id) {
+                        var _pat = 'data-img-id="' + _esc(id) + '"';
+                        if (html.indexOf(_pat) === -1) return;   // 正文里没有这张图的占位（老数据）⇒ 走下方兜底
+                        html = html.replace(new RegExp('<img[^>]*' + _pat + '[^>]*>', 'g'),
+                            '<img src="' + _imgMap[id] + '" alt="规章附图">');
+                        _used[id] = 1;
+                    });
+                    // 兜底：没能在正文里找到占位的图片（老数据 / contentHtml 缺失）仍追加到文末，保证不丢图
+                    Object.keys(_imgMap).forEach(function (id) {
+                        if (!_used[id]) html += '<p><img src="' + _imgMap[id] + '" alt="规章附图"></p>';
+                    });
                     await window.wrExportHtmlToDocx(html, safeTitle);
                 } catch (e) { alert('导出失败：' + e.message); }
             };

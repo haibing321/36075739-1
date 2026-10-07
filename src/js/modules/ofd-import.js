@@ -127,8 +127,33 @@
             if (kind === 'layout') {
                 var rot = attrAny(cur, ['Rotate', 'rotate']);
                 if (rot && parseFloat(rot) !== 0 && !isNaN(parseFloat(rot))) return 'Rotate=' + rot;
+                // 【2026-10-07 用户实测修复·真根因】OFD 的旋转**常写在 CTM 矩阵里**，而不是 Rotate 属性 ——
+                //   实测样本（兰州局通报 OFD）：TextObject 带 `CTM="0.8660 -0.5000 0.5 0.8660 0 99.0000"`
+                //   （即旋转 -30° 的倾斜水印），而旧判据只认 Rotate 属性 ⇒ **完全看不到它** ⇒
+                //   打印审计水印（"用户名 + 编号 + 时间戳"，每页编号递增 5031291/2/3/4）整段落进正文。
+                //   判据：CTM="a b c d e f" 中 **b 或 c 非 0** ⇒ 存在旋转/斜切（纯缩放平移时 b=c=0）。
+                var ctm = attrAny(cur, ['CTM', 'ctm']);
+                if (ctm) {
+                    var cp = ctm.split(/\s+/).map(parseFloat);
+                    if (cp.length >= 4 && (Math.abs(cp[1]) > 0.01 || Math.abs(cp[2]) > 0.01)) {
+                        return 'CTM 旋转(' + ctm + ')';
+                    }
+                }
                 var alpha = attrAny(cur, ['Alpha', 'alpha']);
                 if (alpha !== '' && parseFloat(alpha) < 1) return 'Alpha=' + alpha;
+                // 【2026-10-07 同上】Alpha 判据也漏两处：① OFD 标准取值是 **0~255**（也见 0~100 写法），
+                //   不是 0~1 ⇒ `parseFloat('40') < 1` 恒假；② 它通常写在**子元素 `<ofd:FillColor Alpha="40">`** 上，
+                //   而本函数只查"自身与祖先"的属性、不向下看子元素 ⇒ 同样落空。
+                //   这里补：向下找 FillColor，Alpha < 100 视为半透明（正文极少半透明，且命中都会记入 removed 可核对）。
+                try {
+                    var fcs = (cur.getElementsByTagName && cur.getElementsByTagName('*')) || [];
+                    for (var _fi = 0; _fi < fcs.length; _fi++) {
+                        var _fc = fcs[_fi];
+                        if (!_fc.localName || String(_fc.localName).toLowerCase() !== 'fillcolor') continue;
+                        var _a = attrAny(_fc, ['Alpha', 'alpha']);
+                        if (_a !== '' && isFinite(parseFloat(_a)) && parseFloat(_a) < 100) return 'FillColor Alpha=' + _a;
+                    }
+                } catch (eFC) {}
             }
             cur = cur.parentElement; hop++;
         }
@@ -231,6 +256,18 @@
                 //   现在按优先级取值：TextCode 的 X/Y → TextObject 的 Boundary(x y w h) → TextObject 的 X/Y；
                 //   并顺带取字号（TextObject 的 Size 或 Boundary 的第 4 个数），供"按字号聚行"使用。
                 var _xy = xySizeOf(o, codes);
+                // 【2026-10-07 用户实测修复·真根因】页码对象必须在**聚行之前**剔除。
+                //   实测该 OFD（兰州局通报）每页第一个对象就是页码：Size≈3.18pt 的纯数字"1"/"2"/"3"/"4"，
+                //   而正文 Size≈5.63pt。若放它进聚行，会与**同 Y 的页眉文字粘成一行**
+                //   （变成"1兰州局集团公司安全监察大队"）⇒ 下游 stripRunning 的 `isPageNumberLine` 判据
+                //   只认"整行是页码"，粘连后自然失效 ⇒ 页码残留并粘进正文。
+                //   实测后果：转换出的 DOCX 里出现 "5031291使用手电观察…" 这类怪串（水印编号+页码+正文三段粘连）。
+                //   判据保守、零误伤：**字号 ≤4pt 且纯 1~4 位数字** —— 正文永远不会用这么小的字号。
+                var _ptxt = String(s == null ? '' : s).trim();
+                if (_xy.size > 0 && _xy.size <= 4 && /^\d{1,4}$/.test(_ptxt)) {
+                    removed.push('页码对象「' + _ptxt + '」');
+                    continue;
+                }
                 rows.push({ y: _xy.y, x: _xy.x, size: _xy.size, s: s });
             }
             // 阅读顺序与分段交给共享模块 ImportLayout（行内按 X、行间按 Y、段落按标点/间距/条款头/缩进）

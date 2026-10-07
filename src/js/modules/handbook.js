@@ -926,4 +926,9 @@
             }
             window.exportHandbook = function() { _hbExportSet('handbook'); };
             window.exportAccident = function() { _hbExportSet('cases'); };
+            // 【2026-10-07】把「章/节/条/款」分级函数导出给格式转换共用件（format-convert.js）复用，
+            //   避免 TXT/Markdown 转换时另立第二套分级规则（手册导入用的就是这一套，口径必须一致）。
+            //   只导出**纯函数**，不改动手册解析与入库逻辑。
+            window.hbDetectLevel = detectLevelByPattern;
+            window.hbLevelPatterns = LEVEL_PATTERNS;
         })();

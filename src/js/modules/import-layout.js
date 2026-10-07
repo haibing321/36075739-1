@@ -29,6 +29,38 @@
     var CJK = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
     var SENT_END = /[。！？；：…!?;:]["'”’』」）)\]】]*$/;
     var CLAUSE_HEAD = /^\s*(第[一二三四五六七八九十百千0-9]+[章节条款项目]|[一二三四五六七八九十]+[、.．]|[（(][一二三四五六七八九十0-9]+[）)]|[0-9]+([.．、][0-9]+)*[、.．]?\s|附\s*(则|件|录|表)|表\s*[0-9]|图\s*[0-9])/;
+    var RE_HEAD_TAIL = /(方面|情况|问题|要求|措施|建议|做法|安排|部署|小结)$/;
+    /**
+     * 【2026-10-07 用户报「标题与正文未换行」】判断**上一行本身**是否"独占一行的标题 / 小标题"。
+     *
+     * 真机实证（兰州局通报 OFD，4 页）：`一、作业标准执行方面`（10 字、无句末标点）与其下一行
+     *   `9月16日22时25分，兰州车站进站口4号安检查危仪处…` 的行距**完全正常**（10.202，与其它行一致）、
+     *   x 也一致（都缩进 2 字，"indent" 判据失效）⇒ 原有的四个换段判据（上一行句末标点 / 大行距 /
+     *   下一行是条款头 / 下一行缩进）**全不成立** ⇒ 标题被当成正文续行合并
+     *   ⇒ 转换结果成了"一、作业标准执行方面9月16日22时25分，…"（用户报的"未换行"）。
+     *   修法：把"上一行是标题式短行"也作为换段信号（标题行天然应独占一段）。
+     *
+     * 判据保守（宁可少断，不可把正文行误判成标题 —— 正文的中间续行同样常不以标点结尾）：
+     *   · 短（≤24 字）且**不以句末标点结尾**（后者由 prevEnded 处理，不重复）；
+     *   · **去掉行首编号后不含逗号/顿号/分号**（"一、加强领导，各单位要…"这类是正文，不断开）；
+     *   · 形态确属标题：编号式（一、/（一）/1./第X条…）—— 或**很短（≤14 字）**且以"…方面/情况/要求"
+     *     等小标题词结尾（覆盖不带编号的小标题）。
+     */
+    function isHeadOnly(t) {
+        var s = String(t == null ? '' : t).trim();
+        if (!s || s.length > 24) return false;
+        if (SENT_END.test(s)) return false;
+        var body = s.replace(CLAUSE_HEAD, '');
+        // ① 强形态：编号式短行 + 去编号后**无任何分隔标点**（"一、加强领导，各单位要…"这类正文会被挡掉）
+        if (!/[，,、；;]/.test(body) && CLAUSE_HEAD.test(s)) return true;
+        // ② 弱形态：编号式短行 + 以"…方面/情况/要求"等小标题词结尾（**容忍顿号**）。
+        //   真机实证：`四、防溜、消防和劳动安全措施管控方面` 的**标题词本身就含顿号**，被 ① 的
+        //   "无分隔标点"条件排除 ⇒ 没独立成行（用户当场发现"应该是四个小标题"，只有三个生效）。
+        //   仍挡逗号 / 分号：正文行"一、加强领导，各单位要严格落实要求"含逗号 ⇒ 不会被误判（它有逗号）。
+        if (!/[，,；;]/.test(body) && CLAUSE_HEAD.test(s) && RE_HEAD_TAIL.test(s)) return true;
+        // ③ 未带编号的小标题："作业标准执行方面"（≤14 字且以标题词结尾）
+        return s.length <= 14 && RE_HEAD_TAIL.test(s);
+    }
 
     function isSpace(ch) { return ch === ' ' || ch === '\t' || ch === '\u3000'; }
     function needSpace(prev, next) {
@@ -204,7 +236,8 @@
                 var gapBig = Math.abs(ln.y - cur.lastY) >= bigGap;          // 明显大间隔（空行/新段）
                 var clause = CLAUSE_HEAD.test(t);                           // 条款/编号/标题开头
                 var indent = (ln.x - cur.leftX) > (opts.indentTol || 8);    // 首行缩进
-                isNew = prevEnded || gapBig || clause || indent;
+                var prevHead = isHeadOnly(prev);                            // 上一行本身是"独占式标题/小标题"（见 isHeadOnly 注释·真机实证）
+                isNew = prevEnded || gapBig || clause || indent || prevHead;
             }
             if (isNew) {
                 cur = { text: t, lines: 1, rotated: !!ln.rotated, lastText: t, lastY: ln.y, leftX: ln.x, angle: ln.angle || 0 };

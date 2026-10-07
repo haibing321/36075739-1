@@ -6840,6 +6840,25 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       // ---------- 10. 反馈收集 ----------
       // msgIdx: 该气泡在 dsHistory 中的下标，用于「重生成」定位到具体这一轮
       function addFeedbackButtons(messageDiv, assistantContent, msgIdx) {
+        // ⚠️【2026-10-07 用户反馈·真机】"回答完后操作按钮重复出现两组（刷新后正常）"的真根因：
+        //   本函数原来**不幂等** —— 每次调用都 createElement + appendChild 一条新的 `.ds-feedback-bar`。
+        //   它有两个调用点：
+        //     ① `dsRenderAll()`（doubao.js）：流式结束后全量重渲染，给每条助手气泡挂一次；
+        //     ② `enhanceBubbles()`（unified-enhancements.js）：卡片增强/联网证据条等重建后再挂一次。
+        //   而 `dsSetHtmlKeepMedia` 带一条"内容没变就不重建"的优化（`host.__dsLastHtml === html` ⇒ 直接 return）
+        //   ⇒ 增强那一次**跳过了重建**，① 挂的按钮条**没被清掉**，② 又 append 一条 ⇒ 用户看到两组按钮。
+        //   刷新页面时走的是历史渲染路径（新气泡元素没有 __dsLastHtml ⇒ 必定重建 ⇒ 旧按钮随内容一起被替换）
+        //   ⇒ 只剩一组 —— 与用户"刷新后就不重复"的观察完全吻合。
+        //   这里做幂等：同一条气泡、同一轮下标已经挂过 ⇒ 直接返回；下标变了 ⇒ 先移除旧条再重建。
+        //   （msgIdx 可能是 NaN：此时 `NaN === NaN` 恒假 ⇒ 走"移除旧条后重建"，仍然只会有一条。）
+        if (!messageDiv) return;
+        var _oldBar = messageDiv.querySelector('.ds-feedback-bar');
+        if (_oldBar) {
+          if (messageDiv.__dsFbIdx === msgIdx) return;
+          try { _oldBar.parentNode.removeChild(_oldBar); } catch (e) {}
+        }
+        messageDiv.__dsFbIdx = msgIdx;
+
         var fbDiv = document.createElement('div');
         fbDiv.className = 'ds-feedback-bar';
         fbDiv.style.cssText = 'display:flex; gap:8px; justify-content:flex-end; margin-top:6px; flex-wrap:wrap;';

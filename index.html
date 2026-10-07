@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.27</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.28</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2223,6 +2223,21 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.28 近期更新（真机反馈三处修复：OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.28 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **OFD 转换"识别 0 个块 / 未解析出文字"**（v4.27 引入的回归，真机实测定位）：水印判据里"查找半透明字色"被写进了**逐层向上找祖先**的循环，走到整层容器时会把**同层水印的字色算给正文** ⇒ 每一个正文对象都被判成水印整段丢弃。现判定严格区分「元素自身」与「祖先」：自身特征只查自身（含直系子元素），祖先只认层名与 `Rotate`。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 顺带收紧**页码判据**：只认对象自身的 `Size` 属性 —— 原来在没有 `Size` 时会回退取 `Boundary` 的高度（单位是毫米，正文行高约 2mm）⇒ 会把正文里的纯数字（如 `25768`）误判成页码删掉。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修**标题与正文粘成一行**（表现为 `一、作业标准执行方面9月16日22时25分，…`）：新增「**上一行是独占式标题 ⇒ 下一行另起段**」判据。真实通报里四个小标题（含标题词自带顿号的「四、防溜、消防和劳动安全措施管控方面」）现已**全部独立成行**；标题下的正文续行不会被切碎，含逗号的编号正文行也不会被误判成标题。**PDF 导入共用同一套排版逻辑，一并受益**。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔁 修**智能对话操作按钮重复两组**（📋复制 / 📤导出 / 👍有用 / 👎无用 / 🔄重生成 / 🔊朗读 各出现两次，刷新后正常）：按钮挂载改为**幂等** —— 同一条回复只保留一条按钮栏。根因是按钮被两个模块各挂一次，而"内容没变就不重建"的优化让前一组没被清掉。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 本轮全部改动均带**回归断言**：`ofd-import` 9/9（新增"同层正文 + 水印并存"用例）、`import-layout` 43/43（新增真机标题用例，含反例）、`chat-fixes` 26/26（新增按钮幂等断言）；PDF / DOCX / 格式转换 / 数据读写套件全绿。</span></div>
+                </div>
             </div>
 
             <!-- v4.27 近期更新（格式转换：PDF/OFD/TXT → DOCX/Excel + 三处导入导出修复） -->

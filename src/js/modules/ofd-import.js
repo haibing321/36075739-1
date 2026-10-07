@@ -127,33 +127,36 @@
             if (kind === 'layout') {
                 var rot = attrAny(cur, ['Rotate', 'rotate']);
                 if (rot && parseFloat(rot) !== 0 && !isNaN(parseFloat(rot))) return 'Rotate=' + rot;
-                // 【2026-10-07 用户实测修复·真根因】OFD 的旋转**常写在 CTM 矩阵里**，而不是 Rotate 属性 ——
-                //   实测样本（兰州局通报 OFD）：TextObject 带 `CTM="0.8660 -0.5000 0.5 0.8660 0 99.0000"`
-                //   （即旋转 -30° 的倾斜水印），而旧判据只认 Rotate 属性 ⇒ **完全看不到它** ⇒
-                //   打印审计水印（"用户名 + 编号 + 时间戳"，每页编号递增 5031291/2/3/4）整段落进正文。
-                //   判据：CTM="a b c d e f" 中 **b 或 c 非 0** ⇒ 存在旋转/斜切（纯缩放平移时 b=c=0）。
-                var ctm = attrAny(cur, ['CTM', 'ctm']);
-                if (ctm) {
-                    var cp = ctm.split(/\s+/).map(parseFloat);
-                    if (cp.length >= 4 && (Math.abs(cp[1]) > 0.01 || Math.abs(cp[2]) > 0.01)) {
-                        return 'CTM 旋转(' + ctm + ')';
+                // ⚠️⚠️【2026-10-07 二次修复·回归教训，务必保留这段注释】判定必须严格区分
+                //   「**元素自身**」与「**祖先层**」——上一版把"向下扫 FillColor"直接写进了这个**逐层向上**的
+                //   while 里，于是当 `cur` 升到 Layer/Page（页内所有对象的父容器）时，
+                //   `cur.getElementsByTagName('*')` 扫到了**同层水印对象**的 `<ofd:FillColor Alpha="40">`
+                //   ⇒ 于是**每一个正文 TextObject** 都被判成"版式水印"整段丢弃 ⇒ 用户实测：
+                //   整篇 OFD 转换后"识别 0 个块 / 未解析出文字"，而页数/图片数仍显示正常（正是本函数的特征）。
+                //   原则：**自身特征只查自身（含直系子元素）；祖先只认"层被明确标成水印"的原文证据（Rotate / 层名含 hint）**。
+                var _self = (cur === el);
+                if (_self) {
+                    // ① 旋转写在 CTM 矩阵里（实测水印：`CTM="0.8660 -0.5000 0.5 0.8660 0 99.0000"` = 旋转 -30°）。
+                    //   判据：CTM="a b c d e f" 中 **b 或 c 非 0** ⇒ 存在旋转/斜切（纯缩放平移时 b=c=0）。
+                    var ctm = attrAny(cur, ['CTM', 'ctm']);
+                    if (ctm) {
+                        var cp = ctm.split(/\s+/).map(parseFloat);
+                        if (cp.length >= 4 && (Math.abs(cp[1]) > 0.01 || Math.abs(cp[2]) > 0.01)) {
+                            return 'CTM 旋转(' + ctm + ')';
+                        }
+                    }
+                    var alpha = attrAny(cur, ['Alpha', 'alpha']);
+                    if (alpha !== '' && parseFloat(alpha) < 1) return 'Alpha=' + alpha;
+                    // ② 半透明写在**直系子元素** `<ofd:FillColor Alpha="40"/>`（OFD 的 Alpha 是 0~255，不是 0~1）。
+                    //   ⚠️ 只查**直系子元素**（children），绝不 `getElementsByTagName('*')` 递归向下 —— 见上方回归教训。
+                    var kids = cur.children || [];
+                    for (var _ki = 0; _ki < kids.length; _ki++) {
+                        var _k = kids[_ki];
+                        if (!_k.localName || String(_k.localName).toLowerCase() !== 'fillcolor') continue;
+                        var _a2 = attrAny(_k, ['Alpha', 'alpha']);
+                        if (_a2 !== '' && isFinite(parseFloat(_a2)) && parseFloat(_a2) < 100) return 'FillColor Alpha=' + _a2;
                     }
                 }
-                var alpha = attrAny(cur, ['Alpha', 'alpha']);
-                if (alpha !== '' && parseFloat(alpha) < 1) return 'Alpha=' + alpha;
-                // 【2026-10-07 同上】Alpha 判据也漏两处：① OFD 标准取值是 **0~255**（也见 0~100 写法），
-                //   不是 0~1 ⇒ `parseFloat('40') < 1` 恒假；② 它通常写在**子元素 `<ofd:FillColor Alpha="40">`** 上，
-                //   而本函数只查"自身与祖先"的属性、不向下看子元素 ⇒ 同样落空。
-                //   这里补：向下找 FillColor，Alpha < 100 视为半透明（正文极少半透明，且命中都会记入 removed 可核对）。
-                try {
-                    var fcs = (cur.getElementsByTagName && cur.getElementsByTagName('*')) || [];
-                    for (var _fi = 0; _fi < fcs.length; _fi++) {
-                        var _fc = fcs[_fi];
-                        if (!_fc.localName || String(_fc.localName).toLowerCase() !== 'fillcolor') continue;
-                        var _a = attrAny(_fc, ['Alpha', 'alpha']);
-                        if (_a !== '' && isFinite(parseFloat(_a)) && parseFloat(_a) < 100) return 'FillColor Alpha=' + _a;
-                    }
-                } catch (eFC) {}
             }
             cur = cur.parentElement; hop++;
         }
@@ -262,9 +265,14 @@
                 //   （变成"1兰州局集团公司安全监察大队"）⇒ 下游 stripRunning 的 `isPageNumberLine` 判据
                 //   只认"整行是页码"，粘连后自然失效 ⇒ 页码残留并粘进正文。
                 //   实测后果：转换出的 DOCX 里出现 "5031291使用手电观察…" 这类怪串（水印编号+页码+正文三段粘连）。
-                //   判据保守、零误伤：**字号 ≤4pt 且纯 1~4 位数字** —— 正文永远不会用这么小的字号。
+                //   判据保守、零误伤：**对象自身标注的小字号（Size ≤4pt）+ 纯 1~4 位数字**。
+                //   ⚠️ 只认 **Size 属性**，不用 `_xy.size` —— 后者在对象没有 Size 属性时会回退取
+                //   `Boundary` 的第 4 个数，那是**毫米高度**（正文行高约 2mm）⇒ `≤4` 会把正文里的
+                //   纯数字小对象（如"25768""0083"）误判成页码删掉。实测该文件页码对象带 `Size="3.175"`，
+                //   正文带 `Size="5.6268"` ⇒ 用 Size 属性判定两者区分得很干净。
                 var _ptxt = String(s == null ? '' : s).trim();
-                if (_xy.size > 0 && _xy.size <= 4 && /^\d{1,4}$/.test(_ptxt)) {
+                var _sizeAttr = parseFloat(attrAny(o, ['Size', 'size']));
+                if (isFinite(_sizeAttr) && _sizeAttr > 0 && _sizeAttr <= 4 && /^\d{1,4}$/.test(_ptxt)) {
                     removed.push('页码对象「' + _ptxt + '」');
                     continue;
                 }

@@ -759,7 +759,7 @@
                 if (modeLabel) modeLabel.textContent = labelMap[sub] || '智能对话';
                 var roleSelect = document.getElementById('expertRole');
                 var role = roleSelect ? roleSelect.value : 'default';
-                var roleMap = { default:'通用', dianwu:'⚡ 电务', gongwu:'🛤️ 工务', gongdian:'🔌 供电', keyun:'🚌 客运', chewu:'🚂 车务', jiwu:'🚄 机务', cheliang:'🚃 车辆', tongxin:'📡 通信', fangjian:'🏗️ 房建', huoyun:'📦 货运', tongyong:'🛡️ 综合', frontend:'💻 前端', riskanalyst:'🔍 风险分析' };
+                var roleMap = { auto:'🤖 自动', default:'通用', dianwu:'⚡ 电务', gongwu:'🛤️ 工务', gongdian:'🔌 供电', keyun:'🚌 客运', chewu:'🚂 车务', jiwu:'🚄 机务', cheliang:'🚃 车辆', tongxin:'📡 通信', fangjian:'🏗️ 房建', huoyun:'📦 货运', tongyong:'🛡️ 综合', frontend:'💻 前端', riskanalyst:'🔍 风险分析' };
                 var roleLabel = document.getElementById('ds-current-role-label');
                 if (roleLabel) roleLabel.textContent = roleMap[role] || '通用';
                 // 当前模型名（角色/模型已改为输入条圆形图标按钮，选中态在此显示）
@@ -1571,7 +1571,7 @@
                 var _skipData = !!(opts && opts.skipData);
                 // 【v4.20 用户需求】每轮重置"本次参考"记录 —— 供回答尾部的系统行使用（下面各分支分别写入，
                 //   三种状态都如实记录：已注入哪些源 / 未启用任何源 / 检索层异常；skipData 时保持 null）。
-                try { window.__dsLastSrcs = null; window.__dsLastWs = null; } catch (e) {}
+                try { window.__dsLastSrcs = null; window.__dsLastWs = null; window.__dsLastRole = null; } catch (e) {}
                 var useRules = dataSource.rules, useIssue = dataSource.issue, useHandbook = dataSource.handbook;
                 var useWrAll = dataSource.wrAll, usePhone = dataSource.phone, useDiary = dataSource.diary;
                 // 【v4.19 用户口径：关联数据类型比资料中心少】四个原来是"隐含跟随"的源拆成独立开关：
@@ -2214,6 +2214,71 @@
              *   本轮实际注入了哪些本地源；三种状态都呈现（已注入 / 未启用任何源 / 检索层异常）。
              * 关闭方式：`localStorage.setItem('ds_kb_badge','0')`（默认开）。
              * ===================================================================== */
+            /* ==================== 【2026-10-07 用户口径】回答「答所问」自检（输出后闭环）====================
+             * 为什么做：用户问"内容输出前有无闭环检查？是否有判断输出与提问一致的工具？否则输出无法有效控制"。
+             *   盘点结论 —— 已有的是：**智能体侧**工具失败门禁（agent-core 收口前程序化补"未成功项"）+ 提示词规则 15 自检；
+             *   **对话侧**只有"本次参考"事实标注与"联网零检索"告警。**缺的正是"输出 vs 提问是否一致"这一环**。
+             * 做法：规则式事后校验（确定性、零 API 成本、即时）——
+             *   ① 识别请求类型（与提示词第 9 条**同一套关键词**，保证事前约束与事后校验口径一致）；
+             *   ② 校验形态是否匹配（要清单却给散文 / 要数据却无数字与口径 / 要条文却无条号）；
+             *   ③ 检测**越权章节**（用户没要建议，却出现"整改建议/管控措施/待核实"等章节）。
+             * ⚠️ 安全边界：**只提示、绝不改写模型回答**（用户可能就想看那些内容，改写会丢信息）；
+             *   误报容忍度优先 —— 规则保守，只报高置信问题；可用 `localStorage.ds_selfcheck='0'` 关闭。
+             * 诊断入口：`__dsAnswerSelfCheck(问题, 回答)`（手动跑任意问答对，不调模型）。
+             * ===================================================================== */
+            var DS_REQ_LABEL = { list: '清单/表格', data: '数据统计', rule: '规章条文', doc: '材料/报告', judge: '定性判定', open: '开放问题' };
+            /** 请求类型识别（与 system 提示第 9 条的关键词口径保持一致） */
+            function dsClassifyQuery(q) {
+                var t = String(q || '');
+                if (/清单|检查表|项点|表格|检查项|对照表|检查内容/.test(t)) return 'list';
+                if (/多少|几条|几次|几起|条数|统计|占比|排名|分布|同比|环比/.test(t)) return 'data';
+                if (/原文|第.{1,6}条|怎么规定|怎么写的|依据是什么|出处是什么/.test(t)) return 'rule';
+                if (/报告|材料|方案|讲话|总结|纪要|汇报|写一份|起草/.test(t)) return 'doc';
+                if (/(算|属于|定为).{0,6}(A类|B类|C类|红线)|是否违反|定性|性质|等级/.test(t)) return 'judge';
+                return 'open';
+            }
+            /**
+             * 回答自检：返回 { req, label, issues[], ok }
+             * issues 为**高置信**问题清单（只提示、不改写）。
+             */
+            window.__dsAnswerSelfCheck = function (query, answer) {
+                var q = String(query || ''), a = String(answer || '');
+                var req = dsClassifyQuery(q);
+                var issues = [];
+                try {
+                    if (!a.trim()) return { req: req, label: DS_REQ_LABEL[req], issues: [], ok: true, empty: true };
+                    // ① 形态匹配
+                    if (req === 'list') {
+                        var hasTable = /\|[^|\n]*\|/.test(a);                                   // Markdown 表格
+                        var hasList = /(?:^|\n)\s*(?:\d+[.、)]|[-*·])\s*\S/.test(a);             // 分条
+                        if (!hasTable && !hasList) issues.push('要的是清单/表格，但回答里没有表格或分条列表');
+                    } else if (req === 'data') {
+                        if (!/\d/.test(a)) issues.push('要的是数据，但回答里没有数字');
+                        else if (!/(数据源|来源|检查信息|规章制度|共\s*\d|合计|总计|时间范围|以来|个月|年|截至)/.test(a)) {
+                            issues.push('数据未标注口径（数据源 / 时间范围 / 总条数）');
+                        }
+                    } else if (req === 'rule') {
+                        if (!/(第\s*[\d一二三四五六七八九十百]+\s*条|《[^》\n]{2,40}》)/.test(a)) {
+                            issues.push('要的是条文，但回答里没有条款原文或名称条号');
+                        }
+                    }
+                    // ② 越权章节：用户没要建议，却给了建议/待核实类**章节标题**
+                    var _askedAdvice = /建议|措施|整改|怎么办|如何处置|方案|下一步|管控/.test(q);
+                    if (!_askedAdvice && req !== 'open' && req !== 'doc') {
+                        var extra = [];
+                        if (/(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*{0,2})[^\n]{0,6}(整改|管控|改进)[^\n]{0,4}(建议|措施)/.test(a)) extra.push('整改/管控建议');
+                        if (/(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*{0,2})[^\n]{0,4}待核实/.test(a)) extra.push('待核实事项');
+                        if (/(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*{0,2})[^\n]{0,4}(总体结论|总结评价|综合评价)/.test(a)) extra.push('总体结论');
+                        if (extra.length) {
+                            issues.push('含未被要求的章节：' + extra.join('、') + '（提问只要「' + DS_REQ_LABEL[req] + '」）');
+                        }
+                    }
+                } catch (e) {
+                    return { req: req, label: DS_REQ_LABEL[req], issues: [], ok: true, err: String((e && e.message) || e) };
+                }
+                return { req: req, label: DS_REQ_LABEL[req], issues: issues, ok: issues.length === 0 };
+            };
+
             window.__dsAppendKbBadge = function () {
                 try {
                     try { if (localStorage.getItem('ds_kb_badge') === '0') return; } catch (e) { return; }
@@ -2243,7 +2308,34 @@
                     } else if (_ws && _ws.on === false) {
                         line += '｜🌐 联网：未启用';
                     }
+                    // 【2026-10-07 用户需求】自动角色透明化：只有选了「自动」才显示（手动选角色时不必重复提示）。
+                    //   标出**本轮实际使用的角色 + 判定原因**，让"它凭什么这么答"可见 —— 与「本次参考」同思路：
+                    //   系统的自动行为必须可追溯，否则用户会怀疑"是不是选错了角色"。
+                    var _lr = window.__dsLastRole || null;
+                    if (_lr && _lr.label) {
+                        line += '｜🤖 自动角色：' + _lr.label + (_lr.reason ? '（' + _lr.reason + '）' : '');
+                    }
                     dsAppendMsg('system', line);
+                    // 【2026-10-07 用户口径】回答「答所问」自检 —— **只提示、绝不改写模型回答**。
+                    //   定位本轮提问：取历史里最后一条 user 消息（displayText 是原始问句，content 可能含附件正文，
+                    //   分类只看问句本身 ⇒ 优先 displayText）。
+                    //   关闭方式：`localStorage.ds_selfcheck='0'`（与 ds_kb_badge 同风格）。
+                    try {
+                        if (localStorage.getItem('ds_selfcheck') !== '0') {
+                            var _q = '';
+                            for (var _hi = dsHistory.length - 1; _hi >= 0; _hi--) {
+                                if (dsHistory[_hi] && dsHistory[_hi].role === 'user') {
+                                    _q = String(dsHistory[_hi].displayText || dsHistory[_hi].content || '');
+                                    break;
+                                }
+                            }
+                            var _chk = window.__dsAnswerSelfCheck(_q, txt);
+                            if (_chk && _chk.issues && _chk.issues.length) {
+                                dsAppendMsg('system', '⚠️ 自检：' + _chk.issues.join('；')
+                                    + '（由系统规则校验，非模型输出；需要关闭可设置 ds_selfcheck=0）');
+                            }
+                        }
+                    } catch (e2) {}
                 } catch (e) {}
             };
 
@@ -2551,10 +2643,21 @@
                 // ---- 4.4 角色注入 ----
                 // 【2026-09-27】改走 window.dsGetRole()：DOM 读不到时回落 localStorage 里记的角色，
                 //   不再静默变成 default（此前"选了角色却不生效"的根因之一）。
-                var _roleInfo = (typeof window.dsGetRole === 'function')
-                    ? window.dsGetRole()
-                    : { key: 'default', label: '通用', prompt: '', isCode: false };
+                // 【2026-10-07 用户需求】改走 dsResolveRole：用户选「自动」时**按本轮问题**推断专业角色；
+                //   手动选定的角色原样返回（绝不干预）。解析结果与判定原因记入 `__dsLastRole`，
+                //   由回答尾部「本次参考」行透明展示 ⇒ 用户能看到"这次为什么以这个角色作答"。
+                var _roleInfo;
+                if (typeof window.dsResolveRole === 'function') _roleInfo = window.dsResolveRole(finalText);
+                else if (typeof window.dsGetRole === 'function') _roleInfo = window.dsGetRole();
+                else _roleInfo = { key: 'default', label: '通用', prompt: '', isCode: false };
+                if (!_roleInfo || !_roleInfo.key) _roleInfo = { key: 'default', label: '通用', prompt: '', isCode: false };
                 var selectedRole = _roleInfo.key;
+                try {
+                    if (_roleInfo.auto) {
+                        window.__dsLastRole = { key: _roleInfo.key, label: _roleInfo.label, reason: _roleInfo.reason || '' };
+                    }
+                } catch (e) {}
+                // ⚠️ auto 解析后 selectedRole 可能是 'frontend'（代码类问题）⇒ 下面 _isCodeRole 判定照常生效
                 // 【v3.76】代码角色标记：下面凡是"铁路业务规范"类的注入都对它跳过 ——
                 //   它是写代码用的角色，注入"以本地铁路数据为权威""人机环管""问题性质 A/B/C/红线"
                 //   既浪费 token，也会让模型把业务框架套进代码回答里。
@@ -2670,6 +2773,22 @@
                             '· 视频直链：以 .mp4/.webm/.mov 结尾，单独占一行；音频直链：以 .mp3/.m4a/.wav/.flac 结尾，单独占一行。\n' +
                             '· 直链必须写完整（带 https:// 前缀）且真实可用；不确定时不要编造，如实说明「该站点不提供直链，已给出页面链接，点击可在浏览器打开」。\n' +
                             '· 只有直链才能在对话里自动渲染成图片或播放器；仅给网页链接时前端只能显示可点击的链接卡片。';
+                    }
+                } catch (e) {}
+                // 【2026-10-07 用户反馈】清单 / 表格类请求的**专项密度规范**（与"媒体输出规范"同法：按请求关键词注入，不打扰其它问答）。
+                //   为什么单列一条：这类回答的问题**不是"没有纪律"**，而是每格塞太多 ——
+                //   实测输出的检查清单里，"合格判定"格写成了案例故事（"6月未统一安排人员、问题全部照抄日常检查→不合格"），
+                //   每行重复"据联网检索/条号待核实"，依据列还夹解释。用户要的是**能拿去逐项核对的表**，不是说明文。
+                try {
+                    if (/清单|检查表|项点|表格|检查项|对照表|检查内容/i.test(finalText)) {
+                        systemPrompt += '\n\n【清单 / 表格输出规范】\n' +
+                            '· 主体只给表：不要表前的结论大段，表后最多一行说明。\n' +
+                            '· 每格**一句话、可核对**：判定标准写成能当场对照判"是/否"的判据（如"4 路门限均已设置"），' +
+                            '不要把发现过程、案例细节写进格子。\n' +
+                            '· 引用取**最短形式**：依据列只写「规章名 + 条号」或「单位 + 日期」，解释性文字去掉。\n' +
+                            '· 同类说明**只写一次**：统一的免责或待核实提示放表格上方/下方一行' +
+                            '（如"未标条号者以现行发文为准"），不要每行重复"待核实"。\n' +
+                            '· 列数克制：超过 6 列时考虑合并或拆表；4~5 列能说清就不铺 7 列。';
                     }
                 } catch (e) {}
                 // 注入当前日期：避免模型把「今天/本月/8月12日」当成年份不明而拒答
@@ -5101,7 +5220,15 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
       //   所以这里只补它没覆盖的部分，不重复（避免提示词互相稀释）。
       const ROLE_OUTPUT_NORMS =
         '【输出规范】\n' +
-        '1. 结构：先给结论与判断 → 再列依据（条款 / 台账 / 案例）→ 最后给可执行的整改或管控建议；条目多时用分点或表格，避免长段落堆砌。\n' +
+        // 【2026-10-07 用户反馈·结构越权（真机实例）】原第 1 条**强制**"结论 → 依据 → 整改建议"三段式，
+        //   于是用户只要一份"检查清单"时，模型也硬加"二、整改与管控建议""三、待核实"等章节 ——
+        //   用户实测反馈："感觉有点太啰嗦，有一部分不是提问的内容"（输出 4 段，只有 1 段是所要的）。
+        //   改为**结构跟随请求**（业界通行做法 "answer the question asked"）：
+        //   三段式只在"分析/研判/怎么办"这类开放问题时启用；清单/数据类请求只给被要的内容。
+        '1. 结构**跟随用户请求**：要清单就只给清单，要判断就只给判断，要数据就只给数据；\n' +
+        '   不要主动追加未被要求的章节（最典型：给了清单还附"整改与管控建议""总体结论""待核实事项"）。\n' +
+        '   仅当请求属于"分析 / 研判 / 怎么办 / 如何处置"这类开放问题时，才用'
+        + '"结论与判断 → 依据（条款/台账/案例）→ 可执行的整改或管控建议"三段式；条目多时用分点或表格，避免长段落堆砌。\n' +
         '2. 引用格式：「名称 + 条款号」的总要求见后文【专业回答准则】；本条补充格式细节 —— 检查信息与案例要带单位、日期（或时段）与问题性质，每条尽量标出来源（如「规章制度：XX办法 第N条」「检查信息：某供电段 2026-03」）。\n' +
         '3. 数据口径：问题性质按 A / B / C / 红线 四类；统计数字必须与本地台账一致，不得改变口径，也不得把估算值写成台账值。\n' +
         '4. 建议要可执行：写清「谁、在什么时机、做什么、达到什么标准」，避免「加强管理、提高认识」这类空话；一条建议只解决一个问题。\n' +
@@ -5117,11 +5244,31 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
         '【回答风格（硬约束）】\n' +
         '1. 直接给答案：第一句就是结论 / 结果 / 代码，不要"好的，我来帮你分析""这是个好问题"之类开场，也不要复述我的问题或我已经给出的背景。\n' +
         '2. 不写废话结尾：不要"希望对您有帮助""如需进一步了解请告知""以上供参考"等客套，也不要在结尾再重复一遍正文要点。\n' +
-        '3. 不转述资料原文：检索到的条款 / 台账只取用得到的结论与关键数据（条款号、数字、时间），不要整段抄录。\n' +
+        // 【2026-10-07 补·自相矛盾修正】原第 3 条一刀切"不要整段抄录"，但用户**明确要条文原文**时
+        //   （"第X条怎么规定的""原文是什么"），照这条执行就变成"用户要原文却不给" —— 这是硬冲突。
+        //   加例外：被明确索取原文时**照给**，仍然沿用"不主动抄"的默认。
+        '3. 不转述资料原文：检索到的条款 / 台账只取用得到的结论与关键数据（条款号、数字、时间），不要整段抄录；'
+        + '**例外**：用户明确要"原文 / 全条 / 怎么写的"时，照给该条原文并标注名称与条号，但只给被问到的那一条，不要顺带铺开整章。\n' +
         '4. 不确定就一句话讲清（"待核实""需联网核实""本地无此数据"），不要用大段铺垫掩盖不确定，也不要为显得完整而堆砌无关内容。\n' +
         '5. 分点 / 表格只在条目 ≥3 或需要对比时使用；只有一个结论就用一句话，不要为它铺多层小标题。禁止同义反复凑篇幅。\n' +
         '6. 不用 emoji 与装饰性符号堆砌（用户使用或明确要求时除外）。\n' +
-        '7. 用户未要求"详细 / 展开 / 逐条"时，默认精炼作答；宁可少说，不要注水。';
+        '7. 用户未要求"详细 / 展开 / 逐条"时，默认精炼作答；宁可少说，不要注水。\n' +
+        // 【2026-10-07 用户反馈】"废话抑制"原只覆盖 开场白/结尾/转述/篇幅，**没覆盖"输出范围"** ——
+        //   模型会自动加用户没要的章节（要清单却给整改建议+待核实）。补此条把范围卡死。
+        '8. 只答所问：不要主动加用户没要的章节 —— 尤其别在"要清单 / 要数据 / 要判定"时附送'
+        + '"整改建议""管控措施""待核实事项""总体评价"。确有必须提醒的事项，压成结尾**一行**'
+        + '（如"如需整改建议可继续"），不要另起大段。\n' +
+        // 【2026-10-07 补·输出形态对照】用户追问"新增清单规范后，其他类型是否也有类似问题"——
+        //   确实有，且**是双向的**：该短的被写长（要数据却给建议）、该长的被压短（要报告却"默认精炼"）。
+        //   这里给一张"请求类型 → 应有形态"的对照表统一收口，避免再为每类零散加规则（提示词会互相稀释）。
+        //   最后两条尤其重要：它们是**对前面条款的优先级声明**（材料类不受"默认精炼/只答所问"压制）。
+        '9. 输出形态随请求类型（不要一律套"结论 + 依据 + 建议"）：\n'
+        + '   · 要数据 / 统计 → 只给数字与口径（数据源、时间范围、总条数）；不附建议；样本不足就直说；\n'
+        + '   · 要规章条文 → 给条款原文 + 名称与条号（见第 3 条例外）；不改写、不附整改建议；本地未收录就说明；\n'
+        + '   · 要定性 / 判定 → 先给结论（性质 / 等级），再给判定依据（条款 / 台账 / 案例），不展开成方案；\n'
+        + '   · 要清单 / 表格 → 只给表，每格写可当场核对的判据（另有专项规范）；\n'
+        + '   · 要材料 / 报告 / 方案 / 讲话稿 → 给**完整结构**，该长就长（本条优先于第 7 条"默认精炼"）；\n'
+        + '   · 闲聊 / 寒暄 → 一句话。';
 
       // 【优化·角色贴合】把角色身份的一句话回扣放到提示词最末尾。
       //   原因：角色提示词位于 system 开头，其后还插入了本地资料（可达 4.5KB）与各项准则，
@@ -6622,6 +6769,7 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
        * 返回 { key, label, prompt, isCode }。
        */
       var ROLE_LABELS = {
+        auto: '自动',   // 【2026-10-07】自动角色：按问题推断专业（见 dsResolveRole）
         default: '通用', dianwu: '电务', gongwu: '工务', gongdian: '供电', keyun: '客运', chewu: '车务',
         jiwu: '机务', cheliang: '车辆', tongxin: '通信', fangjian: '房建', huoyun: '货运',
         tongyong: '综合', frontend: '前端开发', riskanalyst: '风险分析'
@@ -6633,7 +6781,10 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           if (sel && sel.value) key = String(sel.value);
         } catch (e) {}
         if (!key) { try { key = String(localStorage.getItem('ds_role_v1') || ''); } catch (e) {} }
-        if (!key || !ROLE_PROMPTS[key]) key = 'default';
+        // 【2026-10-07】'auto' 是**合法值** —— 它表示"按问题自动判断专业"（每轮由 dsResolveRole 解析）。
+        //   若沿用下面这行的原写法（!ROLE_PROMPTS['auto'] ⇒ 打回 default），选了"自动"也永远走通用角色。
+        if (!key || (key !== 'auto' && !ROLE_PROMPTS[key])) key = 'default';
+        if (key === 'auto') return { key: 'auto', label: '自动', prompt: '', isCode: false, auto: true };
         return {
           key: key,
           label: ROLE_LABELS[key] || key,
@@ -6641,6 +6792,46 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           isCode: key === 'frontend'
         };
       };
+      /**
+       * 【2026-10-07 用户需求】解析本轮**实际角色**：选了「自动」时按问题推断专业，否则原样返回。
+       *   用户原话："角色的选择是否也可以加一个自动角色选择按钮，根据具体问题进行专业角色选择，
+       *   提高智能对话效果及体验"。
+       *   设计要点：
+       *   ① 复用 `window.patchInferTrade`（对规 / 术语 / 检索**共用**同一套专业词库）—— 不另立第二套口径，
+       *      否则会出现"角色判成电务、检索却按工务"的错位；
+       *   ② 代码/前端类与风险研判类**先判**（信号明确，且不属于业务专业）；
+       *   ③ 判不出来回落「通用」并**说明原因**（如实，不假装识别成功）；
+       *   ④ 返回值与 dsGetRole 同结构，多带 auto/reason ⇒ 回答尾部「本次参考」行会标出本轮实际角色，
+       *      用户随时能看到"为什么这次这样答"。手动选定的角色**绝不干预**（picked.key !== 'auto' 直接返回）。
+       *   诊断：`__dsResolveRole('分路不良怎么处理')`
+       */
+      var DS_TRADE_TO_ROLE = {
+        '电务': 'dianwu', '工务': 'gongwu', '供电': 'gongdian', '车务': 'chewu', '机务': 'jiwu',
+        '车辆': 'cheliang', '通信': 'tongxin', '房建': 'fangjian', '客运': 'keyun', '货运': 'huoyun'
+      };
+      window.dsResolveRole = function (query) {
+        var picked = window.dsGetRole();
+        if (!picked || picked.key !== 'auto') return picked;          // 手动选择：绝不干预
+        var q = String(query || '');
+        var key = '', reason = '';
+        try {
+          if (/代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/i.test(q)) {
+            key = 'frontend'; reason = '代码 / 前端请求';
+          } else if (/风险研判|研判|风险等级|隐患分析|预警措施|风险点/.test(q)) {
+            key = 'riskanalyst'; reason = '风险研判类问题';
+          } else if (typeof window.patchInferTrade === 'function') {
+            var trade = window.patchInferTrade(q);
+            if (trade && DS_TRADE_TO_ROLE[trade]) { key = DS_TRADE_TO_ROLE[trade]; reason = '专业推断：' + trade; }
+          }
+        } catch (e) {}
+        if (!key || !ROLE_PROMPTS[key]) {
+          return { key: 'default', label: '通用', prompt: ROLE_PROMPTS['default'] || '', isCode: false,
+                   auto: true, reason: '未识别出专业，按通用作答' };
+        }
+        return { key: key, label: ROLE_LABELS[key] || key, prompt: ROLE_PROMPTS[key],
+                 isCode: key === 'frontend', auto: true, reason: reason };
+      };
+      try { window.__dsResolveRole = window.dsResolveRole; } catch (e) {}
       window._originalSendMsg = window.dsSendMsg;
 
       // 角色注入和长期记忆已内置到 dsSendMsg 中，此处保留暴露 ROLE_PROMPTS

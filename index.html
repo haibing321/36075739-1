@@ -1102,6 +1102,12 @@
                                         </button>
                                         <div class="ds-dropdown-menu" id="ds-role-menu"></div>
                                         <select id="expertRole" class="ds-hidden-select">
+                                            <!-- 【2026-10-07 用户需求】自动角色：按问题判断专业（用户原话"根据具体问题进行专业角色选择，
+                                                 提高智能对话效果及体验"）。放在第一位：新用户默认就该是它 —— 不知道选什么专业时，
+                                                 让它自己判，判不出来就按「通用」作答。
+                                                 实现见 doubao.js 的 dsResolveRole()：复用对规/术语同一套专业词库
+                                                 （window.patchInferTrade），保证"角色判断"与"对规/检索"的专业口径一致，不另立一套。 -->
+                                            <option value="auto">🤖 自动（按问题判断专业）</option>
                                             <option value="default">🧑‍💼 通用</option>
                                             <option value="dianwu">⚡ 电务安全监察</option>
                                             <option value="gongwu">🛤️ 工务安全监察</option>

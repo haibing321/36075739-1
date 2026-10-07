@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.31</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.32</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2223,6 +2223,19 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.32 近期更新（PDF 表格识别：放宽"跨行单元格"判据，表头不再被打平） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.32 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 放宽**"跨行单元格"判据**（表格识别）：真实表格里跨行单元格 / 续行的 x 本就与列锚点有偏差（实测《高速铁路接触网运行维修规则》"装置名称"表：跨行的"1C" x=133，而表头列在 118 ⇒ 差 15pt）⇒ 旧判据把**整表否决**，表头与部分数据行被打平成一整段（`装置名称分析项点分析主体完成时限`）。现改为「格子**既不命中列锚点、又跑到表格列跨度之外**」才算跑偏 ⇒ 该表头现已**进入表格**。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 **已知残留**（诚实说明，同一部位）：① 该表的**列分隔位置**与数据行不一致（表头 x=118/207/335/433，数据行 x=174/335/445/453）⇒ 会多出空列、内容不够整齐，彻底解决需改为"按单元格**区间**定义列"；② 表尾仍可能**混入一行正文**（区域边界问题，与"√ 打勾表"同源）。这两项列为下一步。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 套件：import-layout 45/45、pdf 6/6、ofd 9/9、docx 8/8、format-convert 12/12（均无回归）。</span></div>
+                </div>
             </div>
 
             <!-- v4.31 近期更新（PDF 表格识别：跨列合并表头 / 宽表更完整） -->

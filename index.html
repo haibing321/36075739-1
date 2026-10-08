@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.35</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.36</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2225,332 +2225,34 @@
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v4.35 近期更新（智能对话体检优化：索引不再每轮重建 + 工具按需召回 + 判据用纯问句 + 六项逻辑修复） -->
+            <!-- v4.36 近期更新（六项性能/体验优化：按业界最佳实践落地 —— 并行工具、上下文压缩、并发预读、记忆化、变更检测） -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.35 近期更新</span>
+                    <span>v4.36 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ **修「一发消息就卡」的性能 bug**：规章制度 / 汇编两个检索源的**索引指纹恒不相等**（子集切分每次都生成新数组）⇒ 每发一条消息都要**把整库重新切块 + 重建倒排**（实测每条消息 4~6 次）。修复后第二次检索 **0ms 复用**（实测 38ms → 0ms，真实语料下差距更大）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 **工具清单按问题召回**（原来每轮固定发全量 23 个 schema、约 1~1.5 万 token）：业务问句只带 6~7 个相关工具，未命中分组时仍全量兜底 ⇒ **首字更快、更省 token**。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧠 **修提示词自相矛盾**：系统提示里写着"你没有本地检索工具"，同一轮却挂着 23 个本地查询工具 ⇒ 模型不敢调工具、改成"凭资料片段猜数字"。现改为准确措辞：**资料段管背景口径、工具管准数与明细**，并明确"不要估算数字"。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📎 **修"附件污染判据"**：角色判定 / 思考档 / 联网判定 / 专项规范原来都跑在**含附件正文**的文本上 —— 贴一份含网址、"最新"、"代码"字样的文件会**四处同时误触发**（角色被误判成前端、被强制联网等）。现全部改用**用户原始问句**。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠 **修"任务做完却没保存"**：智能体工具路由会把 `save_report` / `write_diary` 静默裁掉（"统计完生成简报存到资料库"里"简报"既不匹配"报告"也不匹配"日志"）⇒ 模型在工具清单里根本看不到它们；现已把这两个**产出类工具**放进常驻集。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂 **修"刚写的日志搜不到"**：向已有日期追加日志时数组引用与长度都没变 ⇒ 索引指纹检测不到变化、本会话一直返回旧内容；现已显式失效。同时**空结果 / 降级结果不再进 60 秒缓存**（原来索引刚就绪时，同一个问题仍会答"未检索到"）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⏱ **修智能体"跑一半消失"**：最坏可跑 45 分钟，而防并发锁只兜 15 分钟 ⇒ 之后启动的新任务会把先启动的**静默顶掉**（且无任何解释）；现把锁与整任务时限（默认 8 分钟，可用 `__agentDeadlineMs` 调整）对齐。另把对话内工具轮次上限 4→6，降低"永久思考中"的概率。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🪟 恢复**折叠屏开合 0ms 缓存恢复**：性能监控模块注册了 `beforeunload`（注册它会让页面**失去 bfcache 资格**）⇒ 开合/返回被降级为整页重载；已删除（与错误监控模块的既有做法对齐）。联网检索次数 5→2，回答更快。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 新增回归断言：**索引必须复用**（不得每轮重建）、**工具清单必须按问句召回**（未命中时全量兜底）⇒ `chat-fixes` **28/28**；全量 8 套件全绿。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ <b>智能对话更快更稳</b>：多个工具改为<b>并行执行</b>（原来一个个排队，需要多工具的问句明显变快）；工具调用到上限时会<b>如实收尾</b>（不再出现"一直思考中"的空回答）；提示词删掉了重复规则（每轮更省，口径也不再互相打架）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📎 <b>带附件的长会话更轻</b>：同一份附件不再每一轮都重发全文 —— <b>最近一轮保留全文</b>（你可能正就它追问），更早轮次压成摘要并注明"可重新获取"⇒ 大附件会话首字更快，也不会把本轮重点挤掉。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🌐 <b>带链接提问更快</b>：多个链接改为<b>并行预读</b>（原来逐个读，最坏要等几十秒）；链接缓存的字数上限统一（原来存在"第一次读得全、第二次反而读得少"）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 <b>台账大了也不拖</b>：检索的字段文本改为<b>记忆化</b>（同一批数据不再每次重拼）；后台<b>盯控</b>改为"数据没变就不重扫、页面切走不扫、切回立即补检"（更省电，提醒也更及时）。<b>关于面板的更新说明同步精简</b>为"本版要点 + 近期重点 + 历史版本一版一行"。</span></div>
                 </div>
             </div>
 
-            <!-- v4.34 近期更新（表格字号 + 智能对话引用本地数据 + 列错位二次修复 + 进度条遮挡 + 停用开机提示条） -->
+            <!-- v4.33 ~ v4.34 重点（表格排版 + 智能对话数据引用） -->
             <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.34 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔤 **表格内字号改为小四 / 五号**（原来是四号 14pt，实机觉得"比正文还占地方"）：表格内容用**五号（10.5pt）**、表头用**小四（12pt 黑体）**，行距同步由 17pt 收到 15pt。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 **修"智能对话检测不到本地数据"**（排查出三处**静默**掐断，任一处为真就整段不注入、且没有任何提示）：<br/>
-                        ① **自动角色判据过宽** —— "帮我写 / 写一个 / 生成一个 / 页面 / 布局"都被当成代码特征，于是"帮我写一份整改通知书""写一个检查方案"这类**业务刚需**被误判成"代码角色"，本地资料全不注入；现改为「技术名词单独命中 / 界面类词必须与"写改做"同现」；<br/>
-                        ② **总闸门白名单不全** —— 只认 6 个数据源，而实际支持 10 个 ⇒ 只勾了"法规案例汇编 / 事故案例 / 写作资料库 / 历史报告"时**一条都不检索**（输入框上方却还显示"本次将使用…"）；现与注入侧对齐；<br/>
-                        ③ **代码角色一刀切** —— 代码角色下本地资料完全不注入**且不告知**；现改为**仍引用本地资料**（只省略"业务输出规范"那一段，保留 v3.76 的本意）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>💬 顺带修**气泡尾行误报**：原来一律显示"未使用本地资料（寒暄/闲聊类问题不检索）"，把"未启用数据源""代码角色"两种情形都误报成寒暄；现按**真实原因**显示。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 **再次修表格列错位**（拿到源 PDF 后逐页比对定位）：① 归位容差方向写反 —— 列边界落在格子起点右侧几 pt 时会把整列推到右边，造成**最左一整列空白**；② 表格区域混进的正文行（2 格）会造出"伪列边界" —— 现**只让 ≥3 格的行参与列边界投票**。实测《高速铁路接触网运行维修规则》（87 页 / 14 张表）：修前 3 张表有空列 ⇒ 修后**全部无空列**，第 25 页表头「装置名称｜分析项点｜分析主体｜完成时限」正确、第 61 页序号列归位。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 手机端**进度条不再遮挡"追加 / 覆盖"确认框的按钮**（层级 99999→9000，且弹确认框前先收起进度条）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔕 **停用"本次打开走了网络 · 点一下切回本机"开机提示条**（按你的要求）；「关于系统」里的「🔁 切回本机加载」按钮保留备用。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 本轮补 4 条回归断言：表格字号（含"不再出现四号"）、对话引用本地数据（业务问题不判代码角色 / 白名单外数据源仍检索 / 代码角色仍引用）、列错位不得出现全空列、进度条不遮挡弹窗按钮。</span></div>
+                <div style="font-weight:600;font-size:0.82rem;color:var(--text-secondary);margin-bottom:4px;">📋 近期重点版本</div>
+                <div style="font-size:0.78rem;line-height:1.7;color:var(--text-secondary);">
+                    <div>· <b>v4.34</b>：表格内字号改为<b>小四 / 五号</b>；修<b>「智能对话检测不到本地数据」</b>（"帮我写…"被误判成代码角色 · 数据源白名单不全 · 代码角色一刀切，三处静默掐断）；表格<b>列错位</b>二次修复（最左多出一整列空白）；手机端<b>进度条不再遮挡"追加 / 覆盖"按钮</b>；停用"走了网络"开机提示条。</div>
+                    <div>· <b>v4.33</b>：修表格单元格<b>「首行缩进」</b>（根因是继承了正文的 2 字缩进，"在 Word 里取消缩进才对齐"）；修<b>表格列错位</b>（居中数据把 4 列撑成 8~9 列）。</div>
                 </div>
             </div>
 
-            <!-- v4.33 近期更新（DOCX 表格排版两处修复：单元格首行缩进 + 表格列错位） -->
+            <!-- 历史版本（一版一行，保留可追溯性） -->
             <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.33 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修**转换出的 DOCX 里表格单元格内容"首行缩进"**（真机现象：每个格子里的文字都不顶格，在 Word 里点"取消缩进"才对齐）：**"不写缩进"在 Word 里不等于"无缩进"，而是继承文档默认样式** —— 本引擎默认样式带"正文首行缩进 2 字符"，表格段落没显式覆盖就把它继承了过去。现改为**缩进为 0 时也显式写 0** ⇒ 表格内容全部顶格，正文仍保留 2 字符缩进（两条路径都带断言）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修**表格列错位**（转换后表格凭空多出空列、内容散落在中间列、看起来像"缩进"）：列边界过去由"**文字起点**"聚类得出，而**居中 / 右对齐**的格子会把文字起点推到格内偏移处 ⇒ 同一列分裂成两列（实测一张 4 列的表被撑成 8~9 列）。现改为**列边界只允许落在"格与格之间的空隙"里**（集合覆盖求解，与文字对齐方式完全解耦）⇒ 列数收敛、**空列不再产生**、居中数据也归回正确的列。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔒 列算法带**安全阀**：若新算法得出的列数多于旧算法的锚点数（异常情形）⇒ 自动回退旧路径，保证任何情况下都不退步。**PDF / OFD / DOCX 三条导入路径共用同一套排版逻辑，一并受益。**</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 两处修复都补了回归断言：DOCX 导出断言"表格内每段必须显式 firstLine=0，且默认样式仍保留 2 字符给正文"；排版断言"表头左对齐 + 数据行居中时，4 列的表必须仍是 4 列、居中数据仍归回原列"。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.32 近期更新（PDF 表格识别：放宽"跨行单元格"判据，表头不再被打平） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.32 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 放宽**"跨行单元格"判据**（表格识别）：真实表格里跨行单元格 / 续行的 x 本就与列锚点有偏差（实测《高速铁路接触网运行维修规则》"装置名称"表：跨行的"1C" x=133，而表头列在 118 ⇒ 差 15pt）⇒ 旧判据把**整表否决**，表头与部分数据行被打平成一整段（`装置名称分析项点分析主体完成时限`）。现改为「格子**既不命中列锚点、又跑到表格列跨度之外**」才算跑偏 ⇒ 该表头现已**进入表格**。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 **已知残留**（诚实说明，同一部位）：① 该表的**列分隔位置**与数据行不一致（表头 x=118/207/335/433，数据行 x=174/335/445/453）⇒ 会多出空列、内容不够整齐，彻底解决需改为"按单元格**区间**定义列"；② 表尾仍可能**混入一行正文**（区域边界问题，与"√ 打勾表"同源）。这两项列为下一步。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 套件：import-layout 45/45、pdf 6/6、ofd 9/9、docx 8/8、format-convert 12/12（均无回归）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.31 近期更新（PDF 表格识别：跨列合并表头 / 宽表更完整） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.31 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **表格被切成碎片**（表头有合并单元格时整表退化成段落）：这类表格的表头常有**跨列合并格**（如"技术资料名称"横跨多列，x 落在两列之间）与**竖排字**，而旧判据要求"单格行的 x 必须命中已有列" ⇒ 当场把表格切断。现放宽为「**x 落在表格列跨度内也算命中**（跨列合并格）+ 邻近行仍有表格行即可」。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📈 实测（《高速铁路接触网运行维修规则》PDF，87 页）：原先"被切成多张小表"的部位现在连成**完整大表**（26×11、22×9、15×10）；正文（981 段，980 段带首行缩进，符合公文格式）不受影响。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 顺带为**"打勾表"**（技术资料对照表，内容列是 √）加了判据（单字符打勾格 ≥5 个时放宽列数上限）。⚠️ 诚实说明：该判据**尚未完全生效** —— 表格后紧跟的多格正文行会把扫描区域延伸、锚点数暴增；试过"按命中率判定表格结束"会立刻误伤其它表格（已回退）。彻底解决需重构**表格边界检测**，列为下一步。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 说明：**已识别为表格的内容一律没有首行缩进**（实测 12 个表、702 个单元格段落，含 <code>w:ind</code> 的 = 0）；"看着像表格却有缩进"的部位，是**未被识别成表格**的段落 —— 上一条待办（打勾表等）修好后会一并变整齐。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.30 近期更新（PDF 技术作业程序图：还原成「阶段 | 步骤」两列表） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.30 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修 **PDF「技术作业程序图」（流程图）还原错乱**：这类图在 PDF 里是**二维**的 —— 左列是阶段名（"一、收取确报"）、右列是步骤名（"1.准备作业"），二者**不在同一行** ⇒ 按行线性化必然交错乱序（表现为 `1.分放票据 / 一、票据管理 / 2.管理现车`，还会出现"一、准备作业准备作业"这类重复）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠 现按「**阶段 | 步骤**」**两列表格**还原。判据保守、专防误判：连续短行（≤10 字、不以标点收尾）+ 左右两簇（间距 ≥40pt，缩进段落的 ~11pt 会被挡掉）+ 至少一行同时含两列 + 遇小节标题或 ≥3 格行立即结束（那是表格的地盘）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📈 效果（真机 PDF 实测）：程序图 **3 张**还原为两列表；**正文 / 缩进段落 / 同列短行都不被误判**（断言 A⑲ 内含两个反例）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 **已知限制**（诚实说明）：个别表格因「**列位置漂移严重**」（同一列文字 x 在 243/249/254/259 间浮动）仍按段落输出 —— 试过三种放宽方案都能救回那张表，但都会**误伤其它文档**（正文被表格化 / 宽表被误杀）⇒ 按"宁可少数一张表，不可误判正文"取舍，暂列为已知限制（内容不丢，只是不是表格形态）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.29 近期更新（PDF 表格识别：修"整张表格被打平成一行长串"） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.29 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **PDF 表格被"打平成一行长串"**（真机实证：《铁路车号员作业标准》PDF）：这类表格里有 **竖排字**（"一收取确报"每个字各占一行、每行只有 1 格）与**合并单元格 / 空列**（跳过空列的行只有 2 格），而旧判据要求「**每一行都必须 ≥3 格**」、且遇到"1 格行"就**当场把表格切断** ⇒ 整张表被否掉、碎片被拼成 `作业程序作业人员岗位作业技术要求说明事项程序项目一收取确报车号员(1)…` 这样的长串。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠 修法（三处）：① 表格区域扫描**允许单格行**不打断，但准入极严（≤4 字 + 无标点 + 坐标必须落在已有列上）；② 表格体检从"每行 ≥3 格"改为**按列锚点判断**（少格行的坐标必须落在表格列上）；③ 竖排单字（如"确""报"）**回溯并入同列**，不再单独占一行。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📈 效果（同一份 PDF 实测）：表格识别 **6 张 → 9 张**，表头也进表了，13×12 / 11×10 等大表完整；正文不再是碎片。**已知限制**（宁可少识别，也绝不把正文变成假表格）：列位置漂移严重的表（如第 9 页 3.4 表）与二维**程序图**仍按段落输出 —— 这两项在计划中继续处理。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 回归断言：`import-layout` **44/44**（新增 A⑱：合成"竖排字 + 合并单元格 + 空列"语料，断言必须识别成表且表内不出现"每字一行"的碎片）；pdf / ofd / docx / format-convert / data-io 套件全绿。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.28 近期更新（真机反馈三处修复：OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.28 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **OFD 转换"识别 0 个块 / 未解析出文字"**（v4.27 引入的回归，真机实测定位）：水印判据里"查找半透明字色"被写进了**逐层向上找祖先**的循环，走到整层容器时会把**同层水印的字色算给正文** ⇒ 每一个正文对象都被判成水印整段丢弃。现判定严格区分「元素自身」与「祖先」：自身特征只查自身（含直系子元素），祖先只认层名与 `Rotate`。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 顺带收紧**页码判据**：只认对象自身的 `Size` 属性 —— 原来在没有 `Size` 时会回退取 `Boundary` 的高度（单位是毫米，正文行高约 2mm）⇒ 会把正文里的纯数字（如 `25768`）误判成页码删掉。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修**标题与正文粘成一行**（表现为 `一、作业标准执行方面9月16日22时25分，…`）：新增「**上一行是独占式标题 ⇒ 下一行另起段**」判据。真实通报里四个小标题（含标题词自带顿号的「四、防溜、消防和劳动安全措施管控方面」）现已**全部独立成行**；标题下的正文续行不会被切碎，含逗号的编号正文行也不会被误判成标题。**PDF 导入共用同一套排版逻辑，一并受益**。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔁 修**智能对话操作按钮重复两组**（📋复制 / 📤导出 / 👍有用 / 👎无用 / 🔄重生成 / 🔊朗读 各出现两次，刷新后正常）：按钮挂载改为**幂等** —— 同一条回复只保留一条按钮栏。根因是按钮被两个模块各挂一次，而"内容没变就不重建"的优化让前一组没被清掉。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 本轮全部改动均带**回归断言**：`ofd-import` 9/9（新增"同层正文 + 水印并存"用例）、`import-layout` 43/43（新增真机标题用例，含反例）、`chat-fixes` 26/26（新增按钮幂等断言）；PDF / DOCX / 格式转换 / 数据读写套件全绿。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.27 近期更新（格式转换：PDF/OFD/TXT → DOCX/Excel + 三处导入导出修复） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.27 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 新增**格式转换**：在智能对话里上传 **PDF / OFD / TXT / Markdown**，附件标签上会出现 **📥（转成规范 DOCX）** 与 **📊（转成 Excel）** 两个按钮。**全程本地转换、不上传**；DOCX 按公文格式（含章 / 节 / 条层级），Excel **仅在文档含表格时**才导出（多表分多个 sheet），没有表格会**明确告诉你原因**，不会产出一个没意义的表。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **OFD 打印水印漏删**（真机实测定位）：这类水印的旋转写在 **CTM 矩阵**、半透明写在**子元素 FillColor** 上，而旧判据只认 `Rotate` 属性与 `Alpha&lt;1` ⇒ 两条都落空。现已补齐判据（实测可清除每页的斜排 IP 戳与编号戳）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 **OFD 页码粘进正文**：页码对象（约 3.2pt 的纯数字）在聚行前会与同高度页眉文字粘成一行，使"整行就是页码"的判据失效 ⇒ 页码残留并混入正文（表现为出现 <code>5031291使用手电观察…</code> 这类怪串）。现已改为在**聚行前单独剔除**页码对象。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修**导出 Word 表格合并单元格丢失**：`colspan/rowspan` 会导致合并走样（列数也错位）。现按 OOXML 规范生成 `w:gridSpan` / `w:vMerge`，列宽按**展开后**计算。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修两处**导入/导出图片问题**：① Word 导入去水印时，界面渲染用的 HTML 层**漏删**（纯文本已清、但界面上还看得到水印）；② 导入的图片导出时被**统一堆到文末**并多出一行"原图无法获取"占位文字 ⇒ 改为**就地在原位还原**。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.25 近期更新（智能体新增「综合研究」工具：外部理论 + 本单位举证） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.25 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🤝 智能体新增 **「综合研究」工具**：把「**先本地分层检索 → 按需补外部理论 → 分区返回并标注来源**」整套编排**封装在工具内部**（依据 Anthropic 官方《Writing effective tools for agents》："避免把多个数据源的工具堆在一起让模型自行分辨；更好的做法是把跨源聚合逻辑下沉到工具内部"）。⇒ 模型**不需要**判断该查本地还是联网，**口径由代码保证**，不依赖模型自律。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 返回**分区**给出：`本地举证`（带出处，可追溯）/ `外部理论`（带来源，或说明为何未检索）/ `使用建议`（表述结构：**先给理论依据，再用本地数据举证**）。与「智能对话」侧口径一致 —— **本地 = 举证、外部 = 理论**。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 **工具自己判断**要不要外部检索：问"怎么规定 / 依据是什么 / 是否现行有效"⇒ 补外部理论；纯本单位数据统计（多少条 / 哪个单位最多）⇒ **不补**（联网只会拖慢）。**防编造**：模型明确说"查不到外部规范"时如实降级、不当依据；**联网不可用也不报错**（只依据本地举证作答并说明）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧩 归入「规章 / 依据」意图组（未命中时不挂载，避免常驻工具声明变胖），并新增守护断言（工具存在 / 分工描述 / 自主判断 / 分区结构 / 防编造门禁 / `source_type=mixed` 不被收口覆盖 / 已入分组 / 运行期探测）。套件：agent-core **44/44**、agent-call 6/6、data-io 18/18、chat-fixes 25/25。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.24 近期更新（智能体工具按 Anthropic 官方原则改进） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.24 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠 按 **Anthropic 官方《Writing effective tools for agents》** 的"入职说明书"原则重写核心工具描述：`kb_search` 明确「**这是本单位事实的唯一来源**」+ 何时必用（引用条款依据 / 查本单位数据 / 找相似案例）+ 何时不必用（闲聊、通用常识）；`search_issues` 标注"本单位台账事实，条数与明细只能来自本地，**不得用外部信息推断或代替**"；`search_rules` 标注"本地收录版本，需核实现行有效性时应说明以现行文件为准"。顺带修掉 `sources` 描述里的拼写错误。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🏷 **工具返回统一标注依据类型**：所有现有工具都查本地库，故在统一收口处自动附 `source_type=local_evidence`（本地举证——引用须标具体出处，"本单位事实"只能来自本地结果，**不得用外部信息替代或编造**）。⚠️ 将来新增联网类工具时，其实现只需显式返回 `external_theory`，收口不会覆盖 —— 与「智能对话」侧"**本地=举证、联网=理论**"的分工口径保持一致。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 工具调用指标新增「**冗余调用**」（同一任务内同工具同参数的重复调用）—— 官方指出这通常意味着工具描述不清或参数设计不合理（模型在试错），是优化工具的高信号指标。可在控制台用 `getAgentToolStats()` 查看。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.23 近期更新（联网=理论 / 本地=举证） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.23 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 **重新定位联网与本地资料的分工**（用户提出：**联网只负责理论、本地数据负责举证**）—— 比 v4.22 的"业务问题不为它联网"准确得多：<br>· **联网 = 理论**：通用规范 / 行业标准 / 最新政策 / 外部做法；<br>· **本地 = 举证**：本单位台账、案例、日志、电话、本单位规章收录版本（有出处、可追溯）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 三条硬口径：① **本单位事实只能来自本地**（不得用联网结果代替，也不必为查这些去联网）；② **规定/标准/理论/最新政策可以用联网补充**（不再因为"属于业务问题"就完全放弃联网 —— 这是 v4.22 写得太绝对的地方，已修正）；③ **结论要两边都用上**：只给理论不给本单位实际、或只给数据不给依据，都算不完整。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 **推荐的回答结构**：先给理论/规定依据，再用本地数据举证。例：<i>"按规定应……（依据：XX 规范，据联网检索）。本单位近一年检查信息中此类问题共 N 条，典型如……（检查信息：XXX）"</i>。冲突处理：条款**现行有效性**以联网为准（并说明本地库版本可能未更新）；**本单位事实**以本地为准（联网不可能更准）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.22 近期更新（本地资料 × 联网：协同规则） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.22 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🤝 补上「**本地资料 × 联网**」的协同规则（此前两段提示词互不知情，组合时全靠模型自由发挥）：**分工** —— 本单位业务问题（规章条款 / 检查台账 / 事故案例 / 工作日志 / 应急电话 / 写作资料）**以本地为准、不为这类问题联网**，联网只用于外部时效信息；**冲突** —— 涉及条款「现行有效性」时以联网最新为准并说明"本地库收录版本可能未更新"，其余以本地为准（本单位口径优先）；**来源分清** —— 本地标「规章制度：XXX」、联网标「据联网检索」，不混成一段；**顺序** —— 两者都用时先给本地结论，再补联网时效信息。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📎 「本次参考」补上**联网维度**：`📎 本次参考：规章制度 · 检查台账 ｜🌐 联网：已检索 2 次`。三档如实显示：**已检索 N 次** / **已启用但本轮未检索** / **未启用** —— 其中"开着却一次没检索"最该标出来，这正是最容易误解的地方。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 本地与联网**都**没有时，明确告知"本次回答基于模型内部知识（**可能已过时**），不能作为规章依据，正式依据请以文件或原文为准" —— 对安监业务，拿模型记忆当规章依据是必须堵住的风险。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 新增诊断入口：控制台 `__dsBuildPrompt('问题', {rules:true, issue:true})` **不调用模型**即可查看"这一问到底注入了什么"（本地段 / 联网段 / 两者关系），便于核对与排查。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.21 近期更新（回答尾部「本次参考」一行） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.21 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📎 智能对话每轮回答后附一行 **本次参考**，例如「📎 本次参考：规章制度 · 检查台账 · 法规/案例汇编（自动关联）」—— **不用打开面板就知道这轮用了哪些本地资料**。它是系统行（**不是模型输出**、不进历史、不会被"重新生成"带出）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 三种状态都如实呈现，不留空白也不误导：① 正常注入 ⇒ 列出实际用到的源（自动关联时标注）；② 未启用任何数据源 ⇒ 提示去哪儿勾选；③ 本地检索层异常 ⇒ 直接写出原因。**失败轮、空回答、被"停止生成"打断时不追加**（不打扰）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔕 觉得啰嗦可一键关掉：控制台执行 `localStorage.setItem('ds_kb_badge','0')`（想恢复就 removeItem 同名键）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.20 近期更新（关联数据 · 自动关联） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.20 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔮 「关联数据」新增 **自动关联**（默认开启）：按你的问题内容**自动挑选数据源**，不必每次手勾。逐项勾选会变灰，随时取消勾选即回到手选（行为与 v4.19 完全一致）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 **不做黑箱**：面板底部会显示"**本次将使用** 规章制度 · 检查台账 · 法规/案例汇编…"，控制台 `__dsAutoPick('一句话')` 可预演选择结果、`__dsAutoPicked` 看最近一次**实际**用到的源。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛡 **不劣化兜底**：问题没命中任何意图（如"你好"、闲聊）⇒ **不擅自缩小范围**，直接退回你自己的勾选；命中意图时以「规章制度 + 检查台账（常驻核心）+ 该问题相关的源」为准。例："消防安全检查如何规定" ⇒ 自动带上 规章制度 / 法规案例汇编 / 检查台账。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.19 近期更新（关联数据类型补全：6 项 → 9 项） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.19 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔗 补全「关联数据」类型（用户反馈"项点与资料中心数据类型不一致、类型少"）：**6 项 → 9 项**，把原来**藏在别的项里、无法单独控制**的三个源拆成独立开关 —— 📚 **法规/案例汇编**（原来跟着"规章制度"）、🚨 **事故案例**（原来跟着"检查手册"）、📄 **历史报告**（原来跟着"写作资料库"）。同时把"智能写作资料"更名为**写作资料库**，并把整个列表顺序与「设置 → 数据管理」对齐，便于逐项对照。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔁 **老配置自动迁移**：老设备上存的是旧字段，打开面板时会按原来的隐含关系**回填勾选状态**（勾了规章制度就显示汇编也勾上）⇒ **界面上看到的 = 实际会注入的**，且行为与升级前**一字不变**；新保存的配置同时写新老字段，旧备份导入也照常可用。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 为何仍不是"全部数据类型"：**术语库**与**备忘录**属工具类数据（不进知识库索引、不参与检索），故不列入「关联数据」；其余 9 类已与数据管理一一对应。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.18 近期更新（智能对话「本地资料」三种静默情况改为如实告知） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.18 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗣 修「智能对话回答里出现『本地数据库未提供检索工具，只有 web_search』」：**本地资料是系统自动检索后注入的**，模型侧本来就没有"检索本地库"的工具 —— 这不是缺陷，但旧提示词没交代这一点，模型便自行推断成"没有工具"，把人误导了。现在明确告知：不要声称"本地没有检索工具"；真没命中就说"本地资料未检索到相关内容"，并提示可勾选更多数据源、或改用「智能体」（只有智能体具备工具调用能力）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 **把三种静默情况改成如实告知**（以前手机上根本看不出原因）：① **「关联数据」一个源都没勾** ⇒ 原来完全不提示，现在明确说明并指出去哪里勾；② **本地检索层异常** ⇒ 原来只 `console.warn`（手机没有控制台 = 静默失败），现在把**原因写进回答**；③ 检索正常但未命中 ⇒ 沿用"本地资料未检索到相关内容（可能尚未导入资料）"。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 排查提示（本轮实测）：数据源配置存在本机 `ds_datasource_v1`，**每台设备各一份**（默认只勾「规章制度 + 检查信息」）；手机端若看不到本地资料，先看输入框上方「关联数据」勾了哪些、再看「设置 → 知识库」各源的条数与索引状态。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.17 近期更新（知识库缓存失效范围 + 汇编源预热 + 真实数据基准复测） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.17 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 修「知识库缓存被无关写入清空」：导入/编辑检查信息时，原来会把**全部 9 个源**的知识库索引与惰性 df 缓存一起清掉（真机实测一次导入产生 **18 次缓存删除**）⇒ 规章 / 手册 / 电话 / 日志的缓存全被牵连，下一次首次检索又要重付全价。现在**按类只清对应源**。实测删除次数 **18 → 2**（剩下 2 次是检查信息自己的索引与 df 缓存，属正确行为）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📚 修「汇编文档源漏配预热」：`cases`（法规 / 案例汇编）是之前从规章里拆出的独立源，拆分时漏进了两处「启动预载 / 空闲预热」名单 ⇒ 它永远只能等首次检索现建索引（实测 `cases:0/1`，其余有数据的源都是 `1/xxx`）。现已补入，实测 **`cases:1/1`**。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 真实数据基准复测（89.5MB 备份 / 4 万条检查信息）：冷启动台账就绪 **1.0s**、堆 **242MB**（门禁 350MB ✓）；4 万条 Excel 覆盖导入 **2s**（修复前 317s ✓）；备份恢复 **8s**。**修正一处误报**：此前"恢复丢 59 条"实为基准套件期望值过期（写死 43585，而备份已随使用变为 43526）⇒ 已改为**从备份动态读取**期望值，数据再变也不会误报。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⏱ 检索**首会话**长句 P50 **1.8s**（门禁 1.5s；同一机器二次会话 139ms），**非退化**（修复前 5.9s/次）。本轮试做了**空闲 df 预热**（空闲时段把"下次大概会查的词"的 df 提前算好，零召回风险、受「启动后自动载入」开关控制，可用 `KB.warmDf()` 手动触发），但**实测对首查无改善**：预热 300 词仅 5.4s（≈18ms/词）⇒ df 不是瓶颈；1.8s 的主体是**打分阶段"每个查询词各扫一遍 13.9 万块"**（长句十几个词线性累加）。⇒ 真正要变快需减少按词扫描次数（属架构级取舍，需配召回回归），本轮**未擅自改动**。预热本身保留（跨会话补齐 df 缓存，对反复问同类问题有收益）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.16 近期更新（智能体消耗可见 + usage 口径修正） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.16 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🤖 「关于系统」新增**智能体消耗**一行（**不用开控制台就能看**，且不受「设置 → 调试」开关控制）：N 次任务 · 模型调用轮数 · 累计 tokens（平均每任务 / 平均每轮）· 缓存命中率。数据来自历史任务记录，跑一次智能体后开始统计；无记录时给出明确引导而不是留白。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 修 usage 口径（会虚高）：此前落库写的是**本次会话累计** ⇒ 同一会话里跑第 2、3 个任务时记的都是"到那一刻为止的总和"，汇总会**重复累加**（跑得越多虚高越离谱）。改为**本任务增量**（任务起点快照做差），旧记录汇总时**跳过并如实标注条数**，不糊弄。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📊 本机实测优化效益：工具按意图召回后，每轮模型调用少挂 **61%~71%** 的工具声明（约 **1.7k~2.5k tokens/轮**，一次 4 轮任务省 **6.7k~10k tokens**）；意图识别不准时自动退回全量，不劣化。这批数字现在可以直接在「关于系统」里对照实机消耗。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 承 v4.15：规章导入去水印（PDF / OFD / DOCX 同一把尺子）。本轮套件 agent-core 扩到含「消耗口径」守护断言（验证增量落库、旧记录不虚加、关于面板可见）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.15 近期更新（规章导入自动去水印） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.15 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 规章制度导入**自动去水印**（PDF / OFD / DOCX 三条路径**同一把尺子**，之前只有 OFD 有判据、PDF 只丢倾斜行、DOCX 完全没有）：① **水印本体全文清** —— 文中带"水印/watermark"标记的行、图形水印、倾斜水印、IP+账号打印戳；② **"内部资料 不得外传"这类保密字样只在开头/结尾 5 行清**，出现在**正文中间的一律当原文保留**（很多规程正文里真的会写这类条款，删了就是破坏原文）；③ 表格整块不动。长句里顺带提到这些字样（如"违反内部资料不得外传规定的按考核办法处理"）**不会**被误删。删了几处会在导入完成提示里**如实写明**。套件 import-layout 42/42、pdf-import-e2e 6/6。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 修「OFD 导入后正文有内容丢失/串行」（用户实测反馈）：真根因是**坐标**——OFD 规范里 `TextCode` 的 X/Y 是**相对该字块的偏移**，绝对位置要由 `TextObject.Boundary` 的起点加上它（再乘 CTM 缩放）。此前把偏移当成了绝对坐标，导致全篇字块坐标雷同 ⇒ 聚行失效 ⇒ 一行被拆成几十行、段落碎裂、半句被当页眉清掉，看起来就是"内容丢了"；逐字水印（"内部资料 不得外传"被拆成"内""部"…）也因此聚不成行而残留。现已按规范合成坐标，并用真实文件验证：93 个字块 → 21 行，标题/时间字样/正文全部归位。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 OFD 导入也接上水印清洗（此前只有 PDF/DOCX 接了）：因坐标修复后水印能聚成整行，才真正删得掉；并放开 OFD 的"删斜体/旋转水印"性能开销不变。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.14 近期更新（对规截取去重 / 全文定位 / OFD 导入 / 导入提示） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.14 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 规章制度「查看 → 导出本条」由 HTML 单文件改为 **DOCX（含图片）**：复用资料库 / 历史报告同一套导出引擎（RGDocx 真·OOXML，排版偏好一致；图片照旧内嵌，失败自动降级 html-docx-js / .doc）；按钮文案同步为「📄 导出本条 DOCX（含图片）」。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 离线诊断信息改为**默认不显示**：开关在「设置 → 通用 → 🐞 调试」—— 关闭时「关于系统」只剩版本与更新日志；打开才显示缓存项数 / 本次是否走了网络 / SW 接管详情，以及「🔧 重装离线缓存」「🔁 切回本机加载」两个一键修复入口（手机端不再需要控制台）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📌 修「对规截取段落重复」：小段落的上下段延伸会与相邻命中段重复、大段落多个窗口向标点扩展后会互相重叠、两种机制还会交叉重复 ⇒ 同一段文字出现两遍。改法：**截取边界一个字不动**，只把「截取范围」与「输出范围」分开 —— 按**正文区间**去掉已输出部分（部分重叠裁掉前缀），并用**关键词出现位置账本**保证"还有没露过面的关键词位置就必须输出"，做到**去重不丢内容**。新增常驻套件 rule-snippet 8/8。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 修「关键词全文定位偶发不准（与屏幕大小有关）」：窄屏一行放不下 ⇒ 同一段占的**行数**不同 ⇒ 任何按行数/固定像素折算的定位都会漂。改法：全文渲染补段落下标、定位改「**下标精确优先**」、只在容器内滚动、现场量"已找到 N 处"栏的真实重叠、rAF 与 +120ms/+300ms 三次复核，并在字体晚到/横竖屏切换/图片撑高等布局再变时**有界跟随重定位**（约 2.5 秒，用户一滚动即停）。套件 rule-snippet 扩到 12/12。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📄 OFD 导入大幅修复（用户实测"导入后太乱"）：① 坐标改从 **ofd:TextCode** 取（原来只读 TextObject 的 Y ⇒ 大量取成 0 ⇒ 全篇挤乱，这是主因）；② 聚行改按**字号**（|ΔY| &lt; 0.6×字号）、行距用**众数**、缺坐标的块不再乱插；③ 每页的 IP+账号**水印戳按片段清除**（多轮 + 前缀补刀，"…未【戳】使用手电…"会正确接回"未使用"）；④ 整篇被压成一行时按时间点/条款头**重新分段**；⑤ 公文标题从夹缝里**提到最前**。套件 import-layout 扩到 37/37。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 导入完成提示不再自相矛盾：「已清理页眉页脚/页码/水印戳」「识别到 N 张表格」这类**成功**文件的处理说明，单列一节「已导入文件的处理说明」，不再被列在「未导入的文件及原因」下；正常完成弹窗 **2 秒**自动消失，仅**真跳过/失败/组件缺库**时才延长到 8 秒并用警示色。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧪 回归：rule-snippet 12/12、import-layout 37/37、ofd-import 7/7、chat-fixes 25/25、autocheck 24/24、agent-tool 21/21。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.13 近期更新（SW 从未接管的真凶：激活时"接管"被"清理"连累） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.13 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🚑 修「折叠开合/联网打开每次都像清缓存」的真凶：**Service Worker 从没接管过页面**（实测 SW 接管=否、HTML 传输 45830 字节、真实联网资源 35 项、模块就绪 14759ms）⇒ 每次折叠都是整包重新下载。根因：激活时把"接管页面"串在"清理旧缓存"之后，清理一旦失败或卡住，接管就永不执行；而面板据此显示"再刷新一次即生效"，刷新多少次都无效。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 激活改为「接管与清理并行、各自兜错」；新增运行期接管指令（页面可请 SW 当场接管）；页面启动 900ms 自检发现"已激活但未接管"即自动修复并刷新一次（每会话仅一次）⇒ 已卡住的设备无需用户反复刷新。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📴 若作用域不覆盖当前页，「关于→离线状态」会如实写出"作用域 vs 当前地址"，不再给"再刷新一次"这种空话；套件 fold-state 扩到 30/30（新增接管自愈守卫），回归 autocheck 23/23、chat-fixes 20/20。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 日志「✨ 一键修改」引文校正修一处漏判：原来判断"这句是否已有条号"时对**整句**检测，引文正文里本来就有"第X条"字样时会被误判成"已有条号"而跳过补号 → 现在只看引号之前的外壳，保证丢号时按库内原文补上「第X条」（套件 diary-ai-fix 110/110）。</span></div>
-                </div>
-            </div>
-
-            <!-- v4.12 近期更新（联网时折叠慢真因：App Shell 缓存缺文件自愈） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                    <span>🆕</span>
-                    <span>v4.12 近期更新</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐢 定位并修「联网时折叠每次都很慢」真因：App Shell 缓存缺文件（离线秒开说明 SW 在接管，慢网才复现 ⇒ 联网慢只可能是缺文件在线被真下载）。根因是 precacheRest 挂在 SW activate 后 2.5s，折叠/关页面会终止 SW ⇒ 常跑不完，且 activate 每版本只跑一次 ⇒ 缺的长期不补。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 sw.js 新增 CHECK_MISSING（算出还缺哪些并回执数量+样例）与 PRECACHE_REST（当场补齐、回执剩余），均复用同一份 buildPrecacheUrls 清单；app.js 新增 _offlineSelfCheck（暴露 window.dsOfflineSelfCheck）启动 2.5s 后 + 每 3 分钟在线自检，缺则请 SW 补齐。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📴 关于→离线状态新增「离线完整性：✓ 缓存齐全 / ⚠ 缺 N 项（正在补齐）」，自检结果写进 _boot_timeline；套件 fold-state 扩到 26/26（含自愈验证：删缓存脚本→自检发现缺 2 项→补齐回 0）；回归 autocheck 23/23、chat-fixes 20/20、role 17/17。</span></div>
+                <div style="font-weight:600;font-size:0.82rem;color:var(--text-secondary);margin-bottom:4px;">🗂 历史版本</div>
+                <div style="font-size:0.74rem;line-height:1.75;color:var(--text-secondary);">
+                    v4.35 近期更新：智能对话体检优化（索引不再每轮重建 · 工具按需召回 · 判据用纯问句 · 六项逻辑修复）· v4.32 PDF 表格识别放宽"跨行单元格"判据（表头不再被打平）· v4.31 跨列合并表头 / 宽表更完整 · v4.30 PDF 技术作业程序图还原为「阶段｜步骤」两列表 · v4.29 修 PDF 表格被"打平成一行长串" · v4.28 OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复 · v4.27 格式转换 PDF/OFD/TXT → DOCX/Excel 及导入导出修复 · v4.25 智能体「综合研究」工具（外部理论 + 本单位举证）· v4.24 智能体工具按官方原则改进 · v4.23 联网=理论 / 本地=举证 · v4.22 本地资料 × 联网协同规则 · v4.21 回答尾部「本次参考」· v4.20 关联数据自动关联 · v4.19 关联数据类型补全（6→9）· v4.18 「本地资料」三种静默情况改为如实告知 · v4.17 知识库缓存失效范围 + 汇编源预热 · v4.16 智能体消耗可见 · v4.15 规章导入自动去水印 · <b>v4.14 近期更新</b>：对规<b>截取</b>去<b>重复</b> / 全文<b>定位</b> / <b>OFD</b> 导入 / 已导入文件的处理说明 · v4.13 SW 未接管真因（激活时"清理"连累"接管"）· v4.12 联网时折叠慢（App Shell 缓存缺文件自愈）
                 </div>
             </div>
 

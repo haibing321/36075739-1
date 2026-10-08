@@ -1054,64 +1054,94 @@
         try { cache = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cache = {}; }
         var parts = [], linksOut = [], fromCache = true, anyOk = false;
         var t0 = Date.now();   // 总时间预算起点（多链接时防止无限等待）
-        for (var i = 0; i < todo.length; i++) {
-            var u = todo[i], hit = cache[u];
-            if (hit && hit.ts && (Date.now() - hit.ts) < TTL && hit.text) {
-                parts.push('〔来源 ' + (i + 1) + '〕' + u + '\n' + hit.text);
-                linksOut.push({ url: u, ok: true, chars: hit.text.length, cached: true });
+        // 【2026-10-08 业界对齐 · 受控并发池（concurrency pool）+ deadline 预算】
+        //   改动前是 `for + await` **逐个串行** ⇒ 4 个链接最坏 = 4×单链超时(15s) + 模型兜底(25s)
+        //   ⇒ 真机表现"带链接的提问首字要等十几到几十秒"。
+        //   业界通行做法（抓取/检索系统的标准模式，也是浏览器并发的推荐姿势）：
+        //     ① **并发池**：固定 N 个 worker 从**共享游标**取任务；刻意不用一次性 `Promise.all(todo.map(...))`
+        //        —— 那会同时打开全部连接（链接多时反而更慢、也更容易被目标站限流）；
+        //     ② **deadline 预算**：每个 worker 取任务前先查总预算，超预算的链接标 `skipped`（保留原语义）；
+        //     ③ **确定性输出**：结果按**原索引**落入 `_slots`，最后按序拼接 ⇒ 并发**不改变**"〔来源 N〕"
+        //        的编号与顺序（与并行工具调用"按原序回灌"同一原则，避免回答里引用编号错乱）。
+        //     ④ **缓存限长统一**（CACHE_CAP）：原来未命中可注入 20000 字、写缓存却被截到 8000
+        //        ⇒ 同一链接"第一次读得全、第二次反而读得少"，属静默降级；现注入与缓存用**同一上限**。
+        var CONC = Math.max(1, Math.min(opts.concurrency || 3, todo.length));
+        var CACHE_CAP = opts.maxChars || 20000;
+        var CACHE_N = Math.max(4, opts.cacheKeep || 4);   // 与"最多读 4 个链接"对齐，同时控制 localStorage 体积（4×20KB）
+        var _slots = new Array(todo.length);
+        var _cursor = 0;
+        var _worker = async function () {
+            for (;;) {
+                var i = _cursor++;
+                if (i >= todo.length) return;
+                var u = todo[i], hit = cache[u];
+                if (hit && hit.ts && (Date.now() - hit.ts) < TTL && hit.text) {
+                    _slots[i] = { cached: true, url: u, text: hit.text, title: hit.title || '', channel: hit.channel || '' };
+                    continue;
+                }
+                fromCache = false;
+                // 总时间预算：多链接时不要无限等（超预算的链接改为"列出未读"，避免首字延迟过长）
+                if (Date.now() - t0 > (opts.totalBudgetMs || 45000)) {
+                    _slots[i] = { url: u, ok: false, error: 'budget', skipped: true };
+                    continue;
+                }
+                var _txt = '', _ch = '', _title = '', _err = '';
+                // ① 第 2 层：阅读器代理直取 Markdown（质量最高、不耗额度）
+                if (typeof window.dsFetchPage === 'function') {
+                    try {
+                        var _pr = await window.dsFetchPage(u, { timeoutMs: opts.readerTimeoutMs || 15000, maxChars: CACHE_CAP });
+                        if (_pr && _pr.ok && _pr.text) { _txt = _pr.text; _ch = 'reader'; _title = _pr.title || ''; }
+                        else { _err = (_pr && _pr.error) || 'reader-failed'; }
+                    } catch (e) { _err = String((e && e.message) || e); }
+                } else { _err = 'no-reader'; }
+                // ② 第 1 层兜底：用联网通道"以该网址为目标"定向读（reader 不可用时仍能读到）
+                if (!_txt) {
+                    var sys = '你是网页正文读取器。请**打开并阅读**用户给出的这个网址，逐段摘录其正文要点，'
+                        + '保留关键数字、条款号与原文表述；若该页是列表/导航页，摘录其可见条目标题。'
+                        + '只输出摘录本身，不要评价、不要客套、不要解释你做了什么。'
+                        + '如果确实无法打开该网址，只回一行：READ_FAILED（不要编造内容）。';
+                    var usr = '要读取的网址：' + u + (question ? ('\n（用户就这个链接提的问题是：' + String(question).slice(0, 200) + '）') : '')
+                        + '\n\n请优先用检索工具打开该网址本身（检索词可直接用该网址或其标题），然后摘录正文。';
+                    var r = null;
+                    try {
+                        r = await window.dsWebSearchOnce(sys, usr, {
+                            maxUses: opts.maxUses || 2, maxTokens: opts.maxTokens || 1600, timeoutMs: opts.modelTimeoutMs || 25000
+                        });
+                    } catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
+                    var mtxt = (r && r.ok && r.text) ? String(r.text).trim() : '';
+                    if (mtxt && /^READ_FAILED\b/i.test(mtxt)) mtxt = '';
+                    if (mtxt) { _txt = mtxt; _ch = 'model'; }
+                    else if (!_err) _err = (r && (r.error || r.status)) || 'read-failed';
+                }
+                _slots[i] = _txt
+                    ? { ok: true, url: u, text: _txt, title: _title, channel: _ch }
+                    : { url: u, ok: false, error: _err || 'read-failed' };
+            }
+        };
+        await Promise.all(Array.from({ length: CONC }, function () { return _worker(); }));
+        // 按原索引顺序汇总（保证"〔来源 N〕"编号、顺序与串行版本完全一致）
+        for (var _ri = 0; _ri < _slots.length; _ri++) {
+            var _s = _slots[_ri] || {};
+            if (_s.cached) {
+                parts.push('〔来源 ' + (_ri + 1) + '〕' + _s.url + '\n' + _s.text);
+                linksOut.push({ url: _s.url, ok: true, chars: _s.text.length, cached: true });
                 anyOk = true;
-                continue;
-            }
-            fromCache = false;
-            // 总时间预算：多链接时不要无限等（超预算的链接改为"列出未读"，避免首字延迟过长）
-            if (Date.now() - t0 > (opts.totalBudgetMs || 45000)) {
-                linksOut.push({ url: u, ok: false, error: 'budget', skipped: true });
-                continue;
-            }
-            var _txt = '', _ch = '', _title = '', _err = '';
-            // ① 第 2 层：阅读器代理直取 Markdown（质量最高、不耗额度）
-            if (typeof window.dsFetchPage === 'function') {
-                try {
-                    var _pr = await window.dsFetchPage(u, { timeoutMs: opts.readerTimeoutMs || 15000, maxChars: opts.maxChars || 20000 });
-                    if (_pr && _pr.ok && _pr.text) { _txt = _pr.text; _ch = 'reader'; _title = _pr.title || ''; }
-                    else { _err = (_pr && _pr.error) || 'reader-failed'; }
-                } catch (e) { _err = String((e && e.message) || e); }
-            } else { _err = 'no-reader'; }
-            // ② 第 1 层兜底：用联网通道"以该网址为目标"定向读（reader 不可用时仍能读到）
-            if (!_txt) {
-                var sys = '你是网页正文读取器。请**打开并阅读**用户给出的这个网址，逐段摘录其正文要点，'
-                    + '保留关键数字、条款号与原文表述；若该页是列表/导航页，摘录其可见条目标题。'
-                    + '只输出摘录本身，不要评价、不要客套、不要解释你做了什么。'
-                    + '如果确实无法打开该网址，只回一行：READ_FAILED（不要编造内容）。';
-                var usr = '要读取的网址：' + u + (question ? ('\n（用户就这个链接提的问题是：' + String(question).slice(0, 200) + '）') : '')
-                    + '\n\n请优先用检索工具打开该网址本身（检索词可直接用该网址或其标题），然后摘录正文。';
-                var r = null;
-                try {
-                    r = await window.dsWebSearchOnce(sys, usr, {
-                        maxUses: opts.maxUses || 2, maxTokens: opts.maxTokens || 1600, timeoutMs: opts.modelTimeoutMs || 25000
-                    });
-                } catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
-                var mtxt = (r && r.ok && r.text) ? String(r.text).trim() : '';
-                if (mtxt && /^READ_FAILED\b/i.test(mtxt)) mtxt = '';
-                if (mtxt) { _txt = mtxt; _ch = 'model'; }
-                else if (!_err) _err = (r && (r.error || r.status)) || 'read-failed';
-            }
-            if (_txt) {
+            } else if (_s.ok) {
                 anyOk = true;
-                parts.push('〔来源 ' + (i + 1) + '〕' + u + (_title ? ('　标题：' + _title) : '') + '\n' + _txt);
-                linksOut.push({ url: u, ok: true, chars: _txt.length, channel: _ch, title: _title });
-                cache[u] = { ts: Date.now(), text: _txt.slice(0, 8000), channel: _ch, title: _title };
+                parts.push('〔来源 ' + (_ri + 1) + '〕' + _s.url + (_s.title ? ('　标题：' + _s.title) : '') + '\n' + _s.text);
+                linksOut.push({ url: _s.url, ok: true, chars: _s.text.length, channel: _s.channel, title: _s.title });
+                cache[_s.url] = { ts: Date.now(), text: String(_s.text).slice(0, CACHE_CAP), channel: _s.channel, title: _s.title };
             } else {
-                linksOut.push({ url: u, ok: false, error: _err || 'read-failed' });
+                linksOut.push({ url: _s.url, ok: false, error: _s.error, skipped: !!_s.skipped });
             }
         }
-        // 修剪缓存（最多 8 条，保留最新的）
+        // 修剪缓存（最多 CACHE_N 条，保留最新的）—— 条数与"最多读 4 个链接"对齐，避免 localStorage 被大文本撑满
         try {
             var ks = Object.keys(cache);
-            if (ks.length > 8) {
+            if (ks.length > CACHE_N) {
                 ks.sort(function (a, b) { return (cache[b].ts || 0) - (cache[a].ts || 0); });
                 var keep = {};
-                ks.slice(0, 8).forEach(function (k) { keep[k] = cache[k]; });
+                ks.slice(0, CACHE_N).forEach(function (k) { keep[k] = cache[k]; });
                 cache = keep;
             }
             localStorage.setItem(KEY, JSON.stringify(cache));

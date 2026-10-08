@@ -62,6 +62,40 @@
   }
   function clearGoals() { saveGoals([]); }
 
+  // 【2026-10-08 业界对齐 · change detection（变更检测）+ 池共享 + 调度合并】
+  //   原实现的三个浪费（手机端尤其明显）：
+  //     ① **每目标各取一次池、各扫一遍全池** ⇒ O(目标数 × 池大小)：4 万条台账下每 5 分钟重复全量扫描，
+  //        而多目标常常盯的是同一个池；
+  //     ② **数据没变也照扫**（5 分钟内台账通常毫无变化）⇒ 纯白做功，还白耗电；
+  //     ③ 定时器不看页面可见性 ⇒ 手机把页面切到后台仍在扫（既费电又可能被系统降频）。
+  //   对策（均为业界通行做法）：
+  //     · **池共享**：同一类型的数据源**每轮只取一次、只判一次变更**，供该类型下所有目标复用（见 _goalPool）；
+  //     · **变更检测**：池"引用 + 长度"未变 ⇒ 该类型下已建立基线的目标**直接沿用上次命中数**（零扫描）。
+  //       判据与知识库索引层（knowledge.js 的 ensureSource）保持一致 —— 本项目数据是"整批替换/追加"语义
+  //       （导入、删除、清空、重载都会换数组或改长度），故该判据在本地可靠。
+  //       语义等价性：池未变 ⇒ 命中数必然与上次相同 ⇒ 无需更新基线、也无需重复判定通知条件。
+  //     · **可见性**：由 start() 在定时器回调里判断 document.hidden，并在恢复可见时立即补检一次。
+  var _goalPoolCache = {};   // { type: { pool, changed } } —— 本轮各类型池与"是否变化"（每轮只算一次）
+  var _goalSrcSnap = {};     // { type: { ref, len } } —— 上一次扫描时的池快照
+  var _scanMemo = {};        // { goalKey: { fp, n } } —— 扫描结果缓存（键 = 类型|关键词|池长度，见 checkGoals）
+  function _goalPool(type) {
+    if (_goalPoolCache[type]) return _goalPoolCache[type];
+    var pool = [];
+    try {
+      if (type === 'rule') pool = (typeof window.getRulesData === 'function') ? (window.getRulesData() || []) : [];
+      else if (type === 'diary') pool = (typeof window.getDiaryData === 'function') ? (window.getDiaryData() || []) : [];
+      else if (type === 'phone') pool = (typeof window.getPhoneData === 'function') ? (window.getPhoneData() || []) : [];
+      else if (type === 'memo') pool = (typeof window.getMemoData === 'function') ? (window.getMemoData() || []) : [];
+      else pool = (typeof window.getIssueData === 'function') ? (window.getIssueData() || []) : [];
+    } catch (e) { pool = []; }
+    var s = _goalSrcSnap[type];
+    var changed = !(s && s.ref === pool && s.len === pool.length);
+    if (changed) _goalSrcSnap[type] = { ref: pool, len: pool.length };
+    var rec = { pool: pool, changed: changed };
+    _goalPoolCache[type] = rec;
+    return rec;
+  }
+
   // 后台检查：进页面立即一次 + 每 5 分钟一次
   function checkGoals() {
     // 必须读写【完整列表】：原先先 filter(active) 再 saveGoals(过滤后的数组)，
@@ -71,8 +105,7 @@
     // 数据尚未从 IndexedDB 载入时 getIssueData() 返回 []：
     // 此刻记录基线或判定「新增」，都会把整库数据当成新增，5 分钟后误弹告警
     if (!window.__issueDataReady) return;
-    var issues = [];
-    try { if (typeof window.getIssueData === 'function') issues = window.getIssueData(); } catch (e) {}
+    _goalPoolCache = {};   // 每轮重新判定各类型池（见 _goalPool：池共享 + 变更检测）
     var changed = false;
     goals.forEach(function (goal) {
       if (!goal || !goal.active) return;
@@ -85,41 +118,51 @@
         var kw = String(cond.keyword || '').trim();
         // 空关键词必须跳过：indexOf('') 恒为 0，会把整库当成命中并立刻触发告警
         if (!kw) return;
-        var pool = issues;
-        if (_type === 'rule') {
-          try { pool = (typeof window.getRulesData === 'function') ? (window.getRulesData() || []) : []; } catch (e) { pool = []; }
-        } else if (_type === 'diary') {
-          try { pool = (typeof window.getDiaryData === 'function') ? (window.getDiaryData() || []) : []; } catch (e) { pool = []; }
-        } else if (_type === 'phone') {
-          try { pool = (typeof window.getPhoneData === 'function') ? (window.getPhoneData() || []) : []; } catch (e) { pool = []; }
-        } else if (_type === 'memo') {
-          try { pool = (typeof window.getMemoData === 'function') ? (window.getMemoData() || []) : []; } catch (e) { pool = []; }
-        }
+        var _rec = _goalPool(_type);
+        var pool = _rec.pool;
         if (!pool.length) return;      // 数据源为空（尚未加载/确实无数据）→ 跳过，不污染基线
-        var matched = pool.filter(function (item) {
-          if (_type === 'rule') {
-            return (item.title || '').indexOf(kw) !== -1 || (item.content || '').indexOf(kw) !== -1 || (item.trade || '').indexOf(kw) !== -1;
-          }
-          if (_type === 'diary') {
-            var hay = (item.work || '') + ' ' + (item.issues || []).join(' ') + ' ' + (item.regulations || []).join(' ');
-            return hay.indexOf(kw) !== -1;
-          }
-          if (_type === 'phone') {
-            return ((item.站名 || '') + ' ' + (item.单位 || '') + ' ' + (item.线名 || '') + ' ' + (item.路电 || '') + ' ' + (item.市电 || '')).indexOf(kw) !== -1;
-          }
-          if (_type === 'memo') {
-            return (String(item.content || '') + ' ' + String(item.datetime || '')).indexOf(kw) !== -1;
-          }
-          return (item.content || '').indexOf(kw) !== -1 || (item.category || '').indexOf(kw) !== -1;
-        });
+        // 【变更检测 · 正确姿势（缓存键 = 影响命中数的全部输入）】
+        //   命中数 n 只取决于三样东西：① 池内容 ② 目标的盯控类型 ③ 目标的关键词
+        //   ⇒ 缓存键 = `类型|关键词|池长度`，再叠加"池引用是否变化"（_rec.changed，覆盖"长度恰好相同的就地换内容"）。
+        //   ⚠️ 套件 agent-core 的 J（目标提醒：冷却内不弹 / 冷却后弹一次 / 同计数不重复弹）连续抓出我**两次**错误写法，
+        //      这是本轮最有价值的两次纠错，如实记录在这里：
+        //      · 错法一："池没变就直接 return 跳过整个目标" ⇒ 通知判定（冷却到期 / 计数变化）不再执行
+        //        ⇒ "冷却过后该提醒"的目标**永远不再提醒**（表现为该响不响）；
+        //      · 错法二："池没变就复用 lastMatched" ⇒ 把**基线**当成了**当前命中数** ⇒
+        //        目标关键词被改、或基线因数据回落被下调时，判定全错。
+        //   结论：**性能优化只允许缓存"结果"；且缓存键必须覆盖影响该结果的每一个输入。**
+        var _gkey = goal.id || ('anon:' + _type + ':' + kw);
+        var _fp = _type + '|' + kw + '|' + pool.length;
+        var _memo = _scanMemo[_gkey];
+        var n;
+        if (!_rec.changed && goal.baselined && _memo && _memo.fp === _fp) {
+          n = _memo.n;          // 命中缓存：池没变、关键词没变、类型没变 ⇒ 命中数必然相同，跳过全池扫描
+        } else {
+          n = pool.filter(function (item) {
+            if (_type === 'rule') {
+              return (item.title || '').indexOf(kw) !== -1 || (item.content || '').indexOf(kw) !== -1 || (item.trade || '').indexOf(kw) !== -1;
+            }
+            if (_type === 'diary') {
+              var hay = (item.work || '') + ' ' + (item.issues || []).join(' ') + ' ' + (item.regulations || []).join(' ');
+              return hay.indexOf(kw) !== -1;
+            }
+            if (_type === 'phone') {
+              return ((item.站名 || '') + ' ' + (item.单位 || '') + ' ' + (item.线名 || '') + ' ' + (item.路电 || '') + ' ' + (item.市电 || '')).indexOf(kw) !== -1;
+            }
+            if (_type === 'memo') {
+              return (String(item.content || '') + ' ' + String(item.datetime || '')).indexOf(kw) !== -1;
+            }
+            return (item.content || '').indexOf(kw) !== -1 || (item.category || '').indexOf(kw) !== -1;
+          }).length;
+          _scanMemo[_gkey] = { fp: _fp, n: n };
+        }
         // 首次观测：静默记录基线，不提醒（避免每次刷新页面都弹通知）
         if (!goal.baselined) {
           goal.baselined = true;
-          goal.lastMatched = matched.length;
+          goal.lastMatched = n;
           changed = true;
           return;
         }
-        var n = matched.length;
         var base = goal.lastMatched || 0;
         // 【2026-09-21】比较方式（原来只有"计数增加"）：increase（默认）/ threshold / delta
         var _mode = cond.mode || 'increase';
@@ -208,7 +251,22 @@
       // A1 总开关：关闭增强时不启动后台盯控
       if (window._agentEnhanceOn && !window._agentEnhanceOn()) return;
       checkGoals(); // 进页面立即检查一次（首次仅建立基线）
-      setInterval(checkGoals, CHECK_INTERVAL);
+      // 【2026-10-08 业界对齐 · Page Visibility API（调度合并）】
+      //   ① 定时器回调里先看 document.hidden：页面在后台（切走 / 手机锁屏）时**不扫** ——
+      //      后台轮次的结果没人看，扫了只是耗电与占主线程（手机上还会被系统降频，反而影响回来后的响应）；
+      //   ② **恢复可见时立即补检一次**：而不是让用户干等下一个 5 分钟 —— 这是可见性方案必须配的补偿，
+      //      否则会从"省电"变成"该提醒时晚 5 分钟才提醒"。
+      setInterval(function () {
+        try {
+          if (typeof document !== 'undefined' && document.hidden) return;
+          checkGoals();
+        } catch (e) {}
+      }, CHECK_INTERVAL);
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('visibilitychange', function () {
+          try { if (!document.hidden) checkGoals(); } catch (e) {}
+        });
+      }
     } catch (e) {}
   }
 

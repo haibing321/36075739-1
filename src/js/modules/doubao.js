@@ -2227,7 +2227,7 @@
              *   盘点结论 —— 已有的是：**智能体侧**工具失败门禁（agent-core 收口前程序化补"未成功项"）+ 提示词规则 15 自检；
              *   **对话侧**只有"本次参考"事实标注与"联网零检索"告警。**缺的正是"输出 vs 提问是否一致"这一环**。
              * 做法：规则式事后校验（确定性、零 API 成本、即时）——
-             *   ① 识别请求类型（与提示词第 9 条**同一套关键词**，保证事前约束与事后校验口径一致）；
+             *   ① 识别请求类型（与提示词【回答风格】第 8 条**同一套关键词**，保证事前约束与事后校验口径一致）；
              *   ② 校验形态是否匹配（要清单却给散文 / 要数据却无数字与口径 / 要条文却无条号）；
              *   ③ 检测**越权章节**（用户没要建议，却出现"整改建议/管控措施/待核实"等章节）。
              * ⚠️ 安全边界：**只提示、绝不改写模型回答**（用户可能就想看那些内容，改写会丢信息）；
@@ -2235,7 +2235,7 @@
              * 诊断入口：`__dsAnswerSelfCheck(问题, 回答)`（手动跑任意问答对，不调模型）。
              * ===================================================================== */
             var DS_REQ_LABEL = { list: '清单/表格', data: '数据统计', rule: '规章条文', doc: '材料/报告', judge: '定性判定', open: '开放问题' };
-            /** 请求类型识别（与 system 提示第 9 条的关键词口径保持一致） */
+            /** 请求类型识别（与 system 提示【回答风格】第 8 条的关键词口径保持一致） */
             function dsClassifyQuery(q) {
                 var t = String(q || '');
                 if (/清单|检查表|项点|表格|检查项|对照表|检查内容/.test(t)) return 'list';
@@ -2646,11 +2646,51 @@
                 for (var _hi = _reqHistRaw.length - 1; _hi >= 0; _hi--) {
                     if (_reqHistRaw[_hi] && _reqHistRaw[_hi].role === 'assistant') { _lastAsstIdx = _hi; break; }
                 }
+                // 【2026-10-08 业界对齐 · Context Editing / Compaction】
+                //   问题：附件正文是以**全文**写进 user 消息 content 的（见上方"【附件内容】"拼接处），
+                //     而这里的历史瘦身**只截断 assistant** ⇒ 带附件的会话里，同一份附件正文会**每轮被完整重发**
+                //     （大附件上万字符/轮）：既拖慢首字（首 token 延迟随 prompt 长度增长），又挤占本轮重点。
+                //   业界做法（Anthropic Context Editing —— 按策略自动清理较旧的上下文；Compaction —— 把旧内容
+                //     压成摘要；Claude Code 同理：旧文件内容换成"摘要 + 可重新获取的句柄"）：
+                //     ① **最近一轮的附件正文完整保留** —— 用户此刻最可能就这份附件追问，细节不能丢；
+                //     ② **更早轮次**的附件正文压成"头部片段 + 尾部片段 + 省略量"，并**显式告知模型**
+                //        "这是历史压缩，需要细节请让用户指明片段或重新上传"（如实告知，绝不静默丢信息后靠编造补）；
+                //     ③ 只在**请求副本**上做，聊天区显示与本地存档一字不动。
+                //   ⚠️ 为什么不是"删掉整段"：那样模型会以为附件不存在，用户追问时答"没看到附件" —— 属静默降级。
+                var _lastUserIdx = -1;
+                for (var _uji = _reqHistRaw.length - 1; _uji >= 0; _uji--) {
+                    if (_reqHistRaw[_uji] && _reqHistRaw[_uji].role === 'user') { _lastUserIdx = _uji; break; }
+                }
+                var DS_ATTACH_MARK = '【附件内容】';
+                var DS_ATTACH_KEEP = 2000;   // 超过此长度才压缩（小附件保持原样，避免无谓加工）
                 var _reqHist = _reqHistRaw.map(function (m, _i) {
-                    if (!m || m.role !== 'assistant' || _i === _lastAsstIdx) return m;
-                    var _c = String(m.content || '');
-                    if (_c.length <= 3000) return m;
-                    return { role: m.role, content: _c.slice(0, 1800) + '\n\n…（此处省略 ' + (_c.length - 2400) + ' 字）\n\n' + _c.slice(-600) };
+                    // ① assistant：较早的整段回答截断（原逻辑，保持不变）
+                    if (m && m.role === 'assistant' && _i !== _lastAsstIdx) {
+                        var _c = String(m.content || '');
+                        if (_c.length > 3000) {
+                            return { role: m.role, content: _c.slice(0, 1800) + '\n\n…（此处省略 ' + (_c.length - 2400) + ' 字）\n\n' + _c.slice(-600) };
+                        }
+                    }
+                    // ② user：历史消息（非本轮）里的附件正文压缩
+                    if (m && m.role === 'user' && _i !== _lastUserIdx) {
+                        var _u = String(m.content || '');
+                        var _ai = _u.indexOf(DS_ATTACH_MARK);
+                        if (_ai >= 0) {
+                            var _uHead = _u.slice(0, _ai);
+                            var _uBody = _u.slice(_ai + DS_ATTACH_MARK.length);
+                            if (_uBody.length > DS_ATTACH_KEEP) {
+                                return {
+                                    role: 'user',
+                                    content: _uHead + DS_ATTACH_MARK
+                                        + _uBody.slice(0, 600)
+                                        + '\n\n…（历史附件正文已压缩，省略 ' + (_uBody.length - 800) + ' 字；'
+                                        + '如需其中细节，请让用户指明要看的部分或重新上传该文件，不要凭记忆编造附件内容）\n\n'
+                                        + _uBody.slice(-200)
+                                };
+                            }
+                        }
+                    }
+                    return m;
                 });   // 请求用历史快照：此刻只含历史 + 本轮 user，不含下面这条空助手气泡
                 dsHistory.push({ role: 'assistant', content: '' });
                 var assistantIdx = dsHistory.length - 1;
@@ -3467,14 +3507,28 @@
                                     if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); }
                                 } catch (e) {}
                             };
-                            for (var _k = 0; _k < _pendingToolCalls.length; _k++) {
-                                var _call = _pendingToolCalls[_k];
+                            // 【2026-10-08 业界对齐 · OpenAI Parallel function calling】
+                            //   规范：模型在同一轮返回的多个 tool_calls 是**相互独立**的，客户端应**并发执行**，
+                            //   再把 tool 结果**按 tool_calls 的原顺序**回灌（顺序错乱会造成语义错配、甚至被判 400）。
+                            //   改动前这里是逐个 `await` **串行** ⇒ N 个工具的耗时 = 各工具之和（真机体现为"多工具问句特别慢"）；
+                            //   智能体侧早已是 `Promise.all`（agent-core.js 并行执行、按序回灌），本次把对话侧对齐。
+                            //   ⚠️ 失败隔离用 allSettled 语义：某个工具抛错只让**它自己**记 error，不影响其余工具与队列。
+                            var _tcNames = _pendingToolCalls.map(function (c) { return (c.function && c.function.name) || '?'; });
+                            dsHistory[assistantIdx].content = '🔧 并行调用 ' + _tcNames.length + ' 个工具：' + _tcNames.join('、') + ' …';
+                            (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
+                            var _tcResults = await Promise.all(_pendingToolCalls.map(function (_call) {
                                 var _args = {};
                                 try { _args = _call.function.arguments ? JSON.parse(_call.function.arguments) : {}; } catch (e) { _args = {}; }
-                                dsHistory[assistantIdx].content = '🔧 正在调用工具：' + _call.function.name + ' …';
-                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
-                                var _exec = await _toolExec(_call.function.name, _args);
-                                // D3：工具结果可视化——在气泡中追加简短摘要（✅ 共N条 / ❌ 错误），提升调用过程可观测性，与智能体透明卡片对齐
+                                return Promise.resolve()
+                                    .then(function () { return _toolExec(_call.function.name, _args); })
+                                    .catch(function (_e) { return { ok: false, error: String((_e && _e.message) || _e) }; });
+                            }));
+                            // D3：工具结果可视化——在气泡中按**原顺序**列出各工具摘要（✅ 共N条 / ❌ 错误），
+                            //   提升调用过程可观测性，与智能体透明卡片对齐
+                            var _tcLines = [];
+                            for (var _k = 0; _k < _pendingToolCalls.length; _k++) {
+                                var _call = _pendingToolCalls[_k];
+                                var _exec = _tcResults[_k];
                                 var _summary = '';
                                 if (_exec && _exec.ok) {
                                     if (_exec.result && typeof _exec.result.total === 'number') _summary = '✅ ' + _call.function.name + '：共 ' + _exec.result.total + ' 条';
@@ -3482,8 +3536,7 @@
                                 } else {
                                     _summary = '❌ ' + _call.function.name + '：' + ((_exec && _exec.error) || '执行失败');
                                 }
-                                dsHistory[assistantIdx].content = '🔧 ' + _summary;
-                                (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
+                                _tcLines.push(_summary);
                                 var _tcPayload = (_exec && _exec.result !== undefined) ? _exec.result : _exec;
                                 // 统一预算裁剪（与智能体侧同一实现）：避免一次 limit 不封顶把数百 KB 灌进上下文；
                                 //   同时去掉 null,2 缩进美化（纯浪费 20~30% token）
@@ -3491,6 +3544,8 @@
                                 var _tcContent = JSON.stringify(_tcPayload);
                                 messages.push({ role: 'tool', tool_call_id: _call.id, name: _call.function.name, content: _tcContent });
                             }
+                            dsHistory[assistantIdx].content = '🔧 ' + _tcLines.join('　');
+                            (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
                             window.__agentProgress = null;   // 本轮工具跑完，撤掉进度回传
                             // 清空气泡，准备下一轮最终回答
                             dsHistory[assistantIdx].content = '';
@@ -3505,6 +3560,50 @@
                             _pendingToolCalls = [];
                             await _dsStreamChat(_respN, assistantIdx, _pendingToolCalls, _turnMetrics);
                             _turnMetrics.toolRounds = (_turnMetrics.toolRounds || 0) + 1;
+                        }
+                        // 【2026-10-08 业界对齐 · forced final turn（工具轮次上限的"如实收尾"）】
+                        //   背景：循环条件是 `_tcRound < _maxTcRounds`，一旦达上限而模型**又**产出了 tool_calls，
+                        //   这些调用既不执行、也不再请求，而气泡内容此刻已被"🔧 正在调用…"占位覆盖
+                        //   ⇒ 用户看到**永久"思考中"**的空气泡（真机残留风险）。
+                        //   业界做法（OpenAI Function calling 指南 & 主流 Agent 框架通用）：
+                        //     ① 不再执行新工具，但必须为每条 tool_call **补齐配对的 tool 消息**（缺配对会被判 400）；
+                        //     ② 追加一条明确的"立即给最终回答、不要再调工具"指令；
+                        //     ③ 请求层用 `tool_choice:'none'` **硬性禁止**再调工具 —— 即 forced final turn；
+                        //   ④ 用户拿到的是"基于已有信息的结论 + 一句如实说明"，而不是空转。
+                        //   智能体侧早就有等价收尾（agent-core.js：预算耗尽后回灌"未执行"并催最终回答），本次两端对齐。
+                        if (_useTools && _pendingToolCalls.length && _toolExec) {
+                            var _limCalls = _pendingToolCalls.filter(Boolean);
+                            var _limReason = '工具调用轮次已达上限（' + _maxTcRounds + ' 轮），本条未执行';
+                            messages.push({ role: 'assistant', content: null, tool_calls: _limCalls });
+                            _limCalls.forEach(function (_c) {
+                                messages.push({
+                                    role: 'tool', tool_call_id: _c.id, name: (_c.function && _c.function.name) || '',
+                                    content: JSON.stringify({ ok: false, error: _limReason })
+                                });
+                            });
+                            messages.push({
+                                role: 'user',
+                                content: '（系统提示）本轮工具调用次数已达上限。请**立即基于已经获得的工具结果与本地资料给出最终回答**，'
+                                    + '不要再调用任何工具；若确有未查到的部分，用一句话如实说明"因调用次数上限未继续查询"。'
+                            });
+                            dsHistory[assistantIdx].content = '';
+                            (function() { var _cb = document.getElementById('ds-chat-box'); if (_cb) { var _bs = _cb.querySelectorAll('.ds-bubble-assistant'); var _lb = _bs[_bs.length - 1]; if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(assistantIdx) + '<span class="ds-cursor">▌</span>'); dsScrollBottom(); } })();
+                            try {
+                                var _bodyL = { model: dsModel, messages: messages, stream: true, temperature: _chatTemp, max_tokens: maxTokens, tool_choice: 'none' };
+                                if (thinkingOn) { _bodyL.thinking = { type: 'enabled' }; _bodyL.reasoning_effort = _thinkEffort; } else { _bodyL.thinking = { type: 'disabled' }; }
+                                if (_useTools) { _bodyL.tools = _toolsParamArr; }
+                                var _respL = await fetch(dsApiUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                                    body: JSON.stringify(_bodyL), signal: window._dsAbortController.signal
+                                });
+                                if (_respL && _respL.ok) {
+                                    _pendingToolCalls = [];
+                                    await _dsStreamChat(_respL, assistantIdx, _pendingToolCalls, _turnMetrics);
+                                    try { window.__dsLastTurnToolLimit = true; } catch (eL2) {}   // 供诊断/断言核对"确实走到过上限收尾"
+                                }
+                            } catch (eL) { /* 收尾请求失败不阻塞：下方统一渲染会把已累积内容呈现给用户 */ }
+                            _pendingToolCalls = [];
                         }
                     }
 
@@ -5296,15 +5395,21 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
         //   用户实测反馈："感觉有点太啰嗦，有一部分不是提问的内容"（输出 4 段，只有 1 段是所要的）。
         //   改为**结构跟随请求**（业界通行做法 "answer the question asked"）：
         //   三段式只在"分析/研判/怎么办"这类开放问题时启用；清单/数据类请求只给被要的内容。
-        '1. 结构**跟随用户请求**：要清单就只给清单，要判断就只给判断，要数据就只给数据；\n' +
-        '   不要主动追加未被要求的章节（最典型：给了清单还附"整改与管控建议""总体结论""待核实事项"）。\n' +
-        '   仅当请求属于"分析 / 研判 / 怎么办 / 如何处置"这类开放问题时，才用'
-        + '"结论与判断 → 依据（条款/台账/案例）→ 可执行的整改或管控建议"三段式；条目多时用分点或表格，避免长段落堆砌。\n' +
+        // 【2026-10-08 提示词去重 · 单一事实来源（Anthropic 提示工程）】原第 1 条把"结构跟随请求 / 不要
+        //   追加章节 / 何时用三段式"整套写了一遍，与文末【回答风格（硬约束）】原第 8、9 条（"只答所问" +
+        //   "请求类型 → 输出形态"对照表）**语义重复**。同一规则出现两次的代价：模型需在两处措辞之间做
+        //   一致性推理，措辞略有差异时还会互相打架（Anthropic 明确说重复指令会稀释注意力）。
+        //   现本条只保留**角色视角特有的补充**，结构总规则交给唯一权威（【回答风格】第 8 条）。
+        '1. 结构：整体规则见文末【回答风格（硬约束）】第 8 条的"请求类型 → 输出形态"对照；本条只补充 —— '
+        + '面向"分析 / 研判 / 怎么办 / 如何处置"这类开放问题时用'
+        + '"结论与判断 → 依据（条款/台账/案例）→ 可执行的整改或管控建议"三段式；条目多时分点或用表格，不要堆长段落。\n' +
         '2. 引用格式：「名称 + 条款号」的总要求见后文【专业回答准则】；本条补充格式细节 —— 检查信息与案例要带单位、日期（或时段）与问题性质，每条尽量标出来源（如「规章制度：XX办法 第N条」「检查信息：某供电段 2026-03」）。\n' +
         '3. 数据口径：问题性质按 A / B / C / 红线 四类；统计数字必须与本地台账一致，不得改变口径，也不得把估算值写成台账值。\n' +
         '4. 建议要可执行：写清「谁、在什么时机、做什么、达到什么标准」，避免「加强管理、提高认识」这类空话；一条建议只解决一个问题。\n' +
         '5. 跨专业问题：先答本职专业，再点明需协同的专业与协同要点（如供电作业涉及车务登销记、电务联锁试验）。\n' +
-        '6. 篇幅：默认紧凑、先给关键结论；用户要求「详细 / 展开」时再逐条深入。';
+        // 【2026-10-08 提示词去重】原第 6 条（篇幅）与文末【回答风格（硬约束）】第 7 条（默认精炼）
+        //   是同一规则 ⇒ 收口到一处，本条只做指引，避免"两处篇幅规则"被模型读成两个要求。
+        '6. 篇幅：规则见文末【回答风格（硬约束）】第 7 条（默认精炼）及其第 8 条的优先级声明（材料类该长就长）。';
 
       // 【优化·废话抑制】所有角色统一适用的回答风格硬约束（含 frontend 代码角色）。
       //   为什么需要：原有【专业回答准则】管"准确性分层/术语/风险分级"，【输出规范】管"结构/引用/
@@ -5324,21 +5429,22 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
         '5. 分点 / 表格只在条目 ≥3 或需要对比时使用；只有一个结论就用一句话，不要为它铺多层小标题。禁止同义反复凑篇幅。\n' +
         '6. 不用 emoji 与装饰性符号堆砌（用户使用或明确要求时除外）。\n' +
         '7. 用户未要求"详细 / 展开 / 逐条"时，默认精炼作答；宁可少说，不要注水。\n' +
-        // 【2026-10-07 用户反馈】"废话抑制"原只覆盖 开场白/结尾/转述/篇幅，**没覆盖"输出范围"** ——
-        //   模型会自动加用户没要的章节（要清单却给整改建议+待核实）。补此条把范围卡死。
-        '8. 只答所问：不要主动加用户没要的章节 —— 尤其别在"要清单 / 要数据 / 要判定"时附送'
-        + '"整改建议""管控措施""待核实事项""总体评价"。确有必须提醒的事项，压成结尾**一行**'
-        + '（如"如需整改建议可继续"），不要另起大段。\n' +
-        // 【2026-10-07 补·输出形态对照】用户追问"新增清单规范后，其他类型是否也有类似问题"——
-        //   确实有，且**是双向的**：该短的被写长（要数据却给建议）、该长的被压短（要报告却"默认精炼"）。
-        //   这里给一张"请求类型 → 应有形态"的对照表统一收口，避免再为每类零散加规则（提示词会互相稀释）。
-        //   最后两条尤其重要：它们是**对前面条款的优先级声明**（材料类不受"默认精炼/只答所问"压制）。
-        '9. 输出形态随请求类型（不要一律套"结论 + 依据 + 建议"）：\n'
+        // 【2026-10-08 提示词去重 · 单一事实来源】原第 8 条（只答所问：范围）与原第 9 条（输出形态对照：
+        //   形态）说的是**同一件事的两个侧面**，分成两段各自表述 ⇒ 规则列表里有一条半是同一规则，
+        //   互相稀释（用户真机反馈过"规则多了反而每条都不可靠"）。现**合并为一条**：
+        //   先把"范围"一句说死（含"必须提醒时压成一行"这个出口），再给"请求类型 → 形态"对照表收口，
+        //   **末尾对前面条款的优先级声明原样保留**（材料类是唯一豁免"默认精炼/只答所问"的形态）。
+        //   ⚠️ 条号变化：原第 9 条并入本条（第 8 条）⇒ 全项目对"提示词第 9 条"的引用已同步更新
+        //      （见 doubao.js 请求类型识别处的注释；diary.js 里的"第 9 条"是它**自己的**提示词编号，无关）。
+        '8. 只答所问，且形态随请求类型（不要一律套"结论 + 依据 + 建议"）：\n'
+        + '   不要主动加用户没要的章节 —— 尤其别在"要清单 / 要数据 / 要判定"时附送'
+        + '"整改建议""管控措施""待核实事项""总体评价"；确有必须提醒的事项，压成结尾**一行**'
+        + '（如"如需整改建议可继续"），不要另起大段。\n'
         + '   · 要数据 / 统计 → 只给数字与口径（数据源、时间范围、总条数）；不附建议；样本不足就直说；\n'
         + '   · 要规章条文 → 给条款原文 + 名称与条号（见第 3 条例外）；不改写、不附整改建议；本地未收录就说明；\n'
         + '   · 要定性 / 判定 → 先给结论（性质 / 等级），再给判定依据（条款 / 台账 / 案例），不展开成方案；\n'
         + '   · 要清单 / 表格 → 只给表，每格写可当场核对的判据（另有专项规范）；\n'
-        + '   · 要材料 / 报告 / 方案 / 讲话稿 → 给**完整结构**，该长就长（本条优先于第 7 条"默认精炼"）；\n'
+        + '   · 要材料 / 报告 / 方案 / 讲话稿 → 给**完整结构**，该长就长（本项优先于第 7 条"默认精炼"）；\n'
         + '   · 闲聊 / 寒暄 → 一句话。';
 
       // 【优化·角色贴合】把角色身份的一句话回扣放到提示词最末尾。

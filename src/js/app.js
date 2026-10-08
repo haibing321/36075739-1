@@ -126,14 +126,42 @@ document.addEventListener('DOMContentLoaded', function() {
         return String(keyword == null ? '' : keyword).split(/[\s,，、;；]+/).filter(Boolean);
     }
     // 目标字段拼成一段小写文本（去 HTML 标签），供两种匹配共用
+    // 【2026-10-08 业界对齐 · memoization（WeakMap 缓存 + 轻指纹校验）】
+    //   问题：本函数对**每一条数据**都要做"拼接多字段 → 正则去标签 → toLowerCase"，
+    //     而 _exactFilter / _kwRecall 在**每一次检索**都对整批数据各调一次。
+    //     一次提问常触发多个工具（count_issues + search_issues + …）⇒ 同一批 4 万条台账被反复重算，
+    //     每轮都在做 4 万次字符串拼接 + 正则替换（这是"台账大了以后工具变慢"的主要来源之一）。
+    //   业界做法：字段文本的记忆化（memoization）—— 相同输入只算一次；键用**数据对象本身**放进
+    //     WeakMap（不阻止 GC、对象被回收即自动释放，不做引用计数、不会泄漏），内层按 keys 组合分桶
+    //     （同一对象可能用不同字段集检索：搜索按"单位+内容"、统计按"性质+类别"）。
+    //   失效策略（如实说明权衡）：缓存条目带**轻指纹**（各字段 String 长度之和）。命中时只做"长度求和"
+    //     （O(字段数) 的加法，无拼接/正则/小写），比重新计算快一个量级；字段内容被就地改写且**总长度恰好
+    //     不变**的极端情形可能命中旧值 ⇒ 提供 window._kwHayClear() 供数据导入/清空等写路径显式清空。
+    var _kwHayCache = new WeakMap();
+    function _kwHayClear() { _kwHayCache = new WeakMap(); }
+    window._kwHayClear = _kwHayClear;
     function _kwHay(d, keys) {
+        var kk = keys.join('|');
+        var fp = 0;
+        for (var f = 0; f < keys.length; f++) {
+            var fv = d[keys[f]];
+            if (fv != null && fv !== '') fp += ('' + fv).length;
+        }
+        var sub = _kwHayCache.get(d);
+        if (sub) {
+            var hit = sub.get(kk);
+            if (hit && hit.fp === fp) return hit.hay;
+        }
         var hay = '';
         for (var i = 0; i < keys.length; i++) {
             var v = d[keys[i]];
             if (v == null || v === '') continue;
             hay += ' ' + ('' + v);
         }
-        return hay.replace(/<[^>]+>/g, '').toLowerCase();
+        hay = hay.replace(/<[^>]+>/g, '').toLowerCase();
+        if (!sub) { sub = new Map(); _kwHayCache.set(d, sub); }
+        sub.set(kk, { fp: fp, hay: hay });
+        return hay;
     }
     function _kwTokens(keyword) {
         var set = {};
@@ -1877,7 +1905,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v4.35'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v4.36'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // ⚠️【2026-10-05 用户实测踩坑】"手机提示发现 v4.15，更新后仍显示 v4.14" —— 就是因为这里没跟着改：
 //   提示更新靠的是 **SW 缓存时间戳**（version.json 的 sw / sw.js 的 CACHE_VERSION），
 //   而界面上显示的版本号读的是**这个常量**。**发版必须同时改三处**：

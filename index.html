@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.34</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.35</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2223,6 +2223,25 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.35 近期更新（智能对话体检优化：索引不再每轮重建 + 工具按需召回 + 判据用纯问句 + 六项逻辑修复） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.35 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⚡ **修「一发消息就卡」的性能 bug**：规章制度 / 汇编两个检索源的**索引指纹恒不相等**（子集切分每次都生成新数组）⇒ 每发一条消息都要**把整库重新切块 + 重建倒排**（实测每条消息 4~6 次）。修复后第二次检索 **0ms 复用**（实测 38ms → 0ms，真实语料下差距更大）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 **工具清单按问题召回**（原来每轮固定发全量 23 个 schema、约 1~1.5 万 token）：业务问句只带 6~7 个相关工具，未命中分组时仍全量兜底 ⇒ **首字更快、更省 token**。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧠 **修提示词自相矛盾**：系统提示里写着"你没有本地检索工具"，同一轮却挂着 23 个本地查询工具 ⇒ 模型不敢调工具、改成"凭资料片段猜数字"。现改为准确措辞：**资料段管背景口径、工具管准数与明细**，并明确"不要估算数字"。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📎 **修"附件污染判据"**：角色判定 / 思考档 / 联网判定 / 专项规范原来都跑在**含附件正文**的文本上 —— 贴一份含网址、"最新"、"代码"字样的文件会**四处同时误触发**（角色被误判成前端、被强制联网等）。现全部改用**用户原始问句**。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🛠 **修"任务做完却没保存"**：智能体工具路由会把 `save_report` / `write_diary` 静默裁掉（"统计完生成简报存到资料库"里"简报"既不匹配"报告"也不匹配"日志"）⇒ 模型在工具清单里根本看不到它们；现已把这两个**产出类工具**放进常驻集。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🗂 **修"刚写的日志搜不到"**：向已有日期追加日志时数组引用与长度都没变 ⇒ 索引指纹检测不到变化、本会话一直返回旧内容；现已显式失效。同时**空结果 / 降级结果不再进 60 秒缓存**（原来索引刚就绪时，同一个问题仍会答"未检索到"）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>⏱ **修智能体"跑一半消失"**：最坏可跑 45 分钟，而防并发锁只兜 15 分钟 ⇒ 之后启动的新任务会把先启动的**静默顶掉**（且无任何解释）；现把锁与整任务时限（默认 8 分钟，可用 `__agentDeadlineMs` 调整）对齐。另把对话内工具轮次上限 4→6，降低"永久思考中"的概率。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🪟 恢复**折叠屏开合 0ms 缓存恢复**：性能监控模块注册了 `beforeunload`（注册它会让页面**失去 bfcache 资格**）⇒ 开合/返回被降级为整页重载；已删除（与错误监控模块的既有做法对齐）。联网检索次数 5→2，回答更快。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 新增回归断言：**索引必须复用**（不得每轮重建）、**工具清单必须按问句召回**（未命中时全量兜底）⇒ `chat-fixes` **28/28**；全量 8 套件全绿。</span></div>
+                </div>
             </div>
 
             <!-- v4.34 近期更新（表格字号 + 智能对话引用本地数据 + 列错位二次修复 + 进度条遮挡 + 停用开机提示条） -->

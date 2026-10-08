@@ -437,7 +437,11 @@
     // 持久化有 30 秒节流，离开/隐藏页面时强制 flush，避免最后一批采样丢失
     var _flush = function() { try { persist(true); } catch(e) {} };
     window.addEventListener('pagehide', _flush);
-    window.addEventListener('beforeunload', _flush);
+    // 【2026-10-08 体检修复·"折叠开合变慢"】**删掉 beforeunload 注册**。
+    //   注册 beforeunload（哪怕只是 flush）会让页面**失去 bfcache 资格**（Chrome/ Firefox / Safari 一致）
+    //   ⇒ 折叠屏"开合 / 返回"本可 0ms 从缓存恢复，却被降级为整页重载。
+    //   落盘保障仍由 pagehide + visibilitychange(hidden) 兜住；errorMonitor.js 早已如此处理
+    //   （那边注释明确写了"删除 beforeunload"），此处属回退性不一致，现补齐。
     document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'hidden') _flush();
     });

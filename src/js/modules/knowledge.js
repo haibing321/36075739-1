@@ -395,6 +395,18 @@
     // 每源状态：{ chunks, bm, srcRef, srcLen, list, loading }
     var STATE = {};
 
+    // 【2026-10-08 P0 性能修复 —— "一发消息就卡"的元凶】pick 结果**按 key 记忆化**。
+    //   背景：`rules` / `cases` 两个源共用同一个 accessor（getRulesData），各带一个 pick
+    //   （nonCaseDocs / onlyCaseDocs，见 368-369 行）。旧实现每次 srcList() 都执行
+    //   `arr = s.pick(arr)` ⇒ **每次返回新数组** ⇒ ensureSource 的兜底指纹 `cur === st.srcRef`
+    //   **恒为 false** ⇒ 每次都 `invalidate` ⇒ **整库重新切块 + 重建 BM25 倒排**。
+    //   真机后果：每发一条消息，规章制度库（几十万字）要重切 **4~6 次**（ensure 1 + search 1 +
+    //   getBM 1，rules/cases 各算），且 IndexedDB 索引缓存对这两个源**永远命中不了**
+    //   （刚写回又被判失效）—— 这是首字延迟与操作卡顿的最大单点。
+    //   修法：以"原始数组引用未变"为条件复用上一次的 pick 结果 ⇒ 引用稳定 ⇒ 指纹有效 ⇒ 只在
+    //   数据真正变化时重建。失效由 invalidate(key) 负责（见下方维护接口，已同步清理本缓存）。
+    var _pickCache = {};      // key -> { raw: 原始数组, arr: pick 结果 }
+
     function srcList(s) {
         if (s.async) return STATE[s.key] && STATE[s.key].list || EMPTY;
         if (typeof window === 'undefined') return EMPTY;
@@ -403,7 +415,13 @@
         try {
             var arr = fn() || EMPTY;
             // 【2026-09-22】同一份原始数据的子集切分（如 rules / cases 共用 getRulesData）
-            if (s.pick) arr = s.pick(arr);
+            if (s.pick) {
+                var pc = _pickCache[s.key];
+                if (pc && pc.raw === arr) return pc.arr;      // 原始数组引用未变 ⇒ 复用（引用稳定）
+                var picked = s.pick(arr);
+                _pickCache[s.key] = { raw: arr, arr: picked };
+                return picked;
+            }
             return arr;
         } catch (e) { return EMPTY; }
     }
@@ -1119,8 +1137,11 @@
                 try { cacheDel('dfcache:' + k).catch(function () {}); } catch (e) {}
             });
         } catch (e) {}
-        if (key && SRC_MAP[key]) { delete STATE[key]; return; }
+        // 【2026-10-08 同上】一并清掉 pick 记忆化：数据变更后若不清，srcList 会继续返回旧快照，
+        //   导致"数据已改但索引/检索仍是旧的"（指纹有效 ⇒ 不重建，反而更隐蔽）。
+        if (key && SRC_MAP[key]) { delete STATE[key]; delete _pickCache[key]; return; }
         STATE = {};
+        _pickCache = {};
     }
 
     function stats() {

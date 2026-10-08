@@ -1591,9 +1591,17 @@
                     //   事实是：**本地资料由系统自动检索并注入**（见下方【本地资料】段），模型侧本来就没有
                     //   "检索本地库"的工具，这不是缺陷，也不该被当成"只能联网"的理由。
                     //   这里明确口径：不要声称"没有本地检索工具"；真缺资料就说"本地资料未检索到相关内容"。
-                    '本地资料由系统自动检索后注入下方【本地资料】段，你不需要、也没有"检索本地库"的工具调用能力 —— '
-                    + '因此不要声称"本地没有检索工具""只能联网"；若【本地资料】未命中，如实说明"本地资料未检索到相关内容"，'
-                    + '并可在必要时说明用户可用「关联数据」勾选更多数据源，或改用「智能体」提问（智能体才有工具调用能力）。',
+                    // 【2026-10-08 修正"自相矛盾"】原文案说"你不需要、也没有'检索本地库'的工具调用能力"，
+                    //   但**同一轮却挂着 23 个本地查询工具**（search_issues / count_issues / kb_search …，见 3111 行）
+                    //   ⇒ 模型被告知"没有工具"，于是"该调工具精确统计"被改成"凭注入的资料片段猜数字"。
+                    //   现改为**与"是否挂了工具"无关的准确措辞**；真正不带工具时，_dsRunStream 会追加
+                    //   【能力说明】如实告知（见 3100-3108），两者不再打架。
+                    '本地资料由系统自动检索后注入下方【本地资料】段，可直接引用；'
+                    + '若本轮同时提供了本地查询工具（tools），需要**精确计数 / 按条件筛选 / 取明细或全文**时请优先调用它们'
+                    + '（如 count_issues / search_issues / kb_search）—— 不要凭资料片段估算数字：'
+                    + '资料段用于理解背景与口径，工具用于取准数与明细，两者配合使用。'
+                    + '不要声称"本地没有检索能力""只能联网"；若【本地资料】未命中且本轮没有可用工具，'
+                    + '如实说明"本地资料未检索到相关内容"，并提示用户可用「关联数据」勾选更多数据源。',
                     // 【优化·准确性+废话抑制】检索结果与问题无关是召回常态（关键词/向量召回尤甚）。
                     //   不写死这条，模型倾向"把检索到的东西都用上" → 硬塞条款、复述原文、答非所问。
                     '检索到的资料仅在与问题相关时使用：不相关的直接忽略，不要为"用上资料"而牵强引用或转述原文；确实未检索到相关内容时，一句话说明即可。'
@@ -2347,6 +2355,21 @@
                 } catch (e) {}
             };
 
+            /**
+             * 【2026-10-08 体检修复】判据统一用**用户原始问句**（不含附件正文）。
+             *   问题：角色判定 / 思考档 / 联网判定 / 专项规范注入 原来都跑在 `finalText` 上，而 finalText 里
+             *   被拼进了**整篇附件正文**（见 2553-2560）。贴一份含 URL、"最新"、"代码"字样的文件，
+             *   就会：把角色判成"前端"、强制联网、思考档拔高、注入额外规范段 —— **四处同时误触发**。
+             *   修法：`dsSendMsg` 记录本轮纯问句到 `window.__dsRawUserText`，判据处统一走本函数取。
+             */
+            function _dsJudgeText(fallback) {
+                try {
+                    var t = window.__dsRawUserText;
+                    if (t && String(t).trim()) return String(t);
+                } catch (e) {}
+                return String(fallback == null ? '' : fallback);
+            }
+
             window.dsSendMsg = async function() {
                 if (dsStreaming) return;
                 const input = document.getElementById('ds-user-input');
@@ -2358,6 +2381,8 @@
                 if (!userText && hasAttachOnly) userText = '（见附件）';
 
                 const rawUserText = userText;
+                // 【2026-10-08】供 _dsRunStream 内的各类"按文本判断"的判据使用（见 _dsJudgeText）
+                try { window.__dsRawUserText = rawUserText; } catch (e) {}
 
                 // ════════════════════════════════════════════
                 // 1. 强制命令路由（最高优先级）
@@ -2655,7 +2680,9 @@
                 //   手动选定的角色原样返回（绝不干预）。解析结果与判定原因记入 `__dsLastRole`，
                 //   由回答尾部「本次参考」行透明展示 ⇒ 用户能看到"这次为什么以这个角色作答"。
                 var _roleInfo;
-                if (typeof window.dsResolveRole === 'function') _roleInfo = window.dsResolveRole(finalText);
+                // 【2026-10-08】判据用**纯问句**（不含附件正文）—— 附件里的"代码/最新/图片"字样
+                //   会把角色、思考档、联网、规范段四处同时带偏（见 _dsJudgeText）
+                if (typeof window.dsResolveRole === 'function') _roleInfo = window.dsResolveRole(_dsJudgeText(finalText));
                 else if (typeof window.dsGetRole === 'function') _roleInfo = window.dsGetRole();
                 else _roleInfo = { key: 'default', label: '通用', prompt: '', isCode: false };
                 if (!_roleInfo || !_roleInfo.key) _roleInfo = { key: 'default', label: '通用', prompt: '', isCode: false };
@@ -2726,7 +2753,7 @@
                 var _trivialQ = false;
                 try {
                     _trivialQ = (typeof window.dsAutoThinkingEffort === 'function')
-                        && window.dsAutoThinkingEffort(finalText) === 'off';
+                        && window.dsAutoThinkingEffort(_dsJudgeText(finalText)) === 'off';
                 } catch (e) {}
                 // 【优化·准确性】对话温度：安监问答以"有据可依、口径一致"为先，0.7 偏高会带来
                 //   措辞漂移与添油加醋（表现为引用不严、结论发散、废话变多）。默认 0.35；
@@ -2794,7 +2821,7 @@
                 } catch (e) {}
                 // 媒体输出规范：用户问图片/视频/音乐时，引导模型给出可内嵌显示的直链（而非仅给网页地址）
                 try {
-                    if (/图片|照片|配图|插图|图库|海报|视频|MV|音乐|歌曲|音频|听歌|铃声|封面|素材/i.test(finalText)) {
+                    if (/图片|照片|配图|插图|图库|海报|视频|MV|音乐|歌曲|音频|听歌|铃声|封面|素材/i.test(_dsJudgeText(finalText))) {
                         systemPrompt += '\n\n【图片/音视频输出规范】\n' +
                             '当用户要图片、视频或音乐时，除给出页面地址外，还必须给出可直接显示/播放的媒体直链：\n' +
                             '· 图片直链：以 .jpg/.jpeg/.png/.webp/.gif 结尾（如 https://images.unsplash.com/photo-xxx?w=800），单独占一行；\n' +
@@ -2808,7 +2835,7 @@
                 //   实测输出的检查清单里，"合格判定"格写成了案例故事（"6月未统一安排人员、问题全部照抄日常检查→不合格"），
                 //   每行重复"据联网检索/条号待核实"，依据列还夹解释。用户要的是**能拿去逐项核对的表**，不是说明文。
                 try {
-                    if (/清单|检查表|项点|表格|检查项|对照表|检查内容/i.test(finalText)) {
+                    if (/清单|检查表|项点|表格|检查项|对照表|检查内容/i.test(_dsJudgeText(finalText))) {
                         systemPrompt += '\n\n【清单 / 表格输出规范】\n' +
                             '· 主体只给表：不要表前的结论大段，表后最多一行说明。\n' +
                             '· 每格**一句话、可核对**：判定标准写成能当场对照判"是/否"的判据（如"4 路门限均已设置"），' +
@@ -2878,7 +2905,10 @@
                         }
                     }, _reqTimeoutMs);
                     var isFrontendRole = selectedRole === 'frontend';
-                    var isCodeRequest = /代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/.test(finalText);
+                    // 【2026-10-08】① 判据文本换成纯问句（附件正文会误触发）；
+                    //   ② 与 dsResolveRole 的新口径保持一致：业务性"帮我写XX"不再算代码请求
+                    //      （旧正则含"写一个|生成一个|帮我写"，会让 max_tokens 因为一句业务话跳到 16384）。
+                    var isCodeRequest = /代码|程序|脚本|html|css|javascript|\bjs\b|网页|前端|组件|函数|接口|报错|调试|正则|数据库|\bsql\b|python|java|c\+\+|编程/i.test(_dsJudgeText(finalText));
                     // 【P1 输出完整性】平台默认输出上限：非思考 8K、思考 64K（官方 Chat Completions 文档）。
                     //   原先非思考只给 4096 —— 低于平台默认一倍，长报告（月度/专项）容易被静默截断；
                     //   按量计费只算实际输出 token，上限抬高不产生额外费用，只是不再"提前掐断"。
@@ -2907,7 +2937,7 @@
                         if (freshness.test(q)) return true;
                         if (explicitWeb.test(q)) return true;
                         return realtime.test(q);
-                    })(finalText);
+                    })(_dsJudgeText(finalText));   // 【2026-10-08】用纯问句判定，避免附件正文里的"最新/今日"误触发联网
                     var useWebSearch = (localStorage.getItem('ds_web_search') === '1') || forceWs || autoWs;
                     // 【v4.22】记录本轮联网状态（供回答尾部「本次参考」显示联网维度；searches 在拿到响应后补写）
                     //   来源：开关 / 天气失败强制 / 自动判定（realtime=问题被判为需要实时信息）
@@ -2930,7 +2960,7 @@
                         var realtime = /新闻|头条|时事|热点|舆情|股价|行情|汇率|油价|金价|涨跌|发布会|上映|比分|赛程|夺冠|地震|台风|天气|气温|预报|今日|今天|昨天|本周|本月|最新|近期|刚刚|实时|进展|动态|政策|新规|修订|现行有效|废止|上线/;
                         var explicit = /搜一下|搜一搜|搜索一下|查一下|查一查|联网|上网|网上|百度|谷歌/;
                         return realtime.test(q) || explicit.test(q);
-                    })(finalText);
+                    })(_dsJudgeText(finalText));   // 【2026-10-08】同上：判据用纯问句
                     // ── 联网通道说明（2026-09 官方文档 + 实测）──────────────────────────────
                     // ① Anthropic 兼容层 POST /anthropic/v1/messages —— DeepSeek 唯一真正执行「服务端联网检索」的通道。
                     //    声明 tools:[{type:'web_search_20250305', name:'web_search'}]，检索在服务端完成，
@@ -3078,7 +3108,7 @@
                     var thinkingOn = _isV4 && _thinkLevel !== 'off';
                     var _thinkEffort = 'high';
                     if (_isV4 && _thinkLevel === 'auto' && typeof window.dsAutoThinkingEffort === 'function') {
-                        _thinkEffort = window.dsAutoThinkingEffort(finalText);
+                        _thinkEffort = window.dsAutoThinkingEffort(_dsJudgeText(finalText));
                         if (_thinkEffort === 'off') thinkingOn = false;   // 问候/寒暄类：连思考都不开，最快
                     }
                     // Tool Calls：工具 schema/执行器就绪即默认挂载，不再依赖设置开关——
@@ -3108,7 +3138,13 @@
                             }
                         } catch (e) {}
                     }
-                    var _toolsParamArr = _useTools ? window._agentToolsParam() : null;
+                    // 【2026-10-08 体检修复·最大单点节省】工具清单改为**按本轮问题召回**（原来每轮全量 23 个）。
+                    //   全量 schema ≈ 20~30KB（≈1~1.5 万 token），且"工具结果回灌"的后续轮也照带
+                    //   ⇒ 这是"首字慢 + 烧 token"的最大固定开销。
+                    //   `_agentToolsParam(文本)` 内部走 `_pickTools` 召回（智能体侧早已这么做，对话侧漏了）；
+                    //   **未命中任何分组时它会返回全量**（agent-core.js:955 的全量兜底）⇒ 不会少给工具、只少给无关的。
+                    //   判据文本用**用户原始问句**（不含附件正文），避免贴附件时把召回带偏（见 _dsJudgeText）。
+                    var _toolsParamArr = _useTools ? window._agentToolsParam(_dsJudgeText(finalText)) : null;
                     // 【v3.76 审计】联网与「本地检索工具」目前**互斥**：联网走 Responses/Anthropic 通道，
                     //   请求体里 tools 只放服务端 web_search；工具需要"模型调用→前端执行→回灌"的闭环，
                     //   而联网通道的流解析器只处理 server_tool_use/web_search 结果，不处理本地工具调用。
@@ -3180,7 +3216,10 @@
                                 max_tokens: maxTokens,
                                 system: systemPrompt,
                                 messages: dsBuildAnthropicMessages(_reqHist, visionUserContent),
-                                tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+                                // 【2026-10-08 体检修复·提速】max_uses 5 → 2：服务端每多检索一次就多一段往返，
+                                //   而实际问答很少需要 3 次以上检索；非流式通道（dsWebSearchOnce）此前已由 3 收敛到 1，
+                                //   这里与"更快回答"的目标对齐（用户仍可追问补充）。
+                                tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
                                 stream: true,
                                 temperature: _chatTemp
                             };
@@ -3393,7 +3432,11 @@
                         }
                         // 若模型请求调用工具：本地执行后回灌结果，再请求一轮让其总结（最多 4 轮，避免无限循环）
                         var _tcRound = 1;
-                        var _maxTcRounds = 4;
+                        // 【2026-10-08 体检修复】4 → 6：原条件下循环体最多执行 **3** 次（1<4→2<4→3<4→4 停），
+                        //   第 4 次请求若又产出 tool_calls 就**既不执行也不再请求**，而气泡内容此时已被
+                        //   工具状态行（"🔧 正在调用…"）覆盖 ⇒ 用户可能看到**永久"思考中"的空气泡**。
+                        //   提到 6 先降低触发概率；"到上限后如实收尾（给一行说明而非空转）"列为后续待办。
+                        var _maxTcRounds = 6;
                         while (_useTools && _toolExec && _pendingToolCalls.length && _tcRound < _maxTcRounds) {
                             _tcRound++;
                             // 【2026-09-21】标记"本轮用过工具"：语义缓存据此**不缓存**这类回答

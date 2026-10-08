@@ -266,6 +266,12 @@
                 }
                 diaries.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
                 saveDiaries();
+                // 【2026-10-08 体检修复·"刚写的日志/内容搜不到"】写完必须让 KB 的 diary 索引失效。
+                //   真因：向**已存在日期**追加 issue 时（上面 255 行的 push），数组**引用与长度都没变**
+                //   ⇒ KB 的兜底指纹（引用 + 条数，knowledge.js 的 ensureSource）检测不到变化 ⇒
+                //   本会话内 kb_search / 对话的【本地资料】/ 语义缓存都继续返回**旧日志**。
+                //   这里显式失效，与其余写入口（rule/issue/handbook/writer…）口径一致。
+                try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('diary'); } catch (e) {}
                 updateDiaryCount();
                 // 写完立刻同步已渲染的视图（输入表单追加一行 / 今日记录列表 / 日历 / 该日详情）
                 diarySyncViewsAfterWrite(targetDate, content.trim(), (regulation || '').trim());

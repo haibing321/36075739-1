@@ -915,7 +915,13 @@
    *   ⚠️ 本轮**只在 agent 侧**（`_callLLMOnce`）启用；chat 侧 `_toolsParam()` 仍不带参数 ⇒ 全量，
    *     避免影响"智能对话工具挂载 ≥16"等既有断言。
    */
-  var TOOLS_CORE = ['search_issues', 'count_issues', 'kb_search'];
+  // 【2026-10-08 体检修复·"任务做完了却没保存/没写日志"】把两个**产出类工具**放进常驻集。
+  //   真因：`_pickTools` 是"核心 + 命中分组"，而 `save_report` 只在 /报告|写作|汇报|总结材料/ 命中、
+  //   `write_diary` 只在 /日志|写实|今天干了/ 命中。像「/agent 统计上月A类问题并生成简报存到资料库」
+  //   这种多意图任务里，"简报"既不匹配"报告"也不匹配"日志" ⇒ 模型**在 schema 里根本看不到**这两个工具
+  //   ⇒ 统计完却无法保存，回答"已完成"但库里没有 —— 属静默假完成（部分命中比完全不命中更危险）。
+  //   产出类工具只有 2 个，常驻的 token 代价很小，收益是消除这类假完成。
+  var TOOLS_CORE = ['search_issues', 'count_issues', 'kb_search', 'save_report', 'write_diary'];
   var TOOL_GROUPS = [
     { re: /检查信息|问题|隐患|违章|台账|检查记录|检查数据|整改|哪一条|第几条|条数|统计|导出/,
       tools: ['search_issues', 'count_issues', 'get_issue_detail', 'get_issue_details', 'export_issues'] },
@@ -1020,6 +1026,19 @@
   function _toolCacheSet(name, params, result) {
     try {
       if (_TOOL_NOCACHE.indexOf(name) !== -1 || RETRYABLE_TOOLS.indexOf(name) === -1) return;
+      // 【2026-10-08 体检修复·"明明有数据却说没有"】**空结果 / 降级结果一律不进缓存**。
+      //   真因：索引尚未就绪时 `kb_search` 返回 `{ total:0, note:'…未检索到…' }` 且 `ok:true`（见 705 行），
+      //   `autocheck` 在 kbTimedOut 时同理（见 889 行）—— 这些**暂时性**空结果被缓存 60 秒 ⇒
+      //   索引随后建好，同一个 query 在 60s 内仍然返回"未检索到"（用户/模型都会据此下错结论）。
+      //   判据：命中数为 0，或结果里带"降级/超时/未就绪/正在建立/索引"等字样 ⇒ 不缓存，下次重跑。
+      try {
+        var _rj = result;
+        if (_rj && typeof _rj === 'object') {
+          if (_rj.total === 0 || _rj.count === 0) return;
+          var _mark = String(_rj.note || '') + String(_rj.degraded || '') + String(_rj.kbNote || '');
+          if (/降级|超时|未就绪|正在建立|索引/.test(_mark)) return;
+        }
+      } catch (e0) {}
       var ttl = (window.__agentToolCacheTtlMs !== undefined) ? window.__agentToolCacheTtlMs : TOOL_CACHE_TTL;
       if (!ttl) return;
       var k = _toolCacheKey(name, params);
@@ -1512,7 +1531,15 @@
       _busyErr.agentBusy = true;
       throw _busyErr;
     }
-    window.__agentBusyUntil = _busyNow + 15 * 60 * 1000;   // 兜底 15 分钟（正常结束会清）
+    // 【2026-10-08 体检修复·"任务被静默顶掉 / 结果不对"】忙标 TTL 与**整任务墙钟时限**对齐。
+    //   真因：轮数上限 15 × 单轮模型超时（思考模式 180s）最坏可达 **45 分钟**，而忙标 TTL 只有 15 分钟
+    //   ⇒ TTL 到期后第二个任务可以启动，且它会执行 `__agentRunToken++`，把先启动的任务**静默判成
+    //     "已手动停止"**（用户视角＝答到一半没了，且没有任何解释）。
+    //   现设整任务时限默认 8 分钟（可用 window.__agentDeadlineMs 覆盖），忙标 = 时限 + 30s 缓冲
+    //   ⇒ 只要任务在时限内，就不会被第二个任务的启动顶掉。
+    var _agentDeadlineMs = (typeof window.__agentDeadlineMs === 'number' && window.__agentDeadlineMs > 0)
+      ? window.__agentDeadlineMs : 8 * 60 * 1000;
+    window.__agentBusyUntil = _busyNow + _agentDeadlineMs + 30 * 1000;
     window.__agentRunToken = (window.__agentRunToken || 0) + 1;
     var _runToken = window.__agentRunToken;
     function _runStopped() { return window.__agentRunToken !== _runToken; }

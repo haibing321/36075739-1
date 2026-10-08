@@ -2296,7 +2296,15 @@
                     } else if (info && info.srcs && !info.srcs.length) {
                         line = '📎 本次参考：未启用任何本地数据源（可在输入框上方「关联数据」勾选）';
                     } else {
-                        line = '📎 本次参考：未使用本地资料（寒暄/闲聊类问题不检索）';
+                        // 【2026-10-08】按**真实原因**显示：原来一律写"寒暄/闲聊类问题不检索"，
+                        //   把"未启用数据源"和"代码角色"两种情形都误报成寒暄，用户据此无法判断（也正是
+                        //   本次"检测不到数据"反馈难定位的原因之一）。
+                        var _rsn = (info && info.reason) || '';
+                        line = '📎 本次参考：未使用本地资料' + (_rsn === 'codeRole'
+                            ? '（当前为代码角色，本轮按代码任务作答）'
+                            : _rsn === 'trivial'
+                                ? '（寒暄/闲聊类问题不检索）'
+                                : '（未启用任何本地数据源，可在输入框上方「关联数据」勾选）');
                     }
                     // 【v4.22 用户要求】补联网维度：一眼看清"本地用了什么 + 联网到底检索了没有"。
                     //   ⚠️ "联网已启用但本轮未检索"必须显式写出来 —— 这是最容易误解的情形
@@ -2698,7 +2706,20 @@
                 // 【v3.76】代码角色（frontend）**不再注入铁路本地资料**：写代码时把规章/台账塞进提示词
                 //   既无用又费 token（此前只排除了准则，资料仍会进 —— 本次审计发现的遗留）。
                 //   等价于该角色下"关联数据全不选"，不影响其它角色。
-                var hasAnySource = (_dataSrc.rules || _dataSrc.issue || _dataSrc.handbook || _dataSrc.wrAll || _dataSrc.phone || _dataSrc.diary) && !_isCodeRole;
+                // 【2026-10-08 用户报「智能对话无法引用本地数据 / 检测不到数据」】这里原来有两处会**静默**掐掉本地资料：
+                //   ① **白名单不全**：只认 rules/issue/handbook/wrAll/phone/diary，而注入侧（dsBuildSystemPrompt 的
+                //      `_kbSrcs`）还支持 cases(法规案例汇编) / accidents(事故案例) / materials(写作资料库) /
+                //      reports(历史报告) ⇒ 只勾了这几项时 hasAnySource=false ⇒ **一条都不检索**（而输入框上方的提示
+                //      还显示"本次将使用…"，界面承诺与实际不符）。
+                //   ② **`&& !_isCodeRole` 一刀切**：自动角色只要把问题判成"前端/代码"，本地资料就整段不注入、**且不告知**
+                //      —— 而旧的角色判据把"帮我写 / 写一个 / 生成一个 / 页面 / 布局"都当代码特征，像
+                //      "帮我写一份整改通知书""写一个检查方案"这类**业务刚需**就会命中 ⇒ 用户感知正是"检测不到数据"。
+                //   现改为：**代码角色同样允许引用本地资料**（依据本地制度/台账写材料是主要用法）。
+                //   对代码角色保留 v3.76 的本意 —— 不追加"业务输出规范"（见上方 `_isCodeRole` 分支），只省那一部分。
+                //   键名与注入侧对齐（含旧键 wrAll）。
+                var _srcKeys = ['rules', 'issue', 'handbook', 'wrAll', 'phone', 'diary',
+                                'cases', 'accidents', 'materials', 'reports'];
+                var hasAnySource = _srcKeys.some(function (k) { return !!_dataSrc[k]; });
                 // 【优化·速度】寒暄 / 元问题（"你好""你能做什么"）跳过本地检索：
                 //   复用「思考模式自动档」的同一判定函数（dsAutoThinkingEffort 返回 'off' 的那一批），
                 //   让"不必思考"与"不必检索"两个决定保持一致；省掉一次 KB.ensure 等待与约 4.5KB 注入。
@@ -2724,9 +2745,16 @@
                 //   这样资料侧的任何异常都不会把 dsStreaming 卡在 true（原先异常会跳过 finally 复位）。
                 var baseSystem;
                 try {
-                    baseSystem = hasAnySource
-                        ? await dsBuildSystemPrompt(finalText, _dataSrc, { skipData: _trivialQ })
-                        : '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                    if (!hasAnySource) {
+                        // 【2026-10-08】把"为什么没用本地资料"如实记下来，供气泡尾行显示（原来只有 null ⇒ 尾行误报成
+                        //   "寒暄/闲聊类问题不检索"，把"没启用数据源"或"代码角色"都说成寒暄，用户无从判断）。
+                        try { window.__dsLastSrcs = { srcs: [], reason: _isCodeRole ? 'codeRole' : 'none' }; } catch (e) {}
+                        baseSystem = '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
+                    } else {
+                        baseSystem = await dsBuildSystemPrompt(finalText, _dataSrc, { skipData: _trivialQ });
+                        // 寒暄类：dsBuildSystemPrompt 内部会落 __dsLastSrcs（srcs:[]），这里覆盖为准确原因
+                        if (_trivialQ) { try { window.__dsLastSrcs = { srcs: [], reason: 'trivial' }; } catch (e) {} }
+                    }
                 } catch (_prepErr) {
                     console.warn('[dsRunStream] 本地资料准备失败，降级为无资料模式：', _prepErr && _prepErr.message);
                     baseSystem = '你是一名铁路安全监察智能助手，回答请使用中文，条理清晰。';
@@ -6815,7 +6843,16 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         var q = String(query || '');
         var key = '', reason = '';
         try {
-          if (/代码|html|css|js|javascript|网页|前端|组件|页面|布局|写一个|生成一个|帮我写/i.test(q)) {
+          // 【2026-10-08 用户报"检测不到数据"，并怀疑自动角色判得不合适】旧判据把「帮我写 / 写一个 / 生成一个 /
+          //   页面 / 布局」也当作代码特征 —— 它们在安监业务里极其常见（"帮我写一份整改通知书""写一个检查方案"），
+          //   于是业务问题被误判成 frontend，连带本地资料被掐掉（见 _dsRunStream 的 hasAnySource，已同步放宽）。
+          //   现改为**两档**：
+          //     ① 强特征（技术名词，单独出现即可）：代码/程序/脚本/html/css/js/网页/前端/组件/函数/接口/报错/调试/正则/数据库/sql/python/java/C++；
+          //     ② 弱特征（页面/布局/样式/界面/按钮/表单/动画）必须**与"写/生成/创建/做/改/优化/实现"同现**。
+          var _codeStrong = /代码|程序|脚本|html|css|javascript|\bjs\b|网页|前端|组件|函数|接口|报错|调试|正则|数据库|\bsql\b|python|java|c\+\+|编程/i;
+          var _codeTech = /页面|布局|样式|界面|按钮|表单|动画|响应式/i;
+          var _codeAsk = /写|生成|创建|做一个|改|优化|实现|加个|加一个/i;
+          if (_codeStrong.test(q) || (_codeTech.test(q) && _codeAsk.test(q))) {
             key = 'frontend'; reason = '代码 / 前端请求';
           } else if (/风险研判|研判|风险等级|隐患分析|预警措施|风险点/.test(q)) {
             key = 'riskanalyst'; reason = '风险研判类问题';

@@ -480,6 +480,14 @@
         // ① 收集所有"行内相邻格之间的空隙"
         var gapList = [];
         region.forEach(function (r) {
+            // 【2026-10-08 真机修复·"表格最左多出一整列空白 / 序号列被挤到第 2 列"】**只有 ≥3 格的行**才有资格
+            //   参与"列边界投票"。真机实证（《高速铁路接触网运行维修规则》第 61/73/79 页）：表格区域里会混进
+            //   1~2 行正文，它们通常只有 **1~2 格**（一句连贯的话只在中间被空白切开一次），其**孤立的左侧空隙**
+            //   会造出一条偏左的"伪列边界" ⇒ 表头/数据整体右移一列、最左一列全空（实测列占用 [0,9,9,7,7]）。
+            //   而真表格行（含**只有一行**的表头）在列与列之间天然断开 ≥3 次 ⇒ 用"≥3 格"这一条即可把噪声行
+            //   挡在投票之外，**同时不会误杀真边界**（这点很关键：先前用"边界至少被 2 条空隙支持"来过滤，
+            //   结果把"表头左对齐 + 数据居中"时只有表头一行支持的那条真边界也一起杀了 ⇒ 表头两列被并成一列）。
+            if (!r || r.length < 3) return;
             var prevRight = null;
             r.forEach(function (c) {
                 if (!c || !c.length) return;
@@ -494,46 +502,59 @@
         //   ⚠️ 只取中点是不够的：表头与数据行的空隙**区间**重合但**中点**可能相差很远
         //      （实测用例：表头空隙 (125,220)、居中数据空隙 (165,260) ⇒ 中点 172.5 vs 212.5 差 40pt）
         //      ⇒ 若按"中点编号相同"判定覆盖，会误当成两条边界、凭空多出一列。
-        var cands = [];
-        function candIdx(x) {
-            for (var i = 0; i < cands.length; i++) if (Math.abs(cands[i].x - x) <= tol) return i;
-            cands.push({ x: x, dead: false });
-            return cands.length - 1;
-        }
         var covs = [];
         for (var gi = 0; gi < gapList.length; gi++) {
             var g = gapList[gi];
             covs.push({ lo: g.lo, hi: g.hi, done: false });
-            candIdx(g.lo); candIdx((g.lo + g.hi) / 2); candIdx(g.hi);
         }
-        // ③ 贪心集合覆盖：**只要边界 x 落在某条空隙的区间内，就算这条空隙被它打断**
-        //    （不要求"同一条候选"）—— 这正是"列边界只看空隙、与文字起点无关"的落实：
-        //    同一条物理列分隔线，无论每行的空隙是宽是窄、偏左偏右，都能被同一个 x 覆盖。
+        // ③ **扫描线**求最优列边界：在所有未处理空隙的区间上做覆盖计数，取"覆盖数最大"的位置作为一条边界；
+        //    **覆盖数 < 2 的位置一律不采纳**（见下方注释：那是混入表格区域的孤立正文行造的伪边界）。
+        //
+        //   为什么用扫描线、而不是"枚举候选点（每条空隙的 lo/mid/hi）+ 贪心"：
+        //     表头行多为**左对齐**（文字起点 = 列左边缘），而数据行常**居中/右对齐**（文字起点在格内偏移）
+        //     ⇒ 两者的空隙**只有很窄的交集**（真机实测可窄到几个 pt）。候选点若只取每条空隙的三个端点，
+        //     很容易整体错过交集 ⇒ 表头那一列就失去支持、被并入邻列（实测：4 列表头退化成 3 列、
+        //     出现 "分析项点 分析主体" 这种被挤在一起的表头）。
+        //     扫描线是**精确解**：只要交集非空，它一定能在交集内取到点，从而让"一条边界"同时打断
+        //     表头与全部数据行的空隙（覆盖数 = 行数）✓
         var bounds = [], remain = covs.length, guard = 0;
         while (remain > 0 && guard++ < 200) {
-            var bestX = null, bestN = 0;
-            for (var ci2 = 0; ci2 < cands.length; ci2++) {
-                if (cands[ci2].dead) continue;
-                var px = cands[ci2].x, n = 0;
-                for (var vi = 0; vi < covs.length; vi++) {
-                    if (!covs[vi].done && px >= covs[vi].lo && px <= covs[vi].hi) n++;
-                }
-                if (n > bestN) { bestN = n; bestX = px; }
+            var evs = [];
+            for (var vi = 0; vi < covs.length; vi++) {
+                if (covs[vi].done) continue;
+                evs.push({ x: covs[vi].lo, d: 1 });
+                evs.push({ x: covs[vi].hi, d: -1 });
             }
-            if (bestX == null || bestN === 0) break;
+            if (!evs.length) break;
+            // 同位置先 +1 后 -1（闭区间的覆盖计数）
+            evs.sort(function (a, b) { return a.x === b.x ? (b.d - a.d) : (a.x - b.x); });
+            var cur = 0, best = 0, bestX = null;
+            for (var ei = 0; ei < evs.length; ei++) {
+                cur += evs[ei].d;
+                if (cur > best) { best = cur; bestX = evs[ei].x; }
+            }
+            //   阈值回到 1（任何空隙都成边界）：噪声行已由"**只有 ≥3 格的行参与投票**"挡住（见 gapList 收集处）——
+            //   先前用"边界至少被 2 条空隙支持"替代它，结果连"只有表头一行支持的真边界"也被误杀
+            //   （真机症状：表头 "分析项点 分析主体" 被并成一列、4 列表退化成 3 列）。
+            if (bestX == null || best < 1) break;
             bounds.push(bestX);
             for (var vj = 0; vj < covs.length; vj++) {
                 if (!covs[vj].done && bestX >= covs[vj].lo && bestX <= covs[vj].hi) { covs[vj].done = true; remain--; }
             }
-            // 容差内的候选视为同一条边界（不再重复选点）
-            for (var ck2 = 0; ck2 < cands.length; ck2++) {
-                if (!cands[ck2].dead && Math.abs(cands[ck2].x - bestX) <= tol) cands[ck2].dead = true;
-            }
         }
-        // ④ 保险：仍有未覆盖的空隙（极端情形，如两格区间重叠导致空 lo>hi）⇒ 取其中点
+        // ④ 保险：仍有未覆盖的空隙（极端情形，如两格区间重叠导致空 lo>hi）⇒ 取其中点。
+        //   ⚠️ 同样要求"同一位置至少 2 条空隙"（见上）：孤立的单行空隙**一律不造边界**，
+        //     否则混进来的正文行又会把最左边界拉偏（这正是第 61/73 页"最左整列空白"的来源）。
+        var _loose = [];
         for (var vk = 0; vk < covs.length; vk++) {
-            if (!covs[vk].done) bounds.push((covs[vk].lo + covs[vk].hi) / 2);
+            if (covs[vk].done) continue;
+            var _mid = (covs[vk].lo + covs[vk].hi) / 2, _placed = false;
+            for (var lj = 0; lj < _loose.length; lj++) {
+                if (Math.abs(_loose[lj].x - _mid) <= tol) { _loose[lj].n++; _placed = true; break; }
+            }
+            if (!_placed) _loose.push({ x: _mid, n: 1 });
         }
+        for (var lk = 0; lk < _loose.length; lk++) bounds.push(_loose[lk].x);   // 噪声行已由"≥3 格才投票"拦住，这里不再额外设阈值
         bounds.sort(function (a, b) { return a - b; });
         var merged = [];
         for (var bi = 0; bi < bounds.length; bi++) {
@@ -541,8 +562,13 @@
         }
         // ⑤ 归位：单元格**起点**落在哪两段边界之间 ⇒ 就是哪一列（与文字对齐方式无关）
         function colOf(c) {
+            // ⚠️ 容差方向很关键：只有"边界**明显位于**单元格起点左侧"才推进到下一列 —— 用 `x0 - tol`。
+            //   旧写法 `x0 + tol` 会在"边界恰好落在起点右侧几 pt"时把格推到下一列：
+            //   真机第 73 页实测边界 ≈116、表头格起点 111.5 ⇒ 116 < 117.5 成立 ⇒ 表头被推到第 1 列
+            //   ⇒ 表格最左凭空多出一整列空白（列占用 [0,10,3,3,7]）。改后：116 < 105.5 不成立 ⇒ 留在第 0 列 ✓
+            //（宁可把贴边的格归到左侧列，也不凭空多造一列 —— 与"宁可少列，不可多列"一致。）
             var x0 = c[0].x, col = 0;
-            while (col < merged.length && merged[col] < x0 + tol) col++;
+            while (col < merged.length && merged[col] < x0 - tol) col++;
             return col;
         }
         return { bounds: merged, cols: merged.length + 1, colOf: colOf, adv: adv };

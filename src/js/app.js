@@ -759,8 +759,13 @@ window.onclick = function(e) {
         // 空闲时执行（等首屏与模块初始化都落定）：2.5s 后先自检一次，之后每 3 分钟兜一次
         setTimeout(_offlineSelfCheck, 2500);
         setInterval(function () { if (navigator.onLine !== false) _offlineSelfCheck(); }, 3 * 60 * 1000);
-        // 【2026-10-04】"本次走了网络"时给一键切回本机的提示（用户点，不自动刷新；见函数注释）
-        setTimeout(_showOfflineReentryTip, 2600);
+        // 【2026-10-08 用户口径："这个不要了"】**不再自动弹出**"本次打开走了网络（XX KB）· 点一下切回本机加载"
+        //   提示条。原委：该提示每次"重启/重开、且那趟导航赶在 SW 接管之前走了网络"时会在底部浮出，
+        //   用户明确表示不要这个弹层（原话："系统重启后会弹出本次打开走了网络…这个不要了"）。
+        //   · 函数 `_showOfflineReentryTip` **保留**（改为按需调用；将来若要恢复只需放开这一行）；
+        //   · 「关于系统」里的「🔁 切回本机加载」按钮走的是 `dsOfflineReenter`，与本提示无关，仍可用；
+        //   · 离线诊断数据（`_boot_timeline` / navRes）**照常记录**，调试模式下依旧可见 —— 只是不再打扰用户。
+        // setTimeout(_showOfflineReentryTip, 2600);   // ← 已停用（用户 2026-10-08 要求：不要这个提示）
     } catch (e) {}
 
     (_regPromise || Promise.resolve(null)).then(function(reg) {
@@ -1872,7 +1877,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v4.33'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v4.34'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // ⚠️【2026-10-05 用户实测踩坑】"手机提示发现 v4.15，更新后仍显示 v4.14" —— 就是因为这里没跟着改：
 //   提示更新靠的是 **SW 缓存时间戳**（version.json 的 sw / sw.js 的 CACHE_VERSION），
 //   而界面上显示的版本号读的是**这个常量**。**发版必须同时改三处**：

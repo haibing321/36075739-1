@@ -921,6 +921,10 @@
                     if (existingCount > 0) {
                         // 【2026-09-21】原为 confirm("确定=覆盖 / 取消=追加")："取消"居然是一次**写入**，
                         //   与直觉相反且没有真正的取消；改为三按钮弹窗（追加去重 / 覆盖 / 取消）。
+                        // 【2026-10-08 手机端用户报「进度条遮挡追加/覆盖框的确认按钮」】弹确认框前
+                        //   **必须先收起进度条**：进度条是 fixed 在右下角、宽度 280px，手机上正好压住
+                        //   本弹窗右下角的按钮（层级见 index.html 的 z-index 说明）。确认后再恢复进度反馈。
+                        window.hideProgress();
                         const _act = await window.showChoiceModal({
                             title: '导入检查信息（JSON）',
                             body: '当前已有 ' + existingCount + ' 条记录，本次解析 ' + normalized.length + ' 条。请选择处理方式：',
@@ -930,7 +934,8 @@
                                 { label: '取消', value: 'cancel' }
                             ]
                         });
-                        if (_act === 'cancel' || _act == null) { window.hideProgress(); return; }   // 真正取消：不写库
+                        if (_act === 'cancel' || _act == null) { return; }   // 真正取消：不写库（进度条已在弹窗前收起）
+                        window.showProgress(60, '正在保存到数据库…');        // 用户已选择 ⇒ 恢复进度反馈
                         if (_act === 'append') finalData = issueDedupMerge(dataCache, normalized);
                     }
                     // 差量写入：只写新增/有变化的记录（同一份数据重复导入 → 0 次写入，不再整库重写）
@@ -1032,6 +1037,10 @@
                     if (existingCount > 0) {
                         // 【2026-09-21】同 JSON 路径：三按钮替代"确定=覆盖 / 取消=追加"
                         closeModal('issue-importModal');   // 先收起转圈弹窗，避免两层弹窗叠加
+                        // 【2026-10-08 手机端用户报「进度条遮挡追加/覆盖框的确认按钮」】弹确认框前先收起进度条
+                        //   （它是 fixed 在右下角、宽 280px，手机上正好压住本弹窗右下角的按钮）；
+                        //   用户选完后再由下面的 showProgress(70) 恢复进度反馈。
+                        window.hideProgress();
                         const _act = await window.showChoiceModal({
                             title: '导入检查信息（Excel）',
                             body: '当前已有 ' + existingCount + ' 条记录，本次解析 ' + newData.length + ' 条。请选择处理方式：',
@@ -1041,7 +1050,7 @@
                                 { label: '取消', value: 'cancel' }
                             ]
                         });
-                        if (_act === 'cancel' || _act == null) { window.hideProgress(); e.target.value = ''; return; }   // 真正取消
+                        if (_act === 'cancel' || _act == null) { e.target.value = ''; return; }   // 真正取消（进度条已在弹窗前收起）
                         if (_act === 'append') finalData = issueDedupMerge(dataCache, newData);
                         openModal('issue-importModal');    // 继续显示"正在保存…"
                     }

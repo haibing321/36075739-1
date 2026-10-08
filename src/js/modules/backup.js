@@ -685,7 +685,11 @@
 
                 // 【2026-09-21】恢复前先让用户看清"要恢复的是哪份备份"（导出时间/版本/各模块条数），
                 //   确认后才写库 —— 原实现选定文件即覆盖 + 1 秒后自动刷新，误点不可撤销、也无处核对。
-                if (!(await _confirmRestore(backup, file))) { window.hideProgress(); return; }
+                // 【2026-10-08 手机端用户报「全数据导入时进度条遮挡确认按钮」】弹"确认恢复"框前
+                //   **先收起进度条**：它是 fixed 在右下角、宽 280px，手机窄屏下正好压住弹窗右下角的
+                //   "确认恢复 / 取消"按钮 ⇒ 用户点不到。确认后由下方 _showRestoreProgress(true) 重新显示。
+                window.hideProgress();
+                if (!(await _confirmRestore(backup, file))) { return; }
 
                 _showRestoreProgress(true);
                 _setRestoreProgress(10, '正在恢复检查信息…');

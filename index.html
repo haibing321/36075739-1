@@ -2180,7 +2180,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.33</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.34</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2223,6 +2223,26 @@
             <!-- 系统简介 -->
             <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            </div>
+
+            <!-- v4.34 近期更新（表格字号 + 智能对话引用本地数据 + 列错位二次修复 + 进度条遮挡 + 停用开机提示条） -->
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span>🆕</span>
+                    <span>v4.34 近期更新</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔤 **表格内字号改为小四 / 五号**（原来是四号 14pt，实机觉得"比正文还占地方"）：表格内容用**五号（10.5pt）**、表头用**小四（12pt 黑体）**，行距同步由 17pt 收到 15pt。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔍 **修"智能对话检测不到本地数据"**（排查出三处**静默**掐断，任一处为真就整段不注入、且没有任何提示）：<br/>
+                        ① **自动角色判据过宽** —— "帮我写 / 写一个 / 生成一个 / 页面 / 布局"都被当成代码特征，于是"帮我写一份整改通知书""写一个检查方案"这类**业务刚需**被误判成"代码角色"，本地资料全不注入；现改为「技术名词单独命中 / 界面类词必须与"写改做"同现」；<br/>
+                        ② **总闸门白名单不全** —— 只认 6 个数据源，而实际支持 10 个 ⇒ 只勾了"法规案例汇编 / 事故案例 / 写作资料库 / 历史报告"时**一条都不检索**（输入框上方却还显示"本次将使用…"）；现与注入侧对齐；<br/>
+                        ③ **代码角色一刀切** —— 代码角色下本地资料完全不注入**且不告知**；现改为**仍引用本地资料**（只省略"业务输出规范"那一段，保留 v3.76 的本意）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>💬 顺带修**气泡尾行误报**：原来一律显示"未使用本地资料（寒暄/闲聊类问题不检索）"，把"未启用数据源""代码角色"两种情形都误报成寒暄；现按**真实原因**显示。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📐 **再次修表格列错位**（拿到源 PDF 后逐页比对定位）：① 归位容差方向写反 —— 列边界落在格子起点右侧几 pt 时会把整列推到右边，造成**最左一整列空白**；② 表格区域混进的正文行（2 格）会造出"伪列边界" —— 现**只让 ≥3 格的行参与列边界投票**。实测《高速铁路接触网运行维修规则》（87 页 / 14 张表）：修前 3 张表有空列 ⇒ 修后**全部无空列**，第 25 页表头「装置名称｜分析项点｜分析主体｜完成时限」正确、第 61 页序号列归位。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🐞 手机端**进度条不再遮挡"追加 / 覆盖"确认框的按钮**（层级 99999→9000，且弹确认框前先收起进度条）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔕 **停用"本次打开走了网络 · 点一下切回本机"开机提示条**（按你的要求）；「关于系统」里的「🔁 切回本机加载」按钮保留备用。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 本轮补 4 条回归断言：表格字号（含"不再出现四号"）、对话引用本地数据（业务问题不判代码角色 / 白名单外数据源仍检索 / 代码角色仍引用）、列错位不得出现全空列、进度条不遮挡弹窗按钮。</span></div>
+                </div>
             </div>
 
             <!-- v4.33 近期更新（DOCX 表格排版两处修复：单元格首行缩进 + 表格列错位） -->
@@ -2644,8 +2664,15 @@
         </div>
     </div>
 
-    <!-- 全局进度条（导入/导出重用时显示） -->
-    <div id="global-progress-bar" style="display:none;position:fixed;bottom:20px;right:20px;z-index:99999;width:280px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.15);border:1px solid #e2e8f0;">
+    <!-- 全局进度条（导入/导出重用时显示）
+         ⚠️【2026-10-08 手机端用户报「全数据导入时进度条遮挡追加/覆盖框中的确认按钮」】
+           本条的 z-index 原为 **99999** —— 高于所有弹窗（设置面板 11000 / 业务弹窗 11500 /
+           showChoiceModal 11600）⇒ 弹窗一打开，进度条就**压在弹窗之上**；而它是
+           fixed + bottom:20px + right:20px + width:280px，**手机窄屏下正好压住弹窗右下角的按钮**
+           ⇒ 用户点不到"追加 / 覆盖 / 确认恢复"。
+           规则：**进度条永远低于"需要用户操作"的弹窗** —— 这里改为 9000（< 11000）。
+           调用侧另做时序修正：弹确认框前先 hideProgress（见 issue.js / backup.js）。 -->
+    <div id="global-progress-bar" style="display:none;position:fixed;bottom:20px;right:20px;z-index:9000;width:280px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.15);border:1px solid #e2e8f0;">
         <div style="font-size:0.8rem;color:#475569;margin-bottom:6px;display:flex;justify-content:space-between;">
             <span id="global-progress-label">处理中...</span>
             <span id="global-progress-pct" style="font-weight:600;color:#3b82f6;">0%</span>

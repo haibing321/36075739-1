@@ -72,8 +72,12 @@
         h2: { font: '楷体_GB2312', size: 32, line: 560, lineRule: 'exact', indent: 2, keepNext: true }, // （一）
         h3: { font: '仿宋_GB2312', size: 32, line: 560, lineRule: 'exact', indent: 2, keepNext: true }, // 1.
         quote: { font: '楷体_GB2312', size: 32, line: 560, lineRule: 'exact', indent: 2 },
-        cell: { font: '仿宋_GB2312', size: 28, line: 340, lineRule: 'exact', indent: 0 },      // 表内四号
-        cellHead: { font: '黑体', size: 28, line: 340, lineRule: 'exact', indent: 0 },
+        // 【2026-10-08 用户口径】"表格内的字体应该小四或五号字" —— 原来是**四号(14pt)**，明显偏大
+        //   （真机体感：表格比正文还占地方）。现改为**内容五号(10.5pt)**、**表头小四(12pt 黑体)**，
+        //   行距同步由 340(17pt) 收到 300(15pt)：字号变小后行距不跟着收，表格会显得松散、行高虚高。
+        //   ⚠️ 表头与内容**共用同一行距**（同一张表里混用行距会让行高参差）。
+        cell: { font: '仿宋_GB2312', size: 21, line: 300, lineRule: 'exact', indent: 0 },      // 表内五号(10.5pt)
+        cellHead: { font: '黑体', size: 24, line: 300, lineRule: 'exact', indent: 0 },          // 表头小四(12pt)
         code: { font: '仿宋_GB2312', size: 28, line: 320, lineRule: 'exact', indent: 0, align: 'left' },
         caption: { font: '楷体_GB2312', size: 28, line: 340, lineRule: 'exact', align: 'center', indent: 0 },
         date: { font: '仿宋_GB2312', size: 32, line: 560, lineRule: 'exact', align: 'right', indent: 0 }

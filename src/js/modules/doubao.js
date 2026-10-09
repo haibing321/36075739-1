@@ -6230,6 +6230,14 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       function _riskParseDateTime(v) {
         if (v == null || v === '') return null;
         if (typeof v === 'number') {
+          // 【2026-10-09 真机修复·最关键】紧凑日期 YYYYMMDD（Excel / 系统导出极常见）**必须先于时间戳判断**：
+          //   20261015 同时满足"看起来像秒时间戳（>1e9）"，若按 v*1000 处理会变成 1970 年 ⇒
+          //   整库记录都被"日期条件"排除，界面显示"筛选后 0 条（被日期条件排除 N 条）"，而数据明明在范围内。
+          //   （真机 43526 条全被排除、且不出现"日期无法识别"提示，正是这个形态的特征。）
+          if (v > 19000000 && v < 22001232) {
+            var _y = Math.floor(v / 10000), _m = Math.floor((v % 10000) / 100), _d2 = v % 100;
+            if (_m >= 1 && _m <= 12 && _d2 >= 1 && _d2 <= 31) return new Date(_y, _m - 1, _d2).getTime();
+          }
           if (v > 1e11) return v;                                   // 毫秒时间戳
           if (v > 1e9) return v * 1000;                             // 秒时间戳
           if (v > 20000 && v < 80000) return Math.round((v - 25569) * 86400000);   // Excel 序列号（1900 基准）
@@ -6237,6 +6245,18 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         }
         var s = String(v).trim();
         if (!s) return null;
+        // 【2026-10-09 同上】字符串形态的紧凑日期：YYYYMMDD / YYYYMMDDHHmmss（必须先于时间戳判断）
+        if (/^\d{8}$/.test(s)) {
+          var y8 = +s.slice(0, 4), m8 = +s.slice(4, 6), d8 = +s.slice(6, 8);
+          if (y8 >= 1900 && y8 <= 2200 && m8 >= 1 && m8 <= 12 && d8 >= 1 && d8 <= 31) return new Date(y8, m8 - 1, d8).getTime();
+        }
+        if (/^\d{14}$/.test(s)) {
+          var y14 = +s.slice(0, 4), m14 = +s.slice(4, 6), d14 = +s.slice(6, 8);
+          var h14 = +s.slice(8, 10), mi14 = +s.slice(10, 12), se14 = +s.slice(12, 14);
+          if (y14 >= 1900 && y14 <= 2200 && m14 >= 1 && m14 <= 12 && d14 >= 1 && d14 <= 31) {
+            return new Date(y14, m14 - 1, d14, h14, mi14, se14).getTime();
+          }
+        }
         if (/^\d{10}$/.test(s)) return parseInt(s, 10) * 1000;
         if (/^\d{13}$/.test(s)) return parseInt(s, 10);
         if (/^\d{4,5}(\.\d+)?$/.test(s)) {
@@ -6327,6 +6347,8 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             var unitHits = 0;    // 【2026-10-09】台账里**实际带单位字段**的条数（=0 说明字段名不对，需提示用户）
             var dateFail = 0;    // 被日期条件排除的条数（筛成 0 时用于自证原因）
             var unitFail = 0;    // 被单位条件排除的条数
+            var sampleDates = []; // 【2026-10-09】库中时间原值样例（最多 2 条）——筛成 0 条时直接展示"原值→解析结果"，
+                                  //   让"格式对不对"一眼可见（真机那次反馈就是因为看不出日期到底长什么样）
             var cpuMs = 0;       // 本函数累计耗时（不含等待 IDB 回调的空闲时间）
             var units = Object.create(null);
             var done = false;
@@ -6346,7 +6368,13 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
                 if (hasFilter && filtered === 0) {
                   if (uLower && unitHits === 0) _tip.push('台账里未找到单位字段 ⇒ 单位条件把全部记录排除，请核对台账是否含"单位/责任单位"列');
                   else {
-                    if (dateFail) _tip.push('被日期条件排除 ' + dateFail + ' 条');
+                    if (dateFail) {
+                      var _ds = sampleDates.map(function (x) {
+                        var t = _riskParseDateTime(x);
+                        return JSON.stringify(x) + '→' + (t === null ? '无法识别' : new Date(t).toLocaleDateString('zh-CN'));
+                      }).join('；');
+                      _tip.push('被日期条件排除 ' + dateFail + ' 条' + (_ds ? '（库中时间样例：' + _ds + '）' : ''));
+                    }
                     if (unitFail) _tip.push('被单位条件排除 ' + unitFail + ' 条');
                     if (!dateFail && !unitFail) _tip.push('库中无满足全部条件的记录');
                   }
@@ -6405,6 +6433,7 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
                 scanned++;
                 var _uRaw = _riskUnitOf(d);       // 见上方注释：与导入映射同一套字段
                 if (_uRaw) { units[_uRaw] = 1; unitHits++; }
+                if (sampleDates.length < 2 && d.datetime != null && d.datetime !== '') sampleDates.push(String(d.datetime));
                 var ok = true;
                 if (dateStart || dateEnd) {
                   var _dr = _riskDateInRange(d.datetime, dateStart, dateEnd, sd, ed);

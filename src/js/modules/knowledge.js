@@ -1907,7 +1907,20 @@
     //   · 走 `window.dsCallOnce`（关思考 + 4s 超时 + 小 max_tokens）——它是全项目"小请求"的统一入口，
     //     契约是"绝不抛异常、失败返回 {ok:false}"；4s 是刻意的小值：检索前的改写不值得让用户久等。
     //   · 同查询结果缓存（最多 60 条）：避免同一问题反复花额度。
-    //   · 开关 `localStorage['kb_rewrite']='0'`；诊断 `window.__kbLastRewrite` / `KB.rewriteStats()`。
+    //   · 诊断 `window.__kbLastRewrite` / `KB.rewriteStats()`。
+    //
+    // ★★ 2026-10-09 实测结论 → **默认关闭**（`kb_rewrite` 只有显式设为 '1' 才启用）★★
+    //   用真数据 A/B（scripts/kb-recall-bench.js，KB_REWRITE=both，30 条真实"检查信息→引用规章"样本，
+    //   本机 43526 条检查信息 / 685 篇规章）测得改写是**负收益**：
+    //       Recall@1  33.3% → 16.7%（-16.7pp）
+    //       Recall@5  70.0% → 56.7%（-13.3pp）
+    //       Recall@10 86.7% → 70.0%（-16.7pp）  ← 决策指标
+    //       MRR       0.477 → 0.327（-0.150）
+    //   为什么（这是"机制"而非偶然）：本库的召回目标是"该问题引用的那篇**规章**"，而匹配证据恰恰是
+    //   **检查描述原文与规章正文的用词重合**；LightBM25 是**字符 2/3-gram**（无词典），长句里那些
+    //   "看似啰嗦"的词本身就是有效检索证据 —— 改写成"实体词表"反而**删掉了证据**。
+    //   ⇒ 所以代码与开关都保留（换数据域/换成短条款检索时可能有用），但**默认不启用**，
+    //     避免"看起来聪明、实测更差"的默认行为白花额度。
     // ==================================================================================
     var _rwCache = Object.create(null), _rwCacheN = 0;
     KB.rewriteQuery = async function (query, opts) {
@@ -1916,7 +1929,7 @@
         var out = { on: false, ok: false, cached: false, ms: 0, src: src.slice(0, 80), out: src.slice(0, 80), err: '' };
         window.__kbLastRewrite = out;
         try {
-            if (localStorage.getItem('kb_rewrite') === '0') { out.err = 'off'; return src; }
+            if (localStorage.getItem('kb_rewrite') !== '1') { out.err = 'off'; return src; }
             out.on = true;
             if (src.length < 6) { out.err = 'too-short'; return src; }        // 短查询没有可压缩的噪声
             if (typeof window.dsCallOnce !== 'function') { out.err = 'no-llm'; return src; }

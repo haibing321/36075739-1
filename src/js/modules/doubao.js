@@ -6507,6 +6507,61 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             if (unit) userMsg += '- 限定责任单位：' + unit + '\n';
             if (focus) userMsg += '- 重点关注：' + focus + '\n';   // 不再降级为"通用安全风险"（空条件已被上面拦下）
             userMsg += '- 输出格式：' + formatDesc + '\n';
+            // 【2026-10-09 用户要求·多源化】三件事：① 数据源勾选**真正生效**（不勾选则本次不使用）
+            //   ② **重点时段因子**（按研判日期自动匹配：春运/两会/汛期/暑运/节假日/防寒/施工旺季）
+            //   ③ **天气接入**（按站名查未来 3 天，查不到就如实说明，不编造）。
+            //   依据是实测结论：原研判只引用 检查信息/手册/案例/规章 4 源，天气与重点时段**完全缺失**
+            //   —— 用户不在"研判重点"里手写"节日/汛期"，研判就根本不会考虑它们。
+            var _offSrcs = [];
+            try { _offSrcs = JSON.parse(localStorage.getItem('risk_src_off') || '[]') || []; } catch (e) {}
+            if (_offSrcs.length) {
+                var _offLabel = { issues: '检查信息台账', handbook: '检查手册', cases: '事故案例', rules: '规章条款', weather: '天气', period: '重点时段' };
+                userMsg += '- 数据源开关：用户已**关闭** ' + _offSrcs.map(function (k) { return _offLabel[k] || k; }).join('、')
+                    + ' —— 本次研判**不得引用**这些数据（如确有必要，只提示"可在上方数据源面板开启"），其余照常。\n';
+            }
+            // ② 重点时段因子（纯日期推算，零数据依赖）
+            if (_offSrcs.indexOf('period') === -1 && window.RiskFactors && typeof window.RiskFactors.toText === 'function') {
+                var _pf = window.RiskFactors.toText(dateStart, dateEnd);
+                if (_pf && _pf.indexOf('无明显重点时段因子') === -1) {
+                    userMsg += '\n【重点时段因子（按研判日期自动匹配，必须纳入研判）】\n' + _pf + '\n'
+                        + '要求：逐条判断这些时段因子**会放大哪些已有风险**（结合上面的检查信息），并给出针对该时段的准备与管控措施；'
+                        + '"即将进入"的因子要作为前瞻风险单独提示。\n';
+                }
+            }
+            // ③ 天气接入（有站名才查；查不到就如实标注，不阻塞、不编造）
+            if (_offSrcs.indexOf('weather') === -1) {
+                var _wStation = '';
+                try { _wStation = String(localStorage.getItem('risk_weather_station') || '').trim(); } catch (e) {}
+                if (!_wStation) {
+                    try {
+                        var _wu = document.getElementById('risk-unit');
+                        _wStation = _wu ? String(_wu.value || '').replace(/(供电|工务|电务|车务|机务|车辆|客运|货运|房建|通信|基础设施)(段|站|所)?.*$/, '').trim() : '';
+                    } catch (e) {}
+                }
+                if (_wStation && typeof window._agentExecuteTool === 'function') {
+                    var _wTxt = '';
+                    try {
+                        var _wR = await window._agentExecuteTool('get_weather', { stationName: _wStation });
+                        var _w = (_wR && _wR.result) || null;
+                        if (_wR && _wR.ok && _w) {
+                            var _cur = _w.current || {};
+                            _wTxt = '站点：' + (_w.station || _wStation)
+                                + '｜实时：' + (_cur.temp != null ? _cur.temp + '℃ ' : '') + String(_cur.text || _cur.weather || '').trim();
+                            var _dl = Array.isArray(_w.daily) ? _w.daily.slice(0, 3) : [];
+                            if (_dl.length) {
+                                _wTxt += '\n未来 3 天：' + _dl.map(function (x) {
+                                    return String(x.date || '') + ' ' + String(x.text || x.weather || '')
+                                        + (x.tempMax != null ? (x.tempMin != null ? (' ' + x.tempMin + '~' + x.tempMax + '℃') : (' ' + x.tempMax + '℃')) : '')
+                                        + (x.precip != null ? (' 降水' + x.precip + '%') : '');
+                                }).join('；');
+                            }
+                        }
+                    } catch (e) {}
+                    userMsg += _wTxt
+                        ? '\n【天气（本地接入 · 站点 ' + _wStation + '）】\n' + _wTxt + '\n要求：把天气作为**动态因子**纳入研判（降雨/大风/高温/低温分别对应防洪、异物侵限、线索驰度、覆冰等风险），并说明其对上述检查问题的放大作用。\n'
+                        : '\n【天气】本次未能接入天气数据（站点"' + _wStation + '"查询失败）。涉及气象风险时必须**如实说明"未接入天气数据，请以气象预报为准"**，不要凭空推测天气，也不要假装已获取。\n';
+                }
+            }
             userMsg += '- 可参考下方【事故案例】（来自规章制度库「事故案例」专业）与【相关规章条款】中的真实案例与条款，结合检查信息开展研判，使结论更具针对性。\n';
             userMsg += '\n请开始分析。';
 

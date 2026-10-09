@@ -1333,7 +1333,15 @@
                                     <span>筛选后：</span>
                                     <span id="risk-preview-filtered">—</span>
                                 </div>
-                                <!-- 第三行：研判重点 -->
+                                <!-- 【2026-10-09 用户要求】多源证据面板：6 类数据源可勾选（原来数据源是黑箱自动注入，用户看不见也控不了）
+     并即时显示各源命中条数与"重点时段因子"（春运/暑运/汛期/节假日…按研判日期自动匹配） -->
+<div id="risk-source-panel" style="margin-bottom:8px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+    <div style="font-size:0.75rem;color:#64748b;margin-bottom:6px;">🧩 研判数据源（可勾选：不勾选则本次研判不使用该源）</div>
+    <div id="risk-source-list" style="display:flex;flex-wrap:wrap;gap:8px;font-size:0.75rem;"></div>
+    <div id="risk-factor-line" style="margin-top:6px;font-size:0.72rem;color:#0369a1;line-height:1.5;"></div>
+</div>
+
+<!-- 第三行：研判重点 -->
                                 <div style="margin-bottom:8px;">
                                     <input type="text" id="risk-focus" placeholder="研判重点，如：施工安全、季节性风险、人员违章…"
                                         style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;box-sizing:border-box;">
@@ -1850,6 +1858,8 @@
     <script src="src/js/modules/doubao.js" defer></script>
     <script src="src/js/modules/agent-memory.js" defer></script>
     <script src="src/js/modules/agent-core.js" defer></script>
+    <!-- 【2026-10-09】重点时段因子库 + 研判数据源面板（风险研判多源化） -->
+    <script src="src/js/modules/risk-factors.js" defer></script>
     <script src="src/js/modules/agent-goals.js" defer></script>
     <script src="src/js/modules/backup.js" defer></script>
     <script src="src/js/modules/page-state.js" defer></script>
@@ -2180,7 +2190,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.37</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.38</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2225,16 +2235,16 @@
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v4.37 近期更新（代码类工具收窄 + 智能写作公文质量四项优化） -->
+            <!-- v4.38 近期更新（风险研判多源化：重点时段因子库 + 天气接入 + 数据源面板） -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.37 近期更新</span>
+                    <span>v4.38 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧠 <b>智能对话更省更快</b>：代码类问题（写脚本 / 前端）<b>不再挂 23 个铁路业务工具</b>，只带 1 个 ⇒ 工具描述体积省 <b>约 95%</b>，也减少误调用（真机实测：同一句问话工具数 23 → 1）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✍️ <b>智能写作修掉四处公文硬伤</b>（真实模型评测发现）：① 正文不再留 <b>[占位符]</b>，缺什么改在<b>文末【待补填事项】</b>逐条列出；② 引用规章<b>必须到条款层级</b>（资料没条号就写"（条号待核实）"，<b>不编造</b>）；③ <b>外部单位的数据不得当成本单位事实</b>，资料按"参考性（样例/范文）/ 外部（通报）/ 普通"自动分级并在资料标题旁标注约束；④ <b>引用必须与主题相符</b>（修掉"供电防触电引《接发列车作业标准》"，并解决"资料必须充分引用"与"引用要匹配"两条规则的冲突）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✍️ <b>写作再增强</b>：依据优先走<b>统一检索层</b>（规章按条命中、带出处，便于引用到条款）；整改/管控措施<b>必须写全"谁 · 何时 · 做到什么标准 · 谁验收"</b>；台账与资料数字冲突时，<b>总体数量一律以台账为准</b>。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧭 <b>风险研判多源化</b>：新增<b>重点时段因子库</b>（元旦 / 春运 / 两会 / 清明 / 五一 / 汛期（防洪）/ 暑运 / 中秋 / 国庆 / 防寒期 / 施工旺季等 14 项，<b>按研判日期自动匹配</b>，并提示"未来 30 天内即将进入"的前瞻风险）；<b>接入天气</b>（按单位或站名取实时 + 未来 3 天，作为动态因子；查不到就如实说明"未接入天气数据"，不编造）。原来这两项<b>完全没有</b> —— 只有你在"研判重点"里手写"汛期/节日"，研判才会考虑它们。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🧩 <b>研判数据源面板</b>（原来数据源是黑箱注入，界面只有日期 / 单位 / 重点）：现在 <b>6 类源可勾选</b>（检查信息台账 / 检查手册 / 事故案例 / 规章条款 / 天气 / 重点时段因子），<b>各源命中条数一眼可见</b>，可填天气站名；改日期 / 单位 / 重点时面板<b>即时刷新</b>；不勾选的源本次研判<b>不会使用</b>。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🎯 <b>研判要求升级</b>：时段因子必须说明它<b>会放大哪些已有风险</b>（不是只提名字）；"即将进入"的因子作为<b>前瞻风险</b>单独提示并给进入前准备措施；天气须说明对上述检查问题的放大作用。</span></div>
                 </div>
             </div>
 
@@ -2251,7 +2261,7 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.82rem;color:var(--text-secondary);margin-bottom:4px;">🗂 历史版本</div>
                 <div style="font-size:0.74rem;line-height:1.75;color:var(--text-secondary);">
-                    v4.36 近期更新：六项性能/体验优化（提示词去重 · 附件旧轮压缩 · 链接预读并发 · 工具并行+上限收尾 · 字段记忆化 · 盯控变更检测）+ 关于面板精简 · v4.35 近期更新：智能对话体检优化（索引不再每轮重建 · 工具按需召回 · 判据用纯问句 · 六项逻辑修复）· v4.32 PDF 表格识别放宽"跨行单元格"判据（表头不再被打平）· v4.31 跨列合并表头 / 宽表更完整 · v4.30 PDF 技术作业程序图还原为「阶段｜步骤」两列表 · v4.29 修 PDF 表格被"打平成一行长串" · v4.28 OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复 · v4.27 格式转换 PDF/OFD/TXT → DOCX/Excel 及导入导出修复 · v4.25 智能体「综合研究」工具（外部理论 + 本单位举证）· v4.24 智能体工具按官方原则改进 · v4.23 联网=理论 / 本地=举证 · v4.22 本地资料 × 联网协同规则 · v4.21 回答尾部「本次参考」· v4.20 关联数据自动关联 · v4.19 关联数据类型补全（6→9）· v4.18 「本地资料」三种静默情况改为如实告知 · v4.17 知识库缓存失效范围 + 汇编源预热 · v4.16 智能体消耗可见 · v4.15 规章导入自动去水印 · <b>v4.14 近期更新</b>：对规<b>截取</b>去<b>重复</b> / 全文<b>定位</b> / <b>OFD</b> 导入 / 已导入文件的处理说明 · v4.13 SW 未接管真因（激活时"清理"连累"接管"）· v4.12 联网时折叠慢（App Shell 缓存缺文件自愈）
+                    v4.37 近期更新：代码类工具收窄 95% + 智能写作公文质量四项优化（占位符 / 条款层级 / 数据归属 / 引用匹配）+ 写作增强（KB 条款优先 / 整改四要素 / 口径优先级）· v4.36 近期更新：六项性能/体验优化（提示词去重 · 附件旧轮压缩 · 链接预读并发 · 工具并行+上限收尾 · 字段记忆化 · 盯控变更检测）+ 关于面板精简 · v4.35 近期更新：智能对话体检优化（索引不再每轮重建 · 工具按需召回 · 判据用纯问句 · 六项逻辑修复）· v4.32 PDF 表格识别放宽"跨行单元格"判据（表头不再被打平）· v4.31 跨列合并表头 / 宽表更完整 · v4.30 PDF 技术作业程序图还原为「阶段｜步骤」两列表 · v4.29 修 PDF 表格被"打平成一行长串" · v4.28 OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复 · v4.27 格式转换 PDF/OFD/TXT → DOCX/Excel 及导入导出修复 · v4.25 智能体「综合研究」工具（外部理论 + 本单位举证）· v4.24 智能体工具按官方原则改进 · v4.23 联网=理论 / 本地=举证 · v4.22 本地资料 × 联网协同规则 · v4.21 回答尾部「本次参考」· v4.20 关联数据自动关联 · v4.19 关联数据类型补全（6→9）· v4.18 「本地资料」三种静默情况改为如实告知 · v4.17 知识库缓存失效范围 + 汇编源预热 · v4.16 智能体消耗可见 · v4.15 规章导入自动去水印 · <b>v4.14 近期更新</b>：对规<b>截取</b>去<b>重复</b> / 全文<b>定位</b> / <b>OFD</b> 导入 / 已导入文件的处理说明 · v4.13 SW 未接管真因（激活时"清理"连累"接管"）· v4.12 联网时折叠慢（App Shell 缓存缺文件自愈）
                 </div>
             </div>
 

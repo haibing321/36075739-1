@@ -4560,8 +4560,13 @@ function dsWebChip(m) {
                 var site = dsSiteEmbed(u);
                 if (site) {
                     // 直接内嵌播放器（loading=lazy，滚动到才加载，避免一次拉起多个播放器）
+                    // 【2026-10-09 P0·安全】播放器 iframe 也纳入沙箱（src 是从链接提取视频 ID 后**拼出的固定白名单域**，
+                    //   不是任意 URL ⇒ 保留 allow-same-origin 以维持播放器功能，但不给 allow-top-navigation：
+                    //   任何内嵌页面都不能把整个应用顶层跳走）。若某站点因此在沙箱内无法播放，
+                    //   只需把该域从这里的 sandbox 名单中排除（其余站点不受影响）。
                     return '<div class="ds-media ds-media-site" data-ds-embed="' + dsEsc(site.src) + '" data-ds-page="' + a + '" data-ds-name="' + dsEsc(site.name) + '">' +
                         '<iframe class="ds-media-iframe" src="' + dsEsc(site.src) + '" loading="lazy" frameborder="0" scrolling="no" ' +
+                        'sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-forms" ' +
                         'allowfullscreen="true" referrerpolicy="no-referrer" title="' + dsEsc(site.name) + '"></iframe>' +
                         '<div class="ds-media-cap">' + dsEsc(site.name) + ' 内嵌播放 · ' +
                         '<a href="' + a + '" target="_blank" rel="noopener">新窗口打开 ↗</a> · ' +
@@ -4770,6 +4775,8 @@ function dsWebChip(m) {
                 f.setAttribute('allowfullscreen', 'true');
                 f.setAttribute('scrolling', 'no');
                 f.setAttribute('referrerpolicy', 'no-referrer');
+                // 【2026-10-09 P0·安全】与静态播放器同口径：固定白名单播放域，保功能但禁顶层跳转
+                f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms');
                 f.title = name;
                 host.appendChild(f);
                 var cap = document.createElement('div');

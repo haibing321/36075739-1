@@ -946,10 +946,28 @@
       tools: ['get_weather'] }
   ];
 
+  // 【2026-10-09 真机实测发现后改进】代码角色的工具集收窄到最小。
+  //   实测证据：问"帮我写一个节流函数"时角色已正确判为 frontend，但**仍挂全量 23 个铁路业务工具**
+  //     （因为业务意图正则全未命中 ⇒ 走"全量兜底"分支）⇒ 白烧 token，还可能被误调用。
+  //   依据：工具数量与"选对工具"的准确率负相关（OpenAI Function calling 指南建议只给相关工具；
+  //     Anthropic《Writing effective tools for agents》同样要求工具集按任务收敛）。
+  //   保留 kb_search 一项：写代码时偶需查本单位资料/口径；同时让 tools 数组**非空**，
+  //     避免个别端点对 `tools: []` 的兼容差异。
+  var TOOLS_CODE_ROLE = ['kb_search'];
+
   /** 按意图挑工具：返回工具数组；**返回 null 表示"调用方应全量挂载"**（未命中/无文本/强制全量） */
-  function _pickTools(userText) {
+  function _pickTools(userText, opts) {
     try {
       if (window.__agentToolsForceAll) return null;
+      // ① 代码角色（前端开发）：只给最小集，不做业务意图召回（见上方说明）
+      if (opts && opts.roleKey === 'frontend') {
+        var codeTools = TOOLS.filter(function (x) { return TOOLS_CODE_ROLE.indexOf(x.name) !== -1; });
+        try {
+          window.__agentToolsPicked = codeTools.map(function (x) { return x.name; });
+          window.__agentToolsPickInfo = { query: String(userText || '').slice(0, 40), role: 'frontend', hitGroups: 0, picked: codeTools.length, total: TOOLS.length };
+        } catch (e) {}
+        return codeTools.length ? codeTools : null;
+      }
       var t = String(userText || '').trim();
       if (!t) return null;
       var names = TOOLS_CORE.slice(), hitGroups = 0;
@@ -969,8 +987,9 @@
     } catch (e) { return null; }
   }
 
-  function _toolsParam(userText) {
-    var list = (arguments.length > 0) ? (_pickTools(userText) || TOOLS) : TOOLS;
+  function _toolsParam(userText, opts) {
+    // opts 可选：{ roleKey } —— 代码角色（frontend）时走最小集（见 _pickTools 顶部说明）
+    var list = (arguments.length > 0) ? (_pickTools(userText, opts) || TOOLS) : TOOLS;
     return list.map(function(t) {
       return { type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } };
     });

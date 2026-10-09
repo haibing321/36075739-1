@@ -3184,7 +3184,10 @@
                     //   `_agentToolsParam(文本)` 内部走 `_pickTools` 召回（智能体侧早已这么做，对话侧漏了）；
                     //   **未命中任何分组时它会返回全量**（agent-core.js:955 的全量兜底）⇒ 不会少给工具、只少给无关的。
                     //   判据文本用**用户原始问句**（不含附件正文），避免贴附件时把召回带偏（见 _dsJudgeText）。
-                    var _toolsParamArr = _useTools ? window._agentToolsParam(_dsJudgeText(finalText)) : null;
+                    // 【2026-10-09 真机实测后改进】第二个参数传**本轮角色**：代码角色(frontend)只挂最小工具集
+                    //   （实测：问"帮我写一个节流函数"时角色已正确判为 frontend，却仍挂全量 23 个铁路业务工具
+                    //    —— 业务意图正则全不命中 ⇒ 走"全量兜底"分支 ⇒ 白烧 token 且可能被误调用）。
+                    var _toolsParamArr = _useTools ? window._agentToolsParam(_dsJudgeText(finalText), { roleKey: selectedRole }) : null;
                     // 【v3.76 审计】联网与「本地检索工具」目前**互斥**：联网走 Responses/Anthropic 通道，
                     //   请求体里 tools 只放服务端 web_search；工具需要"模型调用→前端执行→回灌"的闭环，
                     //   而联网通道的流解析器只处理 server_tool_use/web_search 结果，不处理本地工具调用。

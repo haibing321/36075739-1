@@ -6701,6 +6701,12 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             userMsg += '\n【必须成文（硬约束）】无论筛选出多少条数据（哪怕只有几条），都必须**按上面的结构与格式完整成文**；'
                 + '数据少时正常分析，并在结论中说明"样本量较小、趋势参考意义有限"，'
                 + '**严禁**以"数据不足 / 未形成内容 / 无法研判"为由拒绝输出正文，也严禁只回一句话。\n';
+            // 【2026-10-09 真机整数据】4 万条台账下报告冲到 8779 字 + 思考 1.6 万字 ⇒ 撞上输出上限被截断。
+            //   按"数据量大时优先保结论与措施"控制篇幅：报告是给人用的，超长反而没人读、还挤掉依据清单。
+            userMsg += '\n【篇幅（硬约束）】报告正文控制在 **4000 字以内**：风险点**最多列 5 个**，每个只写'
+                + '"等级（含口径） + 主要依据（一行） + 管控措施（一行）"；数据量大时按风险高低取 TOP5，'
+                + '其余用一句话归纳（如"其余 N 类问题共 M 条，主要为…"）。'
+                + '**严禁**为凑篇幅罗列明细，也**严禁**为省篇幅而省略末尾【本次研判依据清单】。\n';
             userMsg += '\n请开始分析。';
 
             messages = [
@@ -6917,6 +6923,20 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             warn.textContent = '⚠️ 本地暂无检查信息数据，本次分析缺乏实际数据支撑，结论仅供参考。';
             container.insertBefore(warn, container.firstChild);
           }
+
+          // 【2026-10-09 真机整数据修复】`finish_reason='length'` ⇒ 报告被**输出上限截断**（43526 条真实台账
+          //   实测：报告 8779 字 + 思考 16640 字 撞上 16384 token 上限）。原来**静默**呈现 ⇒ 用户会以为
+          //   "报告本来就这么短 / 结尾本来就缺"。现如实告知并给出可操作建议（缩小范围重跑）。
+          try {
+            if (String(_finish) === 'length') {
+              var _trBar = document.createElement('div');
+              _trBar.id = 'risk-trunc-bar';
+              _trBar.style.cssText = 'padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;font-size:0.78rem;margin-top:12px;line-height:1.7;';
+              _trBar.textContent = '⚠️ 报告触达输出上限、结尾可能被截断（本次正文 ' + String(report || '').length
+                + ' 字）。建议：缩小时间范围或限定单位后重跑，以获得完整的结论与措施清单。';
+              container.appendChild(_trBar);
+            }
+          } catch (e) {}
 
           // 【2026-10-09 效益优化③·数字自证】报告里的数字与台账口径逐项核对（只认关键口径，不误报日期/条款号）
           try {
@@ -7238,11 +7258,21 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         if (mq) (mq[1].match(/[^\s,，、；;]+?\((\d+)\)/g) || []).forEach(function (t) { var mm = t.match(/\((\d+)\)/); if (mm) addN(mm[1]); });
         (S.match(/A类(\d+)条/g) || []).forEach(function (t) { var mm = t.match(/\d+/); if (mm) addN(mm[0]); });
         (S.match(/共(\d+)条/g) || []).forEach(function (t) { var mm = t.match(/\d+/); if (mm) addN(mm[0]); });
-        var R = String(report || ''), re = /(总计|总条数|共|筛选|A\s*类|B\s*类|C\s*类|红线)[^0-9\n]{0,6}(\d+)\s*条/g, mm2;
+        // 【2026-10-09 真机整数据修复·误报】交叉行形如 `行车安全：共13392条（A1073/B10776/C1543）`：
+        //   括号内的 A/B/C/红线数字**不带"条"字**，此前未进允许集合 ⇒ 报告照抄它们（"A 类 1073 条"）
+        //   反而被判"存疑" —— 43526 条真实台账实测一次**误报 19 处**。现把括号内各性质数字一并纳入。
+        (S.match(/[（(][^）)\n]*[）)]/g) || []).forEach(function (seg) {
+          (seg.match(/(红线|A|B|C)(\d+)/g) || []).forEach(function (t) { var mm = t.match(/(\d+)/); if (mm) addN(mm[1]); });
+        });
+        var R = String(report || ''), re = /(总计|总条数|共|筛选|A\s*类|B\s*类|C\s*类|红线)([^0-9\n]{0,6})(\d+)\s*条/g, mm2;
         var cnt = 0, bad = [];
         while ((mm2 = re.exec(R)) !== null) {
+          // 【2026-10-09 真机整数据·近似表述容忍】43526 条真实台账实测：报告写"A 类绝对量仍**近** 4000 条"
+          //   （台账 3966）被判"存疑" —— 但约数表述本身没有错（grounding check 的通行做法是容忍
+          //   "约/近/余/超过/左右/不到"等修饰）。命中修饰词即跳过判定（不计入核对数）。
+          if (/约|近|余|多|超过|以上|左右|不到|不足|逾|上/.test(String(mm2[2] || ''))) continue;
           cnt++;
-          if (!allow[mm2[2]]) bad.push(mm2[0].replace(/\s+/g, ''));
+          if (!allow[mm2[3]]) bad.push(mm2[0].replace(/\s+/g, ''));
         }
         return { checked: cnt, badN: bad.length, bad: bad.slice(0, 5), allowed: Object.keys(allow).length };
       }

@@ -6730,17 +6730,22 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           }
 
           // 思考模式：跟随设置页开关（默认开）。开启时思维链会占用输出预算。
-          // 【2026-10-09 真机修复】原 max_tokens=6000（思考 8192）+ 下游只取 message.content ⇒
-          //   真机思考型模型把预算**全用在 reasoning_content 上** ⇒ content 空、界面空白
-          //   （"跑了 30 多秒，报告还是无"）。这里把非思考档也提到 8192（不超模型常见上限），
-          //   真正兜底靠下面的"空正文降级重试"（关思考 ⇒ 预算全给正文）。
-          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 8192, stream: false };
+          // 【2026-10-09 真机实测定档】
+          //   · 现象（用户真机）：跑了 30 多秒报告仍空白。协议级实测坐实机理 ——
+          //     思考开 + max_tokens 700 ⇒ `finish_reason=length`、**正文 0 字**、思考 1092 字；
+          //     同预算关思考 ⇒ 正文 1217 字。即**思考会把输出预算吃光 ⇒ content 为空**。
+          //   · 端到端实测（真实浏览器 + 思考开 + 8192）：总 56s，其中第一次请求正文为空、
+          //     靠"降级重试"救回 3680 字 ⇒ 修复生效，但**白等一次**。
+          //   · 定档实测：`max_tokens=16384` **模型接受**（HTTP 200），思考开时 13s **一次成文** 1453 字。
+          //   ⇒ 故研判上限提到 16384（省掉重试的那次白等）；仍保留"空正文降级重试"兜底
+          //     （思考极长时仍可能吃光），并对"换模型后 16384 不被接受"做降级（见下方 400 分支）。
+          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 16384, stream: false };
           var _riskThinking = false;
           if (typeof window.dsThinkingParam === 'function') {
             var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model });
             Object.assign(_riskBody, _tp);
             _riskThinking = !!(_tp.thinking && _tp.thinking.type === 'enabled');
-            if (_riskThinking) _riskBody.max_tokens = 8192;
+            if (_riskThinking) _riskBody.max_tokens = 16384;
           }
           // Y1：增加整体超时，避免长报告假死、不可中断（思考模式耗时更长，放宽到 240s）
           var _riskAbort = new AbortController();
@@ -6766,9 +6771,29 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             // 统一错误映射：官方错误码为 400/401/402/422/429/500/503（模型名错误以 400 返回）。
             var _etxt = ''; try { _etxt = await resp.text(); } catch (_e) {}
             var _edet = ''; try { _edet = ((JSON.parse(_etxt) || {}).error || {}).message || ''; } catch (_e) { _edet = String(_etxt).slice(0, 200); }
-            throw new Error(typeof window.dsAiHttpError === 'function'
-              ? window.dsAiHttpError(resp.status, _edet)
-              : ('请求失败（HTTP ' + resp.status + '）' + (_edet ? '：' + _edet : '')));
+            // 【2026-10-09 换模型兜底】研判上限 16384 是 deepseek-flash 实测接受的值；用户若换成
+            //   输出上限更小的模型/provider，会以 400（max_tokens 超限）被拒 ⇒ 这里**降级到 8192 重发一次**，
+            //   而不是把 400 直接抛给用户（业界通行做法：参数不被接受时按能力降级重试）。
+            if (resp.status === 400 && /max_tokens/i.test(_edet) && _riskBody.max_tokens > 8192) {
+              _riskBody.max_tokens = 8192;
+              try {
+                resp = await fetch(apiUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                  body: JSON.stringify(_riskBody),
+                  signal: _riskAbort.signal
+                });
+              } catch (_e3) { /* 落到下方统一错误提示 */ }
+              if (!resp || !resp.ok) {
+                try { _etxt = await resp.text(); } catch (_e) {}
+                try { _edet = ((JSON.parse(_etxt) || {}).error || {}).message || ''; } catch (_e) { _edet = String(_etxt).slice(0, 200); }
+              }
+            }
+            if (!resp || !resp.ok) {
+              throw new Error(typeof window.dsAiHttpError === 'function'
+                ? window.dsAiHttpError(resp ? resp.status : 0, _edet)
+                : ('请求失败（HTTP ' + (resp ? resp.status : '?') + '）' + (_edet ? '：' + _edet : '')));
+            }
           }
           var data = await resp.json();
           var _msg0 = (data.choices && data.choices[0] && data.choices[0].message) || {};

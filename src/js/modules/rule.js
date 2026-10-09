@@ -1168,16 +1168,34 @@
                                 //   ③ 丢弃倾斜水印行；
                                 //   ④ 跨页剔除页码（"—— 1 ——"）、重复页眉页脚（"LZG/GW213 - 2026"）、
                                 //      打印水印戳（"10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"）。
-                                // 【2026-10-09 用户决策·"遇到表格就跳过，只导出文字"】PDF 导入时开启跳过开关
-                                //   （表格内容不进正文；结果提示里如实报告跳过了多少张表）
-                                try { window.__pdfSkipTables = true; window.__pdfSkippedTables = 0; } catch (e) {}
-                                _pdfDoc = _lay.buildDocument(_items);
-                                try { window.__pdfSkipTables = false; } catch (e) {}
+                                // 【2026-10-09 正解落地·PDF 表格按"表格线"确定性还原】不再一律跳过：
+                                //   · 单页 PDF 且能取到矢量线段 ⇒ 交给 import-layout 的"网格优先路径"还原真实行列。
+                                //     真机实测（用户那份《接触网维修规则》附件8 PDF）：226 条线段聚出 8×7 网格，
+                                //     把原本被拆成 12×6 + 22×8 的错表**一次还原成 8 行 × 7 列**，与原文一致。
+                                //   · 多页 PDF：各页线段混在一起会串行 ⇒ 暂不启用网格（保持"跳过表格"兜底）。
+                                //   · 网格不可用（扫描件无矢量线等）⇒ 仍按"跳过表格、只导文字"兜底，绝不静默丢内容。
                                 try {
-                                    if (window.__pdfSkippedTables) {
-                                        successNotes.push(file.name + '：已按设置**跳过 ' + window.__pdfSkippedTables
-                                            + ' 张表格**（当前口径为"只导文字"，PDF/OFD 的表格内容不导入；'
-                                            + '如需表格本身，请改用 DOCX 格式导入）');
+                                    window.__pdfSkipTables = true;      // 默认保守：网格失败就跳过
+                                    window.__pdfSkippedTables = 0;
+                                    window.__pdfGridSegments = null;
+                                    if (pdf.numPages === 1 && _lay.segmentsFromOperatorList) {
+                                        try {
+                                            var _pg1 = await pdf.getPage(1);
+                                            var _ol1 = await _pg1.getOperatorList();
+                                            var _sgs = _lay.segmentsFromOperatorList(_ol1, (window.pdfjsLib && window.pdfjsLib.OPS) || {});
+                                            if (_sgs && _sgs.length) { window.__pdfGridSegments = _sgs; window.__pdfSkipTables = false; }
+                                        } catch (eG) {}
+                                    }
+                                } catch (eS1) {}
+                                _pdfDoc = _lay.buildDocument(_items);
+                                try { window.__pdfSkipTables = false; window.__pdfGridSegments = null; } catch (e) {}
+                                try {
+                                    if (window.__pdfGridTables) {
+                                        successNotes.push(file.name + '：已**按表格线还原 ' + window.__pdfGridTables + ' 张表格**（行列与原文一致）');
+                                        window.__pdfGridTables = 0;
+                                    } else if (window.__pdfSkippedTables) {
+                                        successNotes.push(file.name + '：已跳过 ' + window.__pdfSkippedTables
+                                            + ' 张表格（该 PDF 未取到表格线，多为扫描件；如需表格请用 DOCX 格式导入）');
                                     }
                                 } catch (e) {}
                                 // 【2026-10-05 用户需求】导入时自动去掉各种水印与"内部资料 不得外传"字样。

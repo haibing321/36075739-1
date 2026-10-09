@@ -612,6 +612,115 @@
      * 逐行扫描 ⇒ 有序块序列：[{type:'para', text}...] 与 [{type:'table', rows:[[..]], cols:n}]
      * 表格区域前后的文字行照常按段落还原；表格本身保持原样插在中间。
      */
+    /**
+     * 【2026-10-09 第四批·正解】从 PDF 的**算子列表**里抽水平/垂直线段。
+     * 为什么用它：用户那张"两行标题 + 每列逐字折行"的表（《接触网维修规则》附件8）实测带
+     *   **108 条水平线 + 118 条垂直线**（scripts/pdf-table-probe.js 的 tblLines 输出），
+     *   线坐标天然就是行列边界（列 x ≈ 61.5/169/246/309/487.5/534）—— 比"文字行启发式"确定得多。
+     * 用法：`ImportLayout.segmentsFromOperatorList(await page.getOperatorList(), window.pdfjsLib.OPS)`
+     */
+    function segmentsFromOperatorList(oplist, OPS) {
+        var out = [];
+        if (!oplist || !oplist.fnArray) return out;
+        OPS = OPS || {};
+        var rev = {};
+        for (var k in OPS) if (typeof OPS[k] === 'number') rev[OPS[k]] = k;
+        function addSeg(x1, y1, x2, y2) {
+            if (Math.abs(y1 - y2) < 0.6 && Math.abs(x2 - x1) > 4) out.push({ k: 'h', x1: x1, y1: y1, x2: x2, y2: y2 });
+            else if (Math.abs(x1 - x2) < 0.6 && Math.abs(y2 - y1) > 4) out.push({ k: 'v', x1: x1, y1: y1, x2: x2, y2: y2 });
+        }
+        function handleSub(sub, sa) {
+            var ci = 0, px = null, py = null;
+            for (var si = 0; si < sub.length; si++) {
+                var nm = rev[sub[si]] || ('op' + sub[si]);
+                if (nm === 'moveTo') { px = sa[ci++]; py = sa[ci++]; }
+                else if (nm === 'lineTo') { var nx = sa[ci++], ny = sa[ci++]; if (px != null) addSeg(px, py, nx, ny); px = nx; py = ny; }
+                else if (nm === 'curveTo') { ci += 6; px = null; py = null; }
+                else if (nm === 'closePath') { px = null; py = null; }
+                else if (nm === 'rectangle') {
+                    var rx = sa[ci++], ry = sa[ci++], rw = sa[ci++], rh = sa[ci++];
+                    addSeg(rx, ry, rx + rw, ry); addSeg(rx, ry + rh, rx + rw, ry + rh);
+                    addSeg(rx, ry, rx, ry + rh); addSeg(rx + rw, ry, rx + rw, ry + rh);
+                }
+            }
+        }
+        for (var i = 0; i < oplist.fnArray.length; i++) {
+            var fn = oplist.fnArray[i], args = oplist.argsArray[i] || [];
+            var n = rev[fn] || ('op' + fn);
+            if (n === 'rectangle') handleSub(['rectangle'], args[0] || args);
+            else if (n === 'constructPath') handleSub(args[0] || [], args[1] || []);
+        }
+        return out;
+    }
+
+    /** 线段 → **行列边界网格**（同一条线常因粗细成对出现，如 x=61.3 与 61.8 ⇒ 先按容差聚类）。 */
+    function gridFromSegments(segs, opts) {
+        opts = opts || {};
+        var tol = (typeof opts.gridTol === 'number') ? opts.gridTol : 2.0;
+        var hs = [], vs = [];
+        (segs || []).forEach(function (s) {
+            if (!s || !s.k) return;
+            if (s.k === 'h' && Math.abs(s.x2 - s.x1) >= 6) hs.push({ c: (s.y1 + s.y2) / 2, a: Math.min(s.x1, s.x2), b: Math.max(s.x1, s.x2) });
+            else if (s.k === 'v' && Math.abs(s.y2 - s.y1) >= 6) vs.push({ c: (s.x1 + s.x2) / 2, a: Math.min(s.y1, s.y2), b: Math.max(s.y1, s.y2) });
+        });
+        function cluster(list) {
+            list.sort(function (a, b) { return a.c - b.c; });
+            var o = [];
+            list.forEach(function (it) {
+                var last = o[o.length - 1];
+                if (last && Math.abs(it.c - last.c) <= tol) {
+                    last.c = (last.c * last.n + it.c) / (last.n + 1); last.n++;
+                    last.a = Math.min(last.a, it.a); last.b = Math.max(last.b, it.b);
+                } else o.push({ c: it.c, n: 1, a: it.a, b: it.b });
+            });
+            return o;
+        }
+        var hc = cluster(hs), vc = cluster(vs);
+        var maxH = 0, maxV = 0;
+        hc.forEach(function (l) { maxH = Math.max(maxH, l.b - l.a); });
+        vc.forEach(function (l) { maxV = Math.max(maxV, l.b - l.a); });
+        // 只保留"够长"的线当边界（去掉装饰性短线/下划线）
+        var ys = hc.filter(function (l) { return (l.b - l.a) >= Math.max(20, maxH * 0.35); }).map(function (l) { return l.c; });
+        var xs = vc.filter(function (l) { return (l.b - l.a) >= Math.max(8, maxV * 0.25); }).map(function (l) { return l.c; });
+        function dedup(a) {
+            a.sort(function (x, y) { return x - y; });
+            var o = [];
+            a.forEach(function (v) { if (!o.length || Math.abs(v - o[o.length - 1]) > tol) o.push(v); });
+            return o;
+        }
+        // ⚠️ **ys 必须降序**（PDF 的 y 轴向上）：ys[0] = 页面上边界、ys[last] = 下边界，
+        //   这样"某文本块落在第几行带"才能写成 `ys[r] >= y > ys[r+1]`。
+        //   顺序写反会让该判定**永假** —— 真机上就表现为 inBox=0、能建出表但每格都是空串
+        //   （诊断 __ltbDiag.rect / rows / box0 一次就暴露了）。xs 保持升序（左→右）。
+        return { xs: dedup(xs), ys: dedup(ys).slice().reverse() };
+    }
+
+    /** 用网格把文本块还原成表格（确定性）：落在哪个格就归哪个格，同格内按"上→下、左→右"拼接。 */
+    function tableFromGrid(boxes, grid) {
+        var xs = (grid && grid.xs) || [], ys = (grid && grid.ys) || [];
+        var cols = xs.length - 1, rowsN = ys.length - 1;
+        if (cols < 2 || rowsN < 1) return null;
+        var mat = [];
+        for (var r = 0; r < rowsN; r++) { var row = []; for (var c = 0; c < cols; c++) row.push([]); mat.push(row); }
+        (boxes || []).forEach(function (b) {
+            var t = String(b.text == null ? '' : b.text);
+            if (!t.trim()) return;
+            var ci = -1, ri = -1;
+            for (var i = 0; i < cols; i++) if (b.x >= xs[i] - 1.5 && b.x < xs[i + 1] + 1.5) { ci = i; break; }
+            for (var j = 0; j < rowsN; j++) if (b.y <= ys[j] + 1.5 && b.y > ys[j + 1] - 1.5) { ri = j; break; }
+            if (ci < 0 || ri < 0) return;
+            mat[ri][ci].push(b);
+        });
+        var rows = mat.map(function (row) {
+            return row.map(function (cell) {
+                if (!cell.length) return '';
+                cell.sort(function (a, b) { return (b.y - a.y) || (a.x - b.x); });
+                return joinRun(cell.map(function (b2) { return b2.text; }));
+            });
+        });
+        return { rows: rows, cols: cols };
+    }
+
     function linesToBlocks(lines, opts) {
         opts = opts || {};
         // 行数门槛=3：用户附件2 是"表头 + 2 行数据"= 3 行，正好够；两行"碰巧对齐"不足以判定为表。
@@ -619,6 +728,75 @@
         var minRows = (typeof opts.minTableRows === 'number') ? opts.minTableRows : 3;
         var minCells = (typeof opts.minTableCells === 'number') ? opts.minTableCells : 3;
         var arr = (lines || []).filter(function (l) { return l && String(l.text || '').trim() !== ''; });
+        // 【2026-10-09 第四批·正解·优先路径】**表格线网格**：调用方给了矢量线段（PDF 的框线）时，
+        //   先用网格把"落在网格内的文本块"直接还原成表格（确定性高、完全不受折行干扰），
+        //   **成功后才**把这些块从文本行里剔除（剩下的仍走原启发式：正文段落、无框线的表等）。
+        //   ⚠️ 注意本模块的行结构是"行对象 + items[]"（不是块数组），别写错层级。
+        var _gridTable = null;
+        try {
+            var _segs = opts.gridSegments;
+            if (!_segs) { try { _segs = window.__pdfGridSegments; } catch (eS) {} }
+            try { window.__ltbDiag = { segs: _segs ? _segs.length : -1, xs: 0, ys: 0, inBox: 0, rows: 0, keptRows: -1, err: '' }; } catch (e1) {}
+            if (_segs && _segs.length) {
+                var _g = gridFromSegments(_segs, opts);
+                try { window.__ltbDiag.xs = _g.xs.length; window.__ltbDiag.ys = _g.ys.length; } catch (e2) {}
+                if (_g.xs.length >= 3 && _g.ys.length >= 2) {
+                    var _gx0 = _g.xs[0], _gx1 = _g.xs[_g.xs.length - 1];
+                    var _gy0 = _g.ys[0], _gy1 = _g.ys[_g.ys.length - 1];
+                    try { window.__ltbDiag.rect = [_gx0, _gx1, _gy1, _gy0]; } catch (e3) {}
+                    var _inBox = [], _inside = [];
+                    // ⚠️ 行对象的块字段名**不能想当然**：真机上 `inBox:0` 就是因为我按 `.items` 取块、
+                    //   而实际字段可能是 cells/boxes/blocks（不同来源：PDF fromPdfItems / OFD / 直传）。
+                    //   这里做**通用取块**并记录真实字段名（诊断留在 __ltbDiag.rowKeys，便于以后排查）。
+                    var _blocksOfRow = function (l) {
+                        if (!l) return [];
+                        if (l.items && l.items.length) return l.items;
+                        if (l.cells && l.cells.length) return l.cells;
+                        if (l.boxes && l.boxes.length) return l.boxes;
+                        if (l.blocks && l.blocks.length) return l.blocks;
+                        return [];
+                    };
+                    try {
+                        var _r0 = arr[0] || {};
+                        window.__ltbDiag.rowKeys = Object.keys(_r0).join(',');
+                        window.__ltbDiag.row0 = JSON.stringify(_r0).slice(0, 200);
+                    } catch (eK) {}
+                    arr.forEach(function (l) {
+                        var keep = [];
+                        _blocksOfRow(l).forEach(function (b) {
+                            var t = String(b.text == null ? '' : b.text);
+                            var inside = !!t.trim() && b.x >= _gx0 - 2 && b.x <= _gx1 + 2 && b.y <= _gy0 + 2 && b.y >= _gy1 - 2;
+                            if (inside) _inBox.push(b); else keep.push(b);
+                        });
+                        _inside.push(keep);
+                    });
+                    try {
+                        window.__ltbDiag.inBox = _inBox.length;
+                        window.__ltbDiag.box0 = (_inBox[0] || null) ? { x: _inBox[0].x, y: _inBox[0].y } : null;
+                        var _r1 = arr[1] || {};
+                        window.__ltbDiag.row1Sample = _blocksOfRow(_r1).slice(0, 2).map(function (b) { return { x: b.x, y: b.y, t: String(b.text || '').slice(0, 12) }; });
+                    } catch (e4) {}
+                    if (_inBox.length >= 6) {
+                        var _gt = tableFromGrid(_inBox, _g);
+                        try { window.__ltbDiag.rows = _gt ? _gt.rows.length : -1; } catch (e5) {}
+                        if (_gt) {
+                            _gridTable = _gt;
+                            arr.forEach(function (l, li) {
+                                // 统一写回 `items`（并清掉其它别名，避免与后续逻辑不一致）
+                                l.items = _inside[li];
+                                l.cells = undefined; l.boxes = undefined; l.blocks = undefined;
+                                l.text = _inside[li].map(function (b2) { return b2.text; }).join('');
+                            });
+                            arr = arr.filter(function (l) { return l.items && l.items.length; });
+                            try { window.__ltbDiag.keptRows = arr.length; } catch (e6) {}
+                        }
+                    }
+                }
+            }
+        } catch (eGrid) {
+            _gridTable = null;
+            try { if (window.__ltbDiag) window.__ltbDiag.err = String((eGrid && eGrid.message) || eGrid); } catch (e7) {}
+        }
         var rowsCells = arr.map(function (l) { return cellsOfLine(l, opts); });
         var blocks = [], pending = [], i = 0;
         function flushPending() {
@@ -920,6 +1098,11 @@
             i++;
         }
         flushPending();
+        // 网格线还原的表放在最前（它是该页的主体结构，正文段落与无框线表随后）
+        if (_gridTable) {
+            blocks.unshift({ type: 'table', rows: _gridTable.rows, cols: _gridTable.cols, fromGrid: true });
+            try { window.__pdfGridTables = (window.__pdfGridTables || 0) + 1; } catch (e) {}
+        }
         return blocks;
     }
     function blocksToText(blocks, opts) {
@@ -1406,6 +1589,10 @@
         buildDocument: buildDocument,
         buildFromPageLines: buildFromPageLines,
         linesToBlocks: linesToBlocks,
+        // 【2026-10-09 第四批】表格线（矢量线）正解三件套：调用方抽线 → 聚成网格 → 按网格归位
+        segmentsFromOperatorList: segmentsFromOperatorList,
+        gridFromSegments: gridFromSegments,
+        tableFromGrid: tableFromGrid,
         cellsOfLine: cellsOfLine,          // 供套件直接量"一行被切成几个格子"
         blocksToText: blocksToText,
         blocksToHtml: blocksToHtml,

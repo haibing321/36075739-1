@@ -67,14 +67,26 @@
     var L = window.ImportLayout;
     if (!okL || !L || typeof L.buildDocument !== 'function') return { ok: false, note: '版式还原组件未就绪' };
     var r = null;
-    // 【2026-10-09 用户决策】PDF/OFD 转换同样"跳过表格、只导文字"（用户口径：遇到表格就过，只导出文字部分）
-    try { window.__pdfSkipTables = true; } catch (e) {}
+    // 【2026-10-09 正解落地】与 rule.js 同口径：**单页且能取到矢量表格线 ⇒ 按网格确定性还原**；
+    //   多页或取不到线段（扫描件）⇒ 保持"跳过表格、只导文字"兜底，绝不静默丢内容。
+    try {
+      window.__pdfSkipTables = true;
+      window.__pdfGridSegments = null;
+      if (doc && doc.numPages === 1 && L.segmentsFromOperatorList) {
+        try {
+          var _pg1 = await doc.getPage(1);
+          var _ol1 = await _pg1.getOperatorList();
+          var _sgs = L.segmentsFromOperatorList(_ol1, (typeof window !== 'undefined' && window.pdfjsLib && window.pdfjsLib.OPS) || {});
+          if (_sgs && _sgs.length) { window.__pdfGridSegments = _sgs; window.__pdfSkipTables = false; }
+        } catch (eG) {}
+      }
+    } catch (eS) {}
     try {
       r = L.buildDocument(pages);
     } catch (e) {
       return { ok: false, note: '版式还原失败：' + ((e && e.message) || e) };
     } finally {
-      try { window.__pdfSkipTables = false; } catch (e) {}
+      try { window.__pdfSkipTables = false; window.__pdfGridSegments = null; } catch (e) {}
     }
     var blocks = (r && r.blocks) || [], removed = 0;
     try {

@@ -6255,6 +6255,19 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       }
       try { window.__riskParseDateTime = _riskParseDateTime; } catch (e) {}
 
+      /** 【2026-10-09 真机修复】取一条台账记录的单位名 —— 与导入映射（issue.js）保持**同一套字段**：
+       *  unit ← item.unit / '单位' / '责任单位' / '单位名称' / danwei / '部门' / department，再兜底几个常见别名。
+       *  ⚠️ 真机问题：预览原来只认 d.unit / d.department，字段名一对不上就"全部不匹配" ⇒ 界面显示"筛选后 0 条"
+       *     而库里明明有 4 万多条。这里按导入侧同口径取值，避免"写入用一套键、筛选看另一套键"。
+       */
+      function _riskUnitOf(d) {
+        if (!d || typeof d !== 'object') return '';
+        var v = d.unit || d['单位'] || d['责任单位'] || d['单位名称'] || d.danwei || d['部门'] || d.department
+          || d.unitName || d.org || d.orgName || d.dw || d.company || '';
+        return String(v == null ? '' : v).trim();
+      }
+      try { window.__riskUnitOf = _riskUnitOf; } catch (e) {}
+
       function _doRiskPreview() {
         var preview = document.getElementById('risk-data-preview');
         if (!preview) return;
@@ -6311,6 +6324,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             var filtered = 0;
             var capped = false;  // 是否因达到上限/超时提前停止
             var unknownDate = 0; // 【2026-10-09】日期无法识别的条数（计入筛选结果但不排除，界面如实标注）
+            var unitHits = 0;    // 【2026-10-09】台账里**实际带单位字段**的条数（=0 说明字段名不对，需提示用户）
+            var dateFail = 0;    // 被日期条件排除的条数（筛成 0 时用于自证原因）
+            var unitFail = 0;    // 被单位条件排除的条数
             var cpuMs = 0;       // 本函数累计耗时（不含等待 IDB 回调的空闲时间）
             var units = Object.create(null);
             var done = false;
@@ -6322,9 +6338,23 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               if (totalEl) totalEl.textContent = totalTxt;
               // 未设筛选条件时「筛选」与「总计」必然相同，直接复用总数，
               // 否则会出现「总计 40166 条 / 筛选 ≥20000 条」这种自相矛盾的显示
-              if (filteredEl) filteredEl.textContent = hasFilter
-                ? ((capped ? '≥' : '') + filtered + ' 条' + (unknownDate ? '（含 ' + unknownDate + ' 条日期无法识别，未排除）' : ''))
-                : totalTxt;
+              if (filteredEl) {
+                var _tip = [];
+                if (unknownDate) _tip.push('含 ' + unknownDate + ' 条日期无法识别、未排除');
+                // 【2026-10-09 真机反馈】筛成 0 条时必须**能自证原因**（否则用户只能猜"是不是没数据"）：
+                //   区分"单位字段根本不存在"与"被哪个条件排除"，并给出可核对的方向。
+                if (hasFilter && filtered === 0) {
+                  if (uLower && unitHits === 0) _tip.push('台账里未找到单位字段 ⇒ 单位条件把全部记录排除，请核对台账是否含"单位/责任单位"列');
+                  else {
+                    if (dateFail) _tip.push('被日期条件排除 ' + dateFail + ' 条');
+                    if (unitFail) _tip.push('被单位条件排除 ' + unitFail + ' 条');
+                    if (!dateFail && !unitFail) _tip.push('库中无满足全部条件的记录');
+                  }
+                }
+                filteredEl.textContent = hasFilter
+                  ? ((capped ? '≥' : '') + filtered + ' 条' + (_tip.length ? '（' + _tip.join('；') + '）' : ''))
+                  : totalTxt;
+              }
               if (hasFilter) preview.style.display = 'flex';
             }
 
@@ -6373,16 +6403,16 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               try {
                 var d = cursor.value || {};
                 scanned++;
-                if (d.unit) units[d.unit] = 1;
-                if (d.department) units[d.department] = 1;
+                var _uRaw = _riskUnitOf(d);       // 见上方注释：与导入映射同一套字段
+                if (_uRaw) { units[_uRaw] = 1; unitHits++; }
                 var ok = true;
                 if (dateStart || dateEnd) {
                   var _dr = _riskDateInRange(d.datetime, dateStart, dateEnd, sd, ed);
                   if (_dr === 'unknown') unknownDate++;   // 日期识别不了 ⇒ 计入、不排除（见 _riskDateInRange 注释）
-                  else if (!_dr) ok = false;
+                  else if (!_dr) { ok = false; dateFail++; }
                 }
                 if (ok && uLower) {
-                  if (((d.unit || '') + ' ' + (d.department || '')).toLowerCase().indexOf(uLower) === -1) ok = false;
+                  if (_uRaw.toLowerCase().indexOf(uLower) === -1) { ok = false; unitFail++; }
                 }
                 if (ok) filtered++;
               } catch (err) {}

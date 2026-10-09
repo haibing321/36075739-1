@@ -6991,6 +6991,36 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             }
           } catch (e) {}
 
+          // 【2026-10-09 第三批①·最常违反的条款】制度执行短板（本地按 regulation 聚合，零模型成本）
+          try {
+            var _ruleRows = (window.__riskLastRuleRows && window.__riskLastRuleRows.length) ? window.__riskLastRuleRows : [];
+            if (_ruleRows.length) {
+              var _rw = document.createElement('div');
+              _rw.id = 'risk-rule-top';
+              _rw.style.cssText = 'margin-top:14px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;';
+              var _hr = '<div style="padding:8px 12px;background:var(--card-bg);border-bottom:1px solid #e2e8f0;font-size:0.82rem;font-weight:600;">📕 最常违反的条款 TOP ' + _ruleRows.length
+                + '（本地按台账"不符合的条款"聚合 · 制度执行短板）</div>'
+                + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="background:var(--card-bg);">'
+                + ['#', '条款', '违反次数', 'A类/红线', '涉及单位', '主要类别'].map(function (t) {
+                    return '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + t + '</th>';
+                  }).join('')
+                + '</tr></thead><tbody>';
+              _ruleRows.forEach(function (r5, i) {
+                _hr += '<tr>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:var(--text-secondary);">' + (i + 1) + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">' + String(r5.label + (r5.clause || '')).replace(/</g, '&lt;').slice(0, 70) + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;font-weight:600;">' + r5.n + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">' + r5.qA + (r5.qRed ? (' / ' + r5.qRed) : '') + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">' + r5.unitN + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">' + r5.cat + '</td>'
+                  + '</tr>';
+              });
+              _hr += '</tbody></table></div>';
+              _rw.innerHTML = _hr;
+              container.appendChild(_rw);
+            }
+          } catch (e) {}
+
           // 操作按钮栏：复制 / 下载 / 📄导出 DOCX / 📊清单 Excel / 🔊朗读 / 🔄重生成
           var bar = document.createElement('div');
           bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0;';
@@ -7023,6 +7053,22 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               Promise.resolve(window.FmtConv.toExcelFromBlocks([{ type: 'table', rows: _aoa, cols: 8 }], '高优先整改清单')).then(function (r4) {
                 if (r4 && r4.ok) window.FmtConv.save(r4.bytes, '整改清单_' + window.localDateStr() + '.xlsx', window.FmtConv.XLSX_MIME);
                 else if (window.showToast) window.showToast('Excel 生成失败：' + ((r4 && r4.note) || '未知原因'), true);
+              });
+            } catch (e) { if (window.showToast) window.showToast('导出失败：' + ((e && e.message) || e), true); }
+          }));
+          // 【2026-10-09 第三批①】条款清单导出（制度执行短板可直接转 Excel 发出去）
+          bar.appendChild(_riskBtn('📕 条款 Excel', 'var(--primary)', function () {
+            try {
+              var _rr = window.__riskLastRuleRows || [];
+              if (!_rr.length) { if (window.showToast) window.showToast('本次没有可导出的条款清单', true); return; }
+              if (!window.FmtConv || typeof window.FmtConv.toExcelFromBlocks !== 'function') {
+                if (window.showToast) window.showToast('Excel 组件未就绪（离线首次需联网拉取）', true); return;
+              }
+              var _aoa2 = [['序号', '条款', '违反次数', 'A类次数', '红线次数', '涉及单位数', '主要类别']];
+              _rr.forEach(function (r6, i) { _aoa2.push([i + 1, r6.label + (r6.clause || ''), r6.n, r6.qA, r6.qRed, r6.unitN, r6.cat]); });
+              Promise.resolve(window.FmtConv.toExcelFromBlocks([{ type: 'table', rows: _aoa2, cols: 7 }], '最常违反条款')).then(function (r7) {
+                if (r7 && r7.ok) window.FmtConv.save(r7.bytes, '最常违反条款_' + window.localDateStr() + '.xlsx', window.FmtConv.XLSX_MIME);
+                else if (window.showToast) window.showToast('Excel 生成失败：' + ((r7 && r7.note) || '未知原因'), true);
               });
             } catch (e) { if (window.showToast) window.showToast('导出失败：' + ((e && e.message) || e), true); }
           }));
@@ -7242,6 +7288,59 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       }
 
       /**
+       * 【2026-10-09 第三批①·制度执行短板】最常违反的条款 TOP N（本地聚合，零模型成本）
+       * 为什么价值最高：检查台账每条问题都写了"不符合《某办法》第 N 条"（真实备份 43526 条**条条都有**），
+       *   把条款按「规章名 + 条号」归一化聚合，就能指出**哪条制度被反复违反、集中在哪些单位**——
+       *   这是"现象层"之上的**制度层结论**，也最容易转化为整改动作（专项培训 / 专项检查 / 修订提示卡）。
+       * 归一化口径（写死可复核）：① 取《…》内的规章名；② 取"第X条/款/项/章"（中文数字原样保留，
+       *   不做数值换算，避免"第十一条"与"第 11 条"被错误合并成两条不同记录——宁可分、不可错合）；
+       *   ③ 无规章名时退回该句前 30 字。
+       * 排序：严重性优先（红线×4 + A 类×3 + 总次数），再看涉及单位数（同一制度在多个单位被违反 ⇒ 系统性问题）。
+       */
+      function _buildRiskRuleTop(filtered) {
+        var groups = {}, order = [];
+        (filtered || []).forEach(function (d) {
+          var reg = String(d.regulation || '').trim();
+          if (!reg || reg.length < 4) return;
+          var mName = reg.match(/《([^》]{2,60})》/);
+          var name = mName ? mName[1].trim() : '';
+          var mClause = reg.match(/第\s*([0-9一二三四五六七八九十百零〇]{1,8})\s*(条|款|项|章)/);
+          var clause = mClause ? ('第' + mClause[1] + mClause[2]) : '';
+          // 【2026-10-09】既无规章名、又无条号的，**不算"条款"**（可能只是说明性文字）——
+          //   否则会混进"最常违反的条款"当噪声（套件 ⑲c 专门钉住这一点）。
+          if (!name && !clause) return;
+          var key = (name || reg.slice(0, 30)) + '#' + clause;
+          if (!groups[key]) {
+            groups[key] = { name: name, clause: clause, raw: reg, n: 0, qs: {}, units: {}, cats: {} };
+            order.push(key);
+          }
+          var g = groups[key];
+          g.n++;
+          var q = (typeof window.dsNormQuality === 'function') ? window.dsNormQuality(d['性质']) : String(d['性质'] || '其他');
+          g.qs[q] = (g.qs[q] || 0) + 1;
+          var u = String(d.unit || d.department || '').split('~')[0].trim(); if (u) g.units[u] = (g.units[u] || 0) + 1;
+          var c = String(d.category || ''); if (c) g.cats[c] = (g.cats[c] || 0) + 1;
+        });
+        var rows = order.map(function (k) {
+          var g = groups[k];
+          var label = g.name ? ('《' + g.name + '》') : (g.raw.replace(/^不符合\s*/, '').slice(0, 30) + '…');
+          return {
+            label: label, clause: g.clause, raw: g.raw, n: g.n,
+            qA: g.qs['A'] || 0, qRed: g.qs['红线'] || 0,
+            unitN: Object.keys(g.units).length,
+            cat: Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || ''
+          };
+        });
+        rows.sort(function (a, b) {
+          var sa = b.qRed * 4 + b.qA * 3 + b.n, sb = a.qRed * 4 + a.qA * 3 + a.n;
+          if (sa !== sb) return sa - sb;
+          return b.unitN - a.unitN;
+        });
+        try { window.__riskRuleMeta = { total: rows.length }; } catch (e) {}
+        return rows.slice(0, 10);
+      }
+
+      /**
        * 【2026-10-09 效益优化③】报告数字自证（grounding check）
        * 背景：报告里的数字完全由模型"照抄"上方的数据段，**此前没有任何核对** ⇒ 抄错即误导决策。
        * 做法（只核对**关键口径**，刻意不误报日期/条款号/百分比）：
@@ -7276,7 +7375,7 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         }
         return { checked: cnt, badN: bad.length, bad: bad.slice(0, 5), allowed: Object.keys(allow).length };
       }
-      try { window._riskBuildActionList = _buildRiskActionList; window._riskVerifyNumbers = _verifyRiskNumbers; } catch (e) {}
+      try { window._riskBuildActionList = _buildRiskActionList; window._riskVerifyNumbers = _verifyRiskNumbers; window._riskBuildRuleTop = _buildRiskRuleTop; } catch (e) {}
       try { window.__riskOptimVersion = 'v4.47'; } catch (e) {}
 
       async function _buildRiskDataSummary(dateStart, dateEnd, unitFilter) {
@@ -7418,6 +7517,35 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             }
             // ② 高优先整改清单（本地算，随报告一起展示/导出；见 _buildRiskActionList）
             try { window.__riskLastActionRows = _buildRiskActionList(filtered); } catch (e) { window.__riskLastActionRows = []; }
+            // 【2026-10-09 第三批①·制度执行短板】最常违反的条款：真实备份 43526 条**条条都有 regulation**
+            //   （"不符合《某办法》第 N 条…"），聚合后能直接点出"哪条制度被反复违反、集中在哪些单位"——
+            //   这是现象层之上的**制度层结论**，也最容易转化为整改动作（专项培训/检查/修订提示卡）。纯本地、零成本。
+            try { window.__riskLastRuleRows = _buildRiskRuleTop(filtered); } catch (e) { window.__riskLastRuleRows = []; }
+            if (window.__riskLastRuleRows && window.__riskLastRuleRows.length) {
+              parts.push('最常违反的条款(按严重性排序 · 前8): ' + window.__riskLastRuleRows.slice(0, 8).map(function (r) {
+                return r.label + (r.clause || '') + '(违反' + r.n + '次/A类' + r.qA + '次'
+                  + (r.qRed ? ('/红线' + r.qRed + '次') : '') + '/涉及' + r.unitN + '个单位)';
+              }).join('；') + '。要求：据此指出**制度执行短板**（哪条制度被反复违反、是否集中在某些单位），'
+                + '并给出针对性措施（专项培训 / 专项检查 / 修订岗位提示卡），不要泛泛而谈"加强管理"。');
+            }
+            // 【2026-10-09 第三批②·层级对比】台账 unit 是三级（段~车间~工区）⇒ 补"段级"对比：
+            //   段级才是"约谈/帮扶"的落实主体，只罗列到工区的明细对管理决策没用。
+            var _bySeg = {};
+            filtered.forEach(function (d) {
+              var u0 = String(d.unit || d.department || '').split('~')[0].trim();
+              if (!u0) return;
+              var q0 = (typeof window.dsNormQuality === 'function') ? window.dsNormQuality(d['性质']) : String(d['性质'] || '其他');
+              var o0 = _bySeg[u0] || (_bySeg[u0] = { n: 0, a: 0 });
+              o0.n++; if (q0 === 'A') o0.a++;
+            });
+            var _segL = Object.keys(_bySeg);
+            if (_segL.length >= 2) {
+              parts.push('段级单位对比(A类占比由高到低 · 前8): ' + _segL.map(function (u) {
+                var o = _bySeg[u]; return { u: u, n: o.n, a: o.a };
+              }).sort(function (x, y) { return (y.a / y.n) - (x.a / x.n) || y.a - x.a || y.n - x.n; }).slice(0, 8).map(function (x) {
+                return x.u + '(共' + x.n + '条/A类' + x.a + '条/A类占比' + Math.round(x.a * 100 / x.n) + '%)';
+              }).join('；') + '。要求：把问题**归因到段级主体**（比较各段 A 类占比差异），并指出最需要约谈或帮扶的单位。');
+            }
             // 按类别归类问题，每个类别列举几方面典型问题
             var categoryGroups = {};
             filtered.forEach(function(d) {

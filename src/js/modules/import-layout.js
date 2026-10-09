@@ -692,7 +692,14 @@
         //   这样"某文本块落在第几行带"才能写成 `ys[r] >= y > ys[r+1]`。
         //   顺序写反会让该判定**永假** —— 真机上就表现为 inBox=0、能建出表但每格都是空串
         //   （诊断 __ltbDiag.rect / rows / box0 一次就暴露了）。xs 保持升序（左→右）。
-        return { xs: dedup(xs), ys: dedup(ys).slice().reverse() };
+        // vlines：把"合格的竖线"连同其 y 跨度一起返回 —— 它是判定**合并单元格**的确定性证据：
+        //   某内部竖线若在"某行区间内不存在"，说明该行此处没有分隔 ⇒ 那几个格原文就是一个单元格。
+        return {
+            xs: dedup(xs),
+            ys: dedup(ys).slice().reverse(),
+            vlines: vc.filter(function (l) { return (l.b - l.a) >= Math.max(8, maxV * 0.25); })
+                .map(function (l) { return { x: l.c, y1: l.a, y2: l.b }; })
+        };
     }
 
     /** 用网格把文本块还原成表格（确定性）：落在哪个格就归哪个格，同格内按"上→下、左→右"拼接。 */
@@ -718,7 +725,48 @@
                 return joinRun(cell.map(function (b2) { return b2.text; }));
             });
         });
-        return { rows: rows, cols: cols };
+        // 【2026-10-09 合并单元格（跨列表头）·确定性还原】
+        //   依据**不是启发式**，而是表格线本身：某内部竖线若在**某行区间内不存在**，说明该行此处
+        //   没有分隔 ⇒ 这几个格在原文里就是一个单元格（附件8 的"缺陷性质"横跨两格正是如此）。
+        //   · 有竖线证据（grid.vlines，来自 PDF 矢量线段）⇒ 按证据合并；
+        //   · 没有证据（如 OFD 源或调用方未提供线段）⇒ **一律不合并**（宁可保守，也不乱动真实数据）。
+        //   坑：一开始用"整行单段 + 短文本"的启发式，会把"甲|乙|丙"这类短数据行也误合并
+        //   （套件 ⑫b 当场抓到）⇒ 改为证据驱动后不存在该风险。
+        var _merges = [];
+        var _vls = (grid && grid.vlines) || [];
+        if (_vls.length && cols >= 2) {
+            for (var _r0 = 0; _r0 < rowsN; _r0++) {
+                var _yTop = ys[_r0], _yBot = ys[_r0 + 1];
+                var _cut = [];   // _cut[i]：第 i 与 i+1 列之间，该行是否存在竖线
+                for (var _c0 = 1; _c0 < cols; _c0++) {
+                    var _bx = xs[_c0], _has = false;
+                    for (var _vi = 0; _vi < _vls.length; _vi++) {
+                        var _L = _vls[_vi];
+                        if (Math.abs(_L.x - _bx) > 1.5) continue;
+                        // 竖线必须**跨越整行区间**才算"该行有分隔"（留 1pt 容差）
+                        if (_L.y2 >= _yTop - 1 && _L.y1 <= _yBot + 1) { _has = true; break; }
+                    }
+                    _cut.push(_has);
+                }
+                var _run = 0;
+                while (_run < _cut.length) {
+                    if (_cut[_run]) { _run++; continue; }
+                    var _s = _run;
+                    while (_run < _cut.length && !_cut[_run]) _run++;
+                    var _e = _run, _txt = '';
+                    for (var _k = _s; _k <= _e; _k++) {
+                        var _tk = String(rows[_r0][_k] == null ? '' : rows[_r0][_k]).trim();
+                        if (_tk) _txt += _tk;
+                    }
+                    if (_txt) {
+                        rows[_r0][_s] = _txt;
+                        for (var _k2 = _s + 1; _k2 <= _e; _k2++) rows[_r0][_k2] = '';
+                        if (_e > _s) _merges.push({ row: _r0, c1: _s, c2: _e });
+                    }
+                }
+            }
+        }
+        return { rows: rows, cols: cols, merges: _merges };
     }
 
     function linesToBlocks(lines, opts) {

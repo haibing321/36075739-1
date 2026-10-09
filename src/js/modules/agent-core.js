@@ -1467,6 +1467,15 @@
       var ctx = await window.getRecentAgentContext();
       if (ctx) system += '\n\n历史任务记录：\n' + ctx;
     } catch(e) {}
+    // 【2026-10-09 建议③】注入"历史经验"：比"历史任务记录（做了什么）"更接近"可照做的经验"。
+    //   只取最近 3 条有反思的、整体 ≤300 字 —— system 超预算时中段（记忆/画像/界面上下文）会被优先抽掉，
+    //   所以这里必须短；若用户关了 agent_reflect，这里自然为空（不注入）。
+    try {
+      if (typeof window.getRecentAgentReflections === 'function') {
+        var _refl = await window.getRecentAgentReflections();
+        if (_refl) system += '\n\n历史经验（上次任务复盘得出的、可直接照做的经验）：\n' + _refl;
+      }
+    } catch (e) {}
 
     // A1-P0 感知：注入当前界面模块上下文（用户正在浏览的页面/数据）
     try {
@@ -1825,6 +1834,13 @@
     //   ⚠️ 2026-09-21：不再受 `_agentEnhanceOn()` 门控 —— 学习是纯本地零成本操作，
     //   而"关掉增强 → 画像永久冻结且无任何提示"会让偏好长期不更新（注入侧仍受该开关控制）。
     try { if (typeof window.learnFromConversation === 'function') window.learnFromConversation(userMessage, taskRecord); } catch (e) {}
+    // 【2026-10-09 建议③·任务后反思】把"这次哪里好/哪里踩坑/下次怎么做"沉淀成经验，写回 taskRecord.reflection，
+    //   下次任务启动时注入（见上方"历史经验"段）。
+    //   ⚠️ 刻意**不 await**：反思是后台小请求（通常 2~5s），绝不让用户的结果等待变长；
+    //   失败静默（只落 window.__agentLastReflection 供诊断），开关 localStorage['agent_reflect']='0'。
+    //   这也是"从一次性工具 → 成长型系统"的那一步：只解决"同轮内"的中途反思（见重复调用检测）不够，
+    //   跨任务不留经验 ⇒ 同一个坑下次照踩。
+    try { if (typeof window.runAgentReflection === 'function') window.runAgentReflection(taskRecord, userMessage); } catch (e) {}
     // 收尾清理：图片内容（dataUrl）常驻内存直到下次任务 → 本轮结束立即释放
     window.__agentVisionContent = null;
     window.__agentProgress = null;   // 进度回传只在 run 期间有效（避免全局残留在别的调用上触发 UI 更新）

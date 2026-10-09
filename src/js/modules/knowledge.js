@@ -1890,4 +1890,69 @@
         BUILD: 'v3.74'   // 运行期版本标记：用于确认页面加载的是哪一版 knowledge.js（排查缓存旧脚本）
     };
     window.KB = KB;
+
+    // ==================================================================================
+    // 【2026-10-09 建议①·查询改写】检索前用一次小 LLM 调用抽出「核心检索要素」。
+    //
+    // 为什么对**本仓库**有效：LightBM25 用的是**字符级 2/3-gram**（无词典），
+    //   长问句里的"帮我查一下/有没有/关于…的情况"会产生大量低信息 gram —— 它们 df 高（idf 低）
+    //   却占据查询长度，把真正的实体（单位名/设备名/专业/条号）挤到次要位置。
+    //   改写后查询更短、实体更集中 ⇒ BM25 打分更聚焦。
+    //
+    // 工程约束（都来自既有事实，别踩）：
+    //   · `KB.search` 是**同步**函数，且内部会同步建索引（超时后照常调用会整段卡死）
+    //     ⇒ **不能**在 search 内部 await。故改写成独立异步步骤：
+    //       调用方 `var q2 = await KB.rewriteQuery(q)` 之后再 `KB.search(q2, ...)`；
+    //       失败/超时/无 Key 一律**返回原查询**，调用方无需写分支（"如实降级"口径）。
+    //   · 走 `window.dsCallOnce`（关思考 + 4s 超时 + 小 max_tokens）——它是全项目"小请求"的统一入口，
+    //     契约是"绝不抛异常、失败返回 {ok:false}"；4s 是刻意的小值：检索前的改写不值得让用户久等。
+    //   · 同查询结果缓存（最多 60 条）：避免同一问题反复花额度。
+    //   · 开关 `localStorage['kb_rewrite']='0'`；诊断 `window.__kbLastRewrite` / `KB.rewriteStats()`。
+    // ==================================================================================
+    var _rwCache = Object.create(null), _rwCacheN = 0;
+    KB.rewriteQuery = async function (query, opts) {
+        opts = opts || {};
+        var src = String(query == null ? '' : query).trim();
+        var out = { on: false, ok: false, cached: false, ms: 0, src: src.slice(0, 80), out: src.slice(0, 80), err: '' };
+        window.__kbLastRewrite = out;
+        try {
+            if (localStorage.getItem('kb_rewrite') === '0') { out.err = 'off'; return src; }
+            out.on = true;
+            if (src.length < 6) { out.err = 'too-short'; return src; }        // 短查询没有可压缩的噪声
+            if (typeof window.dsCallOnce !== 'function') { out.err = 'no-llm'; return src; }
+            if (_rwCache[src]) { out.cached = true; out.ok = true; out.out = _rwCache[src]; return _rwCache[src]; }
+            var _t0 = Date.now();
+            var _sys = '你是检索查询改写器。把用户问题改写成**检索关键词**：只保留实体与主题词'
+                + '（单位/设备/部件/专业/问题性质/时间等），去掉"帮我/查一下/有没有/关于/的情况/怎么样"这类无检索价值的词。'
+                + '只输出关键词，用空格分隔，不要标点、不要解释、不要引号，最多 12 个词。';
+            var r = await window.dsCallOnce(_sys, src, {
+                temperature: 0.1, maxTokens: 120, timeoutMs: opts.timeoutMs || 4000, thinking: false
+            });
+            out.ms = Date.now() - _t0;
+            if (!r || !r.ok || !r.text) { out.err = (r && r.error) || 'empty'; return src; }
+            // 归一：去引号/标点/换行，压空格（只留中日韩、字母、数字、空格）
+            var core = String(r.text).replace(/[\n\r]+/g, ' ')
+                .replace(/["'“”‘’`、，。,.;；:：!！?？()（）【】\[\]{}<>《》/\\|~@#$%^&*+=]/g, ' ')
+                .replace(/\s+/g, ' ').trim();
+            if (core) {
+                var seen = Object.create(null), arr = [];
+                core.split(' ').forEach(function (w) {
+                    if (!w) return;
+                    var k = w.toLowerCase();
+                    if (seen[k]) return;
+                    seen[k] = 1; arr.push(w);
+                });
+                core = arr.slice(0, 12).join(' ');
+            }
+            // 无效改写（空/过短/与原查询等价）⇒ 如实退回原查询
+            if (core.replace(/\s/g, '').length < 4 || core === src) { out.err = 'invalid'; return src; }
+            out.ok = true; out.out = core.slice(0, 80);
+            if (_rwCacheN < 60) { _rwCache[src] = core; _rwCacheN++; }
+            return core;
+        } catch (e) {
+            out.err = String((e && e.message) || e);
+            return src;
+        }
+    };
+    KB.rewriteStats = function () { return window.__kbLastRewrite || null; };
 })();

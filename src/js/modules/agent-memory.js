@@ -107,6 +107,85 @@
       return line;
     }).join('\n').slice(0, 600);
   };
+
+  /**
+   * 【2026-10-09 建议③·任务后反思】把"一次任务的复盘"变成"下次可直接照做的经验"。
+   *
+   * 为什么需要：此前跨任务只留了两种信息 ——
+   *   · 「做了什么」= getRecentAgentContext（最近 3 条，含失败/0命中）；
+   *   · 「关注什么」= 偏好画像（单位/关键词/性质/月份）。
+   *   唯独**不留「怎么做更好、踩了什么坑」** ⇒ 同一个坑下次照踩，系统不成长（典型"一次性工具"）。
+   *
+   * 设计取舍（都来自本仓库既有的工程约束）：
+   *   · 走 `window.dsCallOnce`：契约"绝不抛异常 + 失败返回 {ok:false}"，与项目"如实降级"口径一致；
+   *     关思考、maxTokens=300、timeoutMs=20000（这是**后台任务**，宁可失败也不能拖慢用户收尾）。
+   *   · 结构化输出用 `window.dsParseJsonLoose`（已有：去围栏/去尾逗号/兜底括号配平）。
+   *   · **不新建 IndexedDB 表**：反思直接挂在 `taskRecord.reflection` 上，同 id 覆盖写回 ——
+   *     零 schema 风险，并天然复用既有的「保留 30 条 + 30 天 TTL」容量兜底。
+   *   · 每条字段截 60 字：system 超预算时中段（记忆/画像）会被优先裁剪，反思必须短。
+   *   · 开关 `localStorage['agent_reflect']='0'` 可关；诊断 `window.__agentLastReflection`。
+   */
+  window.runAgentReflection = async function(taskRecord, userMessage) {
+    try {
+      if (localStorage.getItem('agent_reflect') === '0') return { ok: false, error: 'off' };
+      if (!taskRecord || !taskRecord.steps || !taskRecord.steps.length) return { ok: false, error: 'no-steps' };
+      if (typeof window.dsCallOnce !== 'function') return { ok: false, error: 'no-llm' };
+      var _t0 = Date.now();
+      var stepsTxt = taskRecord.steps.slice(-12).map(function(s) {
+        return String(s.tool || '?') + (s.ok ? '✓' : '✗') + '('
+          + String(s.summary || '').replace(/\s+/g, ' ').slice(0, 36) + ')';
+      }).join('; ').slice(0, 700);
+      var user = '下面是智能体任务执行记录，请做一次**可复用**的复盘。\n'
+        + '要求：每条 ≤40 字；只写"下次能直接照着做"的经验，不复述任务内容；没有就留空字符串。\n'
+        + '只输出 JSON：{"good":"...","bad":"...","tip":"..."}\n\n'
+        + '任务意图：' + String(taskRecord.userIntent || userMessage || '').slice(0, 120) + '\n'
+        + '工具调用：' + (stepsTxt || '（无）') + '\n'
+        + '最终输出：' + String(taskRecord.finalOutput || '').replace(/\s+/g, ' ').slice(0, 240) + '\n'
+        + '统计：工具 ' + (taskRecord.toolCalls || 0) + ' 次 / 失败 ' + (taskRecord.failedTools || 0)
+        + ' 次 / 耗时 ' + Math.round((taskRecord.durationMs || 0) / 1000) + 's';
+      var r = await window.dsCallOnce('你是任务复盘助手，只输出 JSON，不要解释。', user,
+        { temperature: 0.2, maxTokens: 300, timeoutMs: 20000, thinking: false });
+      if (!r || !r.ok || !r.text) {
+        window.__agentLastReflection = { ok: false, error: (r && r.error) || 'empty', ms: Date.now() - _t0 };
+        return { ok: false };
+      }
+      var j = (typeof window.dsParseJsonLoose === 'function') ? window.dsParseJsonLoose(r.text) : null;
+      if (!j) {
+        window.__agentLastReflection = { ok: false, error: 'parse', ms: Date.now() - _t0, raw: String(r.text).slice(0, 120) };
+        return { ok: false };
+      }
+      var clip = function(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, 60); };
+      var refl = { good: clip(j.good), bad: clip(j.bad), tip: clip(j.tip), at: Date.now() };
+      if (!refl.good && !refl.bad && !refl.tip) {
+        window.__agentLastReflection = { ok: false, error: 'empty-json', ms: Date.now() - _t0 };
+        return { ok: false };
+      }
+      taskRecord.reflection = refl;
+      try { await window.saveAgentTask(taskRecord); } catch (e) {}   // 同 id 覆盖写回
+      window.__agentLastReflection = { ok: true, ms: Date.now() - _t0, refl: refl };
+      return { ok: true, refl: refl };
+    } catch (e) {
+      window.__agentLastReflection = { ok: false, error: String((e && e.message) || e) };
+      return { ok: false };
+    }
+  };
+
+  /** 取最近几条"有反思"的经验（给下次任务的 system 注入用；只取 3 条、整体 ≤300 字，避免撑爆预算） */
+  window.getRecentAgentReflections = async function() {
+    try {
+      var tasks = await window.getAgentTasks(6);
+      var lines = [];
+      (tasks || []).forEach(function(t) {
+        var r = t && t.reflection;
+        if (!r) return;
+        var seg = [];
+        if (r.bad) seg.push('上次踩坑：' + r.bad);
+        if (r.tip) seg.push('建议：' + r.tip);
+        if (seg.length) lines.push('· [' + String(t.userIntent || '').slice(0, 24) + '] ' + seg.join('；'));
+      });
+      return lines.slice(0, 3).join('\n').slice(0, 300);
+    } catch (e) { return ''; }
+  };
 })();
 
 // ========== A1-P1 用户偏好画像（轻量，存 localStorage） ==========

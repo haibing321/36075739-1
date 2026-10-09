@@ -1831,8 +1831,23 @@
 
                 onProgress('正在扩展查询同义词…');
                 await new Promise(function (r) { setTimeout(r, 0); });     // 让浏览器先把提示画出来，再算同步计算
-                var expandedQuery = expandQueryWithSynonyms(q);
-                console.log('[对规召回] 扩展后查询:', expandedQuery);
+                // 【2026-10-09 建议①·查询改写】检索前先抽出"核心检索要素"（一次小 LLM 调用）。
+                //   顺序刻意是「LLM 改写 → 同义词扩展」：改写负责**删噪声、留实体**，
+                //   同义词扩展负责**补等价说法**；顺序反过来会把刚补上的同义词当噪声删掉。
+                //   降级：无 Key / 超时(4s) / 返回无效 ⇒ KB.rewriteQuery 内部直接返回原查询，
+                //   这里**不需要任何分支**（与 kbTimedOut、_kbDegradeReason 的"如实降级"口径一致）。
+                //   关闭开关：localStorage['kb_rewrite']='0'；诊断：window.__kbLastRewrite / __acLastRewrite。
+                var rewriteFrom = q, rewriteTo = q;
+                try {
+                    if (window.KB && typeof window.KB.rewriteQuery === 'function') {
+                        onProgress('正在提取检索要素…');
+                        await new Promise(function (r) { setTimeout(r, 0); });
+                        rewriteTo = await window.KB.rewriteQuery(q);
+                    }
+                } catch (e) { rewriteTo = q; }
+                try { window.__acLastRewrite = { from: rewriteFrom, to: rewriteTo, changed: rewriteTo !== rewriteFrom }; } catch (e) {}
+                var expandedQuery = expandQueryWithSynonyms(rewriteTo);
+                console.log('[对规召回] 改写后查询:', rewriteTo, rewriteTo === q ? '（未改写）' : '', '｜扩展后:', expandedQuery);
 
                 onProgress('正在从规章库召回候选条款…');
                 await new Promise(function (r) { setTimeout(r, 0); });

@@ -68,3 +68,6 @@ scripts/
 README.md
 智能体功能审查与改进建议.md
 安监系统备份_*.zip
+
+# 部署专用目录（Cloud Studio 上传用，不入库）
+_deploy/

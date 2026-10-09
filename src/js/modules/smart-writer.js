@@ -1530,6 +1530,30 @@
              * 入库后必须失效检索索引（materials 是异步源、其列表被缓存），否则新资料检索不到。
              * 返回 { ok, id, updated, title }
              */
+            /**
+             * 【2026-10-09 资料来源元数据】设置资料的来源单位 / 仅作参考标记。
+             *   为什么需要：实测反复出现"**外部单位的数据被当成本单位事实**写进公文"（模型行为波动，
+             *   提示词层已到极限）⇒ 改为在**数据侧**打标记、注入时硬拦截。
+             *   · srcUnit：来源单位（外部资料必填，如"兰州高铁基础设施段"）；
+             *   · refOnly：仅作参考（样例/范文/外部材料）⇒ 正文只注入前 300 字并强标注（物理上难以被引用）。
+             *   用法：await window.wrSetMaterialSource(12, '兰州高铁基础设施段', true)
+             */
+            window.wrSetMaterialSource = async function (id, srcUnit, refOnly) {
+                try {
+                    var all = [];
+                    try { all = await wrDbGetAll(WR_MAT_STORE); } catch (e0) { all = []; }
+                    var hit = null;
+                    (all || []).forEach(function (m) { if (!hit && m && String(m.id) === String(id)) hit = m; });
+                    if (!hit) return { ok: false, error: 'not-found' };
+                    hit.srcUnit = String(srcUnit || '').trim();
+                    hit.refOnly = (refOnly === true || refOnly === '1');
+                    await wrDbPut(WR_MAT_STORE, hit);
+                    try { if (typeof window.wrRenderMaterials === 'function') window.wrRenderMaterials(); } catch (e) {}
+                    try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('materials'); } catch (e) {}
+                    return { ok: true, id: hit.id, srcUnit: hit.srcUnit, refOnly: hit.refOnly };
+                } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+            };
+
             window.wrSaveTextMaterial = async function (info) {
                 info = info || {};
                 var url = String(info.url || '').trim();
@@ -1549,7 +1573,11 @@
                     content: text.slice(0, 20000),                     // 与既有条目同口径（≤20000）
                     rawText: text.slice(0, 5000),
                     source: '网页' + (host ? '：' + host : ''),          // 渲染侧 📍 徽章直接可用
-                    url: url
+                    url: url,
+                    // 【2026-10-09 资料来源元数据】由调用方传入；未传时按标题特征**自动判定并持久化**
+                    //   （一次判定、永久生效、可事后用 wrSetMaterialSource 手改），注入侧据此硬拦截。
+                    srcUnit: String(info.srcUnit || '').trim(),
+                    refOnly: (info.refOnly === true) || (info.refOnly == null && /样例|示例|范例|范文|仅供参考|非本单位实际/.test(title))
                 };
                 var afterWrite = function () {
                     try { if (typeof window.dsInvalidateRagCache === 'function') window.dsInvalidateRagCache('materials'); } catch (e) {}
@@ -3016,16 +3044,24 @@
                         //   （实测仅靠系统提示的规则 8 遵循率不稳；标在数据旁边最有效）：
                         //     · 标题/正文含"样例/示例/范例/范文/仅供参考"⇒ **参考性资料**：只能学写法，禁止把其中数据当事；
                         //     · 含"通报/情况通报"⇒ 视为**外部资料**：引用必须写来源单位，不得当成本单位事实。
+                        // 【2026-10-09 资料来源元数据·硬拦截】从"每次按标题临时猜"升级为**以资料对象上的持久化字段为准**：
+                        //   · m.srcUnit：来源单位（外部资料必填）⇒ 引用必须写归属；
+                        //   · m.refOnly：仅作参考（样例/范文/外部材料）⇒ **正文只注入前 300 字**（够看写法句式），
+                        //     并在标题旁强标注 —— 模型拿不到全文，就从"提示不要引用"变成"物理上难以引用"。
+                        //   字段缺失时才回退标题特征识别（老数据行为不变）。
                         const _mt = String((m.title || m.fileName || '') + ' ' + String(m.content || '').slice(0, 200));
-                        const _refOnly = /样例|示例|范例|范文|仅供参考|非本单位实际/.test(_mt);
-                        const _extSrc = !_refOnly && /通报|情况通报/.test(_mt);
+                        const _refOnly = (m.refOnly === true) || (m.refOnly == null && /样例|示例|范例|范文|仅供参考|非本单位实际/.test(_mt));
+                        const _srcUnit = String(m.srcUnit || '').trim();
+                        const _extSrc = !_refOnly && (!!_srcUnit || /通报|情况通报/.test(_mt));
                         const head = '── ' + (_isSupp ? '补充资料' : '资料') + (i+1) + '【' + typeInfo.label + '】《' + (m.title||m.fileName) + '》'
                             + (_refOnly
-                                ? '（⚠️ **参考性资料（样例/范文）**：只可参考其写法与句式，**严禁把其中的数据、单位、事例当作事实写进正文**）'
+                                ? '（⚠️ **仅作参考（样例/范文/外部材料）**：只可参考其写法与句式，**严禁把其中的数据、单位、事例当作事实写进正文**；本份正文已按"参考性"截断，需要事实数据请用本单位资料）'
                                 : (_extSrc
-                                    ? '（⚠️ **外部资料**：引用其事实与数字时必须写明来源单位（如"据××段通报…"），不得改写成"本单位/本次检查"的事实，其数量也不得充当本单位总体数据）'
-                                    : '（来源：本地资料库。若本份资料里的单位名称与用户需求中的本单位不一致，引用时必须写明其单位归属，不得改写成"本单位/本次检查"的事实，其数量也不得充当本单位总体数据）'));
-                        const body = content.slice(0, perBudget) + (content.length > perBudget ? '…（共' + content.length + '字，已截断）' : '');
+                                    ? ('（⚠️ **外部资料**' + (_srcUnit ? '，来源单位：' + _srcUnit : '') + '：引用其事实与数字时**必须写明该来源单位**（如"据' + (_srcUnit || '××单位') + '通报…"），不得改写成"本单位/本次检查"的事实，其数量也不得充当本单位总体数据）')
+                                    : '（来源：本地资料库' + (_srcUnit ? '，来源单位：' + _srcUnit : '') + '。若本份资料里的单位名称与用户需求中的本单位不一致，引用时必须写明其单位归属，不得改写成"本单位/本次检查"的事实，其数量也不得充当本单位总体数据）'));
+                        // refOnly ⇒ 正文物理截断到 300 字（减少可被引用的内容，而不是只靠叮嘱）
+                        const _bodyBudget = _refOnly ? Math.min(300, perBudget) : perBudget;
+                        const body = content.slice(0, _bodyBudget) + (content.length > _bodyBudget ? '…（共' + content.length + '字，已截断' + (_refOnly ? '：参考性资料仅提供写法示例' : '') + '）' : '');
                         userLines.push(head);
                         userLines.push(body);
                         userLines.push('');

@@ -6729,9 +6729,12 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             if (refineInput) refineInput.value = '';
           }
 
-          // 思考模式：跟随设置页开关（默认开）。开启时思维链会占用输出预算，
-          // 故把 max_tokens 由 6000 抬到 8192，避免「完整报告」在结尾被截断。
-          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 6000, stream: false };
+          // 思考模式：跟随设置页开关（默认开）。开启时思维链会占用输出预算。
+          // 【2026-10-09 真机修复】原 max_tokens=6000（思考 8192）+ 下游只取 message.content ⇒
+          //   真机思考型模型把预算**全用在 reasoning_content 上** ⇒ content 空、界面空白
+          //   （"跑了 30 多秒，报告还是无"）。这里把非思考档也提到 8192（不超模型常见上限），
+          //   真正兜底靠下面的"空正文降级重试"（关思考 ⇒ 预算全给正文）。
+          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 8192, stream: false };
           var _riskThinking = false;
           if (typeof window.dsThinkingParam === 'function') {
             var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model });
@@ -6768,7 +6771,57 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               : ('请求失败（HTTP ' + resp.status + '）' + (_edet ? '：' + _edet : '')));
           }
           var data = await resp.json();
-          var report = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '无响应';
+          var _msg0 = (data.choices && data.choices[0] && data.choices[0].message) || {};
+          var report = String(_msg0.content || '');
+          var _finish = String((data.choices && data.choices[0] && data.choices[0].finish_reason) || '');
+          var _rLen = String(_msg0.reasoning_content || '').length;
+          // 【2026-10-09 真机修复·空正文自动降级重试】真机现象：思考型模型把输出预算全用在 reasoning 上 ⇒
+          //   content 为空、finish_reason='length'，报告区空白（用户："跑了 30 多秒，报告还是无"）。
+          //   处理（业界对"输出被推理吃光"的通行做法：**降级 + 明确格式**，而非直接报错）：
+          //     · 关闭 thinking（重试时模型无需再推理一遍 ⇒ 预算全给正文，也不撞模型输出上限）；
+          //     · 追加一条明确指令"直接输出报告正文，不要输出推理过程"；
+          //     · 成功则用重试结果，失败则走下面的"如实告知 + 诊断"，绝不静默留白。
+          var _retried = false;
+          if (report.trim().length < 50 && _rLen > 200) {
+            _retried = true;
+            try {
+              var _retryBody = {
+                model: model,
+                messages: messages.concat([{ role: 'user', content: '（系统提示）请**直接输出报告正文**，不要再输出任何推理或思考过程，结构按上面的要求。' }]),
+                temperature: 0.3, max_tokens: 8192, stream: false,
+                thinking: { type: 'disabled' }
+              };
+              var _retryCtl = new AbortController();
+              window._riskAbortCtl = _retryCtl;   // 让「⏹ 停止研判」在重试阶段同样有效
+              var _retryT = setTimeout(function () { try { _retryCtl.abort(new Error('TimeoutError')); } catch (e) {} }, 180000);
+              var _resp2;
+              try {
+                _resp2 = await fetch(apiUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                  body: JSON.stringify(_retryBody),
+                  signal: _retryCtl.signal
+                });
+              } finally { clearTimeout(_retryT); }
+              if (_resp2 && _resp2.ok) {
+                var _d2 = await _resp2.json();
+                var _m2 = (_d2.choices && _d2.choices[0] && _d2.choices[0].message) || {};
+                var _c2 = String(_m2.content || '');
+                if (_c2.trim().length >= 2) {
+                  report = _c2;
+                  _finish = String((_d2.choices && _d2.choices[0] && _d2.choices[0].finish_reason) || '');
+                  _rLen = String(_m2.reasoning_content || '').length;
+                }
+              }
+            } catch (_e2) { /* 重试失败不阻塞：下面统一给出如实提示 */ }
+          }
+          try { window.__riskLastDiag = { finish: _finish, contentLen: report.length, reasoningLen: _rLen, retried: _retried }; } catch (e) {}
+          // 仍然为空 ⇒ **如实告知 + 带上诊断**（真机上"报告无"最容易被误以为系统坏了）
+          if (report.trim().length < 2) {
+            report = '⚠️ 模型本次没有返回正文（更可能是**输出预算被"思考过程"占用**，而不是没有数据）。\n\n'
+              + '**诊断**：finish_reason=' + (_finish || '?') + '｜思考长度=' + _rLen + ' 字｜已自动重试=' + (_retried ? '是' : '否') + '。\n\n'
+              + '**建议**：① 在设置里**关闭"思考模式"**后重试；② 或缩小时间范围（数据少、报告短，思考占用更少）；③ 仍失败可换模型再试。';
+          }
 
           // 保存上下文供追问（截断：保留 system + 首条汇总 + 最近 6 条对话，避免无限累积）
           window._riskCtx = messages;

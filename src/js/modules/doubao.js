@@ -6603,6 +6603,8 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             // 【2026-10-01】留一份"数据口径"首行（如「【检查信息】总计 43526 条, 本次筛选 120 条」），
             //   供报告头部回显 —— 报告全文由模型生成，用户看不到它依据的数据范围。
             try { window.__riskLastDataLine = String(summary.split('\n')[0] || '').slice(0, 140); } catch (e) {}
+            // 【2026-10-09】留存完整数据段（含新增的三组维度）：供数字自证、真机排查与套件断言使用
+            try { window.__riskLastSummary = String(summary); } catch (e) {}
             var userMsg = '请基于以下铁路安全检查数据进行风险研判：\n\n' + summary + '\n\n';
             userMsg += '研判要求：\n';
             if (dateStart || dateEnd) userMsg += '- 时间范围：' + (dateStart||'不限') + ' 至 ' + (dateEnd||'不限') + '\n';
@@ -6895,11 +6897,92 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             container.insertBefore(warn, container.firstChild);
           }
 
-          // 操作按钮栏：复制 / 下载 / 🔊朗读 / 🔄重生成
+          // 【2026-10-09 效益优化③·数字自证】报告里的数字与台账口径逐项核对（只认关键口径，不误报日期/条款号）
+          try {
+            var _vf = _verifyRiskNumbers(report, summary);
+            window.__riskLastVerify = _vf;
+            if (_vf.checked > 0) {
+              var _vfBar = document.createElement('div');
+              _vfBar.id = 'risk-verify-bar';
+              _vfBar.style.cssText = _vf.badN
+                ? 'padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;font-size:0.78rem;margin-top:12px;line-height:1.7;'
+                : 'padding:6px 10px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;font-size:0.75rem;margin-top:12px;line-height:1.6;';
+              _vfBar.textContent = _vf.badN
+                ? ('⚠️ 数字自证：报告引用了 ' + _vf.checked + ' 处关键数字，其中 ' + _vf.badN + ' 处与台账口径对不上 —— '
+                   + _vf.bad.join('、') + '。请以台账「' + (window.__riskLastDataLine || '') + '」为准。')
+                : ('✓ 数字自证：报告引用的 ' + _vf.checked + ' 处关键数字均与台账口径一致。');
+              container.appendChild(_vfBar);
+            }
+          } catch (e) {}
+
+          // 【2026-10-09 效益优化②·高优先整改清单】本地按台账算优先级（性质权重 × 重复加成），与报告并列展示。
+          //   为什么不交给模型：清单要**逐条准确、可下发**，模型会有漏条与编造风险；本地算则零成本、零幻觉、可复核。
+          try {
+            var _actRows = (window.__riskLastActionRows && window.__riskLastActionRows.length) ? window.__riskLastActionRows : [];
+            if (_actRows.length) {
+              var _actWrap = document.createElement('div');
+              _actWrap.id = 'risk-action-list';
+              _actWrap.style.cssText = 'margin-top:14px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;';
+              var _hAct = '<div style="padding:8px 12px;background:var(--card-bg);border-bottom:1px solid #e2e8f0;font-size:0.82rem;font-weight:600;">📋 高优先整改清单（本地按台账生成 · 共 ' + _actRows.length + ' 项 · 优先级 = 性质权重 × 重复加成）</div>'
+                + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="background:var(--card-bg);">'
+                + ['#', '问题', '性质', '类别', '单位', '次数', '末次', '优先级'].map(function (t) {
+                    return '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + t + '</th>';
+                  }).join('')
+                + '</tr></thead><tbody>';
+              _actRows.forEach(function (r2, i) {
+                var _qc = (r2.q === '红线' || r2.q === 'A') ? '#dc2626' : (r2.q === 'B' ? '#d97706' : '#64748b');
+                _hAct += '<tr>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:var(--text-secondary);">' + (i + 1) + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">' + String(r2.text).slice(0, 60).replace(/</g, '&lt;') + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:' + _qc + ';font-weight:600;white-space:nowrap;">' + r2.q + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">' + r2.cat + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">' + r2.unit + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">' + r2.n + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">' + r2.last + '</td>'
+                  + '<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">' + r2.score.toFixed(1) + '</td>'
+                  + '</tr>';
+              });
+              _hAct += '</tbody></table></div>';
+              _actWrap.innerHTML = _hAct;
+              container.appendChild(_actWrap);
+            }
+          } catch (e) {}
+
+          // 操作按钮栏：复制 / 下载 / 📄导出 DOCX / 📊清单 Excel / 🔊朗读 / 🔄重生成
           var bar = document.createElement('div');
           bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0;';
           bar.appendChild(_riskBtn('📋 复制', '#64748b', function(){ riskCopyReport(report); }));
           bar.appendChild(_riskBtn('📥 下载', 'var(--primary)', function(){ riskDownloadReport(report); }));
+          // 【2026-10-09 效益优化④】一键导出：报告 → DOCX（公文格式，复用 RGDocx 引擎）；清单 → Excel（复用 FmtConv）
+          //   组件未就绪时**如实提示**，不留哑按钮（与项目既有口径一致）。
+          bar.appendChild(_riskBtn('📄 导出 DOCX', 'var(--primary)', function () {
+            try {
+              if (typeof window.RGDocx === 'undefined' || typeof window.RGDocx.fromHtml !== 'function' || !window.FmtConv) {
+                if (window.showToast) window.showToast('DOCX 组件未就绪（docx-export.js 未加载）', true); else alert('DOCX 组件未就绪');
+                return;
+              }
+              var _h2 = (typeof window.dsMarkdown === 'function') ? window.dsMarkdown(report) : ('<p>' + String(report).replace(/</g, '&lt;') + '</p>');
+              Promise.resolve(window.RGDocx.fromHtml(_h2, { title: '风险研判报告', style: 'gongwen', images: false })).then(function (bytes) {
+                if (!bytes) { if (window.showToast) window.showToast('DOCX 生成失败（返回空）', true); return; }
+                window.FmtConv.save(bytes, '风险研判_' + window.localDateStr() + '.docx', window.FmtConv.DOCX_MIME);
+              });
+            } catch (e) { if (window.showToast) window.showToast('导出失败：' + ((e && e.message) || e), true); }
+          }));
+          bar.appendChild(_riskBtn('📊 清单 Excel', 'var(--primary)', function () {
+            try {
+              var _rows2 = window.__riskLastActionRows || [];
+              if (!_rows2.length) { if (window.showToast) window.showToast('本次没有可导出的整改清单', true); return; }
+              if (!window.FmtConv || typeof window.FmtConv.toExcelFromBlocks !== 'function') {
+                if (window.showToast) window.showToast('Excel 组件未就绪（离线首次需联网拉取）', true); return;
+              }
+              var _aoa = [['序号', '问题', '性质', '类别', '单位', '发生次数', '末次日期', '优先级']];
+              _rows2.forEach(function (r3, i) { _aoa.push([i + 1, r3.text, r3.q, r3.cat, r3.unit, r3.n, r3.last, r3.score.toFixed(1)]); });
+              Promise.resolve(window.FmtConv.toExcelFromBlocks([{ type: 'table', rows: _aoa, cols: 8 }], '高优先整改清单')).then(function (r4) {
+                if (r4 && r4.ok) window.FmtConv.save(r4.bytes, '整改清单_' + window.localDateStr() + '.xlsx', window.FmtConv.XLSX_MIME);
+                else if (window.showToast) window.showToast('Excel 生成失败：' + ((r4 && r4.note) || '未知原因'), true);
+              });
+            } catch (e) { if (window.showToast) window.showToast('导出失败：' + ((e && e.message) || e), true); }
+          }));
           if (typeof window.speechSynthesis !== 'undefined') {
             bar.appendChild(_riskBtn('🔊 朗读', '#64748b', function(){ riskSpeak(this); }));
           }
@@ -6963,6 +7046,77 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
         scored.sort(function (a, b) { return (b.s - a.s) || (a.i - b.i); });
         return scored.map(function (x) { return x.r; });
       }
+
+      /**
+       * 【2026-10-09 效益优化②】本地生成「高优先整改清单」
+       * 为什么本地做：清单是**可执行项**（谁、什么时限、达到什么标准），必须**逐条、准确、可导出**；
+       *   交给模型生成会有漏条与编造风险，而台账数据本来就在本地 ⇒ 本地算：零模型成本、零幻觉、可当场核对。
+       * 优先级口径（写死在这里、能复核，不依赖模型判断）：
+       *   性质权重（红线 4 / A 3 / B 1.5 / C 0.5 / 其他 0）×（1 + 0.35·log2(重复次数)）—— **屡查屡犯优先**。
+       * 说明：重复归并按"归一化前 20 字符"（与数据段同一启发式，见【问题分类归集】），是刻意保守的近似，
+       *   宁可少合并，也不把不同问题混成一条。
+       */
+      function _buildRiskActionList(filtered) {
+        var groups = {}, order = [];
+        (filtered || []).forEach(function (d) {
+          var text = String(d.content || '').replace(/\s+/g, ' ').trim();
+          if (!text) return;
+          var key = text.slice(0, 20);
+          if (!groups[key]) { groups[key] = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '' }; order.push(key); }
+          var g = groups[key];
+          g.n++;
+          var q = (typeof window.dsNormQuality === 'function') ? window.dsNormQuality(d['性质']) : String(d['性质'] || '其他');
+          g.qs[q] = (g.qs[q] || 0) + 1;
+          var c = String(d.category || ''); if (c) g.cats[c] = (g.cats[c] || 0) + 1;
+          var u = String(d.unit || d.department || '').trim(); if (u) g.units[u] = (g.units[u] || 0) + 1;
+          var dt = String(d.datetime || '');
+          if (dt > g.last) g.last = dt;
+          if (text.length > g.text.length) g.text = text;   // 保留最完整的一条作为清单文本
+        });
+        var W = { '红线': 4, 'A': 3, 'B': 1.5, 'C': 0.5, '其他': 0 };
+        var rows = [];
+        order.forEach(function (k) {
+          var g = groups[k];
+          var qTop = Object.keys(g.qs).sort(function (a, b) { return (W[b] || 0) - (W[a] || 0) || g.qs[b] - g.qs[a]; })[0] || '其他';
+          rows.push({
+            text: g.text, n: g.n, q: qTop,
+            cat: Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || '',
+            unit: Object.keys(g.units).sort(function (a, b) { return g.units[b] - g.units[a]; })[0] || '',
+            last: g.last.slice(0, 10),
+            score: (W[qTop] || 0) * (1 + 0.35 * (Math.log(Math.max(1, g.n)) / Math.LN2))
+          });
+        });
+        rows.sort(function (a, b) { return b.score - a.score || (b.last > a.last ? 1 : a.last > b.last ? -1 : 0); });
+        return rows.slice(0, 15);
+      }
+
+      /**
+       * 【2026-10-09 效益优化③】报告数字自证（grounding check）
+       * 背景：报告里的数字完全由模型"照抄"上方的数据段，**此前没有任何核对** ⇒ 抄错即误导决策。
+       * 做法（只核对**关键口径**，刻意不误报日期/条款号/百分比）：
+       *   ① 从数据段抽出口径集合（总计 / 本次筛选 / 各性质计数 / A类 / 各单位条数）；
+       *   ② 从报告里找"共 N 条 / 筛选 N 条 / A 类 N 条"这类**带关键词**的表述；
+       *   ③ 数字不在口径集合里 ⇒ 记为"存疑"，在报告下方如实提示（**不改写报告正文**，避免破坏其引用关系）。
+       */
+      function _verifyRiskNumbers(report, summary) {
+        var allow = {}, S = String(summary || '');
+        function addN(v) { if (v != null && v !== '') allow[String(v)] = 1; }
+        var m0 = S.match(/总计\s*(\d+)\s*条/); if (m0) addN(m0[1]);
+        var m1 = S.match(/本次筛选\s*(\d+)\s*条/); if (m1) addN(m1[1]);
+        var mq = S.match(/性质分布[:：]\s*([^\n]+)/);
+        if (mq) (mq[1].match(/[^\s,，、；;]+?\((\d+)\)/g) || []).forEach(function (t) { var mm = t.match(/\((\d+)\)/); if (mm) addN(mm[1]); });
+        (S.match(/A类(\d+)条/g) || []).forEach(function (t) { var mm = t.match(/\d+/); if (mm) addN(mm[0]); });
+        (S.match(/共(\d+)条/g) || []).forEach(function (t) { var mm = t.match(/\d+/); if (mm) addN(mm[0]); });
+        var R = String(report || ''), re = /(总计|总条数|共|筛选|A\s*类|B\s*类|C\s*类|红线)[^0-9\n]{0,6}(\d+)\s*条/g, mm2;
+        var cnt = 0, bad = [];
+        while ((mm2 = re.exec(R)) !== null) {
+          cnt++;
+          if (!allow[mm2[2]]) bad.push(mm2[0].replace(/\s+/g, ''));
+        }
+        return { checked: cnt, badN: bad.length, bad: bad.slice(0, 5), allowed: Object.keys(allow).length };
+      }
+      try { window._riskBuildActionList = _buildRiskActionList; window._riskVerifyNumbers = _verifyRiskNumbers; } catch (e) {}
+      try { window.__riskOptimVersion = 'v4.47'; } catch (e) {}
 
       async function _buildRiskDataSummary(dateStart, dateEnd, unitFilter) {
         var parts = [];
@@ -7037,6 +7191,72 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             parts.push('类别TOP5: '+_topN(cats,5).map(_fmtTop).join(', '));
             parts.push('性质分布: '+_topN(nats,5).map(_fmtTop).join(', '));
             if (Object.keys(units).length > 0) parts.push('涉及单位: '+_topN(units,10).map(_fmtTop).join(', '));
+            // 【2026-10-09 效益优化①·从"计数"升级到"规律"】三组**本地派生**的决策维度（零模型成本）：
+            //   专业安全分析的标准口径是"三个对比"——**纵向趋势 / 横向单位 / 交叉结构**；原来只喂总量与 TOP 计数
+            //   ⇒ 模型只能复述现象（"某类问题最多"），给不出"9 月 A 类环比上升 X%""哪个单位 A 类占比最高"
+            //   "哪类问题里 A 类最集中"这类可决策结论。每组数据后都带一句**明确要求**，逼模型真用它们。
+            //   口径与台账一致：月份用宽容解析 _riskParseDateTime、性质用 dsNormQuality 归一，全部只读不改数据。
+            var _byMonth = {}, _byUnitQ = {}, _cross = {};
+            filtered.forEach(function (d) {
+              var _q = (typeof window.dsNormQuality === 'function') ? window.dsNormQuality(d['性质']) : String(d['性质'] || '其他');
+              var _isA = (_q === 'A');
+              var _mk = '';
+              try {
+                // ⚠️ `_riskParseDateTime` 返回的是**毫秒时间戳（number）或 null**（见其函数注释），
+                //   不是 Date ——真机实测曾因误当 Date 调 .getTime() 抛错被吞，"按月度趋势"整段消失（套件 L6 抓出）。
+                //   双保险：宽容解析不可用/失败时，回退 `new Date()`（斜杠换横杠，兼容 '2026/9/3'）。
+                var _dtms = (typeof window._riskParseDateTime === 'function') ? window._riskParseDateTime(d.datetime) : null;
+                if (typeof _dtms !== 'number' || isNaN(_dtms)) {
+                  var _fb = new Date(String(d.datetime || '').replace(/\//g, '-'));
+                  if (!isNaN(_fb.getTime())) _dtms = _fb.getTime();
+                }
+                if (typeof _dtms === 'number' && !isNaN(_dtms)) {
+                  var _dto = new Date(_dtms);
+                  _mk = _dto.getFullYear() + '-' + ('0' + (_dto.getMonth() + 1)).slice(-2);
+                }
+              } catch (e) {}
+              if (_mk) { var _mo = _byMonth[_mk] || (_byMonth[_mk] = { n: 0, a: 0 }); _mo.n++; if (_isA) _mo.a++; }
+              var _u = String(d.unit || d.department || '').trim();
+              if (_u) { var _uo = _byUnitQ[_u] || (_byUnitQ[_u] = { n: 0, a: 0 }); _uo.n++; if (_isA) _uo.a++; }
+              var _c = String(d.category || '其他');
+              if (!_cross[_c]) _cross[_c] = {};
+              _cross[_c][_q] = (_cross[_c][_q] || 0) + 1;
+            });
+            var _mkAll = Object.keys(_byMonth).sort();
+            if (_mkAll.length) {
+              parts.push('按月度趋势: ' + _mkAll.map(function (k, i) {
+                var _cur = _byMonth[k], _prev = i > 0 ? _byMonth[_mkAll[i - 1]] : null, _moTxt = '';
+                if (_prev && _prev.n > 0) {
+                  var _dl = Math.round((_cur.n - _prev.n) * 100 / _prev.n);
+                  _moTxt = '（较上一月' + (_dl >= 0 ? '+' : '') + _dl + '%）';
+                }
+                return k + '：共' + _cur.n + '条/A类' + _cur.a + '条' + _moTxt;
+              }).join('；') + '。要求：指出趋势方向与拐点（哪个月开始上升、拐点后是否持续），不要只罗列数字。');
+            }
+            var _uL = Object.keys(_byUnitQ);
+            if (_uL.length) {
+              // ≥2 个单位才叫"横向对比"；只有 1 个也**照实输出**（避免整段消失、也让断言与用户能看到单位口径）
+              var _uRows = _uL.map(function (u) {
+                var o = _byUnitQ[u]; return { u: u, n: o.n, a: o.a };
+              }).sort(function (x, y) { return (y.a / y.n) - (x.a / x.n) || y.a - x.a || y.n - x.n; }).slice(0, 8).map(function (x) {
+                return x.u + '(共' + x.n + '条/A类' + x.a + '条/A类占比' + Math.round(x.a * 100 / x.n) + '%)';
+              }).join('；');
+              parts.push(_uL.length >= 2
+                ? ('单位横向对比(A类占比由高到低 · 前8): ' + _uRows + '。要求：点名"A类占比最高"的单位并分析其症结，不要平均用力。')
+                : ('涉及单位(仅 1 个 · 无需横向对比): ' + _uRows + '。'));
+            }
+            var _cL = Object.keys(_cross);
+            if (_cL.length) {
+              parts.push('类别×性质交叉(按A类条数排序): ' + _cL.map(function (c) {
+                var o = _cross[c], tot = 0, a = o['A'] || 0;
+                Object.keys(o).forEach(function (k) { tot += o[k]; });
+                return { c: c, o: o, tot: tot, a: a };
+              }).sort(function (x, y) { return y.a - x.a || y.tot - x.tot; }).slice(0, 8).map(function (x) {
+                return x.c + '：共' + x.tot + '条（' + Object.keys(x.o).sort().map(function (k) { return k + x.o[k]; }).join('/') + '）';
+              }).join('；') + '。要求：指出"A类最集中的类别"，并优先对它提整改措施。');
+            }
+            // ② 高优先整改清单（本地算，随报告一起展示/导出；见 _buildRiskActionList）
+            try { window.__riskLastActionRows = _buildRiskActionList(filtered); } catch (e) { window.__riskLastActionRows = []; }
             // 按类别归类问题，每个类别列举几方面典型问题
             var categoryGroups = {};
             filtered.forEach(function(d) {

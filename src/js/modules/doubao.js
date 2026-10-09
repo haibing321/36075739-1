@@ -7200,8 +7200,10 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
        *
        * ⑦ 重复识别（"屡查屡犯"是安监最重要的洞察）：原来按"前 20 字符完全相同"分桶 ⇒ 同一问题只要措辞
        *   有微小差异（带日期/序号/顿号）就被拆开、漏掉重复。现改为 **2-gram 集合的 Jaccard 相似度**
-       *   （业界常用、无需中文分词的稳定做法，已剔除数字与标点），阈值 **0.62** 判为同一问题；
-       *   性能上先按"前 6 字符"分桶、只在桶内比较，并对超大批量（>6000 条）退化为前缀桶，避免卡顿。
+       *   （业界常用、无需中文分词的稳定做法，已剔除数字与标点），阈值 **0.62** 判为同一问题。
+       *   性能：组数 ≤800 走**全量比较**；超过则用 **MinHash 签名 + 倒排索引（LSH）取候选**
+       *   （2026-10-09 第四批替换掉原来的"大数据退化为前缀桶"——那种退化在 4.3 万条实测下
+       *   几乎不合并：merged=9359 / 组=34167）。
        *
        * ⑥ 风险指数（风险矩阵思想：后果 × 可能性 × 扩散面，归一化到 0~100）：
        *   后果 = 性质权重（红线4/A3/B1.5/C0.5）；可能性 ≈ 重复次数（1+0.35·log2 n）；
@@ -7215,48 +7217,74 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           if (!Object.keys(m).length && s) m[s] = 1;
           return m;
         }
+        // 【2026-10-09 第四批·性能】Jaccard 计算的两处优化（大数据下决定成败）：
+        //   ① **键数组缓存**：组的 `Object.keys()` 只算一次并挂在 `_GK`（原来每次比较都重建一次）；
+        //   ② **长度预筛**：两串 bigram 数相差 >40% ⇒ 相似度不可能到 0.62，直接返回 0（省掉整轮遍历）。
         function _jac(a, b) {
-          var ka = Object.keys(a);
-          if (!ka.length) return 0;
+          var ka = a._GK, kb = b._GK;
+          var la = ka.length, lb = kb.length;
+          if (!la || !lb) return 0;
+          if (Math.abs(la - lb) / Math.max(la, lb) > 0.4) return 0;
           var inter = 0;
-          for (var i = 0; i < ka.length; i++) if (b[ka[i]]) inter++;
-          var un = ka.length + Object.keys(b).length - inter;
+          for (var i = 0; i < la; i++) if (b._S[ka[i]]) inter++;
+          var un = la + lb - inter;
           return un ? (inter / un) : 0;
         }
+        // 【2026-10-09 第四批·MinHash + 倒排索引（LSH）】替代原来的"大数据退化为前缀桶"：
+        //   问题：>6000 条时走前缀桶几乎不合并 —— 43526 条真实台账实测 merged=9359、组=34167，
+        //         恰恰在"最该识别屡查屡犯"的大数据场景上最不准。
+        //   做法（无需中文分词的业界标准做法）：把每个组的 bigram 集合按字典序排序后**取最小 3 个**
+        //         作为签名（MinHash 的简化形式）建倒排索引；新记录的候选组 = 其签名 bigram 命中的组。
+        //         相似文本的 bigram 集合高度重叠 ⇒ 签名大概率落进同一批候选 ⇒ 召回好、候选少。
+        //   保护：① 单桶 >4000 视为高频噪声桶，跳过；② 候选上限 400；③ 组数 ≤800 仍走**全量比较**。
         var W = { '红线': 4, 'A': 3, 'B': 1.5, 'C': 0.5, '其他': 0 };
         var list = [], buckets = {};
-        var _big = (filtered || []).length > 6000;
-        var _merged = 0;
+        var _merged = 0, _mode = 'full', _tok = 0;
         (filtered || []).forEach(function (d) {
           var text = String(d.content || '').replace(/\s+/g, ' ').trim();
           if (!text) return;
           var q = (typeof window.dsNormQuality === 'function') ? window.dsNormQuality(d['性质']) : String(d['性质'] || '其他');
           var g = null;
-          if (_big) {
-            // 超大批量：退化为前缀桶（保证不卡顿；如实记在 __riskActionMeta.degraded）
-            var bk0 = text.slice(0, 20);
-            var c0 = buckets[bk0] || (buckets[bk0] = []);
-            g = c0[0] || null;
-            if (!g) { g = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '' }; list.push(g); c0.push(g); }
-          } else {
-            // 【⑦ 分组】与**已有分组**比相似度（组数远小于记录数，一次研判最多几百组 ⇒ 比较量可控且准确）：
-            //   比"先按前缀分桶再比"更可靠 —— 前缀桶会把"接触网作业未设防护"与"作业未设防护（接触网）"
-            //   这类措辞不同、实为同一问题的记录拆开（那正是"屡查屡犯"最容易漏掉的情形）。
-            var _G = _grams(text);
-            if (list.length <= 800) {
-              var _best = null, _bestJ = 0;
-              for (var i = 0; i < list.length; i++) {
-                var _j = _jac(list[i]._G, _G);
-                if (_j > _bestJ) { _bestJ = _j; _best = list[i]; }
-              }
-              if (_best && _bestJ >= 0.62) g = _best;
-            } else {
-              var _bk = text.slice(0, 6), _c = buckets[_bk] || (buckets[_bk] = []);
-              for (var i2 = 0; i2 < _c.length; i2++) { if (_jac(_c[i2]._G, _G) >= 0.62) { g = _c[i2]; break; } }
+          var _G = _grams(text);
+          var _GK = Object.keys(_G).sort();
+          _G._GK = _GK;
+          _G._S = _G;
+          if (list.length <= 800) {
+            // 全量比较（组数少 ⇒ 最准且便宜）
+            var _best = null, _bestJ = 0;
+            for (var i = 0; i < list.length; i++) {
+              var _j = _jac(list[i]._G, _G);
+              if (_j > _bestJ) { _bestJ = _j; _best = list[i]; }
             }
-            if (!g) {
-              g = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '', _G: _G };
-              list.push(g);
+            if (_best && _bestJ >= 0.62) g = _best;
+          } else {
+            // LSH 候选（大数据）
+            _mode = 'lsh';
+            _tok++;
+            var _cand = [];
+            for (var si = 0; si < 3; si++) {
+              if (!_GK[si]) continue;
+              var _b = buckets['S' + _GK[si]];
+              if (!_b || _b.length > 4000) continue;   // 高频噪声桶跳过
+              for (var bi = 0; bi < _b.length; bi++) {
+                var _gr = _b[bi];
+                if (_gr._seen !== _tok) { _gr._seen = _tok; _cand.push(_gr); }
+              }
+              if (_cand.length > 400) break;
+            }
+            var _best2 = null, _bestJ2 = 0;
+            for (var ci = 0; ci < _cand.length; ci++) {
+              var _j2 = _jac(_cand[ci]._G, _G);
+              if (_j2 > _bestJ2) { _bestJ2 = _j2; _best2 = _cand[ci]; }
+            }
+            if (_best2 && _bestJ2 >= 0.62) g = _best2;
+          }
+          if (!g) {
+            g = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '', _G: _G };
+            list.push(g);
+            for (var sj = 0; sj < 3; sj++) {
+              if (!_GK[sj]) continue;
+              (buckets['S' + _GK[sj]] || (buckets['S' + _GK[sj]] = [])).push(g);
             }
           }
           if (g.n > 0) _merged++;
@@ -7283,7 +7311,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           };
         });
         rows.sort(function (a, b) { return b.score - a.score || (b.last > a.last ? 1 : a.last > b.last ? -1 : 0); });
-        try { window.__riskActionMeta = { merged: _merged, groups: rows.length, degraded: _big }; } catch (e) {}
+        // 【2026-10-09 第四批】`degraded` 保留字段（语义已是"是否做了降级"）：改用 LSH 后**不再降级**，
+        //   mode 如实标注 'full'（组数少 ⇒ 全量比较）/ 'lsh'（大数据 ⇒ 倒排索引取候选）。
+        try { window.__riskActionMeta = { merged: _merged, groups: rows.length, degraded: false, mode: _mode }; } catch (e) {}
         return rows.slice(0, 15);
       }
 

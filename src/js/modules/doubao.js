@@ -6211,12 +6211,50 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           if (de && day > de) return false;
           return true;
         }
-        var t = new Date(s || '').getTime();
-        if (isNaN(t)) return false;
+        // 【2026-10-09 真机修复·"筛选后无数据（实际有）"】
+        //   原实现：`new Date(s)` 解析失败 ⇒ **直接 return false**（该条被当作"不符合日期条件"丢弃）。
+        //   真机台账的 datetime 形态很杂（'2026/9/3 9:00'、'2026.09.03'、'2026年9月3日'、Excel 序列号…），
+        //   只要有一类解析不了，这些记录就会被**整批过滤掉** ⇒ 界面显示"筛选后 0 条"，而库里明明有数据。
+        //   现改为三级：① 解析成功 ⇒ 正常比较；② 解析不了 ⇒ 返回 'unknown'，由调用方**计入结果并单独计数**
+        //   （宁可多算不漏，且如实标注多少条无法判定）；③ 空值同按 'unknown' 处理（原来也会被丢弃）。
+        var t = _riskParseDateTime(s);
+        if (t === null) return 'unknown';
         if (!isNaN(sd) && t < sd) return false;
         if (!isNaN(ed) && t > ed) return false;
         return true;
       }
+      /** 【2026-10-09 真机修复】台账 datetime 的**宽容解析**：返回毫秒时间戳；无法识别返回 null。
+       *  覆盖：ISO、'YYYY/M/D'、'YYYY.M.D'、'YYYY年M月D日'（可带时间）、10/13 位时间戳、Excel 日期序列号。
+       *  ⚠️ 与"解析失败就当不符合条件"是两回事 —— 调用方必须把 null 视为"无法判定"，**不能借它排除记录**。
+       */
+      function _riskParseDateTime(v) {
+        if (v == null || v === '') return null;
+        if (typeof v === 'number') {
+          if (v > 1e11) return v;                                   // 毫秒时间戳
+          if (v > 1e9) return v * 1000;                             // 秒时间戳
+          if (v > 20000 && v < 80000) return Math.round((v - 25569) * 86400000);   // Excel 序列号（1900 基准）
+          return null;
+        }
+        var s = String(v).trim();
+        if (!s) return null;
+        if (/^\d{10}$/.test(s)) return parseInt(s, 10) * 1000;
+        if (/^\d{13}$/.test(s)) return parseInt(s, 10);
+        if (/^\d{4,5}(\.\d+)?$/.test(s)) {
+          var n2 = parseFloat(s);
+          if (n2 > 20000 && n2 < 80000) return Math.round((n2 - 25569) * 86400000);
+        }
+        // 中文 / 点 / 斜杠 统一成 'YYYY-M-D [H:M[:S]]' 再交给 Date（避免 '2026年9月3日' 之类解析失败）
+        var s2 = s.replace(/[年月]/g, '-').replace(/日/g, ' ').replace(/[.\/]/g, '-').replace(/\s+/g, ' ').trim();
+        var m = s2.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+        if (m) {
+          var dt = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+          return isNaN(dt.getTime()) ? null : dt.getTime();
+        }
+        var t = new Date(s).getTime();
+        return isNaN(t) ? null : t;
+      }
+      try { window.__riskParseDateTime = _riskParseDateTime; } catch (e) {}
+
       function _doRiskPreview() {
         var preview = document.getElementById('risk-data-preview');
         if (!preview) return;
@@ -6272,6 +6310,7 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
             var scanned = 0;
             var filtered = 0;
             var capped = false;  // 是否因达到上限/超时提前停止
+            var unknownDate = 0; // 【2026-10-09】日期无法识别的条数（计入筛选结果但不排除，界面如实标注）
             var cpuMs = 0;       // 本函数累计耗时（不含等待 IDB 回调的空闲时间）
             var units = Object.create(null);
             var done = false;
@@ -6283,7 +6322,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               if (totalEl) totalEl.textContent = totalTxt;
               // 未设筛选条件时「筛选」与「总计」必然相同，直接复用总数，
               // 否则会出现「总计 40166 条 / 筛选 ≥20000 条」这种自相矛盾的显示
-              if (filteredEl) filteredEl.textContent = hasFilter ? ((capped ? '≥' : '') + filtered + ' 条') : totalTxt;
+              if (filteredEl) filteredEl.textContent = hasFilter
+                ? ((capped ? '≥' : '') + filtered + ' 条' + (unknownDate ? '（含 ' + unknownDate + ' 条日期无法识别，未排除）' : ''))
+                : totalTxt;
               if (hasFilter) preview.style.display = 'flex';
             }
 
@@ -6336,7 +6377,9 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
                 if (d.department) units[d.department] = 1;
                 var ok = true;
                 if (dateStart || dateEnd) {
-                  if (!_riskDateInRange(d.datetime, dateStart, dateEnd, sd, ed)) ok = false;
+                  var _dr = _riskDateInRange(d.datetime, dateStart, dateEnd, sd, ed);
+                  if (_dr === 'unknown') unknownDate++;   // 日期识别不了 ⇒ 计入、不排除（见 _riskDateInRange 注释）
+                  else if (!_dr) ok = false;
                 }
                 if (ok && uLower) {
                   if (((d.unit || '') + ' ' + (d.department || '')).toLowerCase().indexOf(uLower) === -1) ok = false;

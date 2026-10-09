@@ -2190,7 +2190,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.40</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.41</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2235,15 +2235,15 @@
                 六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
             </div>
 
-            <!-- v4.40 近期更新（资料来源标记：来源单位 / 仅作参考，注入时硬拦截） -->
+            <!-- v4.41 近期更新（修"风险研判筛选后无数据（实际有）"） -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.40 近期更新</span>
+                    <span>v4.41 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📚 <b>资料来源标记</b>：资料可标记「<b>来源单位</b>」（外部材料）与「<b>仅作参考</b>」（样例 / 范文 / 外部通报）。标记为"仅作参考"的资料，写作时<b>正文只注入前 300 字</b>（只够参考写法）—— 从"提示不要引用"升级为<b>物理上难以引用</b>；标了来源单位的外部资料，引用时<b>必须写明该单位</b>，不得当作本单位事实。保存资料时也会按标题自动判定（含"样例 / 示例 / 范文 / 仅供参考 / 通报"等）并<b>永久记住</b>，可用 <code>wrSetMaterialSource(id, 单位, true)</code> 事后修改。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 解决了真实模型评测里反复出现的"<b>外部单位数据被当成本单位事实写进公文</b>"（此前只能靠提示词叮嘱，模型行为会波动）—— 现在由数据侧的标记 + 注入侧截断共同兜住。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <b>修「风险研判里"筛选后无数据（实际有）"」</b>：台账的日期格式很杂（<code>2026/9/3</code>、<code>2026.09.03</code>、<code>2026年9月3日</code>、Excel 日期序列号…），原实现只要<b>解析不了就把该条当作"不符合条件"丢掉</b> ⇒ 界面上显示"筛选后 0 条"、而库里明明有数据。现改为<b>宽容解析</b>（覆盖 6 类常见格式），<b>解析不了的记录不再被排除</b>，并在预览里如实标注「（含 N 条日期无法识别，未排除）」。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 同时保证<b>预览显示的数据</b>与<b>研判实际使用的数据</b>同一口径（都是对台账同一批记录按同样规则过滤），不会再出现"预览说没数据、研判却有"的矛盾。</span></div>
                 </div>
             </div>
 
@@ -2260,7 +2260,7 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.82rem;color:var(--text-secondary);margin-bottom:4px;">🗂 历史版本</div>
                 <div style="font-size:0.74rem;line-height:1.75;color:var(--text-secondary);">
-                    v4.39 近期更新：风险研判结构化卡片（等级口径/依据标来源/措施四要素）+ 本次研判依据清单 + 与上次变化对比 · v4.38 近期更新：风险研判多源化（重点时段因子库 14 项 + 天气接入 + 6 类数据源面板可勾选）· v4.37 近期更新：代码类工具收窄 95% + 智能写作公文质量四项优化（占位符 / 条款层级 / 数据归属 / 引用匹配）+ 写作增强（KB 条款优先 / 整改四要素 / 口径优先级）· v4.36 近期更新：六项性能/体验优化（提示词去重 · 附件旧轮压缩 · 链接预读并发 · 工具并行+上限收尾 · 字段记忆化 · 盯控变更检测）+ 关于面板精简 · v4.35 近期更新：智能对话体检优化（索引不再每轮重建 · 工具按需召回 · 判据用纯问句 · 六项逻辑修复）· v4.32 PDF 表格识别放宽"跨行单元格"判据（表头不再被打平）· v4.31 跨列合并表头 / 宽表更完整 · v4.30 PDF 技术作业程序图还原为「阶段｜步骤」两列表 · v4.29 修 PDF 表格被"打平成一行长串" · v4.28 OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复 · v4.27 格式转换 PDF/OFD/TXT → DOCX/Excel 及导入导出修复 · v4.25 智能体「综合研究」工具（外部理论 + 本单位举证）· v4.24 智能体工具按官方原则改进 · v4.23 联网=理论 / 本地=举证 · v4.22 本地资料 × 联网协同规则 · v4.21 回答尾部「本次参考」· v4.20 关联数据自动关联 · v4.19 关联数据类型补全（6→9）· v4.18 「本地资料」三种静默情况改为如实告知 · v4.17 知识库缓存失效范围 + 汇编源预热 · v4.16 智能体消耗可见 · v4.15 规章导入自动去水印 · <b>v4.14 近期更新</b>：对规<b>截取</b>去<b>重复</b> / 全文<b>定位</b> / <b>OFD</b> 导入 / 已导入文件的处理说明 · v4.13 SW 未接管真因（激活时"清理"连累"接管"）· v4.12 联网时折叠慢（App Shell 缓存缺文件自愈）
+                    v4.40 近期更新：资料来源标记（来源单位/仅作参考）+ 注入侧硬拦截 · v4.39 近期更新：风险研判结构化卡片（等级口径/依据标来源/措施四要素）+ 本次研判依据清单 + 与上次变化对比 · v4.38 近期更新：风险研判多源化（重点时段因子库 14 项 + 天气接入 + 6 类数据源面板可勾选）· v4.37 近期更新：代码类工具收窄 95% + 智能写作公文质量四项优化（占位符 / 条款层级 / 数据归属 / 引用匹配）+ 写作增强（KB 条款优先 / 整改四要素 / 口径优先级）· v4.36 近期更新：六项性能/体验优化（提示词去重 · 附件旧轮压缩 · 链接预读并发 · 工具并行+上限收尾 · 字段记忆化 · 盯控变更检测）+ 关于面板精简 · v4.35 近期更新：智能对话体检优化（索引不再每轮重建 · 工具按需召回 · 判据用纯问句 · 六项逻辑修复）· v4.32 PDF 表格识别放宽"跨行单元格"判据（表头不再被打平）· v4.31 跨列合并表头 / 宽表更完整 · v4.30 PDF 技术作业程序图还原为「阶段｜步骤」两列表 · v4.29 修 PDF 表格被"打平成一行长串" · v4.28 OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复 · v4.27 格式转换 PDF/OFD/TXT → DOCX/Excel 及导入导出修复 · v4.25 智能体「综合研究」工具（外部理论 + 本单位举证）· v4.24 智能体工具按官方原则改进 · v4.23 联网=理论 / 本地=举证 · v4.22 本地资料 × 联网协同规则 · v4.21 回答尾部「本次参考」· v4.20 关联数据自动关联 · v4.19 关联数据类型补全（6→9）· v4.18 「本地资料」三种静默情况改为如实告知 · v4.17 知识库缓存失效范围 + 汇编源预热 · v4.16 智能体消耗可见 · v4.15 规章导入自动去水印 · <b>v4.14 近期更新</b>：对规<b>截取</b>去<b>重复</b> / 全文<b>定位</b> / <b>OFD</b> 导入 / 已导入文件的处理说明 · v4.13 SW 未接管真因（激活时"清理"连累"接管"）· v4.12 联网时折叠慢（App Shell 缓存缺文件自愈）
                 </div>
             </div>
 

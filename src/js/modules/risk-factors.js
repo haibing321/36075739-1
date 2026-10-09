@@ -137,6 +137,10 @@
   window.RiskPanel = {
     probe: probe,
     offList: offList,
+    /** 结构化卡片开关（默认开） */
+    structOn: function () { try { return localStorage.getItem('risk_struct_on') !== '0'; } catch (e) { return true; } },
+    /** 上次研判的留存（条件 + 结论摘要），供本次做"变化对比" */
+    last: function () { try { return JSON.parse(localStorage.getItem('risk_last_summary') || 'null'); } catch (e) { return null; } },
     render: function () {
       var host = document.getElementById('risk-source-list');
       if (!host) return;
@@ -156,7 +160,22 @@
         + '<span style="color:#64748b;">天气站名</span>'
         + '<input id="risk-weather-station" type="text" placeholder="如：金昌" style="width:76px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.7rem;">'
         + '</label>';
+      // 【2026-10-09 第二批·结构化卡片】实测输出是自由长文 ⇒ 风险点散在段落里、等级/依据/措施不成组，没法当清单用。
+      //   开关默认开：开启后每个风险点按"等级（可能性×后果）+ 依据（逐条标来源）+ 措施四要素"固定骨架成文。
+      var structOn = true;
+      try { structOn = localStorage.getItem('risk_struct_on') !== '0'; } catch (e) { structOn = true; }
+      html += '<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;border-radius:12px;border:1px solid '
+        + (structOn ? '#86efac' : '#e2e8f0') + ';background:' + (structOn ? '#f0fdf4' : '#f8fafc') + ';">'
+        + '<input type="checkbox" id="risk-struct-chk"' + (structOn ? ' checked' : '') + ' style="margin:0;">'
+        + '<span style="color:' + (structOn ? '#166534' : '#94a3b8') + ';">结构化卡片</span></label>';
       host.innerHTML = html;
+      try {
+        var _sc = document.getElementById('risk-struct-chk');
+        if (_sc) _sc.addEventListener('change', function () {
+          try { localStorage.setItem('risk_struct_on', _sc.checked ? '1' : '0'); } catch (e) {}
+          window.RiskPanel.render();
+        });
+      } catch (e) {}
       // 站名回填 + 事件
       try {
         var st = localStorage.getItem('risk_weather_station') || '';
@@ -196,6 +215,37 @@
       });
     }
   };
+
+  // ---------- ③ 历史研判留存（供下次研判做"变化对比"）----------
+  //   做法：监听结果区 DOM 变化，**文本稳定 2 秒**后把"条件 + 结论摘要（前 800 字）"写入 localStorage。
+  //   为什么用 observer 而不是改 doubao.js：研判的结束点分散在多个分支（正常/中止/重试）里，
+  //   从"渲染侧"统一收口更稳，也不侵入主流程。
+  (function watchRiskReport() {
+    try {
+      var el = document.getElementById('risk-results');
+      if (!el) { setTimeout(watchRiskReport, 1200); return; }
+      var timer = null, lastLen = 0;
+      var obs = new MutationObserver(function () {
+        var txt = String(el.textContent || '');
+        if (txt.length < 200 || Math.abs(txt.length - lastLen) < 20) return;
+        lastLen = txt.length;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () {
+          var t2 = String(el.textContent || '');
+          if (t2.length < 200) return;
+          var cond = '';
+          try {
+            var g = function (id) { var e2 = document.getElementById(id); return e2 ? String(e2.value || '') : ''; };
+            cond = (g('risk-date-start') || '') + '~' + (g('risk-date-end') || '') + '｜' + (g('risk-unit') || '') + '｜' + (g('risk-focus') || '');
+          } catch (e) {}
+          try {
+            localStorage.setItem('risk_last_summary', JSON.stringify({ ts: new Date().toISOString(), cond: cond, text: t2.slice(0, 800) }));
+          } catch (e) {}
+        }, 2000);
+      });
+      obs.observe(el, { childList: true, subtree: true, characterData: true });
+    } catch (e) {}
+  })();
 
   // 面板可用时渲染一次；切到风险视图时由 doubao.js 再触发
   try {

@@ -6741,7 +6741,10 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           //   · 定档实测：`max_tokens=16384` **模型接受**（HTTP 200），思考开时 13s **一次成文** 1453 字。
           //   ⇒ 故研判上限提到 16384（省掉重试的那次白等）；仍保留"空正文降级重试"兜底
           //     （思考极长时仍可能吃光），并对"换模型后 16384 不被接受"做降级（见下方 400 分支）。
-          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 16384, stream: false };
+          // 【2026-10-09 效益优化⑤·流式输出】原来 `stream:false` ⇒ 首字可见性为 0（真机实测总耗时 56~72s 里
+          //   用户只看到"已等 Ns"）。改流式后：**正文一出现就增量渲染**，思考阶段显示"思考中·已思考 N 字"，
+          //   ⇒ 长报告也能立刻看到进展；「⏹ 停止研判」在流式下同样有效（AbortController 未变）。
+          var _riskBody = { model: model, messages: messages, temperature: 0.3, max_tokens: 16384, stream: true };
           var _riskThinking = false;
           if (typeof window.dsThinkingParam === 'function') {
             var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model });
@@ -6797,11 +6800,29 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
                 : ('请求失败（HTTP ' + (resp ? resp.status : '?') + '）' + (_edet ? '：' + _edet : '')));
             }
           }
-          var data = await resp.json();
-          var _msg0 = (data.choices && data.choices[0] && data.choices[0].message) || {};
-          var report = String(_msg0.content || '');
-          var _finish = String((data.choices && data.choices[0] && data.choices[0].finish_reason) || '');
-          var _rLen = String(_msg0.reasoning_content || '').length;
+          // 流式读取：正文增量实时渲染；思考阶段给"思考中"进度（长报告不再是黑屏等待）
+          var _onRiskDelta = function (full) {
+            try {
+              try { if (window._riskWaitTimer) { clearInterval(window._riskWaitTimer); window._riskWaitTimer = null; } } catch (e0) {}
+              var _hp = (typeof window.dsMarkdown === 'function')
+                ? window.dsMarkdown(full)
+                : ('<pre style="white-space:pre-wrap;">' + full.replace(/</g, '&lt;') + '</pre>');
+              container.innerHTML = _hp + '<span class="ds-cursor">▌</span>';
+              container.scrollTop = container.scrollHeight;
+            } catch (e) {}
+          };
+          var _onRiskThink = function (n, ms) {
+            try {
+              try { if (window._riskWaitTimer) { clearInterval(window._riskWaitTimer); window._riskWaitTimer = null; } } catch (e0) {}
+              container.innerHTML = '<div style="padding:18px;color:var(--text-secondary);line-height:1.9;">🧠 模型正在思考…'
+                + '（已 ' + Math.round(ms / 1000) + 's · 思考 ' + n + ' 字）<br>'
+                + '<span style="font-size:0.8rem;">思考型模型会先写完推理再输出正文，长报告可能需要 30~60s；正文一出现就会实时显示，可随时点「⏹ 停止研判」。</span></div>';
+            } catch (e) {}
+          };
+          var _st = await _riskReadStream(resp, _onRiskDelta, _onRiskThink);
+          var report = String(_st.content || '');
+          var _finish = String(_st.finish || '');
+          var _rLen = _st.reasoningLen || 0;
           // 【2026-10-09 真机修复·空正文自动降级重试】真机现象：思考型模型把输出预算全用在 reasoning 上 ⇒
           //   content 为空、finish_reason='length'，报告区空白（用户："跑了 30 多秒，报告还是无"）。
           //   处理（业界对"输出被推理吃光"的通行做法：**降级 + 明确格式**，而非直接报错）：
@@ -6923,9 +6944,11 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
               var _actWrap = document.createElement('div');
               _actWrap.id = 'risk-action-list';
               _actWrap.style.cssText = 'margin-top:14px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;';
-              var _hAct = '<div style="padding:8px 12px;background:var(--card-bg);border-bottom:1px solid #e2e8f0;font-size:0.82rem;font-weight:600;">📋 高优先整改清单（本地按台账生成 · 共 ' + _actRows.length + ' 项 · 优先级 = 性质权重 × 重复加成）</div>'
+              var _hAct = '<div style="padding:8px 12px;background:var(--card-bg);border-bottom:1px solid #e2e8f0;font-size:0.82rem;font-weight:600;">📋 高优先整改清单（本地按台账生成 · 共 ' + _actRows.length + ' 项'
+                + (window.__riskActionMeta && window.__riskActionMeta.merged ? ('，已合并 ' + window.__riskActionMeta.merged + ' 条重复记录') : '')
+                + ' · 风险指数 = 性质权重(后果) × 重复次数(可能性) × 涉及单位(扩散面)，0~100）</div>'
                 + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="background:var(--card-bg);">'
-                + ['#', '问题', '性质', '类别', '单位', '次数', '末次', '优先级'].map(function (t) {
+                + ['#', '问题', '性质', '类别', '单位', '次数', '末次', '风险指数'].map(function (t) {
                     return '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap;">' + t + '</th>';
                   }).join('')
                 + '</tr></thead><tbody>';
@@ -7056,16 +7079,122 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
        * 说明：重复归并按"归一化前 20 字符"（与数据段同一启发式，见【问题分类归集】），是刻意保守的近似，
        *   宁可少合并，也不把不同问题混成一条。
        */
+      /**
+       * 【2026-10-09 效益优化⑤·配套】研判流式读取
+       *   为什么不复用对话侧的 `_dsStreamChat`：它与气泡渲染/工具调用/媒体渲染深度耦合，研判只需要
+       *   "把 delta 拼起来 + 回调"这一件事 ⇒ 单独实现更小更可控，也不会误伤对话链路。
+       *   返回 { content, finish, reasoningLen }；环境不支持流式读取时**退回整体 JSON**（老行为，不降级功能）。
+       *   思考进度回调最多 1 秒一次（避免高频重排拖慢主线程）。
+       */
+      async function _riskReadStream(resp, onDelta, onThink) {
+        if (!resp || !resp.body || typeof resp.body.getReader !== 'function') {
+          try {
+            var d = await resp.json();
+            var c0 = (d.choices && d.choices[0]) || {};
+            var m0 = c0.message || {};
+            var _c = String(m0.content || '');
+            if (onDelta && _c) onDelta(_c);
+            return { content: _c, finish: String(c0.finish_reason || ''), reasoningLen: String(m0.reasoning_content || '').length };
+          } catch (e) { return { content: '', finish: '', reasoningLen: 0 }; }
+        }
+        var reader = resp.body.getReader();
+        var dec = new TextDecoder('utf-8');
+        var buf = '', content = '', reasoning = '', finish = '';
+        var t0 = Date.now(), lastThink = 0;
+        for (;;) {
+          var r = await reader.read();
+          if (r.done) break;
+          buf += dec.decode(r.value, { stream: true });
+          var lines = buf.split('\n');
+          buf = lines.pop();
+          for (var i = 0; i < lines.length; i++) {
+            var ln = String(lines[i]).trim();
+            if (!ln || ln.indexOf('data:') !== 0) continue;
+            var payload = ln.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            var j = null;
+            try { j = JSON.parse(payload); } catch (e2) { continue; }
+            var ch = (j.choices && j.choices[0]) || {};
+            var dl = ch.delta || {};
+            if (dl.content) { content += dl.content; if (onDelta) onDelta(content); }
+            if (dl.reasoning_content) {
+              reasoning += dl.reasoning_content;
+              var now = Date.now();
+              if (onThink && now - lastThink > 1000) { lastThink = now; onThink(reasoning.length, now - t0); }
+            }
+            if (ch.finish_reason) finish = String(ch.finish_reason);
+          }
+        }
+        return { content: content, finish: finish, reasoningLen: reasoning.length };
+      }
+
+      /**
+       * 【2026-10-09 效益优化②⑦】本地生成「高优先整改清单」（含重复识别与风险指数）
+       * 为什么本地做：清单是**可执行项**（谁、什么时限、达到什么标准），必须逐条准确、可导出；交给模型会漏条与编造。
+       *
+       * ⑦ 重复识别（"屡查屡犯"是安监最重要的洞察）：原来按"前 20 字符完全相同"分桶 ⇒ 同一问题只要措辞
+       *   有微小差异（带日期/序号/顿号）就被拆开、漏掉重复。现改为 **2-gram 集合的 Jaccard 相似度**
+       *   （业界常用、无需中文分词的稳定做法，已剔除数字与标点），阈值 **0.62** 判为同一问题；
+       *   性能上先按"前 6 字符"分桶、只在桶内比较，并对超大批量（>6000 条）退化为前缀桶，避免卡顿。
+       *
+       * ⑥ 风险指数（风险矩阵思想：后果 × 可能性 × 扩散面，归一化到 0~100）：
+       *   后果 = 性质权重（红线4/A3/B1.5/C0.5）；可能性 ≈ 重复次数（1+0.35·log2 n）；
+       *   扩散面 = 涉及单位数（1+0.12·(k-1)，跨单位同一问题说明是系统性问题）。
+       */
       function _buildRiskActionList(filtered) {
-        var groups = {}, order = [];
+        function _grams(t) {
+          var s = String(t || '').replace(/[\s，。、；：,.;:!?！？（）()\[\]【】《》"'“”‘’\d]/g, '');
+          var m = {};
+          for (var i = 0; i + 2 <= s.length; i++) m[s.substr(i, 2)] = 1;
+          if (!Object.keys(m).length && s) m[s] = 1;
+          return m;
+        }
+        function _jac(a, b) {
+          var ka = Object.keys(a);
+          if (!ka.length) return 0;
+          var inter = 0;
+          for (var i = 0; i < ka.length; i++) if (b[ka[i]]) inter++;
+          var un = ka.length + Object.keys(b).length - inter;
+          return un ? (inter / un) : 0;
+        }
+        var W = { '红线': 4, 'A': 3, 'B': 1.5, 'C': 0.5, '其他': 0 };
+        var list = [], buckets = {};
+        var _big = (filtered || []).length > 6000;
+        var _merged = 0;
         (filtered || []).forEach(function (d) {
           var text = String(d.content || '').replace(/\s+/g, ' ').trim();
           if (!text) return;
-          var key = text.slice(0, 20);
-          if (!groups[key]) { groups[key] = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '' }; order.push(key); }
-          var g = groups[key];
-          g.n++;
           var q = (typeof window.dsNormQuality === 'function') ? window.dsNormQuality(d['性质']) : String(d['性质'] || '其他');
+          var g = null;
+          if (_big) {
+            // 超大批量：退化为前缀桶（保证不卡顿；如实记在 __riskActionMeta.degraded）
+            var bk0 = text.slice(0, 20);
+            var c0 = buckets[bk0] || (buckets[bk0] = []);
+            g = c0[0] || null;
+            if (!g) { g = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '' }; list.push(g); c0.push(g); }
+          } else {
+            // 【⑦ 分组】与**已有分组**比相似度（组数远小于记录数，一次研判最多几百组 ⇒ 比较量可控且准确）：
+            //   比"先按前缀分桶再比"更可靠 —— 前缀桶会把"接触网作业未设防护"与"作业未设防护（接触网）"
+            //   这类措辞不同、实为同一问题的记录拆开（那正是"屡查屡犯"最容易漏掉的情形）。
+            var _G = _grams(text);
+            if (list.length <= 800) {
+              var _best = null, _bestJ = 0;
+              for (var i = 0; i < list.length; i++) {
+                var _j = _jac(list[i]._G, _G);
+                if (_j > _bestJ) { _bestJ = _j; _best = list[i]; }
+              }
+              if (_best && _bestJ >= 0.62) g = _best;
+            } else {
+              var _bk = text.slice(0, 6), _c = buckets[_bk] || (buckets[_bk] = []);
+              for (var i2 = 0; i2 < _c.length; i2++) { if (_jac(_c[i2]._G, _G) >= 0.62) { g = _c[i2]; break; } }
+            }
+            if (!g) {
+              g = { text: text, n: 0, qs: {}, cats: {}, units: {}, last: '', _G: _G };
+              list.push(g);
+            }
+          }
+          if (g.n > 0) _merged++;
+          g.n++;
           g.qs[q] = (g.qs[q] || 0) + 1;
           var c = String(d.category || ''); if (c) g.cats[c] = (g.cats[c] || 0) + 1;
           var u = String(d.unit || d.department || '').trim(); if (u) g.units[u] = (g.units[u] || 0) + 1;
@@ -7073,20 +7202,22 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           if (dt > g.last) g.last = dt;
           if (text.length > g.text.length) g.text = text;   // 保留最完整的一条作为清单文本
         });
-        var W = { '红线': 4, 'A': 3, 'B': 1.5, 'C': 0.5, '其他': 0 };
-        var rows = [];
-        order.forEach(function (k) {
-          var g = groups[k];
+        var rows = list.map(function (g) {
           var qTop = Object.keys(g.qs).sort(function (a, b) { return (W[b] || 0) - (W[a] || 0) || g.qs[b] - g.qs[a]; })[0] || '其他';
-          rows.push({
+          var _base = (W[qTop] || 0) / 4;
+          var _freq = 1 + 0.35 * (Math.log(Math.max(1, g.n)) / Math.LN2);
+          var _spread = 1 + 0.12 * Math.max(0, Object.keys(g.units).length - 1);
+          return {
             text: g.text, n: g.n, q: qTop,
             cat: Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || '',
             unit: Object.keys(g.units).sort(function (a, b) { return g.units[b] - g.units[a]; })[0] || '',
+            unitN: Object.keys(g.units).length,
             last: g.last.slice(0, 10),
-            score: (W[qTop] || 0) * (1 + 0.35 * (Math.log(Math.max(1, g.n)) / Math.LN2))
-          });
+            score: Math.round(Math.min(100, _base * _freq * _spread * 33) * 10) / 10
+          };
         });
         rows.sort(function (a, b) { return b.score - a.score || (b.last > a.last ? 1 : a.last > b.last ? -1 : 0); });
+        try { window.__riskActionMeta = { merged: _merged, groups: rows.length, degraded: _big }; } catch (e) {}
         return rows.slice(0, 15);
       }
 

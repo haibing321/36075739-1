@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261009211206';
+var CACHE_VERSION = '20261009221923';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -75,6 +75,22 @@ var PRECACHE_URLS = [
   './src/js/modules/backup.js',
   './src/js/modules/page-state.js',
   './src/js/modules/unified-enhancements.js',
+  // ==== 【2026-10-09 P0·离线兜底】这几处是"按需 requireLib 加载"的模块/门禁，原先**不在任何静态清单**里：
+  //   只有 install 时解析 index.html 才会顺带缓存到，一旦那次解析漏了或首次安装后立刻断网，
+  //   离线打开就会出现"功能在、脚本没有"。现在显式列进静态预缓存，与 index.html 的引用一一对应。
+  './src/js/offline-gate.js',
+  './src/js/modules/import-layout.js',
+  './src/js/modules/ofd-import.js',
+  './src/js/modules/format-convert.js',
+  './src/js/modules/risk-factors.js',
+  // ==== 【2026-10-09 P0·离线首用】4 个"高频功能依赖"的库改为随安装预缓存 ====
+  //   原来只靠 WARM_CDN_URLS 在 activate 后延时 8s 预热（失败静默）⇒ "首次安装后立刻断网"时，
+  //   规章导入(PDF)/资料导入(Word/Excel) 必然走到 504 降级路径。这几个是离线场景的硬依赖，故提前缓存。
+  //   （其余更大的库仍按需 + 预热，避免安装期下载量过度膨胀。）
+  './src/js/vendor/pdf.min.js',
+  './src/js/vendor/pdf.worker.min.js',
+  './src/js/vendor/mammoth.browser.min.js',
+  './src/js/vendor/xlsx.full.min.js',
   './version.json'
 ];
 

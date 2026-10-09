@@ -1445,7 +1445,9 @@
                                     + '</div>';
                             } else {
                                 // 照片：时间戳已烧录在图像内
-                                mediaHtml = '<img src="' + url + '" style="max-width:100%;max-height:300px;border-radius:6px;margin:4px 0;cursor:pointer;" onclick="window.open(this.src)" />';
+                                // 【2026-10-09 P0·安全】裸 window.open 会让新窗口通过 window.opener 反向操作本页
+                                //   （经典 tabnabbing 面）⇒ 明确 noopener，并再置一次 opener=null 双保险。
+                                mediaHtml = '<img src="' + url + '" style="max-width:100%;max-height:300px;border-radius:6px;margin:4px 0;cursor:pointer;" onclick="var w=window.open(this.src,\'_blank\',\'noopener\');try{if(w)w.opener=null;}catch(e){}" />';
                             }
                             html = html.replace(rep.fullTag, mediaHtml);
                         }

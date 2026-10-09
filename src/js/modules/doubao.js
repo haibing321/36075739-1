@@ -2033,13 +2033,15 @@
                 if (!frame) return;
                 // sandbox 是这里唯一能加的安全防线：跨域本身已隔离 DOM/Cookie，
                 // 但**不给 allow-top-navigation** 才能挡住内嵌页面把整个应用顶层跳转到钓鱼站。
-                // 【2026-10-09 P0·安全加固】这里的目标是**用户/AI 给出的任意 https 链接**（不可信），
-                //   故**去掉 allow-same-origin**：否则内嵌页面保持自身源、可读写自身 Cookie/localStorage，
-                //   被利用面明显更大；去掉后它落在 opaque origin 里，只能渲染内容。
-                //   代价：需要登录态的站点在内嵌视图里会受影响 ⇒ 已有「🌐 浏览器打开」入口兜底。
-                //   也刻意不给 allow-popups-to-escape-sandbox / allow-top-navigation（防逃逸与顶层劫持）。
+                // 【2026-10-09 P0·安全加固 + 同日修正】
+                //   原做法（去掉 allow-same-origin）在**真机上表现为"很多网页打不开"**：需要登录态的站点
+                //   在 opaque origin 里连自己的 Cookie 都读不到 ⇒ 页面直接报错/空白（用户："失败了"）。
+                //   ⇒ 改为**功能优先**：恢复 allow-same-origin（跨域本身已隔离父页 DOM/Cookie），
+                //     但**坚守真正有价值的那条**：不给**裸** allow-top-navigation ⇒ 内嵌页无法把整个应用
+                //     顶层跳去钓鱼站（用户主动点击的跳转仍允许，因为那是用户自己的意图）。
+                //   仍不给 allow-popups-to-escape-sandbox（逃逸口），需要弹窗登录的场景由上面的豆包 iframe 单独放宽。
                 try {
-                    frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-downloads allow-modals');
+                    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals');
                 } catch (e) {}
                 dsEmbedStatus('正在加载…', false);
                 var settled = false;

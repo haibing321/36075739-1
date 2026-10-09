@@ -1005,7 +1005,7 @@
 
                     <!-- 豆包网页版嵌入（API未配置时显示） -->
                     <div id="doubao-webview" style="display:none;flex-direction:column;min-height:600px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
-                        <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:82vh;border:none;" title="豆包网页版" allow="compute-pressure" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"></iframe>
+                        <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:82vh;border:none;" title="豆包网页版" allow="compute-pressure" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-top-navigation-by-user-activation"></iframe>
                         <div style="text-align:center;padding:8px;font-size:0.75rem;color:var(--text-secondary);background:#f8fafc;">
                             ⚠️ 豆包网页版为第三方服务。如需使用本地智能助手，请<button id="quick-config-btn" style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:2px 10px;margin:0 4px;cursor:pointer;font-size:0.75rem;">点击配置 API Key</button>。
                         </div>
@@ -1452,7 +1452,7 @@
 
                     <!-- === 豆包网页版子模块 === -->
                     <div id="ds-sub-doubao" style="display:none;flex-direction:column;min-height:600px;border-radius:12px;overflow:hidden;border:1px solid var(--border);flex:1;">
-                        <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:100%;border:none;flex:1;" title="豆包网页版" allow="compute-pressure" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"></iframe>
+                        <iframe src="about:blank" data-src="https://www.doubao.com/chat/" style="width:100%;height:100%;border:none;flex:1;" title="豆包网页版" allow="compute-pressure" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-top-navigation-by-user-activation"></iframe>
                         <div style="text-align:center;padding:6px;font-size:0.72rem;color:var(--text-secondary);background:#f8fafc;">
                             ⚠️ 豆包网页版为第三方服务
                         </div>
@@ -2256,7 +2256,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.58</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.59</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2305,7 +2305,7 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.58 近期更新</span>
+                    <span>v4.59 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <b>修「风险研判里"筛选后无数据（实际有）"」</b>：台账的日期格式很杂（<code>2026/9/3</code>、<code>2026.09.03</code>、<code>2026年9月3日</code>、Excel 日期序列号…），原实现只要<b>解析不了就把该条当作"不符合条件"丢掉</b> ⇒ 界面上显示"筛选后 0 条"、而库里明明有数据。现改为<b>宽容解析</b>（覆盖 6 类常见格式），<b>解析不了的记录不再被排除</b>，并在预览里如实标注「（含 N 条日期无法识别，未排除）」。</span></div>
@@ -2325,8 +2325,9 @@
 
                 <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">📄</span><span>📄 <b>PDF / OFD 的表格改为"跳过、只导文字"</b>（按你确定的口径）：导入时<b>不再尝试还原行列</b>，表格内容不进入正文，只保留表格外的文字；导入结果会<b>如实告诉你跳过了几张表</b>。⚠️ <b>DOCX 导入不受影响</b>（它的表格还原是正确的）—— 需要表格本身时请用 <b>DOCX</b> 格式导入。另外修掉：正文段落<b>不再被误判成表格</b>。</span></div>
                 <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📐</span><span>📐 <b>PDF 表格改用"表格线"还原</b>：不再靠文字猜行列 —— 直接读 PDF 的表格框线（矢量线）算出真实网格，按格归位。真机实测你那份"两行标题"的表：原来被拆成 <b>12×6 + 22×8</b> 两张错表，现在一键还原成 <b>8 行 × 7 列</b>（与原文一致，单元格内折行也不再拆行）。扫描件（无框线）仍按"只导文字"兜底，导入时会如实告知。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🧮</span><span>🧮 <b>合并单元格（跨列大标题）也能还原了</b>：像附件8 的「缺陷性质」横跨两格，过去会被拆成「缺陷」「性质」两个小格；现在按<b>表格线证据</b>判定——该行此处没有竖线，就说明原文是合并单元格——自动合回一格。导出 Excel 时是真正的单元格合并，且正常数据行（有竖线）绝不受影响。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🛡️</span><span>🛡️ <b>安全与首屏兜底（P0）</b>：① 内嵌网页/第三方页面/视频播放器全部加<b>沙箱</b>并禁用「顶层跳转」——内嵌任意网页时不再给它同源权限（需要登录态的站点请点右上角「🌐 浏览器打开」）；② 首屏交互锁<b>最多 4 秒自动解除</b>：以前弱网/离线时会出现「界面已经在了、点任何按钮都没反应」，现在有 4s/7s/load/pageshow 四条自恢复路径；③ 导航按钮加了兜底，模块没加载完也能切页且有反馈，模块就绪后自动补齐；④ 组件加载失败会<b>列出具体文件名</b>且不再自动消失；⑤ 关键离线组件（PDF/Word/Excel 解析）随安装预缓存。</span></div>
+                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🧮</span><span>🧮 <b>合并单元格（跨列大标题）也能还原了</b>：像附件8 的「缺陷性质」横跨两格，过去会被拆成「缺陷」「性质」两个小格；现在按<b>表格线证据</b>判定——该行此处没有竖线，就说明原文是合并单元格——自动合回一格。导出 Excel 时是真正的单元格合并，且正常数据行（有竖线）绝不受影响。</span></div>
+
+                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🛡️</span><span>🛡️ <b>安全与首屏兜底（P0）</b>：① 内嵌网页/第三方页面/视频播放器全部加<b>沙箱</b>并禁用「非用户触发的顶层跳转」（登录/点击跳转正常可用）——内嵌任意网页时不再给它同源权限（已按功能优先放宽：需要登录的站点照常可用）；② 首屏交互锁<b>最多 4 秒自动解除</b>：以前弱网/离线时会出现「界面已经在了、点任何按钮都没反应」，现在有 4s/7s/load/pageshow 四条自恢复路径；③ 导航按钮加了兜底，模块没加载完也能切页且有反馈，模块就绪后自动补齐；④ 组件加载失败会<b>列出具体文件名</b>且不再自动消失；⑤ 关键离线组件（PDF/Word/Excel 解析）随安装预缓存。</span></div>
                 <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🔎</span><span>🔎 <b>检索更准了 + 智能体会总结教训了</b>：① <b>检索改写层（默认关闭）</b>（去掉"帮我查一下/有没有"这类噪声词，只留单位、设备、专业、时间等实体）——用真数据 A/B 实测（30 条真实样本）它对规章召回是<b>负收益</b>（Recall@10 86.7% → 70.0%）：本库靠"描述原文与规章正文的用词重合"命中，压缩成关键词反而丢掉证据 ⇒ <b>默认不启用</b>（可在 设置 → 知识库 用 <code>kb_rewrite=1</code> 试开）；② <b>智能体任务结束后会自动复盘</b>：总结"哪里做得好／踩了什么坑／下次怎么做"，下次同类任务启动时作为「历史经验」注入（≤300 字），越用越顺手；可在设置里用 <code>agent_reflect=0</code> 关闭。</span></div>
                 <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">📄</span><span>📄 <b>修 PDF 导入的表格</b>：① 一个单元格里被折行排版的多行文字，原来导出后会变成好几行（其他列空着）—— 现在会<b>并回同一格、按原表分行</b>（单格折行、以及"第一列为空的多格折行"都覆盖）；② 正文段落<b>不再被误判成表格</b>（新增"多格行占比"判据：真表格的绝大多数行都填满多列，正文段落多为整段一块）。</span></div>
                 <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">📄</span><span>📄 <b>修 PDF 导入的表格行</b>：原来一个单元格里被折行排版的多行文字，导出后会变成好几行（其他列空着）。现在会按<b>原表分行</b>还原 —— 单元格内的折行<b>并回同一格</b>，行数与原表一致（同时保留"小计/备注"等真正的单列行，不会被误并）。</span></div>

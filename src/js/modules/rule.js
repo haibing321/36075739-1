@@ -1168,7 +1168,18 @@
                                 //   ③ 丢弃倾斜水印行；
                                 //   ④ 跨页剔除页码（"—— 1 ——"）、重复页眉页脚（"LZG/GW213 - 2026"）、
                                 //      打印水印戳（"10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"）。
+                                // 【2026-10-09 用户决策·"遇到表格就跳过，只导出文字"】PDF 导入时开启跳过开关
+                                //   （表格内容不进正文；结果提示里如实报告跳过了多少张表）
+                                try { window.__pdfSkipTables = true; window.__pdfSkippedTables = 0; } catch (e) {}
                                 _pdfDoc = _lay.buildDocument(_items);
+                                try { window.__pdfSkipTables = false; } catch (e) {}
+                                try {
+                                    if (window.__pdfSkippedTables) {
+                                        successNotes.push(file.name + '：已按设置**跳过 ' + window.__pdfSkippedTables
+                                            + ' 张表格**（当前口径为"只导文字"，PDF/OFD 的表格内容不导入；'
+                                            + '如需表格本身，请改用 DOCX 格式导入）');
+                                    }
+                                } catch (e) {}
                                 // 【2026-10-05 用户需求】导入时自动去掉各种水印与"内部资料 不得外传"字样。
                                 //   与 OFD / DOCX 共用 ImportLayout 的水印清洗（整行水印删掉、长行内水印只记录不删）。
                                 if (_lay.stripWatermarkBlocks) {

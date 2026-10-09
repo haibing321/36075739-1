@@ -298,7 +298,8 @@
             if (_st.removed && _st.removed.length) for (var _ri = 0; _ri < _st.removed.length; _ri++) removed.push(_st.removed[_ri]);
             if (_lay.buildFromPageLines) {
                 // PDF 的全套处理（跨页段落合并 + 公文体例 + 表格还原）走**同一个**入口，避免两套实现漂移
-                var _built = _lay.buildFromPageLines(pageLines);
+                // 【2026-10-09 用户决策】OFD 与 PDF 同链路 ⇒ 同样"跳过表格、只导文字"（见 import-layout 的 skipTables）
+                var _built = _lay.buildFromPageLines(pageLines, { skipTables: true });
                 text = _built.text;
                 blocks = _built.blocks || [];
                 paragraphs = _built.paragraphs || [];

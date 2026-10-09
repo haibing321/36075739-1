@@ -67,7 +67,15 @@
     var L = window.ImportLayout;
     if (!okL || !L || typeof L.buildDocument !== 'function') return { ok: false, note: '版式还原组件未就绪' };
     var r = null;
-    try { r = L.buildDocument(pages); } catch (e) { return { ok: false, note: '版式还原失败：' + ((e && e.message) || e) }; }
+    // 【2026-10-09 用户决策】PDF/OFD 转换同样"跳过表格、只导文字"（用户口径：遇到表格就过，只导出文字部分）
+    try { window.__pdfSkipTables = true; } catch (e) {}
+    try {
+      r = L.buildDocument(pages);
+    } catch (e) {
+      return { ok: false, note: '版式还原失败：' + ((e && e.message) || e) };
+    } finally {
+      try { window.__pdfSkipTables = false; } catch (e) {}
+    }
     var blocks = (r && r.blocks) || [], removed = 0;
     try {
       if (typeof L.stripWatermarkBlocks === 'function') {

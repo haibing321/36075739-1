@@ -817,7 +817,24 @@
                     for (var _mr = 0; _mr < region.length; _mr++) if (region[_mr] && region[_mr].length >= 2) _multiRows++;
                     var _multiRatio = region.length ? (_multiRows / region.length) : 0;
                     if (aligned >= 3 && looksTable && medLen <= 12 && !hasHeadLine && _multiRatio >= 0.5) {
+                        // 【2026-10-09 用户决策·"遇到表格就跳过，只导出文字"】
+                        //   用户原话："感觉表格很难，要不不要表格了，遇到表格就过，只导出文字部分"。
+                        //   （已如实告知后果：他给的《接触网维修规则》附件8 那份 PDF，**表格外只有 3 行文字**，
+                        //     核心诊断判据全在表里 ⇒ 跳过意味着这份 PDF 导不进实质内容。用户知情后仍选择跳过。）
+                        //   实现：跳过开关由**调用方**给（PDF/OFD 导入路径开启；ImportLayout 自身默认保持还原能力，
+                        //     这样既有套件（表格还原断言）不受影响，也便于以后"表格线方案"成熟后一键切回）。
+                        //   跳过时会累计 window.__pdfSkippedTables / __pdfSkippedRows，供导入提示如实报告。
+                        var _skipTbl = (opts && opts.skipTables === true);
+                        if (!_skipTbl) { try { _skipTbl = (window.__pdfSkipTables === true); } catch (e) {} }
                         flushPending();
+                        if (_skipTbl) {
+                            try {
+                                window.__pdfSkippedTables = (window.__pdfSkippedTables || 0) + 1;
+                                window.__pdfSkippedRows = (window.__pdfSkippedRows || 0) + (j - i + 1);
+                            } catch (e) {}
+                            i = j;
+                            continue;
+                        }
                         // 【2026-10-07 用户报「表格列错位」】列定义改用"**单元格区间**"（见 columnsFromCells）：
                         //   旧法按"单元格起点 x"单点聚类 ⇒ 居中/右对齐的格子里文字起点被推到格内偏移处，
                         //   同一列会分裂成多列（真机：4 列的表撑成 9 列、前两列全空、内容像"缩进"）。
@@ -837,38 +854,14 @@
                             return Math.min(best, cols - 1);
                         };
                         var grid = [];
-                        // 【2026-10-09 真机修复·主判据 = **行距**】用户提供的 PDF（《高速铁路接触网运行维修规则》
-                        //   附件 8 那张"两行标题"的表）实测出**双峰行距**：同一逻辑行内的折行间距 ≈ **6.8**，
-                        //   逻辑行之间 ≈ **13.6~14.2**（1 个页面上 40 个间距里两档泾渭分明）。
-                        //   ⇒ 用"该行与上一行的 y 差 < 1.4 × 中位行距"判为**续行**：与文字内容无关、可靠、可解释。
-                        //   为什么必须有它：这张表是"**每一列都被逐字折行**"（"电气设备"/"与金属部"/"件的连接"分三行），
-                        //   此前只看文本特征（单格行 / 第一列为空）根本覆盖不到 ⇒ 一张 7 行的表被拆成 34 行、还裂成两张。
-                        // ⚠️ 层级别写错：region 元素 = 该视觉行的**格子数组**，格子 = **块数组** ⇒ y 在 rr[0][0].y。
-                        //   （第一版误写成 rr[0].y ⇒ 全是 null ⇒ 行距判据静默失效，只靠次判据偶合了几行。）
-                        var _ys = region.map(function (rr) {
-                            try {
-                                for (var _zi = 0; _zi < rr.length; _zi++) {
-                                    if (rr[_zi] && rr[_zi][0] && typeof rr[_zi][0].y === 'number') return rr[_zi][0].y;
-                                }
-                                return null;
-                            } catch (e) { return null; }
-                        });
-                        var _dgaps = [];
-                        for (var _gi = 1; _gi < _ys.length; _gi++) {
-                            if (_ys[_gi] != null && _ys[_gi - 1] != null) _dgaps.push(Math.abs(_ys[_gi - 1] - _ys[_gi]));
-                        }
-                        _dgaps.sort(function (a, b) { return a - b; });
-                        // 【2026-10-09 修正 3】基准改用 **10 分位间距**（≈"最小的常见间距"，抗单点噪声）：
-                        //   同一逻辑行内的折行间距**就是**该区域里最小的常见间距；逻辑行间距约为它的 2 倍。
-                        //   阈值 = 1.5 × 10分位 ⇒ 实测该表：10 分位≈6.7、阈值≈10.1，正好把 6.8 与 13.6~14.2 两簇分开。
-                        //   （前两版分别用"中位数""下四分位""字号"，都会随段落构成或字号口径漂移，把逻辑行一起吞掉。）
-                        //   双峰校验 `最大间距 > 1.8×基准` 保证确实存在"折行簇 + 逻辑行簇"才启用（2 行表不动）。
-                        var _base10 = _dgaps.length ? _dgaps[Math.max(0, Math.floor((_dgaps.length - 1) * 0.1))] : 0;
-                        var _gmax2 = _dgaps.length ? _dgaps[_dgaps.length - 1] : 0;
-                        var _gapOn = (_dgaps.length >= 3 && _base10 > 0 && _gmax2 > _base10 * 1.8);
-                        var _medGap = _gapOn ? (_base10 * 1.5) : 0;
-                        try { window.__tblGapDiag = (window.__tblGapDiag || []).concat([{ col: cols, base: _base10, gmax: _gmax2, thr: _medGap, on: _gapOn, rows: region.length }]); } catch (e) {}
-                        region.forEach(function (r, _mi) {
+                        // 【2026-10-09 说明·为什么这里**没有**行距判据】曾按用户提供的 PDF 实测出"双峰行距"
+                        //   （折行间距 ≈6.8 / 逻辑行间距 ≈13.6~14.2）并实现了"行距 < 1.5×10分位 ⇒ 续行"，
+                        //   但**被实测否决**：该表每一列都被逐字折行，"逻辑行间距"在某些段落并不稳定超过阈值，
+                        //   单靠行距会把相邻逻辑行一起吞掉（曾把整张表并成 1~2 行，比原问题更糟，
+                        //   并被既有套件 A⑮/A⑰/A⑱/A⑳/A㉑/A㉒ 与 pdf⑦⑧⑨ 当场抓出）⇒ **已完全撤销**。
+                        //   现在只保留**文本侧**判据（见下：单格行 / 第一列为空的多格行）；彻底解决要靠解析
+                        //   PDF 的**表格线**（矢量线）——见文件末尾 TODO。
+                        region.forEach(function (r) {
                             var line = [];
                             for (var c2 = 0; c2 < cols; c2++) line.push('');
                             r.forEach(function (c) {
@@ -880,60 +873,27 @@
                             // 【2026-10-07】"单格且很短"的行 = 竖排字的续行 ⇒ 回溯接进该列**最近一次有内容**的
                             //   单元格，不再单独占一行（否则表里会多出"确""报"这类碎片行）。
                             //   限 ≤4 字 ⇒ 不会把成段的正文行误并进上一格。
-                            // 【2026-10-09 真机修复·"单元格内折行被拆成表格行"】用户报：PDF 导入后导出的表格
-                            //   行不对 —— 一个单元格里原本有多行文字，导出后变成多行、其他列为空。
-                            //   真因：本段是"一个视觉行 = 一个表格行"（下面 grid.push(line)），而 PDF 里**被折行
-                            //   排版的单元格本来就是多个视觉行** ⇒ 逐行 push 就把它拆开了（其他列在那些行是空的）。
-                            //   判据（保守，宁可少合并也不错合）——满足以下**全部**才视为上一行该格的续行：
-                            //     ① 该行**只有一个格子有内容**（真实数据行至少两列有值）；
-                            //     ② 表格列数 ≥ 2；
-                            //     ③ **上一行**同一列非空（说明那一格的文字还没写完）——只并"紧邻上一行"，
-                            //        不跨越更早的行（跨行合并最容易把"小计/备注"这类单列行错吞）；
-                            //     ④ 该行不是"新行特征"：圈号/括号序号/阿拉伯数字序号/合计·小计·总计·注 开头
-                            //        （这些是真正的单列行）。
-                            //   另保留原有"单格 ≤4 字"判据（专治竖排字碎片"确""报"，它对更早的行做回溯）。
-                            // 【2026-10-09 真机修复·"单元格内折行被拆成表格行"】用户真机：实际 **7 行**的表
-                            //   导出后变成 9~10 行（"第 93/94/95" 就是凭空多出来的行）。真因：本段是
-                            //   "一个视觉行 = 一个表格行"（下面 grid.push(line)），而 PDF 里被折行排版的
-                            //   单元格本来就是多个视觉行 ⇒ 被逐行拆开（其他列在那些行是空的）。
-                            //   判据（保守，宁可少合并也不错合）—— 满足其一即视为**上一行该格的续行**，并回不新增行：
-                            //     a) 该行**只有 1 个格子**有内容（含原"≤4 字竖排碎片"情形）；
-                            //     b) 该行**第一列（序号列）为空**，且**所有非空列在紧邻上一行都有内容**
-                            //        （折行时若其它列也被填入文字，靠这条兜住；真实数据行的第一列必有值）；
-                            //   共同否决：以"圈号/括号序号/阿拉伯数字序号/合计·小计·总计·注/备注"开头
-                            //     ⇒ 那是真正的单列行（小计、说明），不得并入。
-                            if (grid.length) {
+                            // 【2026-10-09 · 已撤销"单元格折行自动归并"的尝试（原因如实记录）】
+                            //   用户报"实际 7 行的表被拆成多行"，我据此先后加过三轮判据（单格行 / 第一列为空 / 行距双峰），
+                            //   全部**被实测否决**：
+                            //     · 行距版：把相邻逻辑行一起吞掉（整表并成 1~2 行）；
+                            //     · "第一列为空"版：遇到**列偏移**（第一列内容被归到第 2 列）时大面积误判 ⇒ 同样并成 1 行；
+                            //   均被既有套件 A⑮/A⑰/A⑱/A⑳/A㉑/A㉒ 当场抓到（41/47）。
+                            //   ⇒ 结论：仅凭"文字行"无法稳定还原这种"每一列都被逐字折行"的表；**已全部撤销**，
+                            //     恢复保守行为（只处理"单格 ≤4 字"的竖排碎片，绝不合并成段文字）。
+                            //   ⇒ 产品口径已由用户确定：**PDF/OFD 的表格直接跳过、只导文字**（见上方 skipTables）；
+                            //     彻底还原需解析 PDF 的**表格线**（矢量线）——见文件末尾 TODO。
+                            if (r.length === 1 && grid.length) {
                                 var _k = -1;
                                 for (var c3 = 0; c3 < cols; c3++) if (line[c3]) { _k = c3; break; }
-                                var _firstColEmpty = (_k > 0);   // 第一列（序号列）为空 ⇒ 折行的常见信号
-                                if (_k >= 0) {
-                                    var _txt2 = String(line[_k]);
-                                    var _newRowLike = /^[（(]?[一二三四五六七八九十百0-9①-⑳]+[、.．）)]/.test(_txt2)
-                                        || /^(合计|小计|总计|共计|注[:：]|备注)/.test(_txt2);
-                                    var _prevRow = grid[grid.length - 1];
-                                    // 主判据：行距（同一逻辑行内的折行间距明显小于逻辑行之间，见上方 _medGap 说明）
-                                    var _isContGap = (_mi > 0 && _medGap > 0 && _ys[_mi] != null && _ys[_mi - 1] != null
-                                        && Math.abs(_ys[_mi - 1] - _ys[_mi]) < _medGap * 1.4);
-                                    var _cont = false;
-                                    if (!_newRowLike && _prevRow) {
-                                        if (_isContGap) _cont = true;
-                                        else if (_firstColEmpty || _txt2.length <= 4) {
-                                            // 次判据（文本侧）：第一列为空 / 极短竖排碎片，且非空列在上一行都有内容
-                                            var _allInPrev = true;
-                                            for (var c4 = 0; c4 < cols; c4++) { if (line[c4] && !_prevRow[c4]) { _allInPrev = false; break; } }
-                                            if (_allInPrev) _cont = true;
+                                if (_k >= 0 && String(line[_k]).length <= 4) {
+                                    for (var g3 = grid.length - 1; g3 >= 0; g3--) {
+                                        if (grid[g3][_k]) {
+                                            var _a = String(grid[g3][_k]), _b = String(line[_k]);
+                                            var _sp = (/[\u4e00-\u9fff]$/.test(_a) && /^[\u4e00-\u9fff]/.test(_b)) ? '' : ' ';
+                                            grid[g3][_k] = _a + _sp + _b;
+                                            return;                       // 已并入，不新增行
                                         }
-                                    }
-                                    if (_cont) {
-                                        var _a = String(_prevRow[_k]), _b = _txt2;
-                                        var _sp = (/[\u4e00-\u9fff]$/.test(_a) && /^[\u4e00-\u9fff]/.test(_b)) ? '' : ' ';
-                                        _prevRow[_k] = _a + _sp + _b;
-                                        // 续行可能"每列都是碎片" ⇒ 把其余非空列也分别并回上一行对应格（行结构不散）
-                                        for (var c5 = 0; c5 < cols; c5++) {
-                                            if (c5 === _k || !line[c5]) continue;
-                                            _prevRow[c5] = _prevRow[c5] ? (String(_prevRow[c5]) + ' ' + String(line[c5])) : String(line[c5]);
-                                        }
-                                        return;                       // 已并入，不新增行
                                     }
                                 }
                             }

@@ -2256,7 +2256,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.59</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.60</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2305,7 +2305,12 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.59 近期更新</span>
+                    <span>v4.60 近期更新</span>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🔧</span><span><b>修「智能体的历史记忆 / 任务后反思在真机上一直没生效」</b>（真 bug）：记忆库打开时<b>版本号被写死</b>，而真机上的库早已升级到新版 ⇒ <b>每次打开都失败</b>、失败又被静默吞掉 —— 也就是"记住上次的经验""任务结束后自我总结""按任务检索历史经验"这些能力<b>等于从来没开过</b>。现已改为按<b>真实版本</b>打开；万一再失败会<b>明确提示</b>并说明原因，不再静默。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#16a34a;margin-top:1px;">⚡</span><span><b>智能体更省、更快</b>：请求前缀稳定化后实测<b>提示词缓存命中 57%~94%</b>（同样的活少花 token、首字更快）；<b>思考档位按任务难度自动分级</b> —— 简单任务不再一律"深思"，把时间花在真正需要推理的步骤上。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🧠</span><span>记忆改为<b>按相关度注入</b>：任务启动时挑<b>与当前任务最相关</b>的历史经验（不再只取"最近几条"，避免无关经验串味），并按任务去重，同一条经验不会反复刷屏。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">✅</span><span>新增智能体<b>任务级评测集</b>（8 个典型任务，含真实数据口径）：以后每次改智能体都能<b>量化验证效果</b>（本次 <b>8/8 通过</b>），不再靠"感觉好像好了"。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#2563eb;margin-top:1px;">🛡</span><span>P0 安全与首屏兜底的<b>守门套件</b>（22 项：iframe 沙箱 / CSP / 交互锁自恢复 / 导航兜底 / 离线预缓存）已纳入<b>月度自动回归</b>，防止以后的改动静默破坏安全与可交互底线。</span></div>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <b>修「风险研判里"筛选后无数据（实际有）"」</b>：台账的日期格式很杂（<code>2026/9/3</code>、<code>2026.09.03</code>、<code>2026年9月3日</code>、Excel 日期序列号…），原实现只要<b>解析不了就把该条当作"不符合条件"丢掉</b> ⇒ 界面上显示"筛选后 0 条"、而库里明明有数据。现改为<b>宽容解析</b>（覆盖 6 类常见格式），<b>解析不了的记录不再被排除</b>，并在预览里如实标注「（含 N 条日期无法识别，未排除）」。</span></div>

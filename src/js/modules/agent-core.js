@@ -1282,26 +1282,38 @@
     // 【2026-09-30】max_tokens 4000 → 6000：智能体要产出"多工具汇总 + 报告式回答"，4000 常在结尾被截断
     //   （对话侧 8192 起、风险研判 6000；思考模式下面另有 body.max_tokens = 8192 的抬升）。
     var body = { model: model, messages: messages, temperature: 0.3, max_tokens: 6000 };
+    // 【2026-10-10】本轮"最后一条 user 消息"文本：同时供「工具按意图召回」与「思考档位按难度分级」使用。
+    //   此前这段循环写在 if(withTools) 块内 ⇒ 思考分级取不到文本 ⇒ auto 档恒落 high（建议②的根因之一）。
+    var _lastUserText = '';
+    for (var _qi = messages.length - 1; _qi >= 0; _qi--) {
+      if (messages[_qi] && messages[_qi].role === 'user' && typeof messages[_qi].content === 'string') {
+        _lastUserText = messages[_qi].content; break;
+      }
+    }
     if (withTools) {
       // 【2026-10-06 工具按意图召回】用本轮**最后一条 user 消息**做意图匹配：
       //   命中 ⇒ 只挂「常驻核心 + 该组工具」（`__agentToolsPicked` 可核对）；
       //   未命中/无文本 ⇒ `_pickTools` 返回 null ⇒ `_toolsParam` 回退**全量**（不劣化）。
-      var _toolQuery = '';
-      for (var _qi = messages.length - 1; _qi >= 0; _qi--) {
-        if (messages[_qi] && messages[_qi].role === 'user' && typeof messages[_qi].content === 'string') {
-          _toolQuery = messages[_qi].content; break;
-        }
-      }
-      body.tools = _toolsParam(_toolQuery);
+      body.tools = _toolsParam(_lastUserText);
     }
     // 思考模式：跟随设置页开关（默认开）。开启后思维链占用生成预算、首 token 明显变慢，
     // 且 temperature 不再生效（官方行为）。非 DeepSeek 端点下该函数返回 {}，不会误传参数。
+    // 【2026-10-10 建议②·按难度分级】此前只传 {apiUrl, model} ⇒ dsThinkingParam 的 "auto" 档
+    //   因为**没有 text** 而恒落 effort='high'：连"你好""查一下电话"这类也在 high 思考（慢且贵）。
+    //   现在把本轮用户话术传进去（项目已有 dsAutoThinkingEffort：寒暄→off、轻量→low、多步推理→high）。
+    //   设置页选"始终开启/始终关闭"时该分级不生效（尊重用户设置，函数内部已处理）。
     var _agThinking = false;
     if (typeof window.dsThinkingParam === 'function') {
-      var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model });
+      var _tp = window.dsThinkingParam({ apiUrl: apiUrl, model: model, mode: 'auto', text: _lastUserText });
       Object.assign(body, _tp);
       _agThinking = !!(_tp.thinking && _tp.thinking.type === 'enabled');
       if (_agThinking) body.max_tokens = 8192;   // 预留思维链预算，避免最终回答被截断
+      try {
+        window.__agentThinking = {
+          enabled: _agThinking, effort: _tp.reasoning_effort || (_agThinking ? 'high' : 'off'),
+          textLen: String(_lastUserText || '').length
+        };
+      } catch (e) {}
     }
     var resp;
     var timeoutTimer;
@@ -1400,7 +1412,17 @@
     };
 
     var system = '你是铁路安监智能体，可调用下方 functions 操作本地数据（检查信息/规章制度/检查手册/事故案例/工作日志/天气）。\n';
-    // P1-9: 注入当前数据概览，减少盲搜轮次
+    // ============================================================================
+    // 【2026-10-10 建议①·prompt-cache 前缀稳定化】
+    //   问题：system 的**开头**就拼了数据概览与日期（每次任务都变），而 DeepSeek 的隐式前缀缓存
+    //   要求**前缀逐字节一致**才命中 ⇒ 之前几乎每轮都要重新计费整段 system（白花钱）。
+    //   做法：system 分两层 ——
+    //     · 稳定段（最前）：角色句 + 规则 1~18（纯静态常量，永不变）
+    //     · 动态段（后面）：数据概览 / 日期 / 同类历史 / 最近任务 / 界面上下文 / 偏好画像
+    //   证据：window.__agentSysParts.stableHash —— 同一进程内多次任务应完全相同；若变了会 console.warn。
+    // ============================================================================
+    var _dyn = '';   // 动态段（稍后拼到稳定段之后）
+    // P1-9: 注入当前数据概览，减少盲搜轮次（**属于动态段**，见上）
     try {
       var issCount = window.getIssueData ? window.getIssueData().length : 0;
       var ruleCount = window.getRulesData ? window.getRulesData().length : 0;
@@ -1415,20 +1437,20 @@
         var all = [].concat(window.getIssueData() || []); all.sort(function(a,b){ return (a.datetime||'').localeCompare(b.datetime||''); });
         issDates = '，日期范围 ' + (all[0] ? (all[0].datetime||'').slice(0,10) : '?') + ' ~ ' + (all[all.length-1] ? (all[all.length-1].datetime||'').slice(0,10) : '?');
       }
-      system += '当前数据：检查信息 ' + issCount + '条' + issDates + '，规章制度 ' + ruleCount + '条，检查手册 ' + hbCount + '条，事故案例 ' + accCount + '条，应急电话 ' + phoneCount + '个。\n';
+      _dyn += '当前数据：检查信息 ' + issCount + '条' + issDates + '，规章制度 ' + ruleCount + '条，检查手册 ' + hbCount + '条，事故案例 ' + accCount + '条，应急电话 ' + phoneCount + '个。\n';
       if (issCount > 0) {
         var uniqUnits = {}; var issues = window.getIssueData();
         issues.forEach(function(i){ if(i.unit) uniqUnits[i.unit]=1; });
         var unitList = Object.keys(uniqUnits);
-        if (unitList.length > 0 && unitList.length <= 20) system += '涉及单位：' + unitList.join('、') + '。\n';
+        if (unitList.length > 0 && unitList.length <= 20) _dyn += '涉及单位：' + unitList.join('、') + '。\n';
       }
-    } catch(e) { system += '数据量获取失败，请自行搜索。\n'; }
+    } catch(e) { _dyn += '数据量获取失败，请自行搜索。\n'; }
     // 【2026-09-21】注入"当前日期（含星期）"：统计类需求里"本月/上月/近一周"是高频词，
     //   智能体侧原先没有日期（普通对话有）→ 模型只能猜，两条链路口径不一致。
     try {
       var _nowD = new Date();
       var _wdCn = ['日', '一', '二', '三', '四', '五', '六'][_nowD.getDay()];
-      system += '当前日期：' + _nowD.getFullYear() + '-' + String(_nowD.getMonth() + 1).padStart(2, '0') + '-' + String(_nowD.getDate()).padStart(2, '0')
+      _dyn += '当前日期：' + _nowD.getFullYear() + '-' + String(_nowD.getMonth() + 1).padStart(2, '0') + '-' + String(_nowD.getDate()).padStart(2, '0')
         + '（星期' + _wdCn + '）。用户说"本月/上月/近一周"时以此推算，日期参数一律按 YYYY-MM-DD 传。\n';
     } catch (e) {}
     system += '规则：\n';
@@ -1456,12 +1478,36 @@
     // 【2026-09-30 用户要求】「事故案例」专用规则：它是与检查手册**平行**的第二份数据（不是手册的一部分），
     //   此前既无专用工具、提示词也不提 ⇒ 数据在本地但模型不会主动查（"有数据用不上"）。
     //   现在工具（search_accidents / get_accident_detail）、数据概览、本规则三处齐备。
-    system += '16. 「事故案例」是与检查手册**平行**的第二份数据（不是检查手册的一部分）：找相似案例、借鉴事故教训、写案例警示/警示教育时，用 search_accidents（关键词检索）＋ get_accident_detail(id) 取全文，也可用 kb_search 的 sources="accidents"。先看上面「当前数据」里的事故案例条数：为 0 说明本地尚未导入，要如实说明并提示导入位置，禁止凭印象编造案例。\n';
+    system += '16. 「事故案例」是与检查手册**平行**的第二份数据（不是检查手册的一部分）：找相似案例、借鉴事故教训、写案例警示/警示教育时，用 search_accidents（关键词检索）＋ get_accident_detail(id) 取全文，也可用 kb_search 的 sources="accidents"。先看「当前数据」小节里的事故案例条数：为 0 说明本地尚未导入，要如实说明并提示导入位置，禁止凭印象编造案例。\n';
     // 【2026-09-30】知识库自查顺序（配合新增的 kb_status / kb_warm：检索类工具早就有，运维类此前没有）
     system += '17. 知识库相关自查顺序（用户说"搜不到/知识库不好用"时）：① 先 kb_status 看各源索引与检索开关状态；② 若显示"有数据但未建索引"，就 kb_warm 载入后**重试一次**检索；③ 若某开关被关（对话写作/对规/智能体）就在回答里说明"该源检索开关已关闭，可在 设置 → 知识库 打开"；④ 仍无命中再换关键词试一次。**索引重建、清空缓存、改检索开关都属于用户决策**：只提示在哪操作，不要替用户执行。\n';
     // 【2026-09-30】把"索引窗口"这件事写进提示词：默认只索引最近 12000 条检查信息，
     //   模型若因为索引里没有就回答"没有"，就是一次**不实回答**（违反规则 14）。
     system += '18. 检查信息索引默认只覆盖最近 12000 条（可在「设置 → 知识库 → 检查信息索引范围」改为 2 万或全部）：涉及更早时间段或全量统计时，用 count_issues / search_issues（走全量精确查询），**不要因为 kb_search 里没看到就回答"没有"**；工具结果里若出现「口径提醒：索引仅覆盖最近 N 条」，回答时要如实说明这一覆盖范围。\n';
+
+    // ---- 稳定段结束：记录指纹（供 prompt-cache 命中率核对 + 套件断言；异常变动会告警）----
+    try {
+      var _stableLen = system.length;
+      var _h = 5381;
+      for (var _hi = 0; _hi < _stableLen; _hi++) { _h = ((_h << 5) + _h + system.charCodeAt(_hi)) | 0; }
+      var _sh = ('00000000' + (_h >>> 0).toString(16)).slice(-8);
+      var _prevH = (window.__agentSysParts && window.__agentSysParts.stableHash) || '';
+      window.__agentSysParts = { stableLen: _stableLen, dynLen: _dyn.length, stableHash: _sh, at: Date.now() };
+      if (_prevH && _prevH !== _sh) {
+        console.warn('[agent] 稳定段指纹变化 ' + _prevH + ' -> ' + _sh + '（会降低 prompt 缓存命中率，请检查稳定段是否混入动态内容）');
+      }
+    } catch (e) {}
+    // ---- 动态段（每次任务可能不同；放稳定段之后以保护前缀缓存）----
+    if (_dyn) system += '\n【当前数据与时间（每次任务可能不同）】\n' + _dyn;
+
+    // 【2026-10-10 建议③·记忆相关性检索】按**相关性**取同类历史任务，与下面"最近 3 条"互补：
+    //   一个提供"同类任务怎么做"，一个提供"最近发生了什么"。零依赖：2-gram 重合 + 阈值，宁缺毋滥。
+    try {
+      if (typeof window.getRelevantAgentContext === 'function') {
+        var _rel = await window.getRelevantAgentContext(userMessage);
+        if (_rel) system += '\n\n同类历史任务（按相关性检索，供参考做法）：\n' + _rel;
+      }
+    } catch (e) {}
 
     try {
       var ctx = await window.getRecentAgentContext();

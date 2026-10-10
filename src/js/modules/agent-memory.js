@@ -12,18 +12,41 @@
   var DB_NAME = 'AgentTaskDB', STORE = 'agent_tasks', DB_VERSION = 1;
   var db = null;
 
+  /**
+   * 【2026-10-10 实测修复·数据库版本兼容】原实现写死 `indexedDB.open(DB_NAME, DB_VERSION=1)`：
+   *   若本机库里已是更高版本，浏览器直接抛 `VersionError: The requested version (1) is less than the
+   *   existing version (2)` ⇒ **打开失败** ⇒ 任务记录写入与读取**全部静默失效**（调用方都 catch 了），
+   *   表现为"历史任务/相关性记忆/反思注入一直是空的"却查不出原因。
+   *   （由任务级评测集 `scripts/agent-golden-set.js` 首次运行抓出：轮数/tokens 恒为 0。）
+   * 修法：先按**现有版本**打开（不传版本号）；仅当发现**缺表**时才升一版重开建表。
+   */
+  function _mkStore(database) {
+    if (database.objectStoreNames.contains(STORE)) return;
+    var store = database.createObjectStore(STORE, { keyPath: 'id' });
+    store.createIndex('timestamp', 'timestamp', { unique: false });
+  }
   async function _openDB() {
     if (db) return db;
     return new Promise(function(resolve, reject) {
-      var req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = function(e) {
-        var database = e.target.result;
-        if (!database.objectStoreNames.contains(STORE)) {
-          var store = database.createObjectStore(STORE, { keyPath: 'id' });
-          store.createIndex('timestamp', 'timestamp', { unique: false });
-        }
+      var req;
+      try { req = indexedDB.open(DB_NAME); }        // 不指定版本：打开本机现有版本，避免 VersionError
+      catch (e) { try { req = indexedDB.open(DB_NAME, DB_VERSION); } catch (e2) { reject(e2); return; } }
+      req.onupgradeneeded = function(e) { _mkStore(e.target.result); };   // 首次创建（version 1）时建表
+      req.onsuccess = function() {
+        var database = req.result;
+        try {
+          if (database.objectStoreNames && database.objectStoreNames.contains(STORE)) {
+            db = database; resolve(db); return;
+          }
+        } catch (e) {}
+        // 缺表（罕见：库已是更高版本但没有本表）⇒ 升一版重开建表
+        var v = (database.version || 1) + 1;
+        try { database.close(); } catch (e) {}
+        var req2 = indexedDB.open(DB_NAME, v);
+        req2.onupgradeneeded = function() { _mkStore(req2.result); };
+        req2.onsuccess = function() { db = req2.result; resolve(db); };
+        req2.onerror = function() { reject(req2.error); };
       };
-      req.onsuccess = function() { db = req.result; resolve(db); };
       req.onerror = function() { reject(req.error); };
     });
   }
@@ -184,6 +207,55 @@
         if (seg.length) lines.push('· [' + String(t.userIntent || '').slice(0, 24) + '] ' + seg.join('；'));
       });
       return lines.slice(0, 3).join('\n').slice(0, 300);
+    } catch (e) { return ''; }
+  };
+
+  /**
+   * 【2026-10-10 建议③·记忆相关性检索】
+   * 现状：agent 侧只注入"最近 3 条"任务（时间序）——**与当前任务不相关**的历史也占着位置，
+   *   而"上周做过同类任务、当时怎么查的"这种真正有用的经验，因为排在后面被丢掉。
+   *   对话侧早有 `getRelevantMemories`（按重合度排序、宁缺毋滥），但没接进 agent。
+   * 做法（零依赖、可解释、可断言）：取最近 20 条任务的 userIntent，用**2-gram 重合度（Jaccard）**与
+   *   当前意图比对，**阈值 0.28 + 最多 2 条**（宁缺毋滥），拼成 ≤320 字；与"最近 3 条"并列注入
+   *   （职责互补：一个管"同类经验"，一个管"近期发生了什么"）。
+   * 诊断：`window.__agentMemPick = { scanned, picked, best }`。
+   */
+  window.getRelevantAgentContext = async function(query) {
+    try {
+      var q = String(query || '').replace(/\s+/g, '');
+      if (q.length < 4) return '';
+      var tasks = await window.getAgentTasks(20);
+      function _grams(s) { var m = Object.create(null); for (var i = 0; i + 2 <= s.length; i++) m[s.substr(i, 2)] = 1; return m; }
+      var GQ = _grams(q);
+      var nQ = Object.keys(GQ).length;
+      if (!nQ) return '';
+      var scored = [];
+      (tasks || []).forEach(function(t) {
+        var it = String((t && t.userIntent) || '').replace(/\s+/g, '');
+        if (it.length < 3) return;
+        var GT = _grams(it), inter = 0, k;
+        for (k in GQ) if (GT[k]) inter++;
+        var uni = nQ + Object.keys(GT).length - inter;
+        var sc = uni ? inter / uni : 0;
+        if (sc >= 0.28) scored.push({ t: t, sc: sc });
+      });
+      scored.sort(function(a, b) { return b.sc - a.sc; });
+      var lines = scored.slice(0, 2).map(function(x) {
+        var t = x.t, seg = [], hits = [];
+        (t.steps || []).forEach(function(s) {
+          var m = s && s.summary && String(s.summary).match(/共(\d+)条/);
+          if (m) hits.push((m[1] === '0' ? '0命中' : m[1] + '条') + '(' + s.tool + ')');
+        });
+        if (hits.length) seg.push('结果 ' + hits.slice(0, 3).join(', '));
+        if (t.reflection && t.reflection.tip) seg.push('经验：' + t.reflection.tip);
+        if (!seg.length) return '';
+        return '· [同类任务] ' + String(t.userIntent || '').slice(0, 40) + ' ⇒ ' + seg.join('；');
+      }).filter(Boolean);
+      window.__agentMemPick = {
+        scanned: (tasks || []).length, picked: lines.length,
+        best: scored[0] ? Number(scored[0].sc.toFixed(2)) : 0
+      };
+      return lines.join('\n').slice(0, 320);
     } catch (e) { return ''; }
   };
 })();

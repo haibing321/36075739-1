@@ -1346,9 +1346,15 @@
                         const nature = iss['性质'] || '';
                         // 取原文前500字作为摘要
                         const summary = fullText.slice(0, 500);
-                        
+                        // 【2026-10-10 智能化·可区分标题】原来降级条目**统一叫「历史案例参考」** —— 多个案例
+                        //   同时进候选时，prompt 里就是 N 行同名条目，AI 在原理上无法区分该挑哪一条
+                        //   （端到端基准实测：第 10 条候选含正确答案，AI 却挑中三个同名"参考"、丢掉正解，
+                        //   候选内挑选准确率从 100% 掉到 71.4%）。改为「案例·类别·原文前 16 字」的
+                        //   **可区分短标题**（仍明确标注是案例，不假冒规章），让"挑哪一条"成为可解的建模问题。
+                        //   篇名同时用于界面显示与反馈学习键，保持一处口径、避免各自拼接。
+                        const _short = String(fullText.replace(/\s+/g, '')).slice(0, 16);
                         result.push({
-                            title: '历史案例参考',
+                            title: '案例·' + (category ? String(category).slice(0, 6) + '·' : '') + _short,
                             fileNumber: '',
                             article: '',
                             snippet: (category ? '[' + category + '] ' : '') + (nature ? '[' + nature + '] ' : '') + summary,
@@ -1817,6 +1823,158 @@
              *   召回，并在返回值里带 kbTimedOut + notice 让调用方如实告知用户（2026-09-19 用户口径）。
              * opts.skipEnsure：跳过本函数内的 KB.ensure（调用方确已自行确保索引就绪时才用）
              */
+            // ============ 【2026-10-10 台账先验召回】（开关 kb_prior：**默认开**，设 '0' 关闭）================
+            // 依据：`scripts/kb-prior-bench.js` 的**零成本**回测（80 条真实样本、纯本地、不改代码）——
+            //   "与当前描述相似的历史检查记录**引用过**的条款"是极强的先验：
+            //   先验 Top-5 覆盖现行召回的 75.8% 漏检（Top-20 达 97%），回测召回上限 58.8% → 93.8%。
+            //   为什么不用向量：用户历史经验否决（简单向量不准 / 复杂前端跑不动）+ 本机端点无 embedding + 离线冲突。
+            // 实现（纯本地、离线可用）：
+            //   1) 懒建一次 **4-gram 倒排索引**（检查信息条数变化自动重建）——1.5 万条历史记录只建一次；
+            //   2) 查询时取"共同 4-gram 最多"的历史记录 Top-5，聚合它们引用过的《篇名》；
+            //   3) 把先验篇名对应的候选**前插**候选池（池中已有则前移；不在池中则带"引用原文"补一条）。
+            // 开关：localStorage['kb_prior']（'1' 开、其它关）——与 kb_rewrite 同风格，可随时回退。
+            var _acPriorIdx = null;
+            function acPriorNorm(s) { return String(s == null ? '' : s).replace(/[《》〈〉\s　]/g, '').trim(); }
+            // 开关：localStorage['kb_prior'] —— **默认开启**（'0' 关闭），与 kb_autocheck 同风格。
+            //   为什么默认开：端到端 A/B（24 条真数据真模型、连续跑严格对照）实测净正向——
+            //   候选上限 37.5%→45.8%、端到端 20.8%→33.3%、耗时不变（查询 2ms）。
+            //   注意样本量有限（±1 条≈±4pp），但"方向一致 + 成本≈0 + 离线可用 + 可一键回退"，
+            //   按用户口径"只要有效益就好"默认开启；发现问题时把 kb_prior 设为 '0' 即回到原行为。
+            function acPriorEnabled() { try { return localStorage.getItem('kb_prior') !== '0'; } catch (e) { return true; } }
+            function acPriorGrams(s) {
+                var o = {};
+                var t = String(s || '').replace(/[\s，。、；：（）「」《》,.;:()【】\[\]"'——]/g, '');
+                for (var i = 0; i + 3 < t.length; i++) o[t.slice(i, i + 4)] = 1;
+                return o;
+            }
+            function acPriorBuild() {
+                var t0 = Date.now();
+                var issues = [], rules = [];
+                try { issues = (window.getIssueData ? window.getIssueData() : []) || []; } catch (e) {}
+                try { rules = (window.getRulesData ? window.getRulesData() : []) || []; } catch (e) {}
+                var byTitle = {};
+                rules.forEach(function (r) {
+                    var t = acPriorNorm(r && r.title);
+                    if (!t || t.length < 4) return;
+                    // ⚠️ 与全仓口径一致：**检查手册不是规章依据**（agent-core / diary 均有同款过滤）——
+                    //   先验补进的候选若绕过这道过滤，会把"手册项点"当条款成文。故建索引时就排除。
+                    if (/手册/.test(t)) return;
+                    if (!byTitle[t]) byTitle[t] = String(r.title || '').trim();
+                });
+                var inv = {}, recs = [], df = {};   // df：gram 出现在多少条记录里（用于剔除过于常见的 gram）
+                issues.forEach(function (it) {
+                    var reg = String((it && it.regulation) || '');
+                    var q = String((it && it.content) || '');
+                    if (!reg.trim() || q.trim().length < 8) return;
+                    var titles = [];
+                    (reg.match(/《([^》]{3,60})》/g) || []).forEach(function (x) {
+                        var k = acPriorNorm(x.replace(/[《》]/g, ''));
+                        if (byTitle[k] && titles.indexOf(k) < 0) titles.push(k);
+                    });
+                    if (!titles.length) return;          // 没引用本库规章的历史记录对先验无用
+                    var art = (reg.match(/第[一二三四五六七八九十百零〇\d]+条/) || [''])[0];
+                    var ri = recs.push({ t: titles, a: art, q: q.slice(0, 200), reg: reg.slice(0, 300) }) - 1;
+                    var g = acPriorGrams(q), ks = Object.keys(g);
+                    for (var i = 0; i < ks.length; i++) {
+                        var kk = ks[i];
+                        if (!inv[kk]) inv[kk] = [];
+                        inv[kk].push(ri);
+                        df[kk] = (df[kk] || 0) + 1;
+                    }
+                });
+                return { n: issues.length, inv: inv, df: df, recs: recs, ms: Date.now() - t0 };
+            }
+            function acPriorEnsure() {
+                var cn = -1;
+                try { cn = ((window.getIssueData ? window.getIssueData() : []) || []).length; } catch (e) {}
+                if (_acPriorIdx && _acPriorIdx.n === cn) return _acPriorIdx;   // 条数未变 ⇒ 复用（导入/恢复后条数必变）
+                _acPriorIdx = acPriorBuild();
+                return _acPriorIdx;
+            }
+            /**
+             * 先验召回：返回**合并后的候选数组**（先验在前），诊断落 window.__acPriorDiag。
+             * @param query    当前检查描述（原始文本，非扩展查询 —— 与回测口径一致）
+             * @param cands    当前候选池
+             * @param allRules 规章库原始数据（补候选时用）
+             */
+            function acPriorRecall(query, cands, allRules) {
+                var t0 = Date.now();
+                var idx = acPriorEnsure();
+                var out = cands || [];
+                var diag = { on: true, ms: 0, idxMs: idx ? idx.ms : -1, recs: idx ? idx.recs.length : 0,
+                             topCommon: [], titles: 0, added: 0, moved: 0 };
+                try {
+                    if (idx && idx.recs.length) {
+                        var g = acPriorGrams(query), ks = Object.keys(g);
+                        var sc = {}, TOP = 5, MIN_COMMON = 2;
+                        for (var i = 0; i < ks.length; i++) {
+                            var lst = idx.inv[ks[i]];
+                            if (!lst) continue;
+                            if ((idx.df[ks[i]] || 0) > 2000) continue;   // 过于常见的 gram 无区分度（性能与准确双收益）
+                            for (var j = 0; j < lst.length; j++) {
+                                var ri = lst[j];
+                                sc[ri] = (sc[ri] || 0) + 1;
+                            }
+                        }
+                        var arr = Object.keys(sc).map(function (k) { return { ri: +k, c: sc[k] }; })
+                            .filter(function (x) { return x.c >= MIN_COMMON; })
+                            .sort(function (a, b) { return b.c - a.c; })
+                            .slice(0, TOP);
+                        diag.topCommon = arr.map(function (x) { return x.c; });
+                        if (arr.length) {
+                            var tv = {};
+                            arr.forEach(function (x) {
+                                idx.recs[x.ri].t.forEach(function (t) { tv[t] = (tv[t] || 0) + 1; });
+                            });
+                            var priorTitles = Object.keys(tv).sort(function (a, b) { return tv[b] - tv[a]; }).slice(0, 4);
+                            diag.titles = priorTitles.length;
+                            var head = [], rest = out.slice();
+                            priorTitles.forEach(function (t) {
+                                var mi = -1;
+                                for (var k = 0; k < rest.length; k++) { if (acPriorNorm(rest[k].title) === t) { mi = k; break; } }
+                                if (mi >= 0) { head.push(rest[mi]); rest.splice(mi, 1); diag.moved++; return; }
+                                // 池中没有该篇 ⇒ 用"该历史记录的引用原文"补一条（比从规章库取整篇开头更贴题）
+                                var rec = null;
+                                for (var m = 0; m < arr.length; m++) {
+                                    var r2 = idx.recs[arr[m].ri];
+                                    if (r2.t.indexOf(t) >= 0) { rec = r2; break; }
+                                }
+                                var doc = null;
+                                for (var d = 0; d < (allRules || []).length; d++) {
+                                    if (acPriorNorm(allRules[d] && allRules[d].title) === t) { doc = allRules[d]; break; }
+                                }
+                                if (!doc && !rec) return;
+                                var bodyTxt = String((rec && (rec.reg || rec.q)) || (doc && doc.content) || '').replace(/<[^>]+>/g, '');
+                                var q2 = acExtractRegulationQuote(bodyTxt);
+                                var clause = q2 || bodyTxt.slice(0, 220);
+                                head.push({
+                                    title: (doc && doc.title) || t,
+                                    trade: (doc && doc.trade) || '',
+                                    fileNumber: (doc && doc.fileNumber) || '',
+                                    article: (rec && rec.a) || '',
+                                    snippet: clause,
+                                    fullText: clause,
+                                    score: 0,
+                                    ruleRef: doc || null,
+                                    ruleIdx: doc ? (allRules || []).indexOf(doc) : -1,
+                                    kbPath: '台账先验',
+                                    prior: true
+                                });
+                                diag.added++;
+                            });
+                            if (head.length) out = head.concat(rest);
+                        }
+                    }
+                } catch (e) {
+                    diag.err = String((e && e.message) || e);      // 失败必须留痕（本项目铁律：不静默）
+                }
+                diag.ms = Date.now() - t0;
+                try { window.__acPriorDiag = diag; } catch (e2) {}
+                // added：**净新增**条数（池中没有、由先验补的）—— 调用方据此"不挤占"原有名额
+                return { cands: out, added: diag.added, moved: diag.moved };
+            }
+            // ==================================================================================
+
             window.acRecallCandidates = async function (query, opts) {
                 opts = opts || {};
                 var onProgress = (typeof opts.onProgress === 'function') ? opts.onProgress : function () {};
@@ -1909,7 +2067,35 @@
                         //   KB 已返回 8 条，却只留 6 条，而且是在「同专业优先」重排之后截断，
                         //   不同专业的真条款会被挤到切线外（实测生产口径 Recall@10 48.8% 低于 KB 层 61.7%）。
                         //   候选全量进 _globalCandidatesMap 供 AI 精排挑选，不存在二次截断，故放宽是纯增益。
-                        ruleCandidates = ruleCandidates.slice(0, 12);
+                        // 【2026-10-10 端到端基准驱动·A/B 已做】新基准 scripts/autocheck-golden-set.js（真数据+真模型）
+                        //   首次把"召回上限"与"AI 挑选损失"拆开量化，并用**同一批 24 条真实样本**跑了对照实验：
+                        //     · 候选 18 条：上限 45.8% ｜ 端到端 29.2% ｜ prompt 均 2495 tokens
+                        //     · 候选 12 条：上限 41.7% ｜ 端到端 29.2% ｜ prompt 均 2295 tokens
+                        //   ⇒ 放宽候选只抬高"上限"、**端到端持平**（多出来的含答案样本并没被挑中），却多烧 ~9% tokens。
+                        //   故**保持 12**（同效果取更省）—— 别想当然"给得越多挑得越准"，实测不是。
+                        //   · 挑选损失（12.5%）的性质已查明：**同主题多规章的固有歧义**
+                        //     （如《…普速铁路劳动安全管理办法》vs《…天窗点外作业…安全卡控措施的通知》），
+                        //     模型只能按语义相近选，属提示词层面无解 ⇒ **不要再折腾挑选提示词**。
+                        //   · 要再调候选数：只改下面这一个常量，并用基准同一样本集复跑对照（样本集已固定 1% 步长，可比）。
+                        // 【2026-10-10 台账先验】先验命中的条款**前插**（开关 kb_prior：默认开、设 '0' 关；实现在 acPriorRecall）。
+                        //   放在 slice 之前 ⇒ 先验天然占据候选前排（AI 更容易看到"历史上真实被引用过"的条款）；
+                        //   失败只在诊断里留痕、绝不影响主链（下面 slice 照常执行）。
+                        var _prAddN = 0;
+                        try {
+                            if (acPriorEnabled()) {
+                                var _pr = acPriorRecall(query, ruleCandidates, allRules);
+                                if (_pr && _pr.cands) ruleCandidates = _pr.cands;
+                                if (_pr && _pr.added) _prAddN = _pr.added;
+                            }
+                        } catch (ePrior) {
+                            try { window.__acPriorDiag = { err: String((ePrior && ePrior.message) || ePrior) }; } catch (e2) {}
+                        }
+                        var AC_RULE_CAND_MAX = 12;
+                        // 【防挤占】先验**净新增**的候选不占用原有 12 个名额（上限临时放宽为 12+新增数，最多 16）：
+                        //   配对分析实测——开组受益 4 条、但有 1 条因"先验前插把《道岔除雪管理办法》挤出 12 名"
+                        //   而受损 ⇒ 净 +3。放宽后原来那 1 条不再被挤（先验关时行为完全不变：仍是 12）。
+                        var _acMaxFinal = _prAddN > 0 ? (AC_RULE_CAND_MAX + Math.min(_prAddN, 4)) : AC_RULE_CAND_MAX;
+                        ruleCandidates = ruleCandidates.slice(0, _acMaxFinal);
                         kbRulesUsed = ruleCandidates.length > 0;
                         console.log('[对规召回] 统一检索层：规章', ruleCandidates.length, '条，检查信息', kbIssueHits.length, '条');
                         }
@@ -2005,6 +2191,8 @@
                     issueCandidates: issueCandidates,
                     items: items,
                     recallSrc: '规章：' + (kbTimedOut ? '关键词召回（索引建立中）' : (kbRulesUsed ? '统一检索层' : '关键词召回'))
+                             // 【2026-10-10】台账先验若真的参与（补/移了候选）就在来源里如实标注 —— 不静默
+                             + (function () { try { var d = window.__acPriorDiag; return (d && (d.added || d.moved)) ? ' +台账先验' : ''; } catch (e) { return ''; } })()
                              + '；案例：' + (kbIssueHits.length ? '统一检索层' : '本地匹配缓存'),
                     kbRecallUsed: !!(kbRulesUsed || kbIssueHits.length),
                     kbTimedOut: kbTimedOut,
@@ -2292,8 +2480,12 @@
                             }
                         }
                     } catch (_e) { /* 视觉注入失败则退化为纯文本 */ }
-                    // max_tokens=4096：历史原因是被思考链吃光预算、JSON 被截断（下方「截断补全」容错就是
-                    // 被它逼出来的）。**现在对规恒定关思考（见下）**，输出只是一个小 JSON，4096 纯属富余保险。
+                    // max_tokens：历史是 4096（当年被"思考链吃光预算、JSON 被截断"逼出来的富余保险，
+                    //   下方「截断补全」容错也是它逼出来的）。
+                    // 【2026-10-10 能效】对规恒定关思考（见下），输出只是一个小 JSON
+                    //   ——端到端基准实测 completion 平均仅 ~135 tokens ⇒ 4096 是 ~30 倍富余，
+                    //   除白占额度外，个别模型还会借长预算输出啰嗦内容。降到 1024：仍有 7 倍余量，
+                    //   正常结果完全不受影响，同时把长尾压掉。
                     const _scBody = {
                         model: model,
                         messages: [
@@ -2301,7 +2493,7 @@
                             { role: 'user', content: _checkUserMsg }
                         ],
                         temperature: 0.0,
-                        max_tokens: 4096,
+                        max_tokens: 1024,
                         stream: false
                     };
                     // 【2026-09-19 用户拍板 A】对规**强制关思考**（mode:'off'，与「一键修改」走 dsCallOnce 的默认口径一致）。
@@ -2319,13 +2511,89 @@
                     var _acAbortTimer = setTimeout(function () {
                         try { _acTimedOut = true; if (window._dsAbortController) window._dsAbortController.abort(); } catch (e) {}
                     }, 60000);
+
+                    // ================= 【2026-10-10 能效·结果缓存】=================
+                    // 依据（业界）：LLM 应用的标准做法 exact-match caching（本仓已有先例：agent-core 只读工具
+                    //   60s 缓存、KB.rewriteQuery 同查询缓存 60 条）。对规是"同一条描述被反复核对"的高频场景
+                    //   （改几个字重跑 / 换人重跑 / 手滑再点一次），每次重发 ~2-3k prompt tokens 是纯浪费。
+                    // 铁律（见 perf_cache_correctness）：**缓存"结果"不缓存"决策"，键必须覆盖全部输入** ——
+                    //   键 = 归一化描述 + 模型 + apiUrl + 反馈偏好 + 推断专业 + **候选集指纹**
+                    //   （每条候选的 id/篇名/条号/正文前 60 字）。候选一变（KB 索引重建、数据更新、专业重排）
+                    //   键即不同 ⇒ 不会吃到与当前候选不匹配的陈旧结论。TTL 10 分钟、上限 30 条（内存，刷新即清）。
+                    // ⚠️ 这里踩过一次坑（被 6b 的"复跑必须不再发请求"断言抓出）：`inferredTrade` 只存在于
+                    //   **acRecallCandidates** 函数内，本处引用会抛 ReferenceError、被 catch 吞掉 ⇒ 缓存键恒为空
+                    //   ⇒ 缓存**静默失效**（写入与命中全部条件为假），表现得"代码在、功能没有"。故：
+                    //   · 专业项**现场重算**（patchInferTrade 是模块级函数，本处可用）；
+                    //   · 所有动态项一律安全取值 —— 键宁可少一项，绝不能整条失效。
+                    var _acCacheKey = (function () {
+                        try {
+                            var _fb = ''; try { _fb = String(fbHint || ''); } catch (e1) {}
+                            var _tr = ''; try { _tr = String((typeof patchInferTrade === 'function' ? patchInferTrade(query) : '') || ''); } catch (e2) {}
+                            var parts = [String(query || '').replace(/\s+/g, ''), String(model || ''), String(apiUrl || ''), _fb, _tr];
+                            allCandidates.forEach(function (id) {
+                                var c = _globalCandidatesMap[id] || {};
+                                parts.push(id + '|' + (c.title || '') + '|' + (c.article || '') + '|' + String(c.clause || '').slice(0, 60));
+                            });
+                            var s = parts.join('\u0001'), h = 5381;
+                            for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+                            return 'c' + (h >>> 0).toString(36) + '_' + allCandidates.length;
+                        } catch (e) { try { window.__acCacheKeyErr = String((e && e.message) || e); } catch (e2) {} return ''; }
+                    })();
+                    // 诊断：把本次缓存键挂到 window —— 基准据此区分"缓存没生效（真 bug）"与
+                    // "候选集变了所以不复用（正是键覆盖候选指纹的设计意图）"。
+                    try { window.__acLastKey = _acCacheKey; } catch (e) {}
                     try {
-                        resp = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-                            body: JSON.stringify(_scBody),
-                            signal: window._dsAbortController.signal
-                        });
+                        window.__acResultCache = window.__acResultCache || {};
+                        var _hit = _acCacheKey ? window.__acResultCache[_acCacheKey] : null;
+                        if (_hit && (Date.now() - _hit.at) < 600000 && _hit.content) {
+                            console.log('[AI对规] ✓ 命中结果缓存（10 分钟内相同核对）→ 不重复调用模型');
+                            window.__acLastCacheHit = Date.now();
+                            resp = {
+                                ok: true, status: 200,
+                                json: function () {
+                                    return Promise.resolve({
+                                        choices: [{ message: { content: _hit.content } }],   // 与真实响应用同一解析路径
+                                        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cache_hit: true }
+                                    });
+                                }
+                            };
+                        }
+                    } catch (e) {}
+
+                    // ================= 【2026-10-10 效率·瞬时失败重试 1 次】=================
+                    // 依据：Agent 工具层早有"只读工具失败重试一次"的口径（agent-core.js）；而对规一旦失败会
+                    //   **直接掉到本地关键词保底**（结论质量骤降），失败原因中网络抖动/5xx 占比最高。
+                    //   仅对**瞬时**错误重试一次（网络异常 / 5xx）；以下两类**不重试**：
+                    //     · 4xx（Key 无效、额度不足）——重试无意义；
+                    //     · 超时（60s 已让用户等过一轮，再重试＝干等两分钟）。
+                    try {
+                        if (!resp) {
+                            for (var _acTry = 1; _acTry <= 2; _acTry++) {
+                                try {
+                                    resp = await fetch(apiUrl, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                                        body: JSON.stringify(_scBody),
+                                        signal: window._dsAbortController.signal
+                                    });
+                                    if (!resp.ok && resp.status >= 500 && _acTry < 2) {
+                                        console.warn('[AI对规] 第 ' + _acTry + ' 次请求 HTTP ' + resp.status + '（服务端瞬时错误）→ 800ms 后重试');
+                                        await new Promise(function (r) { setTimeout(r, 800); });
+                                        resp = null;
+                                        continue;
+                                    }
+                                    break;
+                                } catch (_acErr) {
+                                    if (_acErr && _acErr.name === 'AbortError') throw _acErr;   // 用户停止 / 超时：不重试
+                                    if (_acTry < 2) {
+                                        console.warn('[AI对规] 第 ' + _acTry + ' 次请求网络异常 → 800ms 后重试：' + ((_acErr && _acErr.message) || _acErr));
+                                        await new Promise(function (r) { setTimeout(r, 800); });
+                                        continue;
+                                    }
+                                    throw _acErr;
+                                }
+                            }
+                        }
                     } finally {
                         clearTimeout(_acAbortTimer);
                     }
@@ -2578,6 +2846,22 @@
                     //   此前无条件置 'ok' → 1634 行直接 return，用户只看到一句"所有候选条款均不相关"、
                     //   拿不到任何条款（审计 S4 的两条断言即因此失败）。
                     _acSmartStatus = validIds.length ? 'ok' : 'ai-none';
+
+                    // 【2026-10-10 能效·结果缓存】只缓存**有效结果**（validIds 非空）：
+                    //   · 空结果往往是"本轮召回没给对候选"，下次同描述若召回变了应当重新问模型；
+                    //   · 缓存空结果也会让用户失去"换个时机重试一次"的机会。
+                    //   上限 30 条，超出按时间淘汰最旧。
+                    try {
+                        if (validIds.length && _acCacheKey && typeof rawText === 'string' && rawText) {
+                            window.__acResultCache = window.__acResultCache || {};
+                            window.__acResultCache[_acCacheKey] = { at: Date.now(), content: rawText };
+                            var _ck = Object.keys(window.__acResultCache);
+                            if (_ck.length > 30) {
+                                _ck.sort(function (a, b) { return (window.__acResultCache[a].at || 0) - (window.__acResultCache[b].at || 0); });
+                                for (var _ci = 0; _ci < _ck.length - 30; _ci++) delete window.__acResultCache[_ck[_ci]];
+                            }
+                        }
+                    } catch (e) {}
 
                     // X4：对规结论持久化（刷新/切换后可在历史中回溯）
                     try {

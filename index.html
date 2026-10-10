@@ -2256,7 +2256,7 @@
                     <span style="font-size:1.5rem;">🚂</span>
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.60</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.61</span> · 2026.10.07</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2305,7 +2305,11 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.60 近期更新</span>
+                    <span>v4.61 近期更新</span>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🎯</span><span><b>对规更准：新增「台账先验」</b> —— 从你<b>历史上相似问题被引用过的条款</b>里补候选（纯本地计算、不额外花钱、离线可用）。实测：答案进候选 37.5% → <b>45.8%</b>、端到端命中 20.8% → <b>33.3%</b>，对规耗时不变（先验查询仅 1~2 毫秒）。如需关闭，说一声即可一键回退。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🔧</span><span><b>修「一键修改 / 智能体可能写出假依据」的隐患</b>：某些情况下（对规召回到"历史案例"时），可能把「案例·…」当成法规名、写成<b>假的依据</b>。现已修好，并把"两种占位形态"都纳入防回归断言（这类错误以后在回归里会被直接拦下）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#16a34a;margin-top:1px;">⚡</span><span><b>对规更省、更稳</b>：① 同一问题重复对规<b>不再重复调用模型</b>（10 分钟内相同核对直接复用结果）；② 输出预算按实测收紧（4096 → 1024，实测输出仅 ~135）；③ 网络抖动<b>自动重试一次</b>，不再直接掉到"关键词保底"导致结论质量骤降。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">📋</span><span><b>历史案例候选现在可区分</b>：原来多个案例在候选里都叫「历史案例参考」（同名候选 AI 无法区分、可能挑错），现在带<b>类别与摘要</b>，挑选更准。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🔧</span><span><b>修「智能体的历史记忆 / 任务后反思在真机上一直没生效」</b>（真 bug）：记忆库打开时<b>版本号被写死</b>，而真机上的库早已升级到新版 ⇒ <b>每次打开都失败</b>、失败又被静默吞掉 —— 也就是"记住上次的经验""任务结束后自我总结""按任务检索历史经验"这些能力<b>等于从来没开过</b>。现已改为按<b>真实版本</b>打开；万一再失败会<b>明确提示</b>并说明原因，不再静默。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#16a34a;margin-top:1px;">⚡</span><span><b>智能体更省、更快</b>：请求前缀稳定化后实测<b>提示词缓存命中 57%~94%</b>（同样的活少花 token、首字更快）；<b>思考档位按任务难度自动分级</b> —— 简单任务不再一律"深思"，把时间花在真正需要推理的步骤上。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🧠</span><span>记忆改为<b>按相关度注入</b>：任务启动时挑<b>与当前任务最相关</b>的历史经验（不再只取"最近几条"，避免无关经验串味），并按任务去重，同一条经验不会反复刷屏。</span></div>

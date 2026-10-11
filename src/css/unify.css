@@ -23,7 +23,7 @@
 .logo-title { color: var(--ds-blue); }
 .logo-subtitle { color: var(--text-secondary); }
 .logo-icon {
-    background: rgba(77, 107, 254, 0.14);
+    background: transparent;
     border-radius: var(--ds-radius);
 }
 .nav-btn {
@@ -700,19 +700,24 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
 /* ============================================================
    暗黑模式覆盖（与智能对话暗黑风格一致）
    ============================================================ */
-[data-theme="dark"] .header { background: #1e1e1e; border-bottom-color: #1d1d1d; }
+/* 【2026-10-11 用户口径】暗黑头部也保留"藏青 + 金"的品牌识别（原为 #1e1e1e 纯灰黑，识别色全丢）：
+   比亮色更深的藏青渐变（夜里不刺眼），金线略降透明度；导航改白字 + 金色指示条，与亮色同一套语言。 */
+[data-theme="dark"] .header {
+    background: linear-gradient(180deg, #0a1830 0%, #0e2440 55%, #123055 100%);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.35);
+}
 [data-theme="dark"] .logo-text { color: #e2e8f0; }
-[data-theme="dark"] .logo-title { color: #93c5fd; }
-[data-theme="dark"] .logo-subtitle { color: #94a3b8; }
-[data-theme="dark"] .logo-icon { background: rgba(77, 107, 254, 0.18); }
-[data-theme="dark"] .nav-btn { color: #94a3b8; }
-[data-theme="dark"] .nav-btn:hover,
-[data-theme="dark"] .nav-btn.active { color: #93c5fd; background: rgba(77, 107, 254, 0.20); font-weight: 600; }
-[data-theme="dark"] .nav-btn.active::after { background: #93c5fd; height: 3px; }
-[data-theme="dark"] .nav-current-label { color: #e2e8f0; }
-[data-theme="dark"] .nav-toggle { background: #1d1d1d; }
-[data-theme="dark"] .nav-toggle:hover { background: #2a2a2a; }
-[data-theme="dark"] .nav-toggle span { background: #94a3b8; }
+[data-theme="dark"] .logo-title { color: #f7e7b4; }
+[data-theme="dark"] .logo-subtitle { color: rgba(255, 255, 255, 0.62); }
+[data-theme="dark"] .logo-icon { background: transparent; }
+[data-theme="dark"] .nav-btn { color: rgba(255, 255, 255, 0.82); }
+[data-theme="dark"] .nav-btn:hover { color: #ffffff; background: rgba(255, 255, 255, 0.14); }
+[data-theme="dark"] .nav-btn.active { color: #ffffff; background: rgba(255, 255, 255, 0.18); font-weight: 600; }
+[data-theme="dark"] .nav-btn.active::after { background: #e8c766; height: 3px; }
+[data-theme="dark"] .nav-current-label { color: #ffffff; }
+[data-theme="dark"] .nav-toggle { background: rgba(255, 255, 255, 0.14); }
+[data-theme="dark"] .nav-toggle:hover { background: rgba(255, 255, 255, 0.26); }
+[data-theme="dark"] .nav-toggle span { background: #ffffff; }
 
 [data-theme="dark"] .btn-primary,
 [data-theme="dark"] .btn-info { background: var(--ds-blue) !important; border-color: var(--ds-blue) !important; color: #fff !important; }
@@ -869,10 +874,15 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
 [data-theme="dark"] .modal-header,
 [data-theme="dark"] .modal-footer { border-color: #333333 !important; }
 
-[data-theme="dark"] .nav { background: #1e1e1e !important; border-color: #1d1d1d !important; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5) !important; }
-[data-theme="dark"] .nav-btn { color: #94a3b8 !important; border-bottom-color: #1d1d1d !important; }
-[data-theme="dark"] .nav-btn:hover,
-[data-theme="dark"] .nav-btn.active { background: #1d1d1d !important; color: #93c5fd !important; }
+/* 【2026-10-11】移动端折叠下拉：暗色下也延续藏青（原 #1e1e1e），与头部融为一体；
+   注意必须包进 @media —— 原来这条 .nav 背景在桌面端也生效（因头部同色而不可见），
+   改成藏青后若仍在桌面生效，会在导航区露出一条色差。 */
+@media (max-width: 768px) {
+    [data-theme="dark"] .nav { background: linear-gradient(180deg, #12305a 0%, #0e2440 100%) !important; border-color: rgba(255, 255, 255, 0.12) !important; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5) !important; }
+    [data-theme="dark"] .nav-btn { color: rgba(255, 255, 255, 0.85) !important; border-bottom-color: rgba(255, 255, 255, 0.10) !important; }
+    [data-theme="dark"] .nav-btn:hover,
+    [data-theme="dark"] .nav-btn.active { background: rgba(255, 255, 255, 0.16) !important; color: #ffffff !important; }
+}
 
 /* 模块专属图框 · 暗黑覆盖 */
 [data-theme="dark"] .result-card { background: #1d1d1d !important; border-color: #333333 !important; }
@@ -1657,15 +1667,18 @@ html[data-theme="dark"] .att-sub-btn.att-active:hover {
 /* 2) 按钮：全模块与背景同色（透明），仅文字 / 悬停浅底区分
       【例外处理】按钮底色若由 JS 内联样式动态切换（如 #check-update-btn 发现更新
       时置 var(--primary) 蓝底白字），!important 会压掉内联样式，故下方用 id 级
-      规则显式还原，保证状态提示不丢失。 */
-[data-theme="dark"][data-theme] button,
+      规则显式还原，保证状态提示不丢失。
+      【2026-10-11 用户口径·B 视觉包】导航按钮（.nav-btn）与汉堡按钮（.nav-toggle）排除在外：
+      暗色头部已是藏青品牌色，导航须白字 + 金色指示条（见头部暗色块）；若不排除，
+      这条"全模块 #cbd5e1"会把它压回灰字，导航识别度尽失（真机实测抓出）。 */
+[data-theme="dark"][data-theme] button:not(.nav-btn):not(.nav-toggle),
 [data-theme="dark"][data-theme] .btn {
   background: transparent !important;
   border-color: transparent !important;
   color: #cbd5e1 !important;
   box-shadow: none !important;
 }
-[data-theme="dark"][data-theme] button:hover,
+[data-theme="dark"][data-theme] button:not(.nav-btn):not(.nav-toggle):hover,
 [data-theme="dark"][data-theme] .btn:hover {
   background: rgba(255,255,255,0.08) !important;
   border-color: rgba(255,255,255,0.18) !important;
@@ -1831,11 +1844,11 @@ html:not([data-theme="dark"]) .header {
 }
 /* 盾牌容器：半透明白底让金色徽标更突出 */
 html:not([data-theme="dark"]) .logo-icon {
-    background: rgba(255, 255, 255, 0.10) !important;
+    background: transparent !important;
 }
 html:not([data-theme="dark"]) .logo-title {
     color: #f7e7b4 !important;
-    letter-spacing: 0.5px;
+    letter-spacing: 1.8px;
 }
 html:not([data-theme="dark"]) .logo-subtitle {
     color: rgba(255, 255, 255, 0.62) !important;

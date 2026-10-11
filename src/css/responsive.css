@@ -229,6 +229,14 @@
 }
 
 /* 小屏手机优化 (max 480px) */
+/* 【2026-10-11 B 视觉包】≥769px（桌面/平板）品牌名不折行：
+   标题字距加大到 1.8px 后，1100px 上下会临界折成两行（"安监智能辅助 / 系统"）——
+   空间不足时应让**导航按钮**换行（.nav 自带 flex-wrap），而不是把品牌名拆开。
+   手机端（≤768）保持原有折行行为不变（窄屏本就放不下一行）。 */
+@media (min-width: 769px) {
+    .logo-title { white-space: nowrap; }
+}
+
 @media (max-width: 480px) {
     body { font-size: 13px; }
     .header-inner { padding: 0 12px; }

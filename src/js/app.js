@@ -1,5 +1,5 @@
 /**
- * 安监智能辅助系统 · 完整六模块版
+ * 安监智能辅助系统 · 完整模块版
  * ===================================================
  * 应用入口文件 - 负责模块加载顺序和全局初始化协调
  * 
@@ -1140,7 +1140,7 @@ window.onclick = function(e) {
         _installBtn.id = '_pwa_install_bar';
         _installBtn.innerHTML = [
             '<span style="font-size:1.2rem;">📲</span>',
-            '<span style="flex:1;text-align:left;">安装「安监助手」到桌面</span>',
+            '<span style="flex:1;text-align:left;">安装「安监智能辅助系统」到桌面</span>',
             '<button id="_pwa_install_btn" style="',
             '  background:var(--card-bg);color:var(--text);border:none;border-radius:20px;',
             '  padding:6px 18px;font-size:0.85rem;font-weight:700;cursor:pointer;',
@@ -1318,6 +1318,8 @@ window.toggleSettingsPanel = function() {
         // 【2026-10-04】调试开关文案同步（手机端唯一入口，必须在打开设置时就反映真实状态）
         try { if (window.dsSyncDebugModeBtn) window.dsSyncDebugModeBtn(); } catch (e) {}
         if (window.updateDataManagementStats) window.updateDataManagementStats();
+        /* 【2026-10-11】智能体消耗行（🔧 接口区）随设置面板打开刷新一次 */
+        try { if (window.stFillAgentUsage) window.stFillAgentUsage(); } catch (e) {}
         if (window.syncDarkModeToggle) window.syncDarkModeToggle();
         if (window.syncCapabilityToggles) window.syncCapabilityToggles();
         // 回到上次停留的分类（首次为「通用」）；分类状态异常时兜底回通用页，避免打开是空白
@@ -1460,24 +1462,26 @@ window.showAboutPanel = function() {
     var p = document.getElementById('about-panel');
     if (p) p.style.display = 'flex';
     try { window.stFillAboutOffline(); } catch (e) {}
-    try { window.stFillAboutAgentUsage(); } catch (e) {}
 };
 
 /**
- * 【2026-10-06 用户口径】「关于系统」里显示**本机智能体累计消耗**（不用开控制台就能看）。
+ * 【2026-10-11 用户口径】「设置 → 🔧 接口 → 模型接口」里显示**本机智能体累计消耗**。
+ *   原在「关于系统」：用户反馈「与介绍性文案不协调」⇒ 移至模型接口区，与 📡 连接状态 并列；
+ *   仍然**不用开控制台也能看** —— 打开「设置」面板时刷新一次（见 toggleSettingsPanel）。
  *   与诊断信息的分工：这一行**不受「设置 → 调试」开关控制** —— 它是用户关心的常规信息，
  *   不是缓存/SW 那类细节（后者关闭时连检测都不做）。
  *   数据来源：agent-memory.js 的 getAgentUsageLine()（聚合任务记录里的**本任务增量** usage）。
  *   失败时如实写出原因，不留白也不假装"暂无记录"。
  */
-window.stFillAboutAgentUsage = async function () {
-    var el = document.getElementById('about-agent-usage');
+/** 【2026-10-11 移位后】填充「设置 → 🔧 接口 → 模型接口」区的本机智能体累计消耗（只填值）。 */
+window.stFillAgentUsage = async function () {
+    var el = document.getElementById('st-agent-usage');
     if (!el) return;
     try {
         var line = (typeof window.getAgentUsageLine === 'function') ? await window.getAgentUsageLine() : '';
-        el.innerHTML = '🤖 智能体消耗：' + (line || '暂无记录（跑一次智能体任务后开始统计）');
+        el.textContent = line || '暂无记录（跑一次智能体任务后开始统计）';
     } catch (e) {
-        el.innerHTML = '🤖 智能体消耗：读取失败（' + ((e && e.message) || e) + '）';
+        el.textContent = '读取失败（' + ((e && e.message) || e) + '）';
     }
 };
 
@@ -1905,7 +1909,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v4.62'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v4.63'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // ⚠️【2026-10-05 用户实测踩坑】"手机提示发现 v4.15，更新后仍显示 v4.14" —— 就是因为这里没跟着改：
 //   提示更新靠的是 **SW 缓存时间戳**（version.json 的 sw / sw.js 的 CACHE_VERSION），
 //   而界面上显示的版本号读的是**这个常量**。**发版必须同时改三处**：

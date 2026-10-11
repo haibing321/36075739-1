@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261011123723';
+var CACHE_VERSION = '20261011172958';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -28,8 +28,7 @@ var PRECACHE_URLS = [
   './favicon.ico',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './icons/icon-svg.svg',
-  // ==== iOS 启动图（apple-touch-startup-image）====
+    // ==== iOS 启动图（apple-touch-startup-image）====
   './icons/splash/iphone-se1.png',
   './icons/splash/iphone-8.png',
   './icons/splash/iphone-8plus.png',

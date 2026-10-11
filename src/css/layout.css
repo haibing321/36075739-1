@@ -29,24 +29,25 @@
 .logo-icon {
     width: 48px;
     height: 48px;
-    background: rgba(255,255,255,0.18);
+    /* 【2026-10-11 用户口径定稿】不做任何人工托底 —— 容器全透明，徽章随背景自适应：
+       图标 PNG 已真正带 alpha（画布直出，四角 alpha=0），在藏青条上就"沉"进藏青、
+       在白卡上就落在白上；区分度由徽章自身的银色边框与自带柔影负责。 */
+    background: transparent;
     border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 24px;
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
     overflow: hidden;
 }
 .logo-icon img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    border-radius: 10px;
+    object-fit: contain;
+    border-radius: 0;   /* 【2026-10-11】不切徽章四角 */
 }
 .logo-text { color: white; }
-.logo-title { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.5px; }
+.logo-title { font-size: 1.4rem; font-weight: 700; letter-spacing: 1.8px; }
 .logo-subtitle { font-size: 0.75rem; opacity: 0.8; margin-top: 2px; }
 
 /* 盾牌标识悬浮效果：鼠标移到盾牌上升起、透出金色光晕，移开回落。

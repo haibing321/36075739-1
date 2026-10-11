@@ -58,7 +58,7 @@
         })();
     </script>
     <meta name="description" content="铁路安全检查智能辅助系统 — 问题库、规章、日志、通讯录、手册、AI助手六合一工具">
-    <link rel="icon" type="image/svg+xml" href="icons/icon-svg.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <!-- iOS 主屏幕启动屏（apple-touch-startup-image）：添加到主屏幕后启动不再闪白屏。
          按 iPhone 常见逻辑分辨率提供，media 查询依据设备宽高+像素密度(dppx)匹配。 -->
@@ -355,64 +355,7 @@
     <div id="app-boot-bar"><i></i></div>
     <div id="app-boot-tip">正在加载模块…</div>
     <div id="app-boot-overlay">
-        <svg class="boot-logo" viewBox="-12 -12 124 124" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <linearGradient id="btBody" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stop-color="#a6d3f2"/>
-                    <stop offset="16%" stop-color="#78b1e3"/>
-                    <stop offset="38%" stop-color="#4c8cca"/>
-                    <stop offset="62%" stop-color="#3573b4"/>
-                    <stop offset="86%" stop-color="#265a93"/>
-                    <stop offset="100%" stop-color="#1b4574"/>
-                </linearGradient>
-                <linearGradient id="btDepth" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="58%" stop-color="#061d36" stop-opacity="0"/>
-                    <stop offset="100%" stop-color="#061d36" stop-opacity="0.38"/>
-                </linearGradient>
-                <linearGradient id="btSheen" x1="8%" y1="0%" x2="58%" y2="52%">
-                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.42"/>
-                    <stop offset="35%" stop-color="#ffffff" stop-opacity="0.09"/>
-                    <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-                </linearGradient>
-                <radialGradient id="btWell" cx="50%" cy="53%" r="48%">
-                    <stop offset="0%" stop-color="#0a2c50" stop-opacity="0.42"/>
-                    <stop offset="68%" stop-color="#0a2c50" stop-opacity="0.1"/>
-                    <stop offset="100%" stop-color="#0a2c50" stop-opacity="0"/>
-                </radialGradient>
-                <linearGradient id="btGold" x1="0%" y1="0%" x2="60%" y2="100%">
-                    <stop offset="0%" stop-color="#fffde8"/>
-                    <stop offset="22%" stop-color="#ffe14d"/>
-                    <stop offset="52%" stop-color="#f0b400"/>
-                    <stop offset="78%" stop-color="#c08a06"/>
-                    <stop offset="100%" stop-color="#8a5f00"/>
-                </linearGradient>
-                <linearGradient id="btText" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stop-color="#fffef7"/>
-                    <stop offset="34%" stop-color="#ffe98f"/>
-                    <stop offset="70%" stop-color="#f9c012"/>
-                    <stop offset="100%" stop-color="#a97600"/>
-                </linearGradient>
-                <filter id="btHalo" x="-50%" y="-50%" width="200%" height="200%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="3.6" flood-color="#5aa8f0" flood-opacity="0.7" result="halo"/>
-                    <feDropShadow in="halo" dx="0" dy="2.4" stdDeviation="2.6" flood-color="#000000" flood-opacity="0.5"/>
-                </filter>
-                <filter id="btRimFx" x="-45%" y="-45%" width="190%" height="190%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="#ffd34d" flood-opacity="0.85"/>
-                </filter>
-                <filter id="btTextFx" x="-45%" y="-45%" width="190%" height="190%">
-                    <feDropShadow dx="0" dy="1.2" stdDeviation="0.9" flood-color="#04203c" flood-opacity="0.6" result="dsh"/>
-                    <feDropShadow in="dsh" dx="0" dy="0" stdDeviation="1.3" flood-color="#ffcc33" flood-opacity="0.52"/>
-                </filter>
-            </defs>
-            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btBody)" filter="url(#btHalo)"/>
-            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btDepth)"/>
-            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btSheen)"/>
-            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#btWell)"/>
-            <path d="M13.5 16.6 L50 8.2 L86.5 16.6" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M50 12.6 L84.8 24.4 L84.8 50 Q84.8 72 50 88.2 Q15.2 72 15.2 50 L15.2 24.4 Z" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="0.8"/>
-            <path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="none" stroke="url(#btGold)" stroke-width="3.4" stroke-linejoin="round" filter="url(#btRimFx)"/>
-            <text x="50" y="48.6" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="51" font-weight="900" fill="url(#btText)" stroke="#0f3459" stroke-width="1.3" paint-order="stroke" filter="url(#btTextFx)">铁</text>
-        </svg>
+        <img class="boot-logo" src="icons/icon-192.png" alt="">
         <div class="boot-spin"></div>
         <div class="boot-text">安监智能辅助系统 · 加载中…</div>
     </div>
@@ -615,64 +558,10 @@
     <header class="header">
         <div class="header-inner">
             <div class="logo">
-                <div class="logo-icon"><svg viewBox="-9 -9 118 118" style="width:100%;height:100%;"><defs>
-<linearGradient id="lgBody" x1="0%" y1="0%" x2="0%" y2="100%">
-<stop offset="0%" stop-color="#9ccdf0"/>
-<stop offset="16%" stop-color="#6fabe0"/>
-<stop offset="38%" stop-color="#4485c6"/>
-<stop offset="62%" stop-color="#2f6cae"/>
-<stop offset="86%" stop-color="#21538c"/>
-<stop offset="100%" stop-color="#17406f"/>
-</linearGradient>
-<linearGradient id="lgDepth" x1="0%" y1="0%" x2="0%" y2="100%">
-<stop offset="58%" stop-color="#061d36" stop-opacity="0"/>
-<stop offset="100%" stop-color="#061d36" stop-opacity="0.38"/>
-</linearGradient>
-<linearGradient id="lgSheen" x1="8%" y1="0%" x2="58%" y2="52%">
-<stop offset="0%" stop-color="#ffffff" stop-opacity="0.4"/>
-<stop offset="35%" stop-color="#ffffff" stop-opacity="0.08"/>
-<stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-</linearGradient>
-<radialGradient id="lgWell" cx="50%" cy="53%" r="48%">
-<stop offset="0%" stop-color="#0a2c50" stop-opacity="0.42"/>
-<stop offset="68%" stop-color="#0a2c50" stop-opacity="0.1"/>
-<stop offset="100%" stop-color="#0a2c50" stop-opacity="0"/>
-</radialGradient>
-<linearGradient id="lgGold" x1="0%" y1="0%" x2="60%" y2="100%">
-<stop offset="0%" stop-color="#fffde8"/>
-<stop offset="22%" stop-color="#ffe14d"/>
-<stop offset="52%" stop-color="#f0b400"/>
-<stop offset="78%" stop-color="#c08a06"/>
-<stop offset="100%" stop-color="#8a5f00"/>
-</linearGradient>
-<linearGradient id="lgText" x1="0%" y1="0%" x2="0%" y2="100%">
-<stop offset="0%" stop-color="#fffef7"/>
-<stop offset="34%" stop-color="#ffe98f"/>
-<stop offset="70%" stop-color="#f9c012"/>
-<stop offset="100%" stop-color="#a97600"/>
-</linearGradient>
-<filter id="lgBodyFx" x="-35%" y="-35%" width="170%" height="170%">
-<feDropShadow dx="0" dy="1.8" stdDeviation="1.8" flood-color="#020c1a" flood-opacity="0.55"/>
-</filter>
-<filter id="lgRimFx" x="-40%" y="-40%" width="180%" height="180%">
-<feDropShadow dx="0" dy="0" stdDeviation="1.3" flood-color="#ffd34d" flood-opacity="0.72"/>
-</filter>
-<filter id="lgTextFx" x="-45%" y="-45%" width="190%" height="190%">
-<feDropShadow dx="0" dy="1.1" stdDeviation="0.8" flood-color="#04203c" flood-opacity="0.6" result="dsh"/>
-<feDropShadow in="dsh" dx="0" dy="0" stdDeviation="1.15" flood-color="#ffcc33" flood-opacity="0.5"/>
-</filter>
-</defs>
-<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgBody)" filter="url(#lgBodyFx)"/>
-<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgDepth)"/>
-<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgSheen)"/>
-<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="url(#lgWell)"/>
-<path d="M13.5 16.6 L50 8.2 L86.5 16.6" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M50 12.6 L84.8 24.4 L84.8 50 Q84.8 72 50 88.2 Q15.2 72 15.2 50 L15.2 24.4 Z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="0.8"/>
-<path d="M50 3.5 L92.5 19 L92.5 50.5 Q92.5 77.5 50 96.5 Q7.5 77.5 7.5 50.5 L7.5 19 Z" fill="none" stroke="url(#lgGold)" stroke-width="3.4" stroke-linejoin="round" filter="url(#lgRimFx)"/>
-<text x="50" y="48.6" text-anchor="middle" dominant-baseline="central" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="51" font-weight="900" fill="url(#lgText)" stroke="#0f3459" stroke-width="1.3" paint-order="stroke" filter="url(#lgTextFx)">铁</text></svg></div>
+                <div class="logo-icon"><img src="icons/icon-192.png" alt="" width="48" height="48"></div>
                 <div class="logo-text">
                     <div class="logo-title">安监智能辅助系统</div>
-                    <div class="logo-subtitle">SAFETY INSPECTION QUERY SYSTEM</div>
+                    <div class="logo-subtitle">SAFETY SUPERVISION AI ASSISTANT</div>
                 </div>
             </div>
             <!-- 移动端：当前tab名称 + 汉堡按钮 -->
@@ -2227,6 +2116,10 @@
                                 <span id="ds-api-status-text" style="font-size:0.8rem;color:var(--text-secondary);">未配置 API</span>
                             </span>
                         </div>
+                        <div class="st-row" style="flex-direction:column;align-items:stretch;gap:4px;">
+                            <span class="st-row-label">🤖 智能体消耗</span>
+                            <span id="st-agent-usage" style="font-size:0.74rem;color:var(--text-secondary);line-height:1.6;">统计中…</span>
+                        </div>
                         <div class="st-hint">支持 DeepSeek / 豆包 / OpenAI 等兼容接口；密钥仅保存在本机浏览器，不会上传。</div>
                     </section>
 
@@ -2260,20 +2153,14 @@
             <!-- 标题栏 -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <span style="font-size:1.5rem;">🚂</span>
+                    <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.62</span> · 2026.10.07</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.63</span> · 2026.10.11</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
             </div>
-
-            <!-- 【2026-10-06 用户口径】本机智能体消耗：一行可见，**不受「设置 → 调试」开关控制**
-                 （它是用户关心的常规信息，不是诊断细节；用户原话"不用开控制台也能看"）。
-                 数据由 agent-memory.js 的 getAgentUsageLine() 给出：任务数 / 模型调用轮数 / 累计 tokens
-                 / 平均每任务与每轮 / 缓存命中率。跑过任务后才有数字，无记录时给出明确引导。 -->
-            <div id="about-agent-usage" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:9px 13px;margin-bottom:8px;font-size:0.76rem;color:#166534;line-height:1.7;">🤖 智能体消耗：统计中…</div>
 
             <!-- 【2026-09-23】离线状态：用户关心"折叠开合到底走不走离线数据"，这里直接可见。
                  【2026-10-04 用户口径】改为**默认隐藏**、由「设置 → 🐞 调试」开关控制显隐
@@ -2304,128 +2191,40 @@
 </button>
 
             <!-- 系统简介 -->
-            <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;">
-                六大 AI 能力：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判 · 资料中心；数据本地存储，支持离线使用。
+            <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.75;text-align:left;margin-bottom:12px;">
+                <div style="margin-bottom:6px;">面向安监业务的<b>本地化 AI 助手</b> —— 手册、台账、规章、案例，一个应用装齐；<b>离线可用</b>、数据存本机；AI 辅助查条款、写材料、做研判。</div>
+                <div>• <b>AI 能力</b>：智能对话 · 智能体 · 智能对规 · 智能写作 · 风险研判（统一入口：「智能助手」）</div>
+                <div>• <b>业务模块</b>：检查手册 · 检查信息 · 规章制度 · 工作日志 · 应急电话</div>
+                <div>• <b>数据支撑</b>：知识库（AI 能力共用的本地检索举证）· 资料中心（成果与资料归档查阅）</div>
             </div>
 
-            <!-- v4.62 近期更新（检查手册大纲浏览：专业选择替代搜索栏 / 三视图选中色 / 选完专业自动展开一级 / txt-md 丢章修复 + 麒麟启动器） -->
+            <!-- 【2026-10-11 用户口径】"更新说明"只保留最近一版（≤10 行），更早版本只留一行归档指针；
+                 套件口径：import-layout A㉝ = 当前版本块 + 条目 3~10 条 + 无历史长段。 -->
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.62 近期更新</span>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#4d6bfe;margin-top:1px;">📑</span><span><b>检查手册浏览改成"按专业看"</b>：原来一进「大纲浏览」就把<b>所有专业</b>的章全铺开、找起来费劲；现在顶部改为「<b>选择专业</b>」下拉（专业取<b>每章标题前两个字</b>），<b>选哪个专业只显示哪个专业</b>，其余不再显示；窗内一行小字会告诉你"检查手册共几个专业、当前专业共几条"。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#ea580c;margin-top:1px;">🎨</span><span><b>三个视图按钮的选中色区分开了</b>：检查手册=蓝 / 事故案例=橙 / 规章制度=绿 —— 原来浅色主题下选中态被统一样式覆盖、几乎看不出当前在哪个视图。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#059669;margin-top:1px;">⚡</span><span><b>少点两下</b>：选完专业后目录<b>自动展开一级</b>（二级标题直接可见），<b>点二级才展开三级</b>；并修掉"展开大专业（如某节 300+ 条）时底部内容被高度上限截断、看不见"的隐患。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🔧</span><span><b>修 txt / md 导入丢「章」的真缺陷</b>：同一章下的记录<b>从第 2 条起章名全丢</b>（导入后全挤进"未分类"，按专业筛选也归不进专业）。现已按 DOCX 同口径修正；<b>若你以前导入过 .md / .txt 手册</b>，建议把那份文件<b>重新导入一次</b>补正（docx / json 导入从未受影响）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">🖥️</span><span><b>麒麟（Linux）也能"一键启动"了</b>：版本目录新增 <code>start-linux.sh</code> 与《启动说明（麒麟Linux）.txt》—— 一次 <code>bash start-linux.sh --install</code> 装出桌面图标，之后双击即用（Windows 的两个启动文件也已入库）。</span></div>
-
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🎯</span><span><b>对规更准：新增「台账先验」</b> —— 从你<b>历史上相似问题被引用过的条款</b>里补候选（纯本地计算、不额外花钱、离线可用）。实测：答案进候选 37.5% → <b>45.8%</b>、端到端命中 20.8% → <b>33.3%</b>，对规耗时不变（先验查询仅 1~2 毫秒）。如需关闭，说一声即可一键回退。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🔧</span><span><b>修「一键修改 / 智能体可能写出假依据」的隐患</b>：某些情况下（对规召回到"历史案例"时），可能把「案例·…」当成法规名、写成<b>假的依据</b>。现已修好，并把"两种占位形态"都纳入防回归断言（这类错误以后在回归里会被直接拦下）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#16a34a;margin-top:1px;">⚡</span><span><b>对规更省、更稳</b>：① 同一问题重复对规<b>不再重复调用模型</b>（10 分钟内相同核对直接复用结果）；② 输出预算按实测收紧（4096 → 1024，实测输出仅 ~135）；③ 网络抖动<b>自动重试一次</b>，不再直接掉到"关键词保底"导致结论质量骤降。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">📋</span><span><b>历史案例候选现在可区分</b>：原来多个案例在候选里都叫「历史案例参考」（同名候选 AI 无法区分、可能挑错），现在带<b>类别与摘要</b>，挑选更准。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🔧</span><span><b>修「智能体的历史记忆 / 任务后反思在真机上一直没生效」</b>（真 bug）：记忆库打开时<b>版本号被写死</b>，而真机上的库早已升级到新版 ⇒ <b>每次打开都失败</b>、失败又被静默吞掉 —— 也就是"记住上次的经验""任务结束后自我总结""按任务检索历史经验"这些能力<b>等于从来没开过</b>。现已改为按<b>真实版本</b>打开；万一再失败会<b>明确提示</b>并说明原因，不再静默。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#16a34a;margin-top:1px;">⚡</span><span><b>智能体更省、更快</b>：请求前缀稳定化后实测<b>提示词缓存命中 57%~94%</b>（同样的活少花 token、首字更快）；<b>思考档位按任务难度自动分级</b> —— 简单任务不再一律"深思"，把时间花在真正需要推理的步骤上。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🧠</span><span>记忆改为<b>按相关度注入</b>：任务启动时挑<b>与当前任务最相关</b>的历史经验（不再只取"最近几条"，避免无关经验串味），并按任务去重，同一条经验不会反复刷屏。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">✅</span><span>新增智能体<b>任务级评测集</b>（8 个典型任务，含真实数据口径）：以后每次改智能体都能<b>量化验证效果</b>（本次 <b>8/8 通过</b>），不再靠"感觉好像好了"。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#2563eb;margin-top:1px;">🛡</span><span>P0 安全与首屏兜底的<b>守门套件</b>（22 项：iframe 沙箱 / CSP / 交互锁自恢复 / 导航兜底 / 离线预缓存）已纳入<b>月度自动回归</b>，防止以后的改动静默破坏安全与可交互底线。</span></div>
+                    <span>v4.63 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <b>修「风险研判里"筛选后无数据（实际有）"」</b>：台账的日期格式很杂（<code>2026/9/3</code>、<code>2026.09.03</code>、<code>2026年9月3日</code>、Excel 日期序列号…），原实现只要<b>解析不了就把该条当作"不符合条件"丢掉</b> ⇒ 界面上显示"筛选后 0 条"、而库里明明有数据。现改为<b>宽容解析</b>（覆盖 6 类常见格式），<b>解析不了的记录不再被排除</b>，并在预览里如实标注「（含 N 条日期无法识别，未排除）」。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>✅ 同时保证<b>预览显示的数据</b>与<b>研判实际使用的数据</b>同一口径（都是对台账同一批记录按同样规则过滤），不会再出现"预览说没数据、研判却有"的矛盾。</span></div>
-
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <b>另一个会致"筛选后 0 条"的路径也一并堵上</b>：单位字段改为按<b>导入映射同口径</b>取值（<code>unit / 单位 / 责任单位 / 单位名称 / department / dw</code> 等，原来只认 <code>unit / department</code>，字段名对不上就会把 4 万多条全排掉）；并且<b>筛成 0 条时界面自己说明原因</b> —— "被日期条件排除 N 条 / 被单位条件排除 M 条 / 台账里未找到单位字段"，不再让你猜"是不是没数据"。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🔧 <b>真机 43526 条全被排除的元凶找到了：紧凑日期 <code>YYYYMMDD</code></b>（如 <code>20261015</code>，Excel / 系统导出常见）。它>10 亿、被当成"秒时间戳"处理 ⇒ 变成 <b>1970 年</b> ⇒ 所有记录都被"日期条件"排除，且不会出现"无法识别"提示（所以看起来像"没数据"）。现已<b>优先识别紧凑日期</b>（<code>YYYYMMDD</code> 与 <code>YYYYMMDDHHmmss</code>，数字与文本都支持）。同时预览在筛成 0 条时会直接给出<b>库中时间样例与解析结果</b>（如 <code>"20261015"→2026/10/15</code>），格式对不对一眼可见。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>📝 <b>研判"必须成文"硬约束</b>：数据条数少时（如筛选出十几条）模型曾以"数据量少"为由<b>只回一句"未形成内容"、不出正文</b>。现在明确要求：<b>无论多少条都必须按结构完整成文</b>，条数少时正常分析并写明"样本量较小、趋势参考意义有限"，<b>严禁</b>以"数据不足 / 未形成内容 / 无法研判"为由拒绝输出。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#f59e0b;margin-top:1px;">★</span><span>🩺 <b>修「跑了很久、报告却是空白」</b>：思考型模型会把输出预算全部用在<b>推理过程</b>上，导致最终正文为空（界面就只剩空白或一句话）。现在遇到这种情况会<b>自动降级重试一次</b>（关掉思考 + 明确"只输出正文"），仍然失败则<b>如实给出诊断</b>（finish_reason / 思考长度 / 是否重试过）并提示"关闭思考模式后重试"，<b>不再留白</b>。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#22c55e;margin-top:1px;">⚡</span><span>⚡ <b>研判更快</b>：实测把输出上限定到 <b>16384</b>（模型实测接受），思考模式下 <b>13 秒一次成文</b>；8192 时思考会把预算吃光、白等一次才重试（实测总 56 秒）⇒ 现在省掉那次白等。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#2563eb;margin-top:1px;">📈</span><span>📈 <b>研判出"真结论"，还能直接下发</b>：数据段升级为<b>三个对比</b>（月度趋势含环比 · 单位横向对比含 A 类占比 · 类别×性质交叉），报告会给出"哪个月在上升""哪个单位 A 类占比最高""哪类问题 A 类最集中"这类<b>可决策结论</b>；报告下方新增<b>高优先整改清单</b>（性质权重 × 重复次数，屡查屡犯优先）与<b>数字自证</b>（报告数字与台账逐项核对，对不上会明确提示），并可<b>一键导出 DOCX / 清单 Excel</b>。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">⏱</span><span>⏱ <b>研判不再"黑屏等"</b>：改为<b>流式输出</b> —— 思考阶段就显示「🧠 模型正在思考…（已 N 字）」，<b>正文一出现即实时显示</b>（原来要等整段生成完才出字）。整改清单同时升级：用 <b>Jaccard 相似度识别"屡查屡犯"</b>（同一问题换个说法也能并成一条），并给出 <b>0~100 风险指数</b>（后果 × 重复次数 × 涉及单位扩散面）排序。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#059669;margin-top:1px;">🔎</span><span>🔎 <b>用 4.3 万条真实台账实测过</b>：报告给出趋势与单位对比结论、清单按风险指数排序、首字 <b>1 秒</b>就有"正在思考"反馈；同时修掉实测暴露的两处：<b>数字自证不再误报</b>（交叉表里的数字此前会被误判"对不上"）、<b>报告触达上限被截断时明确提示</b>（并限制篇幅，优先保住结论与措施）。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">📕</span><span>📕 <b>研判多了一把"制度尺子"</b>：台账里每条问题都写了"不符合《某办法》第 N 条"，现在把它聚合起来 —— 直接给出 <b>最常违反的条款 TOP10</b>（违反次数 / A 类次数 / 涉及几个段级单位）与 <b>段级单位对比</b>，把结论从"某类问题多"推进到"<b>哪条制度被反复违反、该约谈哪个段</b>"，并可<b>一键导出条款 Excel</b>。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">🧬</span><span>🧬 <b>大数据下也能识别"屡查屡犯"</b>：整改清单的相似合并改用 <b>MinHash 签名 + 倒排索引</b>（替代原来"数据多就退化成前缀桶"的做法）—— 4.3 万条真实台账下不再降级，<b>同一问题换个说法也能并成一条</b>，清单次数与风险指数因此更准。</span></div>
-
-
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">📄</span><span>📄 <b>PDF / OFD 的表格改为"跳过、只导文字"</b>（按你确定的口径）：导入时<b>不再尝试还原行列</b>，表格内容不进入正文，只保留表格外的文字；导入结果会<b>如实告诉你跳过了几张表</b>。⚠️ <b>DOCX 导入不受影响</b>（它的表格还原是正确的）—— 需要表格本身时请用 <b>DOCX</b> 格式导入。另外修掉：正文段落<b>不再被误判成表格</b>。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📐</span><span>📐 <b>PDF 表格改用"表格线"还原</b>：不再靠文字猜行列 —— 直接读 PDF 的表格框线（矢量线）算出真实网格，按格归位。真机实测你那份"两行标题"的表：原来被拆成 <b>12×6 + 22×8</b> 两张错表，现在一键还原成 <b>8 行 × 7 列</b>（与原文一致，单元格内折行也不再拆行）。扫描件（无框线）仍按"只导文字"兜底，导入时会如实告知。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🧮</span><span>🧮 <b>合并单元格（跨列大标题）也能还原了</b>：像附件8 的「缺陷性质」横跨两格，过去会被拆成「缺陷」「性质」两个小格；现在按<b>表格线证据</b>判定——该行此处没有竖线，就说明原文是合并单元格——自动合回一格。导出 Excel 时是真正的单元格合并，且正常数据行（有竖线）绝不受影响。</span></div>
-
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🛡️</span><span>🛡️ <b>安全与首屏兜底（P0）</b>：① 内嵌网页/第三方页面/视频播放器全部加<b>沙箱</b>并禁用「非用户触发的顶层跳转」（登录/点击跳转正常可用）——内嵌任意网页时不再给它同源权限（已按功能优先放宽：需要登录的站点照常可用）；② 首屏交互锁<b>最多 4 秒自动解除</b>：以前弱网/离线时会出现「界面已经在了、点任何按钮都没反应」，现在有 4s/7s/load/pageshow 四条自恢复路径；③ 导航按钮加了兜底，模块没加载完也能切页且有反馈，模块就绪后自动补齐；④ 组件加载失败会<b>列出具体文件名</b>且不再自动消失；⑤ 关键离线组件（PDF/Word/Excel 解析）随安装预缓存。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🔎</span><span>🔎 <b>检索更准了 + 智能体会总结教训了</b>：① <b>检索改写层（默认关闭）</b>（去掉"帮我查一下/有没有"这类噪声词，只留单位、设备、专业、时间等实体）——用真数据 A/B 实测（30 条真实样本）它对规章召回是<b>负收益</b>（Recall@10 86.7% → 70.0%）：本库靠"描述原文与规章正文的用词重合"命中，压缩成关键词反而丢掉证据 ⇒ <b>默认不启用</b>（可在 设置 → 知识库 用 <code>kb_rewrite=1</code> 试开）；② <b>智能体任务结束后会自动复盘</b>：总结"哪里做得好／踩了什么坑／下次怎么做"，下次同类任务启动时作为「历史经验」注入（≤300 字），越用越顺手；可在设置里用 <code>agent_reflect=0</code> 关闭。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">📄</span><span>📄 <b>修 PDF 导入的表格</b>：① 一个单元格里被折行排版的多行文字，原来导出后会变成好几行（其他列空着）—— 现在会<b>并回同一格、按原表分行</b>（单格折行、以及"第一列为空的多格折行"都覆盖）；② 正文段落<b>不再被误判成表格</b>（新增"多格行占比"判据：真表格的绝大多数行都填满多列，正文段落多为整段一块）。</span></div>
-                <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">📄</span><span>📄 <b>修 PDF 导入的表格行</b>：原来一个单元格里被折行排版的多行文字，导出后会变成好几行（其他列空着）。现在会按<b>原表分行</b>还原 —— 单元格内的折行<b>并回同一格</b>，行数与原表一致（同时保留"小计/备注"等真正的单列行，不会被误并）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#4d6bfe;margin-top:1px;">🛡️</span><span><b>新徽标上线</b>：换成「铁路安监 · 智慧守护」金属徽章 —— 导航、启动屏、浏览器标签与桌面 / 手机图标全套统一。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#ca8a04;margin-top:1px;">🧭</span><span><b>关于系统重新梳理</b>：按「AI 能力 · 业务模块 · 数据支撑」三类归位，用词更准确简洁；更新说明只保留最近一版。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">⚙️</span><span><b>智能体消耗挪到接口区</b>：从「关于系统」移到「设置 → 🔧 接口 → 模型接口」，与「连接状态」并列。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#dc2626;margin-top:1px;">🏷️</span><span><b>命名口径统一</b>：报告 / 备份 / 错误日志用全称「铁路安监智能辅助系统」，界面用简称；英文副标题改为 SAFETY SUPERVISION AI ASSISTANT。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">🎨</span><span><b>导航栏细节打磨</b>：标题字距加大更端庄、暗色模式同样保留「藏青 + 金」识别色、桌面端品牌名不再折行。</span></div>
                 </div>
             </div>
 
-            <!-- v4.33 ~ v4.34 重点（表格排版 + 智能对话数据引用） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.82rem;color:var(--text-secondary);margin-bottom:4px;">📋 近期重点版本</div>
-                <div style="font-size:0.78rem;line-height:1.7;color:var(--text-secondary);">
-                    <div>· <b>v4.34</b>：表格内字号改为<b>小四 / 五号</b>；修<b>「智能对话检测不到本地数据」</b>（"帮我写…"被误判成代码角色 · 数据源白名单不全 · 代码角色一刀切，三处静默掐断）；表格<b>列错位</b>二次修复（最左多出一整列空白）；手机端<b>进度条不再遮挡"追加 / 覆盖"按钮</b>；停用"走了网络"开机提示条。</div>
-                    <div>· <b>v4.33</b>：修表格单元格<b>「首行缩进」</b>（根因是继承了正文的 2 字缩进，"在 Word 里取消缩进才对齐"）；修<b>表格列错位</b>（居中数据把 4 列撑成 8~9 列）。</div>
-                </div>
-            </div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.62 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
-            <!-- 历史版本（一版一行，保留可追溯性） -->
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:600;font-size:0.82rem;color:var(--text-secondary);margin-bottom:4px;">🗂 历史版本</div>
-                <div style="font-size:0.74rem;line-height:1.75;color:var(--text-secondary);">
-                    v4.57 近期更新：检索改写层（默认关闭）+ 智能体任务后反思 · v4.56 近期更新：视频内嵌播放器并入沙箱（P0 收口） · v4.55 近期更新：iframe 沙箱化 + CSP 加固 + 首屏可交互兜底（P0） · v4.54 近期更新：合并单元格/跨列表头按表格线证据还原 · v4.53 近期更新：PDF 表格按表格线确定性还原（行列与原文一致） + v4.52 近期更新：PDF/OFD 表格跳过、只导文字（过渡口径）+ 正文不再被误判为表格 · v4.51 近期更新：MinHash + 倒排索引（大数据下也能识别屡查屡犯） · v4.50 近期更新：最常违反的条款 TOP10 + 段级单位对比（制度执行短板，可导出） · v4.49 近期更新：4.3 万条真实台账实测修复（自证不误报/截断提示/篇幅硬约束） · v4.48 近期更新：研判流式输出（思考进度 + 正文实时出现）+ 清单 Jaccard 屡查屡犯识别与风险指数 · v4.47 近期更新：数据段三个对比 + 本地整改清单 + 数字自证 + 一键导出 DOCX/Excel · v4.46 近期更新：研判输出上限定档 16384（思考模式一次成文） · v4.45 近期更新：研判"空正文"自动降级重试（关思考救回，仍空则如实给诊断） · v4.44 近期更新：研判"必须成文"硬约束（数据少也要成文） · v4.43 近期更新：风险研判"筛选后 0 条"元凶（紧凑日期 YYYYMMDD 被当成时间戳）+ 时间样例自证 · v4.42 近期更新：单位字段按导入同口径取值 + 筛成 0 条自证原因 · v4.41 近期更新：修风险研判"筛选后无数据（实际有）"（台账日期宽容解析）· v4.40 近期更新：资料来源标记（来源单位/仅作参考）+ 注入侧硬拦截 · v4.39 近期更新：风险研判结构化卡片（等级口径/依据标来源/措施四要素）+ 本次研判依据清单 + 与上次变化对比 · v4.38 近期更新：风险研判多源化（重点时段因子库 14 项 + 天气接入 + 6 类数据源面板可勾选）· v4.37 近期更新：代码类工具收窄 95% + 智能写作公文质量四项优化（占位符 / 条款层级 / 数据归属 / 引用匹配）+ 写作增强（KB 条款优先 / 整改四要素 / 口径优先级）· v4.36 近期更新：六项性能/体验优化（提示词去重 · 附件旧轮压缩 · 链接预读并发 · 工具并行+上限收尾 · 字段记忆化 · 盯控变更检测）+ 关于面板精简 · v4.35 近期更新：智能对话体检优化（索引不再每轮重建 · 工具按需召回 · 判据用纯问句 · 六项逻辑修复）· v4.32 PDF 表格识别放宽"跨行单元格"判据（表头不再被打平）· v4.31 跨列合并表头 / 宽表更完整 · v4.30 PDF 技术作业程序图还原为「阶段｜步骤」两列表 · v4.29 修 PDF 表格被"打平成一行长串" · v4.28 OFD 整篇 0 块回归 + 标题换段 + 对话操作按钮重复 · v4.27 格式转换 PDF/OFD/TXT → DOCX/Excel 及导入导出修复 · v4.25 智能体「综合研究」工具（外部理论 + 本单位举证）· v4.24 智能体工具按官方原则改进 · v4.23 联网=理论 / 本地=举证 · v4.22 本地资料 × 联网协同规则 · v4.21 回答尾部「本次参考」· v4.20 关联数据自动关联 · v4.19 关联数据类型补全（6→9）· v4.18 「本地资料」三种静默情况改为如实告知 · v4.17 知识库缓存失效范围 + 汇编源预热 · v4.16 智能体消耗可见 · v4.15 规章导入自动去水印 · <b>v4.14 近期更新</b>：对规<b>截取</b>去<b>重复</b> / 全文<b>定位</b> / <b>OFD</b> 导入 / 已导入文件的处理说明 · v4.13 SW 未接管真因（激活时"清理"连累"接管"）· v4.12 联网时折叠慢（App Shell 缓存缺文件自愈）
-                </div>
-            </div>
-
-            <!-- v4.11 及以前已归档（面板展示最近 3 个版本：v4.14 / v4.13 / v4.12） -->
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.11 及以前）的更新记录已归档，如需查阅请联系开发者。</div>
-
-
-            <!-- 核心功能 -->
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <span>📦</span>
-                    <span>核心功能</span>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.78rem;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>📖</span>
-                        <span>检查手册</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>📊</span>
-                        <span>检查信息</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>📋</span>
-                        <span>规章制度</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>📝</span>
-                        <span>工作日志</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>📞</span>
-                        <span>应急电话</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>📚</span>
-                        <span>资料中心</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>🔍</span>
-                        <span>智能查询</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-                        <span>🌙</span>
-                        <span>暗黑模式</span>
-                    </div>
-                </div>
-            </div>
 
             <!-- 技术信息 -->
-            <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:0.74rem;color:#64748b;line-height:1.7;">
+                        <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:0.74rem;color:#64748b;line-height:1.7;">
                 <div style="font-weight:600;color:var(--text);margin-bottom:4px;">💡 技术特性</div>
-                <div>• AI：多模型 API（DeepSeek V4 等 OpenAI 兼容）+ 智能体 ReAct 自主循环</div>
-                <div>• 数据：IndexedDB 本地存储，支持离线</div>
-                <div>• 部署：纯静态 + PWA 离线应用（GitHub Pages / 云端双地址）</div>
-                <div>• 适配：iPhone PWA / 鸿蒙 / Chrome / Edge / 安卓</div>
+                <div>• <b>本地优先</b>：业务数据全部存于本机（IndexedDB + localStorage，无自建服务端），离线可打开、可浏览、可速查（AI 生成需联网）；支持一键备份 / 恢复</div>
+                <div>• <b>不锁模型</b>：多厂商大模型随配随换（DeepSeek V4 / 通义 / 智谱 / OpenAI 兼容），一处切换、全模块生效</div>
+                <div>• <b>智能体</b>：ReAct 多步自主循环 —— 自主找数据、调工具、给结论，任务结束自动复盘</div>
+                <div>• <b>零安装</b>：纯静态 + PWA（GitHub Pages 镜像 / 云端 / U 盘均可离线启动）</div>
+                <div>• <b>全平台</b>：iPhone PWA / 鸿蒙 / 安卓 / Chrome / Edge / 华为麒麟（Linux）</div>
             </div>
 
             <!-- 底部信息 -->

@@ -422,7 +422,7 @@
                 backup.modules.diaryMedia = meta;
             }
 
-            var fileNameBase = '安监系统备份_' + window.localStamp();
+            var fileNameBase = '铁路安监智能辅助系统_备份_' + window.localStamp();
             var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
             var shareSupported = false;
             if (isMobile && navigator.share && typeof navigator.canShare === 'function') {
@@ -503,7 +503,7 @@
             '<!DOCTYPE html>',
             '<html lang="zh-CN"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width,initial-scale=1">',
-            '<title>安监系统数据备份</title>',
+            '<title>铁路安监智能辅助系统 · 数据备份</title>',
             '<style>',
             'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;padding:16px;background:#f8fafc;color:#1e293b;line-height:1.6;}',
             'h1{font-size:1.4rem;margin:0 0 4px;color:#0f172a;}',
@@ -521,7 +521,7 @@
             'pre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:.78rem;max-height:240px;overflow:auto;}',
             '.empty{color:#94a3b8;font-size:.82rem;}',
             '</style></head><body>',
-            '<h1>安监智能辅助系统 · 数据备份</h1>',
+            '<h1>铁路安监智能辅助系统 · 数据备份</h1>',
             '<p class="meta">导出时间：' + (backup.exportDate||'') + ' ｜ 版本：' + (backup.version||'') + '</p>',
             '<div id="root"></div>',
             '<script>var D=JSON.parse(' + payload + ');(function(){',

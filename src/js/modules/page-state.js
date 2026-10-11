@@ -42,7 +42,8 @@
     'risk-date-end',           // 风险研判结束日期
     'risk-unit',               // 风险研判责任单位筛选
     'risk-focus',              // 风险研判重点
-    'hb-searchInput',          // 检查手册搜索
+    // 'hb-searchInput'（2026-10-11 移除：检查手册的"搜索栏"已按用户要求改为"专业选择"下拉 hb-tradeSelect；
+    //   专业筛选属于视图状态，由 handbook 模块按视图记忆，不按草稿持久化）
     'phone-searchInput',       // 应急电话搜索
     'diary-search-input',      // 工作日志搜索
     'diary-work',              // 工作日志正文

@@ -24,6 +24,10 @@
                             get: function () { return accidentData; }, set: function (v) { accidentData = v; } }
             };
             var _hbActive = 'handbook';      // 当前数据集（导入目标 + 大纲/检索视图共用）
+            /** 【2026-10-11】当前视图（outline / cases / rules）—— 专业筛选的选择值按视图分别记忆 */
+            var _hbView = 'outline';
+            /** 【2026-10-11】各视图记住的"专业"（用户在筛选下拉里选的；模块内记忆，刷新后回到第一个专业） */
+            var _hbTradeSel = { outline: '', cases: '', rules: '' };
             function _hbCur() { return HB_SETS[_hbActive] || HB_SETS.handbook; }
             function _hbGet() { try { return _hbCur().get() || []; } catch (e) { return []; } }
             function _hbPut(v) { _hbCur().set(v); }
@@ -272,14 +276,24 @@
                 const lines = String(raw || '').replace(/\r\n?/g, '\n').split('\n');
                 const data = [];
                 let cur = { chapter: '', section: '', item: '', subitem: '', content: '' };
-                function push() {
+                // 【2026-10-11 修真实缺陷】这里原来叫 push() 且一次把 cur 全清空 ⇒ "章"只留在第一条记录上：
+                //   同一章下第 2 条起 chapter 全丢，导入后大纲里散成"未分类"（专业筛选也归不进专业）。
+                //   （由专业筛选基准暴露：'# 章 / ## 节 / ### 条 / 正文' 的 md 夹具里，只有第 1 行带章。）
+                //   改为与 DOCX/HTML 解析同一口径：落库后只清"比新标题更低的层级"（resetBelow）。
+                function flush() {
                     const content = String(cur.content || '').trim();
                     if (cur.chapter || cur.section || cur.item || cur.subitem) {
                         data.push({ chapter: cur.chapter, section: cur.section, item: cur.item, subitem: cur.subitem, content: content });
                     } else if (content) {
                         data.push({ chapter: '未分类', section: '', item: '', subitem: '', content: content });
                     }
-                    cur = { chapter: '', section: '', item: '', subitem: '', content: '' };
+                    cur.content = '';
+                }
+                function resetBelow(level) {
+                    if (level <= 1) { cur.section = ''; cur.item = ''; cur.subitem = ''; cur.content = ''; }
+                    if (level <= 2) { cur.item = ''; cur.subitem = ''; cur.content = ''; }
+                    if (level <= 3) { cur.subitem = ''; cur.content = ''; }
+                    if (level <= 4) { cur.content = ''; }
                 }
                 for (const line of lines) {
                     const t = String(line).trim();
@@ -289,7 +303,8 @@
                     if (md) { lv = Math.min(md[1].length, 4); title = md[2].trim(); }
                     else lv = detectLevelByPattern(t);
                     if (lv >= 1 && lv <= 4) {
-                        push();
+                        flush();
+                        resetBelow(lv);
                         if (lv === 1) cur.chapter = title;
                         else if (lv === 2) cur.section = title;
                         else if (lv === 3) cur.item = title;
@@ -298,7 +313,7 @@
                         cur.content = cur.content ? (cur.content + '\n' + t) : t;
                     }
                 }
-                push();
+                flush();
                 return data;
             }
 
@@ -424,6 +439,65 @@
             }
 
             // ========== 大纲浏览模式 ==========
+            // 【2026-10-11 专业筛选】用户口径：手册 / 事故案例的"专业" = **每章标题前两个字**。
+            //   真数据里章标题常带"第X章"编号（如「第一章 安全基础」），若直接取前两字会得到
+            //   "第一/第二"这种伪专业 ⇒ 先剥离编号前缀再取前两字（无编号的标题等于原口径，零影响）。
+            //   规章制度数据本身就有 trade（专业）字段，直接用它。
+            function _hbTradeOfChapter(chapter) {
+                var c = String(chapter == null ? '' : chapter).replace(/\s+/g, ' ').trim();
+                if (!c) return '未分类';
+                c = c.replace(/^第\s*[0-9０-９一二三四五六七八九十百零两]+\s*[章篇节部分]\s*[、.．:：\-—]?\s*/, '').trim();
+                if (!c) return '未分类';
+                return c.slice(0, 2);
+            }
+
+            /** 从数据集里收集全部专业（保持出现顺序）；field='chapter' 走"章标题前两字"，field='trade' 直接用字段 */
+            function _hbTradesOfList(list, field) {
+                var seen = {}, out = [];
+                (list || []).forEach(function (d) {
+                    var t = (field === 'trade') ? String(d.trade || '未分类') : _hbTradeOfChapter(d.chapter);
+                    if (!seen[t]) { seen[t] = 1; out.push(t); }
+                });
+                return out;
+            }
+
+            /** 刷新"专业选择"下拉；选项变化时把当前选择归一（失效 → 回到第一个专业），返回最终生效值 */
+            function _hbFillTradeSelect(options, current) {
+                var sel = document.getElementById('hb-tradeSelect');
+                if (!sel) return current || '';
+                if (!options || options.length === 0) {
+                    sel.innerHTML = '<option value="">（暂无专业数据）</option>';
+                    _hbTradeSel[_hbView] = '';
+                    return '';
+                }
+                var keep = (options.indexOf(current) >= 0) ? current : options[0];
+                sel.innerHTML = options.map(function (t) {
+                    return '<option value="' + _esc(t) + '">' + _esc(t) + '</option>';
+                }).join('');
+                sel.value = keep;
+                _hbTradeSel[_hbView] = keep;
+                return keep;
+            }
+
+            /** 切换专业（下拉 onchange）：只重建当前视图；三个视图各自记住自己的选择 */
+            window.hbSetTrade = function (trade) {
+                _hbTradeSel[_hbView] = trade || '';
+                if (_hbView === 'rules') hbBuildRulesTree(); else hbBuildOutlineTree();
+            };
+
+            /** 【2026-10-11 用户定稿】重建目录树后**只展开一级（章）**：让**二级标题直接可见**；
+             *   二级保持收起（不显示三级标题），**点二级才展开三级**（点击逻辑沿用原有折叠/展开）。
+             *   原来是"默认全部折叠"，选完专业还得一层层点开；现在自动到二级为止。 */
+            function _hbExpandFirstLevel(treeEl) {
+                if (!treeEl) return;
+                var boxes = treeEl.querySelectorAll('.hb-tree-level-0 > .hb-tree-children');
+                for (var i = 0; i < boxes.length; i++) {
+                    boxes[i].classList.add('expanded');
+                    var arrow = boxes[i].parentElement ? boxes[i].parentElement.querySelector('.hb-tree-arrow') : null;
+                    if (arrow) arrow.classList.add('expanded');
+                }
+            }
+
             // 内容 Markdown 渲染（复用对话模块的解析器，带兜底）
             function _hbMd(text) {
                 if (typeof window.dsMarkdown === 'function') return window.dsMarkdown(text || '');
@@ -467,6 +541,8 @@
             }
 
             // 站内搜索：根据当前视图检索对应数据（大纲视图搜手册 / 规章制度视图搜规章）
+            // 【2026-10-11】用户要求把"搜索栏"改为"专业选择"筛选 ⇒ 搜索输入框已从界面移除（见 index.html）；
+            //   本函数保留为**程序化入口**（逻辑不动；以后要恢复搜索入口可直接挂回来），界面上的目录筛选走 hbSetTrade。
             window.hbSearch = function(keyword) {
                 const treeEl = document.getElementById('hb-outlineTree');
                 const contentEl = document.getElementById('hb-outlineContent');
@@ -638,6 +714,7 @@
 
             // 切换浏览模式（三个视图：检查手册 / 事故案例 / 规章制度）
             window.hbSwitchView = function(view) {
+                _hbView = (view === 'cases' || view === 'rules') ? view : 'outline';   // 【2026-10-11】专业筛选按视图记忆
                 if (view === 'cases') _hbActive = 'cases';
                 else if (view === 'outline') _hbActive = 'handbook';
                 var ob = document.getElementById('hb-toggleOutline');
@@ -656,11 +733,31 @@
             function hbBuildOutlineTree() {
                 const treeEl = document.getElementById('hb-outlineTree');
                 const contentEl = document.getElementById('hb-outlineContent');
-                var _data = _hbGet();          // 【2026-09-22】当前数据集（检查手册 / 事故案例）
-                if (_data.length === 0) {
+                var _all = _hbGet();           // 【2026-09-22】当前数据集（检查手册 / 事故案例）
+                if (_all.length === 0) {
+                    _hbFillTradeSelect([], '');                 // 【2026-10-11】无数据 → 下拉占位
+                    var _infoEmpty = document.getElementById('hb-searchInfo');
+                    if (_infoEmpty) { _infoEmpty.style.display = 'none'; _infoEmpty.textContent = ''; }
                     treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">' + _esc(_hbCur().label) + '暂无数据，请先在「设置」面板导入 DOCX / JSON 文档</div>';
                     contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看内容</div>';
                     return;
+                }
+
+                // 【2026-10-11 专业筛选】只构建"所选专业"的目录（专业 = 每章标题前两个字）：
+                //   原来一进视图就把全部专业的章全铺开，章一多找起来费劲；现在"选哪个专业显示哪个，其余不显示"。
+                var _trades = _hbTradesOfList(_all, 'chapter');
+                var _cur = _hbFillTradeSelect(_trades, _hbTradeSel[_hbView]);
+                var _data = _all.filter(function (d) { return _hbTradeOfChapter(d.chapter) === _cur; });
+                if (_data.length === 0) _data = _all;           // 兜底：极端情况下宁全勿空
+                var _infoEl = document.getElementById('hb-searchInfo');
+                if (_infoEl) {
+                    // 【2026-10-11 用户定稿】格式：「检查手册（共 11 个专业） · 当前专业「通用」共 333 条」
+                    //   · 专业总数跟**数据源名**走（避免被读成"属于当前专业"）；
+                    //   · 当前专业只报条数，不再报"x 章"（章数对常用数据是噪音）；
+                    //   · 只有一个专业时不带括号段（下拉本身就是常量，没必要占字）。
+                    var _tradeTag = (_trades.length > 1) ? '（共 ' + _trades.length + ' 个专业）' : '';
+                    _infoEl.textContent = '📚 ' + _hbCur().label + _tradeTag + ' · 当前专业「' + _cur + '」共 ' + _data.length + ' 条';
+                    _infoEl.style.display = '';
                 }
 
                 // 构建树形结构
@@ -781,7 +878,8 @@
                     });
                 });
 
-                // 默认全部折叠
+                // 【2026-10-11 用户定稿】重建后**只展开一级**：二级标题可见、三级不显示（点二级才展开）。
+                _hbExpandFirstLevel(treeEl);
 
             }
 
@@ -791,18 +889,37 @@
                 const contentEl = document.getElementById('hb-outlineContent');
 
                 // 从规章制度模块获取实时数据
-                const rulesData = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
-                if (!rulesData || rulesData.length === 0) {
+                const rulesAll = (typeof window.getRulesData === 'function') ? window.getRulesData() : [];
+                if (!rulesAll || rulesAll.length === 0) {
+                    _hbFillTradeSelect([], '');                 // 【2026-10-11】无数据 → 下拉占位
+                    var _infoEmptyR = document.getElementById('hb-searchInfo');
+                    if (_infoEmptyR) { _infoEmptyR.style.display = 'none'; _infoEmptyR.textContent = ''; }
                     treeEl.innerHTML = '<div class="hb-content-placeholder" style="padding:30px 10px;">规章制度模块中暂无数据，请先在规章制度模块导入文件</div>';
                     contentEl.innerHTML = '<div class="hb-content-placeholder">← 点击左侧目录查看内容</div>';
                     return;
+                }
+
+                // 【2026-10-11 专业筛选】规章制度用其自身 trade（专业）字段：选哪个专业只显示哪个专业。
+                //   注意：叶子节点携带的 ruleIdx 必须是**全量数组**里的下标（点「查看全文」用它定位），
+                //   所以过滤时把原始下标一起带上，不能直接用过滤后数组的序号。
+                var _trades = _hbTradesOfList(rulesAll, 'trade');
+                var _cur = _hbFillTradeSelect(_trades, _hbTradeSel[_hbView]);
+                var _pairs = [];
+                rulesAll.forEach(function (r, idx) { if (String(r.trade || '未分类') === _cur) _pairs.push({ rule: r, idx: idx }); });
+                var _infoElR = document.getElementById('hb-searchInfo');
+                if (_infoElR) {
+                    // 口径与大纲视图一致：专业总数跟数据源名，当前专业只报"共 N 条"（只有一个专业时省略括号段）
+                    var _tradeTagR = (_trades.length > 1) ? '（共 ' + _trades.length + ' 个专业）' : '';
+                    _infoElR.textContent = '📜 规章制度' + _tradeTagR + ' · 当前专业「' + _cur + '」共 ' + _pairs.length + ' 条';
+                    _infoElR.style.display = '';
                 }
 
                 // 构建树形结构：按 trade 分组，每个 trade 下面是 title 列表
                 const tree = [];
                 const tradeMap = {}; // trade -> node index in tree
 
-                rulesData.forEach((rule, idx) => {
+                _pairs.forEach((pair) => {
+                    const rule = pair.rule, idx = pair.idx;
                     const trade = rule.trade || '未分类';
                     const title = rule.title || '无标题';
 
@@ -903,6 +1020,9 @@
                         }
                     });
                 });
+
+                // 【2026-10-11 用户定稿】同大纲视图：只展开一级（专业 → 二级标题可见，点二级才展开）
+                _hbExpandFirstLevel(treeEl);
             }
 
             loadFromStorage();

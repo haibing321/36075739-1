@@ -1129,6 +1129,26 @@ html:not([data-theme="dark"]) .att-sub-btn.att-active:hover {
 /* 规章制度视图只读提示条（handbook.js 内联 background:#fffbeb / color:#92400e），全局兜底未含 #fffbeb */
 [data-theme="dark"] *[style*="background:#fffbeb"] { background: #3a2e12 !important; color: #fcd34d !important; border-color: #7a5a1f !important; }
 
+/* 检查手册 · 三视图按钮「选中色」（2026-10-11 用户要求：点哪个按钮，哪个颜色明显不同）
+   —— 背景：本文件上方的大统一重置用 !important 把 .hb-view-toggle 按钮刷成透明底，
+   components.css 里 .hb-view-toggle button.active 的 --primary 蓝被压掉 ⇒ 浅色主题下
+   选中态几乎看不出来（这正是用户反馈的问题）。这里给三个视图各配一个颜色，深浅两套都齐：
+   检查手册=主蓝 / 事故案例=橙 / 规章制度=绿。 */
+html:not([data-theme="dark"]) #hb-toggleOutline.active { background: #4d6bfe !important; border-color: #4d6bfe !important; color: #ffffff !important; }
+html:not([data-theme="dark"]) #hb-toggleCases.active   { background: #ea580c !important; border-color: #ea580c !important; color: #ffffff !important; }
+html:not([data-theme="dark"]) #hb-toggleRules.active   { background: #059669 !important; border-color: #059669 !important; color: #ffffff !important; }
+[data-theme="dark"] #hb-toggleOutline.active { background: #5a75ff !important; border-color: #5a75ff !important; color: #ffffff !important; }
+[data-theme="dark"] #hb-toggleCases.active   { background: #f97316 !important; border-color: #f97316 !important; color: #ffffff !important; }
+[data-theme="dark"] #hb-toggleRules.active   { background: #10b981 !important; border-color: #10b981 !important; color: #ffffff !important; }
+/* 专业筛选下拉（2026-10-11 新增元素）：暗黑下与主题一致 */
+[data-theme="dark"] #hb-tradeSelect { background: #1d1d1d !important; color: #e2e8f0 !important; border-color: #333333 !important; }
+/* 专业筛选的文字说明（2026-10-11 追加：与选择框同一行）—— 浅色用行内色 #475569，暗黑下必须覆盖为亮色 */
+[data-theme="dark"] .hb-trade-label { color: #cbd5e1 !important; }
+/* 目录树·展开态放开 max-height 上限（2026-10-11）：
+   components.css 用 max-height:5000px 当手风琴动画上限，展开大分支（如某节下 300+ 条）
+   时会被 overflow:hidden **截断**（底部看不见）。这里放开限高 —— 正确显示优先于动画。 */
+.hb-tree-children.expanded { max-height: none !important; }
+
 /* ---------- 储存条（各模块底部存储占用条 .storage-bar / .storage-fill） ----------
    components.css 轨道硬编码 #e2e8f0，dark.css 未覆盖；填充用 var(--success/--warning/--accent) 在暗黑下已为亮色，无需改 */
 [data-theme="dark"] .storage-bar { background: #333333 !important; }

@@ -59,7 +59,10 @@
     </script>
     <meta name="description" content="铁路安全检查智能辅助系统 — 问题库、规章、日志、通讯录、手册、AI助手六合一工具">
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <!-- 【2026-10-14 修复·桌面图标】iOS 会把 apple-touch-icon 的透明区**填黑**，原来指向透明底圆章
+         icons/icon-192.png ⇒ 装到主屏后是"嵌在黑方块里的银章"。改用不透明版（藏青满幅 + 银章 78%），
+         由 scripts/make-pwa-icons.ps1 生成（与 manifest 的 maskable 图标同源同参数）。 -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png">
     <!-- iOS 主屏幕启动屏（apple-touch-startup-image）：添加到主屏幕后启动不再闪白屏。
          按 iPhone 常见逻辑分辨率提供，media 查询依据设备宽高+像素密度(dppx)匹配。 -->
     <link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" href="icons/splash/iphone-se1.png">
@@ -2156,7 +2159,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.64</span> · 2026.10.11</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.65</span> · 2026.10.14</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2203,12 +2206,13 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.64 近期更新</span>
+                    <span>v4.65 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#4d6bfe;margin-top:1px;">🛡️</span><span><b>新徽标上线（圆形银章版）</b>：换成「铁路安监 · 智能安全」圆章 —— 银圈 + AI 防护盾 + 高铁与钢轨，比上一版更简洁醒目。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🖥️</span><span><b>全套同步换新</b>：导航、启动屏、浏览器标签页、桌面 / 手机图标与「关于系统」使用同一枚徽章。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">✨</span><span><b>透明底自适应</b>：徽章经去水印、圆形裁切与透明底处理，在藏青导航条、白色卡片、深色启动页上都能自然融合。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#4d6bfe;margin-top:1px;">📱</span><span><b>手机桌面图标修复</b>：改用系统规范的满幅图标（原透明圆章被系统裁掉边缘、又套上背景色，看着"徽标不全"）。<b>更新后请删除旧图标、重新「添加到主屏幕 / 安装应用」</b>。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📴</span><span><b>离线装机图标不再走样</b>：图标改在安装阶段就缓存 —— 纯离线安装不再退回"带浏览器角标"的默认图标。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0891b2;margin-top:1px;">🍎</span><span><b>iPhone 主屏图标去黑底</b>：iOS 会把透明区填黑，现改用不透明版本，不再出现"黑方块包银章"。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🤖</span><span><b>智能助手选工具更准</b>：每个工具写清用途与"何时不该用"，并补少量示例 —— 问什么该查哪类数据更稳定。</span></div>
                 </div>
             </div>
 

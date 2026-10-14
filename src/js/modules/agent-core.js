@@ -7,26 +7,9 @@
   // 默认开启；在控制台执行 localStorage.setItem('agentEnhanceV2','0') 即可瞬间回退到纯净 ReAct
   window._agentEnhanceOn = function() { return localStorage.getItem('agentEnhanceV2') !== '0'; };
 
-  // 工具用途说明（A2 透明日志用）
-  var _TOOL_PURPOSE = {
-    search_issues: '检索检查信息系统，查找相关问题记录',
-    count_issues: '统计检查信息数量（时间范围内全部计入，不封顶，可按性质/类别/单位分组）',
-    get_issue_detail: '调取单条检查信息完整内容（含规章依据）',
-    search_rules: '检索规章制度库，查找相关条款',
-    get_rule_detail: '调取单条规章制度完整条款',
-    search_handbook: '检索检查手册项点',
-    get_handbook_detail: '调取手册项点完整内容',
-    write_diary: '将本次工作写入「工作日志」',
-    save_report: '将报告存入「写作资料库」',
-    get_weather: '查询车站天气预报',
-    search_phone: '检索应急电话通讯录',
-    search_material: '检索写作参考资料库',
-    get_material_detail: '调取参考资料详情',
-    read_diary: '读取历史工作日志',
-    kb_search: '统一检索本地知识库（跨源、按条款/段落粒度，带出处）',
-    autocheck: '对规：按问题描述召回最贴合的规章条款（与「智能对规」同一套召回）'
-  };
-  function _toolPurpose(name) { return _TOOL_PURPOSE[name] || '调用工具'; }
+  // 工具用途说明（A2 透明日志用）—— 【2026-10-14】改为读 TOOL_META（单一来源），
+  //   原先独立一张表且已漂移（16/23，7 个工具日志只显示"调用工具"）。
+  function _toolPurpose(name) { return (TOOL_META[name] && TOOL_META[name].purpose) || '调用工具'; }
   function _toolEvidence(execResult) {
     try {
       var r = execResult && execResult.result;
@@ -88,8 +71,8 @@
           category: { type: 'string', description: '类别筛选，如 消防安全/规章制度/设备管理等(可选)' },
           dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD(可选)' },
           dateTo: { type: 'string', description: '截止日期 YYYY-MM-DD(可选)' },
-          nature: { type: 'string', description: '问题性质筛选：A类/B类/C类/红线/空白(可选)' },
-          limit: { type: 'integer', description: '引用典型问题条数，默认35（用户要求更多时加大 limit 即可，不封顶）' }
+          nature: { type: 'string', enum: ['A类', 'B类', 'C类', '红线'], description: '问题性质筛选：A类/B类/C类/红线(可选)' },
+          limit: { type: 'integer', default: 35, description: '引用典型问题条数，默认35（用户要求更多时加大 limit 即可，不封顶）' }
         },
         required: ['keyword']
       },
@@ -118,8 +101,8 @@
           category: { type: 'string', description: '类别筛选(可选)' },
           dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD(可选)' },
           dateTo: { type: 'string', description: '截止日期 YYYY-MM-DD(可选)' },
-          nature: { type: 'string', description: '性质筛选：A类/B类/C类/红线/空白(可选)' },
-          groupBy: { type: 'string', description: "分组维度：'性质' | 'category' | 'unit'(可选)" }
+          nature: { type: 'string', enum: ['A类', 'B类', 'C类', '红线'], description: '性质筛选：A类/B类/C类/红线(可选)' },
+          groupBy: { type: 'string', enum: ['性质', 'category', 'unit', 'trade', 'month'], description: "分组维度(可选)：'性质' | 'category' | 'unit' | 'trade' | 'month'(按 YYYY-MM，用于趋势)" }
         },
         required: []
       },
@@ -141,7 +124,7 @@
       name: 'search_rules',
       description: '搜索规章制度数据库。给出关键词时优先走统一检索层（命中条款级片段+出处，摘要即为命中的那一条），无命中才回退关键词模糊匹配。返回精简列表(id=全量下标+标题+专业+摘要)，需要全文请用 get_rule_detail(id)。'
         + '⚠️ 这是**本地收录版本**（source_type=local_evidence）：引用时标注"规章制度：XXX"；若需核实某条款是否现行有效或已修订，本地库可能未更新，应说明"请以现行有效文件为准"',
-      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词(可选，不传返回最近条目)'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:[] },
+      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词(可选，不传返回最近条目)'}, limit:{type:'integer',default:10,description:'返回条数上限，默认10'} }, required:[] },
       handler: async function(args) {
         var full = [];
         try { if (typeof window.getRulesData === 'function') full = window.getRulesData(); } catch(e) {}
@@ -201,7 +184,7 @@
           category: { type: 'string', description: '类别筛选(可选)' },
           dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD，可只到月如 2026-09(可选)' },
           dateTo: { type: 'string', description: '结束日期 YYYY-MM-DD，可只到月如 2026-09(可选)' },
-          nature: { type: 'string', description: '性质 A类/B类/C类/红线(可选)' },
+          nature: { type: 'string', enum: ['A类', 'B类', 'C类', '红线'], description: '性质 A类/B类/C类/红线(可选)' },
           keyword: { type: 'string', description: '关键词(可选)' }
         },
         required: []
@@ -224,7 +207,7 @@
     {
       name: 'search_handbook',
       description: '查询检查手册。优先走统一检索层（命中项点级片段+出处），无命中才回退关键词模糊搜索。返回精简列表(id=全量下标+标题+摘要)，需要全文请用 get_handbook_detail(id)',
-      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:['keyword'] },
+      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词'}, limit:{type:'integer',default:10,description:'返回条数上限，默认10'} }, required:['keyword'] },
       handler: async function(args) {
         var full = [];
         try { if (typeof window.getHandbookData === 'function') full = window.getHandbookData(); } catch(e) {}
@@ -274,7 +257,7 @@
     {
       name: 'search_accidents',
       description: '查询「事故案例」库（与检查手册平行的第二份四级数据；用于找相似案例、借鉴事故教训）。优先走统一检索层（项点级片段+出处），无命中回退关键词模糊搜索。返回精简列表(id=全量下标+标题+摘要)，需要全文请用 get_accident_detail(id)',
-      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词（如"脱轨""接触网""施工""违章"）'}, limit:{type:'integer',description:'返回条数上限，默认10'} }, required:['keyword'] },
+      parameters: { type:'object', properties:{ keyword:{type:'string',description:'搜索关键词（如"脱轨""接触网""施工""违章"）'}, limit:{type:'integer',default:10,description:'返回条数上限，默认10'} }, required:['keyword'] },
       handler: async function(args) {
         var full = [];
         try { if (typeof window.getAccidentData === 'function') full = window.getAccidentData() || []; } catch (e) {}
@@ -518,7 +501,7 @@
         type: 'object',
         properties: {
           keyword: { type: 'string', description: '搜索关键词：站名/单位/线名，或电话号片段' },
-          limit: { type: 'integer', description: '返回条数上限，默认10' }
+          limit: { type: 'integer', default: 10, description: '返回条数上限，默认10' }
         },
         required: ['keyword']
       },
@@ -546,7 +529,7 @@
         properties: {
           keyword: { type: 'string', description: '搜索关键词（标题或内容）' },
           type: { type: 'string', description: '资料类型筛选(可选)：参考材料/模板/历史报告' },
-          limit: { type: 'integer', description: '返回条数上限，默认10' }
+          limit: { type: 'integer', default: 10, description: '返回条数上限，默认10' }
         },
         required: ['keyword']
       },
@@ -604,7 +587,7 @@
         properties: {
           date: { type: 'string', description: '日期筛选 YYYY-MM-DD（支持前缀，如 2026-08 表示8月，可选）' },
           keyword: { type: 'string', description: '关键词模糊匹配工作内容/问题/规章依据(可选)' },
-          limit: { type: 'integer', description: '返回条数上限，默认20' }
+          limit: { type: 'integer', default: 20, description: '返回条数上限，默认20' }
         },
         required: []
       },
@@ -688,7 +671,7 @@
         properties: {
           query: { type: 'string', description: '检索问题或关键词（尽量用业务用词，越具体越准）' },
           sources: { type: 'string', description: '要检索的源，逗号分隔(可选)：rules,cases,issues,handbook,accidents,materials,reports,phone,diary；默认 rules,cases,issues,handbook,accidents,materials,reports（materials/reports 为异步源，首次较慢）' },
-          topK: { type: 'number', description: '每个源返回条数(可选，默认 4，最大 8)' }
+          topK: { type: 'number', default: 4, minimum: 1, maximum: 8, description: '每个源返回条数(可选，默认 4，最大 8)' }
         },
         required: ['query']
       },
@@ -744,7 +727,7 @@
         properties: {
           query: { type: 'string', description: '要研究的问题（尽量完整，如"信号机械室消防安全检查如何规定"）' },
           needExternal: { type: 'boolean', description: '是否补充外部理论检索（可选；不传则按问题自动判断：涉及规定/标准/依据/现行有效性等会补，纯本单位数据统计则不补）' },
-          topK: { type: 'number', description: '每个本地源返回条数（可选，默认 4，最大 6）' }
+          topK: { type: 'number', default: 4, minimum: 1, maximum: 6, description: '每个本地源返回条数（可选，默认 4，最大 6）' }
         },
         required: ['query']
       },
@@ -901,6 +884,135 @@
     }
   ];
 
+  // ========== 工具元数据（单一注册表，2026-10-14 用户口径）==========
+  // 为什么集中：此前同一工具名要在 6 处平行清单各写一遍（TOOLS / _TOOL_PURPOSE / TOOL_GROUPS /
+  //   RETRYABLE_TOOLS / 超时表 / _TOOL_NOCACHE），改名或新增极易漏改；实证：purpose 已漂移成 16/23
+  //   （7 个工具的透明日志只显示"调用工具"）。现在 purpose / retry / timeout / cache 全部由本表派生，
+  //   增删工具只改两处：TOOLS（定义+schema）+ TOOL_META（元数据）；漂移由 __agentToolRegistryAudit 双向兜住。
+  // whenNotToUse：显式反约束（用户口径："要写清何时用/何时不用，否则模型一定误选"）。
+  //   · 默认由 _toolsParam 追加到 description 末尾（模型可见，随工具一起挂载，chat 侧同享）；
+  //   · wnuInline:true = 负面规则已写在其 description 里（kb_search / research），不重复追加；
+  //   · 写法要点：只写"该换个工具做"的情形，不等于"少用"（本系统工具语义相近簇：
+  //     kb_search / search_issues / count_issues / export_issues / research / autocheck / search_rules）。
+  // kind：read=只读（可重试/可短缓存）｜write=写本机库（不重试不缓存）｜export=产文件｜net=需联网。
+  var TOOL_META = {
+    search_issues: {
+      purpose: '检索检查信息系统，查找相关问题记录',
+      kind: 'read', retry: true,
+      whenNotToUse: '要"总条数 / 按要求分组统计"时用 count_issues（不封顶、数字可信）；要一份可下载的清单时用 export_issues；要跨源条款级依据时优先 kb_search。本工具返回的 items 只是关键词召回样例，条数可能少于 total。'
+    },
+    count_issues: {
+      purpose: '统计检查信息数量（时间范围内全部计入，不封顶，可按性质/类别/单位分组）',
+      kind: 'read', retry: true,
+      whenNotToUse: '要看某条问题的全文/明细时用 search_issues（找 id 再取全文）；要导出文件时用 export_issues。'
+    },
+    get_issue_detail: {
+      purpose: '调取单条检查信息完整内容（含规章依据）',
+      kind: 'read', retry: true,
+      whenNotToUse: '还没有 id 时先用 search_issues 检索；要一次取多条时用 get_issue_details（最多 20 条）。'
+    },
+    get_issue_details: {
+      purpose: '批量调取多条检查信息全文（一次最多 20 条，省轮次）',
+      kind: 'read', retry: true,
+      whenNotToUse: '只有 1 条要取时用 get_issue_detail；尚未检索到 id 时先 search_issues。'
+    },
+    export_issues: {
+      purpose: '导出检查信息为 CSV 文件（用户下载）',
+      kind: 'export', timeout: 30000, cache: false,
+      whenNotToUse: '只是想知道条数时用 count_issues（别生成文件）；只要几条明细看看时用 search_issues / get_issue_detail，不必导出。'
+    },
+    search_rules: {
+      purpose: '检索规章制度库，查找相关条款',
+      kind: 'read', retry: true,
+      whenNotToUse: '要跨源（含手册/案例/台账）条款级依据时优先 kb_search；要"规定依据 + 本单位实际"的完整回答时用 research；要某条全文时用 get_rule_detail(id)。'
+    },
+    get_rule_detail: {
+      purpose: '调取单条规章制度完整条款',
+      kind: 'read', retry: true,
+      whenNotToUse: '没有 id 时先 search_rules；要按问题描述找最贴合条款做对规判定时用 autocheck。'
+    },
+    search_handbook: {
+      purpose: '检索检查手册项点',
+      kind: 'read', retry: true,
+      whenNotToUse: '要找事故案例/教训时用 search_accidents（手册 ≠ 案例）；要跨源条款级片段时优先 kb_search。'
+    },
+    get_handbook_detail: {
+      purpose: '调取手册项点完整内容',
+      kind: 'read', retry: true,
+      whenNotToUse: '没有 id 时先 search_handbook。'
+    },
+    search_accidents: {
+      purpose: '检索事故案例库（找相似案例、借鉴事故教训）',
+      kind: 'read', retry: true,
+      whenNotToUse: '要制度依据/条款时用 kb_search 或 search_rules（案例不是依据）；要手册项点时用 search_handbook。'
+    },
+    get_accident_detail: {
+      purpose: '调取单条事故案例完整内容',
+      kind: 'read', retry: true,
+      whenNotToUse: '没有 id 时先 search_accidents。'
+    },
+    write_diary: {
+      purpose: '将本次工作写入「工作日志」',
+      kind: 'write', timeout: 20000,
+      whenNotToUse: '用户没要求记录、只是查询/分析时不要写（写库类只在用户明确要"写入/记录到日志"时做）。'
+    },
+    save_report: {
+      purpose: '将报告存入「写作资料库」',
+      kind: 'write', timeout: 30000,
+      whenNotToUse: '用户只要在对话里看结果、没要求"保存/存到资料库"时不要存；要写工作日志用 write_diary。'
+    },
+    read_diary: {
+      purpose: '读取历史工作日志',
+      kind: 'read', retry: true,
+      whenNotToUse: '要写日志时用 write_diary；要检索跨源资料时优先 kb_search。'
+    },
+    get_weather: {
+      purpose: '查询车站天气预报',
+      kind: 'net', retry: true, timeout: 8000,
+      whenNotToUse: '与天气无关的安全检查/规章问题不要调（它不是业务数据源）。'
+    },
+    search_phone: {
+      purpose: '检索应急电话通讯录',
+      kind: 'read', retry: true,
+      whenNotToUse: '问的如果不是"电话/联系方式"就不要调。'
+    },
+    search_material: {
+      purpose: '检索写作参考资料库',
+      kind: 'read', retry: true,
+      whenNotToUse: '找规章条款用 search_rules / kb_search（reports 源）；找历史生成过的报告用 kb_search。'
+    },
+    get_material_detail: {
+      purpose: '调取参考资料详情',
+      kind: 'read', retry: true,
+      whenNotToUse: '没有 id 时先 search_material。'
+    },
+    kb_status: {
+      purpose: '查看知识库各源条数与索引状态（只读）',
+      kind: 'read', retry: true,
+      whenNotToUse: '要检索内容时用 kb_search（本工具只报状态，不返回内容）。'
+    },
+    kb_warm: {
+      purpose: '载入/预热知识库索引（可能耗时数十秒）',
+      kind: 'read', timeout: 60000,
+      whenNotToUse: '正常检索就行（kb_search 会按需建索引）；只在用户明确要"先载入/预热索引"，或排查检索迟迟不出结果时用。'
+    },
+    kb_search: {
+      purpose: '统一检索本地知识库（跨源、按条款/段落粒度，带出处）',
+      kind: 'read', retry: true, timeout: 30000, wnuInline: true,
+      whenNotToUse: '已内联在其 description（何时不必用）—— 由实现维护，此处不重复追加'
+    },
+    research: {
+      purpose: '综合研究：本地举证 + 外部理论，一次拿全两类依据',
+      kind: 'net', wnuInline: true,
+      whenNotToUse: '已内联在其 description（何时不必用）—— 由实现维护，此处不重复追加'
+    },
+    autocheck: {
+      purpose: '对规：按问题描述召回最贴合的规章条款（与「智能对规」同一套召回）',
+      kind: 'read', retry: true, timeout: 30000,
+      whenNotToUse: '要"某条款全文 / 某一部规章内容"时用 search_rules / get_rule_detail；要跨源依据框架时用 kb_search / research。'
+    }
+  };
+
   // ========== 转换为 DeepSeek tools 参数 ==========
   /**
    * 【2026-10-06 优化：工具按意图召回（tool routing）】
@@ -915,8 +1027,10 @@
    *     · 没有传入文本（如旧的 `_agentToolsParam()` 调用）⇒ 同样返回 null（全量）；
    *     · `window.__agentToolsForceAll = true` 可强制全量（排查/对照）；
    *     · 命中结果写入 `window.__agentToolsPicked`（可观测，便于核对召回是否合理）。
-   *   ⚠️ 本轮**只在 agent 侧**（`_callLLMOnce`）启用；chat 侧 `_toolsParam()` 仍不带参数 ⇒ 全量，
-   *     避免影响"智能对话工具挂载 ≥16"等既有断言。
+   *   ⚠️ 现状（2026-10-14 核实）：**两侧都启用** —— chat 侧自 2026-10-08 起
+   *     （doubao.js `_agentToolsParam(_dsJudgeText(finalText), { roleKey })`，理由：全量 schema ≈1~1.5 万 token/轮）
+   *     也传入本轮问句 + 角色；未命中意图时两侧一律**全量兜底**（绝不因召回少给工具）。
+   *     旧注释（"chat 侧仍不带参数 ⇒ 全量、避免影响 ≥16 断言"）已过时，agent-call-audit 的 A/C 已同步口径。
    */
   // 【2026-10-08 体检修复·"任务做完了却没保存/没写日志"】把两个**产出类工具**放进常驻集。
   //   真因：`_pickTools` 是"核心 + 命中分组"，而 `save_report` 只在 /报告|写作|汇报|总结材料/ 命中、
@@ -994,7 +1108,12 @@
     // opts 可选：{ roleKey } —— 代码角色（frontend）时走最小集（见 _pickTools 顶部说明）
     var list = (arguments.length > 0) ? (_pickTools(userText, opts) || TOOLS) : TOOLS;
     return list.map(function(t) {
-      return { type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } };
+      // 【2026-10-14】把 whenNotToUse 追加进 description —— 模型只看得到 description/parameters，
+      //   结构化字段不合并就等于没写给模型；wnuInline 的工具（负面规则已内联）不重复追加。
+      var m = TOOL_META[t.name] || {};
+      var desc = t.description;
+      if (m.whenNotToUse && !m.wnuInline) desc += '\n⛔ 何时不用：' + m.whenNotToUse;
+      return { type: 'function', function: { name: t.name, description: desc, parameters: t.parameters } };
     });
   }
 
@@ -1003,19 +1122,23 @@
   //   导出、写库这类慢工具会把整轮 ReAct **挂住且无任何提示**。这里统一加兜底超时，
   //   超时按"失败"回灌（工具结果里已附"换关键词/放宽条件"提示，模型可据此改策略或分批重试）。
   //   可用 window.__agentToolTimeoutMs 覆盖（排查/测试用，例如把 default 调到 500 验证超时路径）。
-  window.__agentToolTimeoutMs = window.__agentToolTimeoutMs || {
-    default: 15000, get_weather: 8000, kb_search: 30000, autocheck: 30000,
-    export_issues: 30000, save_report: 30000, write_diary: 20000,
-    kb_warm: 60000   // 【2026-09-30】载入索引可能现场建（慢设备更久），给到 60s
-  };
+  // 【2026-10-14】由 TOOL_META.timeout 派生（未标注者走 default 15s；值与原表逐项相等，已断言）。
+  //   window.__agentToolTimeoutMs 仍可整体覆盖（排查/测试，如套件 H 项设 300ms 验证超时路径）。
+  window.__agentToolTimeoutMs = window.__agentToolTimeoutMs || (function () {
+    var m = { default: 15000 };
+    Object.keys(TOOL_META).forEach(function (n) { if (TOOL_META[n].timeout) m[n] = TOOL_META[n].timeout; });
+    return m;
+  })();
   // 【2026-09-21】只读工具的"失败自动重试一次"：瞬时抖动（IndexedDB 忙、KB 冷建竞态、
   //   网络抖动）导致的失败重试一次往往就能成功，能少一轮 ReAct（一轮 = 一次完整模型调用）。
   //   ⚠️ 只对**只读**工具生效：写库类（write_diary / save_report）与导出类（export_issues，可能已生成文件）
   //   一律不重试，避免产生重复记录/重复下载。超时也不重试（大概率再超时，白等一轮）。
-  var RETRYABLE_TOOLS = ['search_issues', 'count_issues', 'get_issue_detail', 'get_issue_details',
-    'search_rules', 'get_rule_detail', 'search_handbook', 'get_handbook_detail', 'search_accidents', 'get_accident_detail',
-    'kb_search', 'kb_status',
-    'autocheck', 'search_phone', 'search_material', 'get_material_detail', 'read_diary', 'get_weather'];
+  var NOT_RETRY_TOOLS = ['export_issues', 'write_diary', 'save_report', 'kb_warm', 'research'];   // 显式不重试（写库/导出/慢/联网），兼作"不缓存"
+  // 【2026-10-14】由 TOOL_META 派生（kind=read/net 且未显式 retry:false 者；与旧名单逐名相等，已断言）
+  var RETRYABLE_TOOLS = Object.keys(TOOL_META).filter(function (n) {
+    var m = TOOL_META[n];
+    return (m.kind === 'read' || m.kind === 'net') && m.retry !== false && NOT_RETRY_TOOLS.indexOf(n) === -1;
+  });
   // 可用 window.__agentToolRetry = {工具名: 次数} 覆盖（排查/测试用）
   function _retryTimes(toolName) {
     var ov = window.__agentToolRetry;
@@ -1029,7 +1152,8 @@
   //   数据导入/编辑/清空时由 dsInvalidateRagCache 钩子统一清空（见 unified-enhancements.js）。
   var TOOL_CACHE_TTL = 60000;
   var _toolCache = new Map();
-  var _TOOL_NOCACHE = ['export_issues'];
+  // 【2026-10-14】由 TOOL_META.cache===false 派生（原单元素表）
+  var _TOOL_NOCACHE = Object.keys(TOOL_META).filter(function (n) { return TOOL_META[n].cache === false; });
   function _toolCacheKey(name, params) { try { return name + '|' + JSON.stringify(params || {}); } catch (e) { return ''; } }
   function _toolCacheGet(name, params) {
     try {
@@ -1113,9 +1237,85 @@
     return out;
   }
 
+  // ========== 工具调用日志（逐次粒度，2026-10-14 用户口径）==========
+  // 现状：任务级 toolSpentMs + agent-memory 的"失败最多的工具"排行已有；本轮补**逐次**耗时/重试/缓存命中。
+  //   写进 taskRecord.steps（随任务落库），并累计到工具级 _TOOL_METRICS（window.__agentToolMetrics 可读）。
+  //   未知工具名单独计数（__unknown__）—— 它是"模型臆造工具/schema 描述不清"的探针，>0 就该收紧工具定义。
+  var _TOOL_METRICS = {};
+  function _toolMetricsAdd(name, patch) {
+    if (!_TOOL_METRICS[name]) _TOOL_METRICS[name] = { calls: 0, ok: 0, fail: 0, retries: 0, cacheHits: 0, ms: 0 };
+    var m = _TOOL_METRICS[name];
+    Object.keys(patch || {}).forEach(function (k) { m[k] = (m[k] || 0) + patch[k]; });
+    return m;
+  }
+  window.__agentToolMetrics = function () { try { return JSON.parse(JSON.stringify(_TOOL_METRICS)); } catch (e) { return {}; } };
+
+  // ========== 执行前参数校验（2026-10-14 用户口径：清单建议④）==========
+  //   为什么前置：handler 里各自校验是「各管一摊」—— 类型错（topK:'五'）、枚举错（nature:'空白'）、
+  //     越界（topK:99）会一路带到深处才报，错误信息也不统一。这里按 JSON Schema 子集在执行前统一拦：
+  //     type（含数字字符串就地归一到 number，避免误杀模型常见的 "5"）· enum · minimum/maximum · required。
+  //   失败**不执行**、以「参数校验失败 + 具体原因 + 合法取值」回灌 —— agent 循环天然会让模型下一轮
+  //     带着原因重发参数（不需要另造重试机制）。失败计入指标 __invalid__（工具定义/描述需收紧的信号）。
+  //   ⚠️ 必填只在「缺了就没法干活」的工具上强制：search_issues 的 keyword 标 required 是**引导**模型给关键词，
+  //     但「只按单位/日期检索」是合法用法 ⇒ 列入 REQUIRED_RELAXED，交回 handler 判断（保持原行为）。
+  //   ⚠️ enum 容忍**简写前缀**：规则 12 允许 nature 传「A类/B类/C类/红线（或首字母 A/B/C）」，
+  //     handler 也是按首字符匹配 ⇒ 校验层必须同样宽容，否则等于新增一条与既有口径冲突的约束。
+  var REQUIRED_RELAXED = ['search_issues'];
+  function _validateToolArgs(tool, params) {
+    try {
+      var p = tool.parameters || {}, props = p.properties || {}, args = params || {}, errs = [];
+      if (REQUIRED_RELAXED.indexOf(tool.name) === -1) {
+        (p.required || []).forEach(function (k) {
+          var v = args[k];
+          if (v === undefined || v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)) {
+            errs.push('缺少必填参数 ' + k);
+          }
+        });
+      }
+      Object.keys(args).forEach(function (k) {
+        var spec = props[k];
+        if (!spec) return;                       // 未声明字段不拦（模型偶发多给，handler 会忽略）
+        var v = args[k];
+        if (v === undefined || v === null || v === '') return;
+        var t = spec.type;
+        if (t === 'integer' || t === 'number') {
+          var n = (typeof v === 'string') ? Number(v) : v;
+          if (typeof n !== 'number' || isNaN(n)) { errs.push(k + ' 应为' + (t === 'integer' ? '整数' : '数值') + '，收到「' + v + '」'); return; }
+          if (t === 'integer' && Math.floor(n) !== n) { errs.push(k + ' 应为整数，收到「' + v + '」'); return; }
+          if (spec.minimum !== undefined && n < spec.minimum) errs.push(k + ' 不能小于 ' + spec.minimum + '（收到「' + v + '」）');
+          if (spec.maximum !== undefined && n > spec.maximum) errs.push(k + ' 不能大于 ' + spec.maximum + '（收到「' + v + '」）');
+          if (!errs.length) args[k] = (t === 'integer') ? Math.round(n) : n;   // 数字字符串就地归一
+          return;
+        }
+        if (t === 'string') {
+          if (typeof v !== 'string') { errs.push(k + ' 应为字符串，收到「' + JSON.stringify(v).slice(0, 40) + '」'); return; }
+          if (spec.enum && !spec.enum.some(function (x) { return x === v || x.indexOf(v) === 0 || v.indexOf(x) === 0; })) {
+            errs.push(k + ' 只能是 ' + spec.enum.join(' / ') + ' 之一，收到「' + v + '」');
+          }
+          return;
+        }
+        if (t === 'array') { if (!Array.isArray(v)) errs.push(k + ' 应为数组'); return; }
+        if (t === 'boolean') { if (typeof v !== 'boolean') errs.push(k + ' 应为布尔值 true/false'); return; }
+      });
+      return errs.length ? errs : null;
+    } catch (e) { return null; }   // 校验器自身异常不阻断执行（宁可放过，不可误杀）
+  }
+
   async function _executeTool(toolName, params) {
     var tool = TOOLS.find(function(t) { return t.name === toolName; });
-    if (!tool) return { ok: false, error: '未知工具: ' + toolName };
+    if (!tool) {
+      console.warn('[agent] 模型请求了不存在的工具：' + toolName);
+      _toolMetricsAdd('__unknown__', { calls: 1, fail: 1 });
+      return { ok: false, error: '未知工具: ' + toolName, ms: 0, attempts: 0, cacheHit: false, unknown: true };
+    }
+    var _t0 = Date.now();
+    var _vErrs = _validateToolArgs(tool, params || {});
+    if (_vErrs) {
+      console.warn('[agent] 参数校验失败 ' + toolName + '：' + _vErrs.join('；'));
+      _toolMetricsAdd('__invalid__', { calls: 1, fail: 1 });
+      return { ok: false, tool: toolName, ms: 0, attempts: 0, cacheHit: false, invalidArgs: true,
+        error: '参数校验失败：' + _vErrs.join('；') + '。请按工具 schema 修正参数后重新调用（不要原样重试）。' };
+    }
     var _ov = window.__agentToolTimeoutMs || {};
     var _limit = _ov[toolName] || _ov.default || 15000;
     var _retry = _retryTimes(toolName);
@@ -1131,7 +1331,8 @@
     var _hit = _toolCacheGet(toolName, params);
     if (_hit) {
       _stopTick();
-      return _withKbNote({ ok: true, tool: toolName, result: _hit.result, 缓存说明: '命中本会话缓存（' + Math.round(_hit.ageMs / 1000) + 's 前的同样调用）' });
+      _toolMetricsAdd(toolName, { calls: 1, ok: 1, cacheHits: 1 });
+      return _withKbNote({ ok: true, tool: toolName, result: _hit.result, ms: 0, attempts: 0, cacheHit: true, 缓存说明: '命中本会话缓存（' + Math.round(_hit.ageMs / 1000) + 's 前的同样调用）' });
     }
     while (_attempts <= _retry) {
       _attempts++;
@@ -1150,7 +1351,9 @@
         if (_timer) clearTimeout(_timer);
         _stopTick();
         _toolCacheSet(toolName, params, result);   // 只读成功结果入短缓存（写库/导出不入）
-        var _out = { ok: true, tool: toolName, result: result };
+        var _ms = Date.now() - _t0;
+        _toolMetricsAdd(toolName, { calls: 1, ok: 1, retries: Math.max(0, _attempts - 1), ms: _ms });
+        var _out = { ok: true, tool: toolName, result: result, ms: _ms, attempts: _attempts, cacheHit: false };
         if (_attempts > 1) _out.重试说明 = '第 ' + _attempts + ' 次尝试成功（前一次为瞬时失败，已自动重试）';
         return _withKbNote(_out);
       } catch(e) {
@@ -1164,11 +1367,13 @@
     _stopTick();
     if (_timedOut) {
       var _limTxt = _limit >= 1000 ? (Math.round(_limit / 1000) + 's') : (_limit + 'ms');
-      return { ok: false, tool: toolName, error: '工具执行超时（超过 ' + _limTxt + '）'
+      _toolMetricsAdd(toolName, { calls: 1, fail: 1, retries: Math.max(0, _attempts - 1), ms: Date.now() - _t0 });
+      return { ok: false, tool: toolName, ms: Date.now() - _t0, attempts: _attempts, cacheHit: false, error: '工具执行超时（超过 ' + _limTxt + '）'
         + ((toolName === 'kb_search' || toolName === 'autocheck') ? '：知识库索引可能正在建立，请稍后重试或先缩小检索范围' : '') };
     }
     // handler 可能抛字符串/对象，直接取 e.message 会得到 undefined，模型看不到失败原因
-    return { ok: false, tool: toolName, error: _lastErr + (_attempts > 1 ? '（已自动重试 ' + (_attempts - 1) + ' 次仍失败）' : '') };
+    _toolMetricsAdd(toolName, { calls: 1, fail: 1, retries: Math.max(0, _attempts - 1), ms: Date.now() - _t0 });
+    return { ok: false, tool: toolName, ms: Date.now() - _t0, attempts: _attempts, cacheHit: false, error: _lastErr + (_attempts > 1 ? '（已自动重试 ' + (_attempts - 1) + ' 次仍失败）' : '') };
   }
 
   // 诊断/自检入口：不经过模型，直接跑单个工具并拿到它的返回（排查"工具结果为何是这样"用）
@@ -1487,6 +1692,14 @@
     // 【2026-09-30】把"索引窗口"这件事写进提示词：默认只索引最近 12000 条检查信息，
     //   模型若因为索引里没有就回答"没有"，就是一次**不实回答**（违反规则 14）。
     system += '18. 检查信息索引默认只覆盖最近 12000 条（可在「设置 → 知识库 → 检查信息索引范围」改为 2 万或全部）：涉及更早时间段或全量统计时，用 count_issues / search_issues（走全量精确查询），**不要因为 kb_search 里没看到就回答"没有"**；工具结果里若出现「口径提醒：索引仅覆盖最近 N 条」，回答时要如实说明这一覆盖范围。\n';
+    // 【2026-10-14 用户口径】few-shot：给 2~4 条「用户问题 → 正确工具」示例（业界公认对「选对工具」最有效）。
+    //   放在规则 18 之后、稳定段指纹之前 ⇒ 属**稳定段**（前缀缓存友好，内容纯静态、不含日期/数据）。
+    //   含「不要」等关键词 ⇒ 命中 system 裁剪的硬约束保护正则，永不被抽掉（__agentSystemMax 裁剪时）。
+    system += '19. 工具选择示例（口径：先想「要数字还是要依据」，再选工具）：\n'
+      + '  · 「这个月A类问题有多少条」→ count_issues（统计用统计工具，一次给全、不封顶）；不要用 search_issues 数条数、更不能凭空估算\n'
+      + '  · 「天窗点外上道违反哪条规章」→ autocheck（对规取条款原文）；依据不足再 kb_search / search_rules；不要用 count_issues / search_phone 一类无关工具\n'
+      + '  · 「查一下某某问题的明细」→ search_issues（找 id）→ 需要全文再 get_issue_detail(id)；不要用 count_issues（它只给数字）\n'
+      + '  · 「你好」/ 闲聊 / 纯逻辑推理（如算数）→ 不调用任何工具，直接回答\n';
 
     // ---- 稳定段结束：记录指纹（供 prompt-cache 命中率核对 + 套件断言；异常变动会告警）----
     try {
@@ -1794,7 +2007,11 @@
           var args = toolResults[t].args;
           var execResult = toolResults[t].res;
           var summary = tc.function.name + ': ' + (execResult.ok ? (execResult.result && execResult.result.total !== undefined ? '✅ 共' + execResult.result.total + '条' : '✅') : '❌ ' + (execResult.error || ''));
-          taskRecord.steps.push({ tool: tc.function.name, params: args, ok: execResult.ok, summary: summary });
+          // 【2026-10-14】逐次粒度：耗时/尝试次数/是否缓存命中/是否未知工具（原只有 tool+params+ok+summary）
+          taskRecord.steps.push({ tool: tc.function.name, params: args, ok: execResult.ok, summary: summary,
+            ms: (typeof execResult.ms === 'number') ? execResult.ms : 0,
+            attempts: (typeof execResult.attempts === 'number') ? execResult.attempts : 1,
+            cacheHit: !!execResult.cacheHit });
           // A2 透明日志：附带用途/证据，渲染层据此展示卡片
           renderMsgs.push({
             role: 'agent-tool',
@@ -2478,6 +2695,31 @@
   };
 
   // 暴露工具注册表与执行器，供「智能对话」模块 P1 Tool Calls 复用（与智能体共用同一套 schema 与本地实现，单点维护，避免重复定义）
+  // 【2026-10-14 用户口径】工具注册表自检：增删工具 / 改名单后跑一次，双向检测"平行清单漂移"。
+  //   正向：每个 TOOLS 工具必须有完整元数据、schema.required、handler、并在某个召回分组或常驻核心里；
+  //   反向：TOOL_META 里的名字都必须在 TOOLS 里存在（防改名漏改）；retry 与 kind 不得矛盾（写/导出类不应重试）。
+  window.__agentToolRegistryAudit = function () {
+    var problems = [];
+    var names = TOOLS.map(function (t) { return t.name; });
+    TOOLS.forEach(function (t) {
+      var m = TOOL_META[t.name];
+      if (!m) { problems.push('缺少 TOOL_META：' + t.name); return; }
+      if (!m.purpose) problems.push('缺少 purpose：' + t.name);
+      if (m.whenNotToUse === undefined) problems.push('缺少 whenNotToUse：' + t.name);
+      if (!m.kind) problems.push('缺少 kind：' + t.name);
+      if (!t.parameters || t.parameters.type !== 'object' || !t.parameters.required) problems.push('参数 schema 不完整：' + t.name);
+      if (typeof t.handler !== 'function') problems.push('缺少 handler：' + t.name);
+      var inCore = TOOLS_CORE.indexOf(t.name) !== -1;
+      var inGroup = TOOL_GROUPS.some(function (g) { return g.tools.indexOf(t.name) !== -1; });
+      if (!inCore && !inGroup) problems.push('未加入任何召回分组（永不被挂载）：' + t.name);
+      if (m.retry === true && m.kind !== 'read' && m.kind !== 'net') problems.push('kind 与 retry 矛盾：' + t.name);
+    });
+    Object.keys(TOOL_META).forEach(function (n) {
+      if (names.indexOf(n) === -1) problems.push('元数据指向不存在的工具（漂移）：' + n);
+    });
+    return { ok: problems.length === 0, tools: names.length, meta: Object.keys(TOOL_META).length, problems: problems };
+  };
+  window.__agentToolMeta = TOOL_META;
   window._agentToolsParam = _toolsParam;
   // 【2026-10-06】工具按意图召回的探针：`window.__agentPickTools('查一下规章怎么规定的')` 返回该次召回结果
   //   （数组）；未命中返回 null（表示"按全量挂载"）。供套件与线上排查核对召回是否合理。

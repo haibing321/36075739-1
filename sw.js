@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261011174923';
+var CACHE_VERSION = '20261014182746';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -28,6 +28,10 @@ var PRECACHE_URLS = [
   './favicon.ico',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  // 桌面图标专用（2026-10-14）：maskable=满幅不透明+内容在 80% 安全区；apple-touch=不透明（iOS 会填黑透明区）
+  './icons/icon-maskable-192.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon-180.png',
     // ==== iOS 启动图（apple-touch-startup-image）====
   './icons/splash/iphone-se1.png',
   './icons/splash/iphone-8.png',
@@ -178,6 +182,13 @@ var CORE_PRECACHE = [
   './',
   './index.html',
   './manifest.json',
+  // 【2026-10-14 图标修复】maskable 图标必须在**装载阶段**就位：Chrome 安装/添加到主屏幕时要读
+  //   manifest 里声明的图标，若此刻（常是"首次打开后即断网"的离线场景）还没进缓存、又拿不到网络，
+  //   Chrome 会退回**带浏览器角标的生成图标** —— 正是用户反馈的"徽标不全、被浏览器图标包裹"。
+  //   两张合计约 400KB，属可接受代价（install 阶段其余资源仅几十 KB，不至于争带宽）。
+  './icons/icon-maskable-192.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon-180.png',
   './src/css/variables.css',   // CSS 变量：缺了整个主题体系失效
   './src/css/layout.css',
   './src/css/components.css',

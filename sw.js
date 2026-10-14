@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261014182746';
+var CACHE_VERSION = '20261014195834';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 预缓存资源列表（App Shell）==========
@@ -32,15 +32,10 @@ var PRECACHE_URLS = [
   './icons/icon-maskable-192.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon-180.png',
-    // ==== iOS 启动图（apple-touch-startup-image）====
-  './icons/splash/iphone-se1.png',
-  './icons/splash/iphone-8.png',
-  './icons/splash/iphone-8plus.png',
-  './icons/splash/iphone-x.png',
-  './icons/splash/iphone-xr.png',
-  './icons/splash/iphone-xsmax.png',
-  './icons/splash/iphone-12.png',
-  './icons/splash/iphone-12promax.png',
+  // ==== iOS 启动图：**刻意不预缓存** ====
+  // 八张真图合计 ≈5.6MB（换徽标时才从 15KB×8 的坏占位图换成真图），而它们只被 iOS 在
+  // 「添加到主屏幕」时抓取、Android/桌面完全用不到 ⇒ 2026-10-14 用户选定"省下这笔后台下载"。
+  // 排除逻辑在 extractLocalRefs 的 PRECACHE_SKIP_PREFIX（光删这里的静态行没用，会被自动解析加回来）。
   // ==== 本地CSS（离线时保证样式正常）====
   './src/css/variables.css',
   './src/css/layout.css',
@@ -136,6 +131,16 @@ var CDN_HOSTS = [
 // ========== 缓存策略配置 ==========
 
 /**
+ * 【2026-10-14 用户决定】iOS 启动图**不进预缓存**（当初给的三个方案里选了第三种）：
+ *   它们只被 iOS 在「添加到主屏幕」时抓取，Android / 桌面完全用不到；而八张真图合计 **≈5.6MB**
+ *   （旧的是 15KB×8 的坏占位图，所以体积问题一直没暴露）—— 放进 App Shell 会让**每个设备、每次发版**
+ *   后台多下 5.6MB。代价：iOS 离线启动若系统侧没有该图，只剩深色底（应用自身的启动遮罩立刻接管），可接受。
+ *   ⚠️ 别再往 PRECACHE_URLS 里加回 `icons/splash/`（加了也没用，下面照样跳过），
+ *      也别把这个前缀从跳过表里删掉 —— 用户明确选了"省 5.6MB 后台下载"。
+ */
+var PRECACHE_SKIP_PREFIX = ['icons/splash/'];
+
+/**
  * 从 index.html 解析出所有「本地相对引用」，与静态清单合并后去重。
  * 这样新增模块/CSS 时无需手工同步 PRECACHE_URLS，杜绝清单漂移导致的离线空洞。
  */
@@ -148,7 +153,9 @@ function extractLocalRefs(htmlText) {
     if (!v) continue;
     if (/^(https?:)?\/\//i.test(v)) continue;                       // 外链
     if (/^(data|mailto|tel|javascript|blob|about|#):?/i.test(v)) continue;
-    out.push(v.replace(/^\.\//, ''));
+    var u = v.replace(/^\.\//, '');
+    if (PRECACHE_SKIP_PREFIX.some(function (p) { return u.indexOf(p) === 0; })) continue;   // 见上方说明
+    out.push(u);
   }
   return out;
 }
@@ -540,8 +547,16 @@ self.addEventListener('fetch', function(event) {
       caches.match(req).then(function(cached) {
         return cached || fetchWithTimeout(req, FETCH_TIMEOUT).then(function(resp) {
           if (resp.ok) {
+            // 【2026-10-14 修复】clone 必须**同步**取（紧跟 resp.ok），不能写成
+            //   `caches.open(...).then(function(){ cache.put(req, resp.clone()); })`：
+            //   回调是异步的，等到它执行时响应体已被页面侧消费（bodyUsed=true），
+            //   resp.clone() 抛 TypeError 且被这个无名回调吞掉 ⇒ **图片/字体永远写不回缓存**。
+            //   实测（scripts 探针）：删掉 icons/icon-192.png 后页面 fetch 得 200、缓存仍为空；
+            //   而同条件的 JS 分支（先 clone 再 put）正常回写。后果：缺图标的设备每次启动都重新下载，
+            //   正是"联网时打开/开合慢"的残余来源。写法与上方 JS/CSS 分支（先 clone 再 put）对齐。
+            var clone = resp.clone();
             caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(req, resp.clone());
+              cache.put(req, clone);
             });
           }
           return resp;
@@ -564,7 +579,8 @@ self.addEventListener('fetch', function(event) {
         if (cached) return cached;
         return fetchWithTimeout(req, FETCH_TIMEOUT).then(function (resp) {
           if (resp.ok) {
-            caches.open(CACHE_NAME).then(function (cache) { cache.put(req, resp.clone()); });
+            var clone = resp.clone();   // 【2026-10-14 修复】必须同步 clone（原因见图片/字体分支的说明）
+            caches.open(CACHE_NAME).then(function (cache) { cache.put(req, clone); });
           }
           return resp;
         }).catch(function () {

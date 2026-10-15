@@ -1620,12 +1620,18 @@
                 if (!_skipData && _kbOnP && window.KB && typeof window.KB.search === 'function') {
                     var _kbSrcs = [];
                     // 【v4.20 用户需求：自动关联】开 auto 且问题**命中意图** ⇒ 用按问题挑出的源；
-                    //   关掉 auto 或**未命中意图**（含空问题）⇒ 走下面的逐项手选（即 v4.19 的原行为）。
-                    //   ⇒ 这样"自动"只在有把握时生效，没把握时退回用户自己的选择，绝不因自动而少给资料。
+                    //   关掉 auto ⇒ 走下面的逐项手选（即 v4.19 的原行为）。
                     //   实际挑了哪些源可在 `window.__dsAutoPicked` 与面板「自动关联」提示行核对（不做黑箱）。
                     var _autoSrcs = (dataSource.auto !== false) ? _dsAutoPickSources(userQuery) : null;
                     if (_autoSrcs) {
                         _kbSrcs = _autoSrcs.slice();
+                    } else if (dataSource.auto !== false) {
+                    // 【2026-10-15 修复·根因②·契约兑现】_dsAutoPickSources 返回 null 的含义是"**应使用全部源**"
+                    //   （函数注释 1343、DS_DEFAULT_CFG 三重兜底①1316、面板提示行"未识别到特定意图 → 本次使用
+                    //   全部数据源"三处都这么写）。这里原来在 null 时退回**逐项手选** —— auto 模式下逐项是灰的、
+                    //   值多为 false，等于"没把握时一条都不查"，把兜底变成了断供。
+                    //   ⇒ auto 模式如实全开（顺序与 knowledge.js 的 SOURCES 一致）；auto 关闭时才用逐项手选。
+                    _kbSrcs = ['rules', 'cases', 'issues', 'handbook', 'accidents', 'materials', 'reports', 'phone', 'diary'];
                     } else {
                     // 【v4.19】逐源独立判断。原来 cases 跟着 rules、accidents 跟着 handbook、reports 跟着 wrAll，
                     //   用户在「关联数据」里**无法单独控制**、界面上也看不出它们会被带上 —— 这正是用户反馈
@@ -1660,7 +1666,9 @@
                             var _kbTxt = window.KB.buildRefText(_kbR, { totalBudget: DS_KB_TOTAL_BUDGET });
                             sysParts.push(_kbTxt || '【本地资料】本次未检索到相关内容（可能尚未导入资料）。');
                             // 【v4.20】记录本轮**实际注入**的源（含是否走自动关联）⇒ 回答尾部那行"本次参考"取它
-                            try { window.__dsLastSrcs = { srcs: _kbSrcs.slice(), auto: !!_autoSrcs }; } catch (e2) {}
+                            // 【2026-10-15】auto 的判据改为"自动模式是否开启"（原来是"是否按意图挑中"）：
+                            //   未命中意图时走的是"全开兜底"，那也是自动模式的正常结果，尾行应同样标"（自动关联）"。
+                            try { window.__dsLastSrcs = { srcs: _kbSrcs.slice(), auto: !!(_autoSrcs || (dataSource && dataSource.auto !== false)) }; } catch (e2) {}
                         } catch (e) {
                             // 【2026-10-06 用户反馈修复】原先这里只 `console.warn` ⇒ **手机上根本没有控制台**，
                             //   于是静默回退旧逻辑，用户只看到回答里说"本地没有资料/工具"，完全无从判断原因。
@@ -2793,7 +2801,16 @@
                 //   键名与注入侧对齐（含旧键 wrAll）。
                 var _srcKeys = ['rules', 'issue', 'handbook', 'wrAll', 'phone', 'diary',
                                 'cases', 'accidents', 'materials', 'reports'];
-                var hasAnySource = _srcKeys.some(function (k) { return !!_dataSrc[k]; });
+                // 【2026-10-15 用户报「选了自动关联却没关联本地数据」·根因①】原判据只看上面这 9 个**逐项开关**，
+                //   而 auto 模式下逐项是变灰不可点的（值仍是上一次的手选状态）：用户此前把逐项全取消过，
+                //   之后开启「自动关联」——面板提示行写着"本次将使用 规章制度 · 检查台账"，这里却因
+                //   hasAnySource=false 直接走最简提示词（**一条都不检索**、连"未启用数据源"的提示也不给），
+                //   尾行还误报成"未启用任何本地数据源" ⇒ 用户感知正是"选了自动关联却没关联本地数据"。
+                //   实测（2026-10-15，用户备份包）：库里"清筛"出现 2133 次、"大机"1935 次 —— 数据一直在，
+                //   是这条闸门没让链路去查。⇒ auto 开 = 用户已把"挑源"交给系统，必须计为已启用；
+                //   实际挑了哪些源仍由 _dsAutoPickSources 决定，并在尾行如实标（自动关联）。
+                var _autoModeOn = !!(_dataSrc && _dataSrc.auto !== false);
+                var hasAnySource = _autoModeOn || _srcKeys.some(function (k) { return !!_dataSrc[k]; });
                 // 【优化·速度】寒暄 / 元问题（"你好""你能做什么"）跳过本地检索：
                 //   复用「思考模式自动档」的同一判定函数（dsAutoThinkingEffort 返回 'off' 的那一批），
                 //   让"不必思考"与"不必检索"两个决定保持一致；省掉一次 KB.ensure 等待与约 4.5KB 注入。
@@ -2955,7 +2972,12 @@
                     // 【2026-10-08】① 判据文本换成纯问句（附件正文会误触发）；
                     //   ② 与 dsResolveRole 的新口径保持一致：业务性"帮我写XX"不再算代码请求
                     //      （旧正则含"写一个|生成一个|帮我写"，会让 max_tokens 因为一句业务话跳到 16384）。
-                    var isCodeRequest = /代码|程序|脚本|html|css|javascript|\bjs\b|网页|前端|组件|函数|接口|报错|调试|正则|数据库|\bsql\b|python|java|c\+\+|编程/i.test(_dsJudgeText(finalText));
+                    // 【2026-10-15】与角色判定**共用单一定义** `window.dsIsCodeQuery`（原先这里只是
+                    //   一份缺弱特征档的副本 —— 注释声称同步、实际漂移；判定文本与角色侧同为 _dsJudgeText）。
+                    //   守卫：极端情况（doubao.js 加载中断）退回 false ⇒ 8192 安全档。
+                    var isCodeRequest = (typeof window.dsIsCodeQuery === 'function')
+                        ? window.dsIsCodeQuery(_dsJudgeText(finalText))
+                        : false;
                     // 【P1 输出完整性】平台默认输出上限：非思考 8K、思考 64K（官方 Chat Completions 文档）。
                     //   原先非思考只给 4096 —— 低于平台默认一倍，长报告（月度/专项）容易被静默截断；
                     //   按量计费只算实际输出 token，上限抬高不产生额外费用，只是不再"提前掐断"。
@@ -7807,6 +7829,26 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
        *      用户随时能看到"为什么这次这样答"。手动选定的角色**绝不干预**（picked.key !== 'auto' 直接返回）。
        *   诊断：`__dsResolveRole('分路不良怎么处理')`
        */
+      /**
+       * 【2026-10-15】代码 / 前端请求判据（**唯一口径**，两个调用方共享）：
+       *   ① 自动角色判定（dsResolveRole：命中 ⇒ frontend 角色）；
+       *   ② max_tokens 提升判据（_dsRunStream 的 isCodeRequest）。
+       *   两处曾各持一份正则 —— 2026-10-08 调口径时只同步了强特征档，弱特征档漏掉，
+       *   同一问句（如"帮我做一个登录页面"）在自动角色下判前端、在 max_tokens 处却不算代码请求，
+       *   两处结论不一致（且注释还声称"保持一致"）。提取为单一定义，改一处即两处生效。
+       *   ① 强特征（技术名词，单独出现即可）：代码/程序/脚本/html/css/js/网页/前端/组件/函数/接口/报错/调试/正则/数据库/sql/python/java/C++；
+       *   ② 弱特征（页面/布局/样式/界面/按钮/表单/动画/响应式）必须**与"写/生成/创建/做/改/优化/实现"同现**
+       *      —— 否则"帮我写一份整改通知书""写一个检查方案"这类业务话术会被误判成代码请求。
+       *   诊断：`__dsIsCodeQuery('帮我写一个登录页面')`
+       */
+      window.dsIsCodeQuery = function (q) {
+        var s = String(q || '');
+        var _codeStrong = /代码|程序|脚本|html|css|javascript|\bjs\b|网页|前端|组件|函数|接口|报错|调试|正则|数据库|\bsql\b|python|java|c\+\+|编程/i;
+        var _codeTech = /页面|布局|样式|界面|按钮|表单|动画|响应式/i;
+        var _codeAsk = /写|生成|创建|做一个|改|优化|实现|加个|加一个/i;
+        return _codeStrong.test(s) || (_codeTech.test(s) && _codeAsk.test(s));
+      };
+      try { window.__dsIsCodeQuery = window.dsIsCodeQuery; } catch (e) {}
       var DS_TRADE_TO_ROLE = {
         '电务': 'dianwu', '工务': 'gongwu', '供电': 'gongdian', '车务': 'chewu', '机务': 'jiwu',
         '车辆': 'cheliang', '通信': 'tongxin', '房建': 'fangjian', '客运': 'keyun', '货运': 'huoyun'
@@ -7820,13 +7862,10 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
           // 【2026-10-08 用户报"检测不到数据"，并怀疑自动角色判得不合适】旧判据把「帮我写 / 写一个 / 生成一个 /
           //   页面 / 布局」也当作代码特征 —— 它们在安监业务里极其常见（"帮我写一份整改通知书""写一个检查方案"），
           //   于是业务问题被误判成 frontend，连带本地资料被掐掉（见 _dsRunStream 的 hasAnySource，已同步放宽）。
-          //   现改为**两档**：
-          //     ① 强特征（技术名词，单独出现即可）：代码/程序/脚本/html/css/js/网页/前端/组件/函数/接口/报错/调试/正则/数据库/sql/python/java/C++；
-          //     ② 弱特征（页面/布局/样式/界面/按钮/表单/动画）必须**与"写/生成/创建/做/改/优化/实现"同现**。
-          var _codeStrong = /代码|程序|脚本|html|css|javascript|\bjs\b|网页|前端|组件|函数|接口|报错|调试|正则|数据库|\bsql\b|python|java|c\+\+|编程/i;
-          var _codeTech = /页面|布局|样式|界面|按钮|表单|动画|响应式/i;
-          var _codeAsk = /写|生成|创建|做一个|改|优化|实现|加个|加一个/i;
-          if (_codeStrong.test(q) || (_codeTech.test(q) && _codeAsk.test(q))) {
+          //   两档判据见 `window.dsIsCodeQuery`（2026-10-15 提取为**单一定义**：原先本处与
+          //   _dsRunStream 的 isCodeRequest 是两份副本，2026-10-08 只同步了强特征档、弱特征档漏掉，
+          //   同一问句两处结论会不一致）。
+          if (window.dsIsCodeQuery(q)) {
             key = 'frontend'; reason = '代码 / 前端请求';
           } else if (/风险研判|研判|风险等级|隐患分析|预警措施|风险点/.test(q)) {
             key = 'riskanalyst'; reason = '风险研判类问题';

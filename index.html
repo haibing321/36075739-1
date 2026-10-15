@@ -2133,7 +2133,7 @@
                     <section class="st-sec" data-sec="about">
                         <div class="st-group-title">版本</div>
                         <button id="check-update-btn" onclick="checkForUpdate()" class="st-btn">
-                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.67</span></span>
+                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.68</span></span>
                             <span id="check-update-arrow" class="st-btn-arrow">点击检查 →</span>
                         </button>
                         <div id="update-status" class="st-hint"></div>
@@ -2159,7 +2159,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.67</span> · 2026.10.15</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.68</span> · 2026.10.15</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2206,16 +2206,16 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.67 近期更新</span>
+                    <span>v4.68 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#4d6bfe;margin-top:1px;">🔗</span><span><b>「自动关联」修复</b>：修好"开了自动关联却没关联本地资料"的问题 —— 未识别到特定意图时此前会一条都不查，现在改为使用全部数据源兜底，回答尾部也会如实标注。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🧠</span><span><b>智能对话更稳</b>：统一"是不是在写代码"的判断口径 —— 业务问题（如"帮我写一份整改通知书"）不会被错当代码问题，写代码类的问题回答更完整、不易被截断。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🧪</span><span><b>稳定性改进</b>：新增工具召回的自动校验（内部质量项），智能助手挑选工具更不易出错。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#4d6bfe;margin-top:1px;">🔧</span><span><b>弱网导入修复</b>：修好"首次打开（或清缓存后）网速较慢时，导入 Excel / CSV 提示组件加载失败"的问题 —— 导入组件较大（约 880KB），原来 15 秒超时会直接放弃；现在慢网下给足加载时间，等一会儿即可导入成功（已用过该功能的设备不受影响，仍是秒开）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">⏳</span><span><b>加载策略更合理</b>：系统自带组件的加载超时放宽到 60 秒（只受网速限制，不再被固定阈值误杀）；外部网络资源仍保持 15 秒快速失败，断网时不会让你干等。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🧪</span><span><b>稳定性改进</b>：数据导入导出的自动校验新增"弱网大库加载"守门（内部质量项），防止该修复在后续版本被改回去。</span></div>
                 </div>
             </div>
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.66 及以前）更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.67 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 技术信息 -->

@@ -714,7 +714,15 @@
             window.loadScript = function(src, opts) {
                 if (!src) return Promise.reject(new Error('loadScript: src 为空'));
                 var o = opts || {};
-                var timeout = o.timeout || 15000;
+                // 【2026-10-15 慢网首访修复】超时按资源来源分档（根因由"部署后 smoke"查出）：
+                //   本站相对路径（src/…）随站点一起部署，慢网下只受带宽限制 —— 实测
+                //   xlsx.full.min.js（881KB）在 40KB/s 链路需 ~21.5s、线上 GitHub Pages 16.6~22.7s，
+                //   而固定 15s 超时会让「首访（SW 后台预热未完成时）导入 Excel/CSV」**必失败**
+                //   （0 入库；提示"网络不可用或受限"还会误导——用户明明联网）。分档后 60s 覆盖
+                //   ~15KB/s 以上链路；老用户（SW 已缓存）仍是毫秒级，等不到超时。
+                //   绝对 URL（CDN）保持 15s 快速失败（被墙/断网时不让用户干等）。
+                var _isLocalRes = !/^(https?:)?\/\//i.test(String(src));
+                var timeout = o.timeout || (_isLocalRes ? 60000 : 15000);
                 var existing = _scriptLoaders[src];
                 if (existing) return existing;   // 同一 src 复用（含进行中的请求）
 

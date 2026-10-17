@@ -11,38 +11,14 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261017141758';
+var CACHE_VERSION = '20261017142546';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
-// ========== 【2026-10-17】SW 直出文件下载（DOCX/PDF/ZIP 等）==========
-// 为什么需要：华为/鸿蒙浏览器（应用内浏览器）对 blob: + a[download]、navigator.share、
-//   showSaveFilePicker 三种通路都不稳定（不开下载 / 分享"假成功" / 另存为挂起），
-//   而 DOCX 是**异步生成**的，等到下载时用户手势已过期，问题更明显。
-// 业界做法（StreamSaver.js 的兜底思路 + MDN `Content-Disposition`）：
-//   由同源 SW 回一个**普通 HTTP 附件响应**，交给浏览器原生下载管理器 —— 不依赖 blob URL、
-//   不依赖 Web Share、不依赖文件选择器，兼容性最好。
-// 流程：页面 postMessage(DL_STORE) 把 Blob 写进独立缓存 → 用户点「保存文件」时请求
-//   ./__dl/<token>（同源、带 download 属性）→ 本 SW 命中缓存后加 Content-Disposition 返回。
-var DL_PREFIX = '/__dl/';
-var DL_CACHE = 'aj-dl-v1';
-var DL_TTL_MS = 30 * 60 * 1000;   // 未取走的下载件最多留 30 分钟，避免缓存膨胀
-
-/** 下载件在 Cache Storage 里的固定键（不带子路径，保证子目录部署也一致） */
-function dlKey(token) {
-  return new Request(self.location.origin + DL_PREFIX + token);
-}
-
-/** 取走/过期清理（Cache API 不能持久保存 Blob 元数据，文件名放在响应头里） */
-function dlCleanup(cache) {
-  return cache.keys().then(function (keys) {
-    return Promise.all(keys.map(function (k) {
-      return cache.match(k).then(function (r) {
-        var at = r ? Number(r.headers.get('X-DL-At') || 0) : 0;
-        if (!at || Date.now() - at > DL_TTL_MS) return cache.delete(k);
-      }).catch(function () {});
-    }));
-  }).catch(function () {});
-}
+// ========== 【2026-10-17 退役】原「SW 直出文件下载」（./__dl/<token> + DL_STORE）==========
+// 用户口径："手机端华为浏览器适配的那一套不要了，就简单导出，选择保存地点、保存就完成，
+//   其它的说明就不要了。" ⇒ 下载改由页面侧 blob + a[download] 直接交给系统下载管理器，
+//   本文件不再拦截 __dl 路径、也不再接收 DL_STORE 消息（相关缓存键 `aj-dl-v1` 由旧版本遗留，
+//   下次清理旧缓存时自然消失，不用专门处理）。
 
 // ========== 预缓存资源列表（App Shell）==========
 // 【重要】本清单是「最小兜底集」，不再作为唯一依据。
@@ -485,40 +461,9 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // ========== 【2026-10-17】0. SW 直出附件下载：必须排在所有缓存策略之前 ==========
-  // 注意：`<a download>` 触发的请求在部分浏览器里 mode 也是 navigate，
-  //   所以这段必须在下面的"导航请求"分支**之前**拦截，否则会被当成页面导航。
-  if (u.pathname.indexOf(DL_PREFIX) !== -1) {
-    // 路径形如 ./__dl/<token>/<文件名>：token 取 __dl/ 之后第一段。
-    //   带上文件名后缀（.docx）是为了兼容"只看扩展名不看 Content-Disposition"的手机浏览器。
-    var _dlToken = (u.pathname.split(DL_PREFIX)[1] || '').split('/')[0] || '';
-    event.respondWith(
-      caches.open(DL_CACHE).then(function (cache) {
-        return cache.match(dlKey(_dlToken)).then(function (hit) {
-          if (!hit) {
-            return new Response('下载内容已过期，请回到应用重新导出。', {
-              status: 404,
-              headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
-            });
-          }
-          var _name = 'download';
-          try { _name = decodeURIComponent(hit.headers.get('X-DL-Name') || '') || 'download'; } catch (e) {}
-          // ASCII 兜底名 + RFC 5987 中文名：老浏览器读 filename，新浏览器读 filename*
-          var _ascii = _name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
-          var _h = new Headers();
-          _h.set('Content-Type', hit.headers.get('Content-Type') || 'application/octet-stream');
-          _h.set('Content-Disposition', 'attachment; filename="' + _ascii + '"; filename*=UTF-8\'\'' + encodeURIComponent(_name));
-          _h.set('Cache-Control', 'no-store');
-          _h.set('X-Content-Type-Options', 'nosniff');
-          return hit.blob().then(function (b) {
-            _h.set('Content-Length', String(b.size));   // 少数手机下载器没有它就拒绝落盘
-            return new Response(b, { status: 200, headers: _h });
-          });
-        });
-      })
-    );
-    return;
-  }
+  // 【2026-10-17 退役】此处原有「SW 直出附件下载」分支（拦截 ./__dl/ 并回 Content-Disposition）。
+  //   用户口径："手机端华为浏览器适配的那一套不要了，就简单导出" ⇒ 下载不再经 SW，
+  //   由页面 blob + a[download] 直接走系统下载管理器。路径拦截一并删除，避免死代码误导后人。
 
   // --- 策略选择 ---
 
@@ -664,28 +609,7 @@ self.addEventListener('fetch', function(event) {
 self.addEventListener('message', function(event) {
   var data = event.data || {};
   switch (data.type) {
-    // 【2026-10-17】页面把待下载文件登记进来（见 DL_PREFIX 注释）。回执必须在 cache.put 完成后发，
-    //   否则用户点"保存"时请求可能先到、缓存还没有 ⇒ 404（页面侧会等回执再给按钮绑定 URL）。
-    case 'DL_STORE':
-      event.waitUntil(
-        caches.open(DL_CACHE).then(function (cache) {
-          var resp = new Response(data.blob, {
-            headers: {
-              'Content-Type': data.mime || 'application/octet-stream',
-              'X-DL-Name': encodeURIComponent(data.filename || 'download'),
-              'X-DL-At': String(Date.now())
-            }
-          });
-          return cache.put(dlKey(String(data.token || '')), resp).then(function () {
-            return dlCleanup(cache);
-          }).then(function () {
-            if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: true });
-          });
-        }).catch(function (e) {
-          if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: false, error: String((e && e.message) || e) });
-        })
-      );
-      break;
+    // 【2026-10-17 退役】原 DL_STORE（页面把待下载 Blob 登记进缓存）已随「SW 直出下载」一并删除。
     case 'SKIP_WAITING':
       self.skipWaiting();
       break;

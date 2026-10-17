@@ -595,23 +595,15 @@
                                     target: target
                                 });
                                 var _ok = !!(r && r.ok);
-                                var _m = _ok
-                                    ? ('✅ 已转成 ' + (target === 'xlsx' ? 'Excel' : 'DOCX') + '：' + r.name + (r.note ? '（' + r.note + '）' : ''))
-                                    : ('未转换：' + ((r && r.note) || '未知原因'));
-                                // 【2026-10-17 真机反馈】成功时**不再叠 Toast**：下载面板本身已写「文件已生成」，
-                                //   而全局 Toast 层级更高（100002 > 面板 100010 之前）且 pointer-events:auto，
-                                //   实拍截图里它正好压住「在新标签页打开 / 已保存，关闭」⇒ 用户点按钮点到 Toast 上，
-                                //   表现为"点了没反应、面板也不消失"。现在延迟 1s 复核：面板没出来（如桌面端
-                                //   直接在系统"另存为"框里保存完）才补一条 Toast，避免提示彻底丢失。
-                                if (_ok) {
-                                    setTimeout(function () {
-                                        if (document.getElementById('_mb_dl_tip')) return;
-                                        if (window.showToast) window.showToast(_m, false, 5000); else alert(_m);
-                                    }, 1000);
-                                } else if (window.showToast) window.showToast(_m, true, 9000); else alert(_m);
+                                // 【2026-10-17 用户最终口径】"就简单导出，选择保存地点、保存就完成，
+                                //   其它的说明就不要了；如果失败就弹出失败简单原因：转换失败"。
+                                //   ⇒ 成功不再弹任何提示（文件已交给系统下载/另存为，用户自己看得到）；
+                                //   失败只报一句「转换失败」，不再带页数/块数/"未知原因"这类说明。
+                                if (!_ok) {
+                                    if (window.showToast) window.showToast('转换失败', true, 5000); else alert('转换失败');
+                                }
                             } catch (e) {
-                                var _m2 = '转换异常：' + ((e && e.message) || e);
-                                if (window.showToast) window.showToast(_m2, true, 8000); else alert(_m2);
+                                if (window.showToast) window.showToast('转换失败', true, 5000); else alert('转换失败');
                             } finally {
                                 b.dataset.busy = '0';
                                 b.textContent = _old;

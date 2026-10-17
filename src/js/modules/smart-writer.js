@@ -4447,14 +4447,10 @@
                 // ================= 通道 A：真·OOXML 引擎 =================
                 if (window.RGDocx) {
                     const style = window.RGDocx.getStyle();
-                    const notify = function(msg) {
-                        // 【2026-10-17】移动端已弹「文件已生成」保存面板（kind=mobile），不再叠 Toast：
-                        //   用户反馈"确认点击太多"，其中一处就是"面板说已生成 + Toast 又说已生成"。
-                        var _p = document.getElementById('_mb_dl_tip');
-                        if (_p && _p.dataset && _p.dataset.kind === 'mobile') return;
-                        if (typeof Toast !== 'undefined' && Toast.success) Toast.success(msg);
-                        else alert(msg);
-                    };
+                    // 【2026-10-17 用户最终口径】"就简单导出，选择保存地点、保存就完成，其它的说明就不要了"
+                    //   ⇒ 导出成功不再弹「DOCX 已生成（套用模板/公文格式）」这类 Toast：
+                    //   文件由浏览器直接保存/另存为，用户自己看得到；只有失败才提示。
+                    const notify = function() {};
                     try {
                         // A1：模板填充
                         if (opts.templateBytes) {

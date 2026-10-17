@@ -2135,7 +2135,7 @@
                     <section class="st-sec" data-sec="about">
                         <div class="st-group-title">版本</div>
                         <button id="check-update-btn" onclick="checkForUpdate()" class="st-btn">
-                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.73</span></span>
+                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.74</span></span>
                             <span id="check-update-arrow" class="st-btn-arrow">点击检查 →</span>
                         </button>
                         <div id="update-status" class="st-hint"></div>
@@ -2161,7 +2161,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.73</span> · 2026.10.17</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.74</span> · 2026.10.17</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2208,12 +2208,12 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.73 近期更新</span>
+                    <span>v4.74 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">📥</span><span><b>手机导出按钮点得动了</b>：之前「已转成 DOCX」的提示条浮在保存面板上方，还会把点击吃掉，点「在新标签页打开 / 已保存，关闭」其实点在提示条上（表现为没反应、面板不消失）；现在保存面板始终在最上层。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">✅</span><span><b>不再叠两条提示</b>：转换成功时保存面板已经写了"文件已生成"，就不再额外弹一条"已转成 DOCX"，手机屏幕小、两层提示会互相遮挡。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">🔄</span><span><b>点过即收</b>：点「点此保存」约 1 秒后保存面板自动收起；本机不弹出下载时，用「在新标签页打开」后另存即可。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">📥</span><span><b>导出变简单了</b>：电脑端先弹系统「另存为」让你选保存地点，选完即完成；手机端点导出直接交给浏览器保存，不再需要额外点"保存"。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🧹</span><span><b>手机端那套下载面板已下线</b>：「文件已生成 / 点此保存 / 在新标签页打开 / 已保存关闭」整块不再出现，导出后不会再被浮层挡住页面。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">⚠️</span><span><b>失败只报一句</b>：转换或导出没成功，只提示「转换失败」，不再弹一长串排查说明；成功后也不再弹"已生成"提示。</span></div>
                 </div>
             </div>
 

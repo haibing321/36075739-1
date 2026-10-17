@@ -830,52 +830,17 @@
                 return window.localDateStr(d) + 'T' + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
             };
 
-            // 下载失败时的可见兜底（原来没有任何提示，用户只看到"按钮没反应"）
-            function _downloadFailTip(filename, err) {
-                var msg = '⚠️ 导出失败：' + ((err && err.message) || '浏览器拒绝下载') + '\n文件名：' + filename
-                    + '\n可尝试：① 允许本站的"自动下载"权限；② 换用 Chrome/Edge 打开；③ 关闭无痕/隐私模式后重试。';
-                try { if (typeof window.showToast === 'function') window.showToast(msg, true, 12000); else alert(msg); }
+            // 【2026-10-17 用户最终口径】"如果失败就弹出失败简单原因：转换失败"
+            //   ⇒ 只报一句，不再列"允许下载权限 / 换浏览器 / 关无痕"这类说明。
+            function _downloadFailTip() {
+                var msg = '转换失败';
+                try { if (typeof window.showToast === 'function') window.showToast(msg, true, 5000); else alert(msg); }
                 catch (e) { try { alert(msg); } catch (e2) {} }
             }
 
-            /**
-             * 【2026-10-17】把待下载文件登记给同源 Service Worker，换一个**真·HTTP 附件 URL**。
-             * 为什么再改一版：华为/鸿蒙浏览器上 blob:+a[download] 不开下载、navigator.share
-             *   "假成功"、showSaveFilePicker 挂起（2026-09-23 / 2026-10-17 两次实测）——
-             *   三条依赖"浏览器 API"的路都不通。业界最兼容的做法（StreamSaver.js / MDN
-             *   Content-Disposition）是让 SW 回一个普通附件响应，走浏览器**原生下载管理器**。
-             * 约束：页面必须已被 SW 接管（controller 存在）；登记在生成完成时做（不需要手势），
-             *   面板按钮点击时就能同步触发下载（手势仍在）。
-             * @returns {Promise<string|null>} 可用 URL（失败/超时返回 null → 走旧兜底）
-             */
-            function _swDownloadRegister(blob, filename) {
-                return new Promise(function (resolve) {
-                    var ctl = null;
-                    try { ctl = navigator.serviceWorker && navigator.serviceWorker.controller; } catch (e) {}
-                    if (!ctl) { resolve(null); return; }
-                    var token = '';
-                    try {
-                        token = (window.crypto && crypto.randomUUID)
-                            ? crypto.randomUUID().replace(/-/g, '')
-                            : (String(Date.now()) + Math.random().toString(36).slice(2));
-                    } catch (e) { token = String(Date.now()) + Math.random().toString(36).slice(2); }
-                    var settled = false;
-                    var finish = function (ok) {
-                        if (settled) return;
-                        settled = true;
-                        resolve(ok ? ('./__dl/' + token + '/' + encodeURIComponent(filename || 'download')) : null);
-                    };
-                    setTimeout(function () { finish(false); }, 2500);   // SW 休眠/不支持 → 走旧通路
-                    try {
-                        var ch = new MessageChannel();
-                        ch.port1.onmessage = function (ev) { finish(!!(ev.data && ev.data.ok)); };
-                        ctl.postMessage({
-                            type: 'DL_STORE', token: token, blob: blob,
-                            filename: filename, mime: blob.type || 'application/octet-stream'
-                        }, [ch.port2]);
-                    } catch (e) { finish(false); }
-                });
-            }
+            // 【2026-10-17 删除】原 `_swDownloadRegister`（把 Blob 登记给 SW 换 ./__dl/ HTTP 附件 URL，
+            //   用来绕开华为浏览器 blob 下载问题）随「华为适配那一套」一起退役：
+            //   用户明确要"就简单导出，选择保存地点、保存就完成，其它的说明就不要了"。
 
             window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
@@ -887,11 +852,10 @@
                 }
                 var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 
-                // 【2026-09-23 用户反馈"华为浏览器全量导出不弹下载确认框、无法下载"】
-                //   ① 优先 File System Access API：**真正弹出"另存为"确认框**（部分国产浏览器会静默拦截 a.download）
-                //   ② 不支持 / 报错 → 继续走下面的分享 / 锚点，并且**桌面端也挂兜底指引**（以前只有移动端有）
-                // 【2026-10-17】只在**桌面端**自动弹「另存为」；移动端统一放到保存面板的按钮手势内做
-                //   （异步生成后 transient activation 已过期，自动调用会被拒或挂起 ⇒ 用户看不到任何界面）。
+                // 桌面端：优先 File System Access API = **系统「另存为」框，用户自己选保存地点**（最贴合
+                //   "选择保存地点、保存就完成"）；不支持/报错再退回原生下载。
+                // 移动端不调它：华为等浏览器要么不支持、要么调用后挂起（不 resolve 不 reject），
+                //   异步导出时手势已过期，用户会"什么都不弹"——直接走系统下载管理器更可靠。
                 if (window.showSaveFilePicker && !isMobile) {
                     try {
                         var _ext = (String(filename).split('.').pop() || '').toLowerCase();
@@ -907,114 +871,45 @@
                     }
                 }
 
-                // 桌面端：标准下载 + 轻量兜底提示（"没开始下载？点这里"，15 秒后自隐）
-                if (!isMobile) {
-                    var dlUrl = URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = dlUrl; a.download = filename; a.style.display = 'none';
-                    document.body.appendChild(a); a.click();
-                    setTimeout(function () {
-                        if (a.parentNode) a.parentNode.removeChild(a);
-                        setTimeout(function () { URL.revokeObjectURL(dlUrl); }, 60000);
-                    }, 500);
-                    _showDownloadHint(filename, dlUrl, false);
-                    return;
-                }
-
-                // 【2026-10-17 用户反馈·华为浏览器导出 DOCX 只见"已生成"、拿不到文件】根因：
-                //   DOCX 生成是**异步**的（RGDocx 处理 HTML+图片，手机上常 >1s）⇒ 到下载时用户手势
-                //   (transient activation) 已过期，`navigator.share` / `showSaveFilePicker` 全部受限；
-                //   更隐蔽的是：share 可能"假成功"（resolve 但面板没弹/用户没选保存），
-                //   showSaveFilePicker 也可能**挂起**（不 resolve 不 reject）⇒ 原实现静默 return/静默等，
-                //   用户只见"DOCX 已生成"提示、界面再无下文。
-                //   口径（2026-10-17 用户再次反馈"点击太多 + 华为仍导不出"）：
-                //   **主通路改成 SW 直出 HTTP 附件**（见 _swDownloadRegister 注释），面板只剩
-                //   **一个主按钮**；share/另存为退为兜底，且不再弹第二个提示面板。
-                var _swP = _swDownloadRegister(blob, filename);
-                if (window.__lastDownload && window.__lastDownload.filename === filename) {
-                    window.__lastDownload.swUrl = null;
-                    window.__lastDownload.swUrlP = _swP;
-                }
-                _swP.then(function (u) {
-                    if (window.__lastDownload && window.__lastDownload.filename === filename) {
-                        window.__lastDownload.swUrl = u || null;
-                    }
-                });
-                // 【2026-10-17 二次反馈】移动端不再单独做"只一个下载按钮"的极简面板，
-                //   改为**与电脑端同一套下载面板**（用户原话："导出 DOCX 弹出页面改成和电脑端一样的"）。
-                //   等 SW 登记结果再弹（通常 <50ms），这样面板一出现主链接就带着可点的附件 URL；
-                //   最多等 900ms，避免不支持 SW 时面板迟迟不出现。
-                Promise.race([
-                    _swP,
-                    new Promise(function (r) { setTimeout(r, 900); })
-                ]).then(function () {
-                    var _d = window.__lastDownload || {};
-                    var _href = (_d.filename === filename && _d.swUrl) ? _d.swUrl : null;
-                    if (!_href) {
-                        // 没有 SW 附件（首次访问/未接管）⇒ 用 blob URL 兜底
-                        try { _href = URL.createObjectURL(blob); } catch (e) { _href = null; }
-                    }
-                    _showDownloadHint(filename, _href, true);
-                });
+                // 【2026-10-17 用户最终口径】"手机端华为浏览器适配的那一套不要了，就简单导出，
+                //   选择保存地点、保存就完成，其它的说明就不要了；失败就弹简单原因：转换失败"。
+                //   ⇒ 不再有 SW 直出附件 / 下载面板 /「点此保存·新标签页打开·已保存关闭」/任何说明文字，
+                //   统一交给 _directDownload → 浏览器原生下载管理器（手机落到系统「下载」）。
+                _directDownload(blob, filename);
             };
 
             /**
-             * 下载面板：**桌面端与移动端共用同一套 UI**。
-             * 【2026-10-17 用户口径】"导出 DOCX 弹出页面改成和电脑端一样的" ⇒ 移动端不再用那个
-             *   只有一个绿色「下载」的极简面板，统一成这一套（标题 + 主保存链接 + 新标签页 + 关闭）。
-             * 主链接的 href 分两种，处理方式必须不同：
-             *   · `./__dl/…`（SW 直出的 HTTP 附件，带 Content-Disposition）⇒ **不加 download 属性**，
-             *     当普通链接导航交给原生下载器。手机浏览器只认这条；加了 download 反而可能没反应。
-             *   · `blob:` ⇒ 保留 download 属性（通用兜底，桌面/Edge 都吃）。
-             * 【2026-10-17 二次反馈】"下载按钮点击后无法消失" ⇒ 点过主链接后 900ms **自动收起**
-             *   （留 900ms 让下载/导航先被浏览器接住），手动关闭按钮照旧保留。
+             * 【2026-10-17 用户最终口径】唯一的下载出口：**直接交给浏览器原生下载器**。
+             *   用户原话："手机端华为浏览器适配的那一套不要了，就简单导出，选择保存地点、保存就完成，
+             *   其它的说明就不要了，如果失败就弹出失败简单原因：转换失败"。
+             *   ⇒ 不再有：SW 直出附件（./__dl/…）、下载面板、「点此保存 / 在新标签页打开 / 已保存，关闭」、
+             *     以及任何"没开始下载怎么办"的说明文字。
+             *   · 桌面端（浏览器支持 File System Access API）：上面已优先弹系统「另存为」= 选保存地点；
+             *   · 其余情况（含手机全部浏览器）：blob + a[download] 交给系统下载管理器落盘；
+             *   · 失败：只弹一句「转换失败」，不列排查步骤（用户明确不要说明）。
              */
-            function _showDownloadHint(filename, href, isMobile) {
+            function _directDownload(blob, filename) {
+                var url = null, a = null;
                 try {
-                    var old = document.getElementById('_mb_dl_tip');
-                    if (old && old.parentNode) old.parentNode.removeChild(old);
-                    var tip = document.createElement('div');
-                    tip.id = '_mb_dl_tip';
-                    tip.dataset.kind = isMobile ? 'mobile' : 'desktop';
-                    // 【2026-10-17 真机反馈·面板被 Toast 压住且点不动】z-index 必须高于全局 Toast
-                    //   （`#global-toast-host` 是 100002，且其子元素 `pointer-events:auto`）——
-                    //   原来这里 99999，转换成功的「✅ 已转成 DOCX…」正好盖住「在新标签页打开 / 已保存，关闭」，
-                    //   点击落在 Toast 上 ⇒ 用户看到的就是"按钮点了没反应、面板也不消失"。
-                    tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100010;background:#1f2937;color:#fff;padding:14px;border-radius:12px;font-size:0.85rem;width:min(360px,92vw);box-sizing:border-box;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
-                    var shortName = filename.length > 26 ? filename.slice(0, 23) + '…' : filename;
-                    var _isSw = !!(href && /(^|\/)__dl\//.test(href));
-                    var _attr = (!href || _isSw) ? '' : ' download="' + window.safeFileName(filename) + '"';
-                    var _linkHtml = href
-                        ? '<a id="_mb_dl_link" href="' + href + '"' + _attr + ' '
-                            + 'style="display:block;box-sizing:border-box;width:100%;background:#10b981;color:#fff;border-radius:8px;padding:12px 14px;font-size:0.9rem;font-weight:700;text-decoration:none;word-break:break-all;">📥 点此保存：' + shortName + '</a>'
-                        : '<div style="color:#fca5a5;margin-bottom:8px;">文件链接生成失败，请重新导出一次</div>';
-                    tip.innerHTML = '<div style="margin-bottom:10px;">文件已生成，点下面按钮保存：</div>'
-                        + _linkHtml
-                        + '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap;">'
-                        + (href ? '<button id="_mb_dl_tab" style="background:#374151;color:#e5e7eb;border:none;border-radius:8px;padding:8px 12px;font-size:0.78rem;cursor:pointer;">在新标签页打开</button>' : '')
-                        + '<button id="_mb_dl_close" style="background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:8px;padding:8px 12px;font-size:0.78rem;cursor:pointer;">已保存，关闭</button>'
-                        + '</div>'
-                        + '<div style="margin-top:10px;font-size:0.72rem;opacity:.85;line-height:1.5;">'
-                        + '没开始下载？请允许本站「下载文件」，或在新标签页打开后另存。</div>';
-                    document.body.appendChild(tip);
-                    var _link = document.getElementById('_mb_dl_link');
-                    if (_link) _link.addEventListener('click', function () {
-                        // 点过就收（用户反馈：按钮点完不消失，一直挡在页面上）
-                        setTimeout(function () { try { tip.remove(); } catch (e) {} }, 900);
-                    });
-                    var _tab = document.getElementById('_mb_dl_tab');
-                    if (_tab) _tab.addEventListener('click', function () {
-                        try { window.open(href, '_blank', 'noopener'); } catch (e) {}
-                    });
-                    var _close = document.getElementById('_mb_dl_close');
-                    if (_close) _close.addEventListener('click', function () { try { tip.remove(); } catch (e) {} });
-                } catch (e) {}
+                    url = URL.createObjectURL(blob);
+                    a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    a.rel = 'noopener';
+                    a.style.cssText = 'display:none;';
+                    document.body.appendChild(a);
+                    a.click();
+                    // 60s 后再回收：部分手机浏览器在 click 之后才异步读 blob，早回收会下出 0 字节
+                    setTimeout(function () {
+                        try { if (a && a.parentNode) a.parentNode.removeChild(a); } catch (e) {}
+                        try { if (url) URL.revokeObjectURL(url); } catch (e) {}
+                    }, 60000);
+                    return true;
+                } catch (e) {
+                    _downloadFailTip();
+                    return false;
+                }
             }
-            window._showDownloadHint = _showDownloadHint;
-
-            /* 【2026-10-17 删除】原 `_showMobileSavePanel`（只一个绿色「下载」按钮的极简面板）已并入
-             *   上面的 `_showDownloadHint`：用户要求"导出 DOCX 弹出页面改成和电脑端一样的"，
-             *   两端共用一套 UI；且点过主链接后自动收起（原面板点完永远留在页面上）。 */
 
             // ========== 复制文本（移动端 webview 兜底）==========
             window.copyTextToClipboard = async function(text) {

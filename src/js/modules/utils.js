@@ -976,7 +976,11 @@
                     var tip = document.createElement('div');
                     tip.id = '_mb_dl_tip';
                     tip.dataset.kind = isMobile ? 'mobile' : 'desktop';
-                    tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:14px;border-radius:12px;font-size:0.85rem;width:min(360px,92vw);box-sizing:border-box;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
+                    // 【2026-10-17 真机反馈·面板被 Toast 压住且点不动】z-index 必须高于全局 Toast
+                    //   （`#global-toast-host` 是 100002，且其子元素 `pointer-events:auto`）——
+                    //   原来这里 99999，转换成功的「✅ 已转成 DOCX…」正好盖住「在新标签页打开 / 已保存，关闭」，
+                    //   点击落在 Toast 上 ⇒ 用户看到的就是"按钮点了没反应、面板也不消失"。
+                    tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100010;background:#1f2937;color:#fff;padding:14px;border-radius:12px;font-size:0.85rem;width:min(360px,92vw);box-sizing:border-box;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
                     var shortName = filename.length > 26 ? filename.slice(0, 23) + '…' : filename;
                     var _isSw = !!(href && /(^|\/)__dl\//.test(href));
                     var _attr = (!href || _isSw) ? '' : ' download="' + window.safeFileName(filename) + '"';

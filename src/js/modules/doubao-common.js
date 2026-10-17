@@ -598,7 +598,17 @@
                                 var _m = _ok
                                     ? ('✅ 已转成 ' + (target === 'xlsx' ? 'Excel' : 'DOCX') + '：' + r.name + (r.note ? '（' + r.note + '）' : ''))
                                     : ('未转换：' + ((r && r.note) || '未知原因'));
-                                if (window.showToast) window.showToast(_m, !_ok, _ok ? 6000 : 9000); else alert(_m);
+                                // 【2026-10-17 真机反馈】成功时**不再叠 Toast**：下载面板本身已写「文件已生成」，
+                                //   而全局 Toast 层级更高（100002 > 面板 100010 之前）且 pointer-events:auto，
+                                //   实拍截图里它正好压住「在新标签页打开 / 已保存，关闭」⇒ 用户点按钮点到 Toast 上，
+                                //   表现为"点了没反应、面板也不消失"。现在延迟 1s 复核：面板没出来（如桌面端
+                                //   直接在系统"另存为"框里保存完）才补一条 Toast，避免提示彻底丢失。
+                                if (_ok) {
+                                    setTimeout(function () {
+                                        if (document.getElementById('_mb_dl_tip')) return;
+                                        if (window.showToast) window.showToast(_m, false, 5000); else alert(_m);
+                                    }, 1000);
+                                } else if (window.showToast) window.showToast(_m, true, 9000); else alert(_m);
                             } catch (e) {
                                 var _m2 = '转换异常：' + ((e && e.message) || e);
                                 if (window.showToast) window.showToast(_m2, true, 8000); else alert(_m2);

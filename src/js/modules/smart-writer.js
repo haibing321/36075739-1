@@ -4448,6 +4448,10 @@
                 if (window.RGDocx) {
                     const style = window.RGDocx.getStyle();
                     const notify = function(msg) {
+                        // 【2026-10-17】移动端已弹「文件已生成」保存面板（kind=mobile），不再叠 Toast：
+                        //   用户反馈"确认点击太多"，其中一处就是"面板说已生成 + Toast 又说已生成"。
+                        var _p = document.getElementById('_mb_dl_tip');
+                        if (_p && _p.dataset && _p.dataset.kind === 'mobile') return;
                         if (typeof Toast !== 'undefined' && Toast.success) Toast.success(msg);
                         else alert(msg);
                     };

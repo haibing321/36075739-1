@@ -850,34 +850,20 @@
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {
                     try { window.navigator.msSaveOrOpenBlob(blob, filename); return; } catch (e) {}
                 }
-                // 【2026-10-17 定稿·两端都要"能自己选位置"】
-                //   · 电脑：系统「另存为」（可任选文件夹）；
-                //   · 手机：系统分享面板 →「保存到文件」（网页在手机上无权直接写任意目录）。
-                //   ⚠️ 这两个 API 都要求**新鲜的用户手势**；导出是异步的（DOCX 生成常 >5s），
-                //   手势过期时会抛 NotAllowedError —— 此时**不能静默退回默认下载**（那正是
-                //   用户报的"还是默认路径、位置选不了"），而是出一个只有「保存文件」三个字的按钮：
-                //   点它的那一下手势是新鲜的，再调一次就真能弹出可选的"保存位置"。
+                // 【2026-10-17 用户定稿·手机"就简单下载，不要按钮"】
+                //   · 电脑：系统「另存为」，可任选文件夹（用户："可以任意保存文件"）；
+                //     被浏览器拦（长文档转换后手势过期）就直接存默认下载目录，**不再出按钮**。
+                //   · 手机：一律直接交给浏览器原生下载器（存到「下载」文件夹）——
+                //     不调分享面板、不弹任何按钮/面板。用户实测 Edge 的「保存到文件」
+                //     也只是存默认目录，多这一步反而添乱；要换文件夹在「文件管理 → 下载」里移动即可。
                 var _ua = navigator.userAgent || '';
                 var _isMobile = /Mobi|Android|iPhone|iPad|iPod|HarmonyOS|OpenHarmony|Tablet/i.test(_ua);
 
-                if (!_isMobile) {
-                    if (window.showSaveFilePicker) {
-                        var _okPick = await _saveViaPicker(blob, filename);
-                        if (_okPick) return;                     // 已写入 / 用户取消
-                        _showSaveOnce(blob, filename, 'picker'); // 手势过期 → 让用户点一下再选位置
-                        return;
-                    }
-                    _directDownload(blob, filename);             // 旧浏览器：默认目录
-                    return;
+                if (!_isMobile && window.showSaveFilePicker) {
+                    var _okPick = await _saveViaPicker(blob, filename);
+                    if (_okPick) return;                          // 已写入 / 用户取消
                 }
-
-                var _s = await _shareSaveFile(blob, filename);
-                if (_s === 'ok' || _s === 'abort') return;       // 系统面板已接管 / 用户取消
-                if (_s === 'failed') {                           // 有分享能力但手势过期
-                    _showSaveOnce(blob, filename, 'share');
-                    return;
-                }
-                _directDownload(blob, filename);                 // 'unsupported'：该浏览器不支持
+                _directDownload(blob, filename);                  // 默认下载目录
             };
 
             /** 系统「另存为」（电脑端）：true = 已写完或用户主动取消；false = 不可用/被拦（手势过期等） */
@@ -898,73 +884,9 @@
             }
 
             /**
-             * 手机端「自己选保存位置」：走系统分享面板（分享 → 保存到文件 / 文件管理）。
-             * 手机上网页无法直接指定目录（File System Access 在移动浏览器普遍不可用，
-             *   华为 ArkWeb 那个"另存为"也只会给默认目录，用户已判"实际无任何作用"）——
-             *   系统分享面板是手机上唯一能挑任意目录的通路。
-             * @returns {Promise<'ok'|'abort'|'unsupported'|'failed'>}
-             *   ok=面板已接管 · abort=用户取消 · unsupported=没有分享能力 · failed=有能力但被拦（手势过期）
-             */
-            function _shareSaveFile(blob, filename) {
-                return new Promise(function (resolve) {
-                    var _done = false;
-                    var finish = function (v) { if (!_done) { _done = true; resolve(v); } };
-                    try {
-                        if (!navigator.share || !navigator.canShare) { finish('unsupported'); return; }
-                        var file = null;
-                        try { file = new File([blob], filename, { type: blob.type || 'application/octet-stream' }); }
-                        catch (e) { finish('unsupported'); return; }
-                        var _can = false;
-                        try { _can = !!navigator.canShare({ files: [file] }); } catch (e) { _can = false; }
-                        // 个别内核 canShare 会误报 false（其实能分享）⇒ 仍然试一次，只有真报错才判不支持
-                        // 面板长时间不返回（个别内核会挂起）：视为用户正在面板里操作，
-                        //   **绝不能再补一次原生下载**，否则会存出两份。
-                        setTimeout(function () { finish('ok'); }, 20000);
-                        Promise.resolve(navigator.share({ files: [file], title: filename }))
-                            .then(function () { finish('ok'); })
-                            .catch(function (e) {
-                                if (e && e.name === 'AbortError') { finish('abort'); return; }
-                                finish(_can ? 'failed' : 'unsupported');
-                            });
-                    } catch (e) { finish('failed'); }
-                });
-            }
-
-            /**
-             * 手势过期时唯一能救回来的办法：**只出一个按钮**（没有任何标题/说明文字）。
-             *   用户点它的那一下手势是新鲜的 ⇒ 再调一次「另存为 / 分享」就能真正选保存位置。
-             *   30 秒不点自动收起，点过立刻移除（不会像老面板那样一直挡着页面）。
-             */
-            function _showSaveOnce(blob, filename, mode) {
-                try {
-                    var old = document.getElementById('_save_once_btn');
-                    if (old && old.parentNode) old.parentNode.removeChild(old);
-                    var btn = document.createElement('button');
-                    btn.id = '_save_once_btn';
-                    btn.type = 'button';
-                    btn.textContent = '保存文件';
-                    btn.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:100010;'
-                        + 'background:#10b981;color:#fff;border:none;border-radius:10px;padding:12px 28px;'
-                        + 'font-size:0.95rem;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.3);cursor:pointer;';
-                    btn.onclick = async function () {
-                        try { btn.remove(); } catch (e) {}
-                        if (mode === 'picker') {
-                            var _ok = await _saveViaPicker(blob, filename);
-                            if (!_ok) _directDownload(blob, filename);
-                            return;
-                        }
-                        var _r = await _shareSaveFile(blob, filename);
-                        if (_r !== 'ok' && _r !== 'abort') _directDownload(blob, filename);
-                    };
-                    document.body.appendChild(btn);
-                    setTimeout(function () { try { btn.remove(); } catch (e) {} }, 30000);
-                } catch (e) {}
-            }
-
-            /**
-             * 兜底出口：直接交给浏览器原生下载器（默认下载目录）。
-             *   只在两种情况下走这里：① 电脑端没有 File System Access（旧浏览器）；
-             *   ② 手机端浏览器不支持文件分享（如旧版华为内核）。
+             * 唯一落盘出口：直接交给浏览器原生下载器（默认下载目录 = 手机「下载」文件夹）。
+             *   手机端一律走这里（用户定稿："改回直接下载，不要按钮"）；
+             *   电脑端是没有 File System Access、或「另存为」被拦时的兜底。
              *   全程无面板、无说明；失败只弹一句「转换失败」。
              */
             function _directDownload(blob, filename) {

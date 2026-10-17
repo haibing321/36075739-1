@@ -850,31 +850,13 @@
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {
                     try { window.navigator.msSaveOrOpenBlob(blob, filename); return; } catch (e) {}
                 }
-                var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-
-                // 桌面端：优先 File System Access API = **系统「另存为」框，用户自己选保存地点**（最贴合
-                //   "选择保存地点、保存就完成"）；不支持/报错再退回原生下载。
-                // 移动端不调它：华为等浏览器要么不支持、要么调用后挂起（不 resolve 不 reject），
-                //   异步导出时手势已过期，用户会"什么都不弹"——直接走系统下载管理器更可靠。
-                if (window.showSaveFilePicker && !isMobile) {
-                    try {
-                        var _ext = (String(filename).split('.').pop() || '').toLowerCase();
-                        var _types = _ext ? [{ description: _ext.toUpperCase() + ' 文件', accept: (function () { var o = {}; o['application/' + (_ext === 'zip' ? 'zip' : 'octet-stream')] = ['.' + _ext]; return o; })() }] : undefined;
-                        var handle = await window.showSaveFilePicker({ suggestedName: filename, types: _types });
-                        var w = await handle.createWritable();
-                        await w.write(blob);
-                        await w.close();
-                        return;                                  // 用户已在系统对话框里确认，结束
-                    } catch (e) {
-                        if (e && e.name === 'AbortError') return;  // 用户点了取消：尊重，不再偷偷下载
-                        // 其它错误（浏览器不支持该 API 的文件类型等）→ 继续走下面的兜底
-                    }
-                }
-
-                // 【2026-10-17 用户最终口径】"手机端华为浏览器适配的那一套不要了，就简单导出，
-                //   选择保存地点、保存就完成，其它的说明就不要了；失败就弹简单原因：转换失败"。
-                //   ⇒ 不再有 SW 直出附件 / 下载面板 /「点此保存·新标签页打开·已保存关闭」/任何说明文字，
-                //   统一交给 _directDownload → 浏览器原生下载管理器（手机落到系统「下载」）。
+                // 【2026-10-17 用户复核】原来桌面端先调 showSaveFilePicker（系统「另存为」）。
+                //   用户实测原话："导出点击后弹出的选择下载位置，实际无法选择保存位置，
+                //   只有保存默认位置，这个提示作用不明，实际无任何作用"。
+                //   真因：华为/鸿蒙的 ArkWeb 也实现了这个 API，但只给默认目录（弹了等于白弹）；
+                //   桌面 Chrome 的另存为什么时候弹也看浏览器策略，提示和结果对不上。
+                //   ⇒ **整条 picker 通路删除**：不再弹任何"选择位置"的对话框，一律原生下载到
+                //   浏览器默认下载目录（用户可在浏览器设置里改），成功静默、失败只说「转换失败」。
                 _directDownload(blob, filename);
             };
 
@@ -884,8 +866,8 @@
              *   其它的说明就不要了，如果失败就弹出失败简单原因：转换失败"。
              *   ⇒ 不再有：SW 直出附件（./__dl/…）、下载面板、「点此保存 / 在新标签页打开 / 已保存，关闭」、
              *     以及任何"没开始下载怎么办"的说明文字。
-             *   · 桌面端（浏览器支持 File System Access API）：上面已优先弹系统「另存为」= 选保存地点；
-             *   · 其余情况（含手机全部浏览器）：blob + a[download] 交给系统下载管理器落盘；
+             *   · 所有端一律 blob + a[download] 交给系统下载管理器落盘（默认下载目录）；
+             *   · 不再调 showSaveFilePicker —— 它弹的"选择位置"在国产浏览器里选不了，等于白弹；
              *   · 失败：只弹一句「转换失败」，不列排查步骤（用户明确不要说明）。
              */
             function _directDownload(blob, filename) {

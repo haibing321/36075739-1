@@ -2135,7 +2135,7 @@
                     <section class="st-sec" data-sec="about">
                         <div class="st-group-title">版本</div>
                         <button id="check-update-btn" onclick="checkForUpdate()" class="st-btn">
-                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.75</span></span>
+                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.76</span></span>
                             <span id="check-update-arrow" class="st-btn-arrow">点击检查 →</span>
                         </button>
                         <div id="update-status" class="st-hint"></div>
@@ -2161,7 +2161,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.75</span> · 2026.10.17</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.76</span> · 2026.10.17</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2208,12 +2208,12 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.75 近期更新</span>
+                    <span>v4.76 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">📥</span><span><b>"选择下载位置"的框去掉了</b>：它弹出来其实选不了，只能存到默认位置，等于白弹一次；现在导出不再出现这个提示。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">💾</span><span><b>导出即保存</b>：文件直接存到浏览器默认下载目录（手机一般是"下载"文件夹，电脑可在浏览器设置里改），成功后不再弹任何提示。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">⚠️</span><span><b>失败只报一句</b>：转换或导出没成功，只提示「转换失败」，不再弹排查说明。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">💾</span><span><b>电脑导出可以自己选文件夹了</b>：点导出直接弹系统「另存为」，放在哪个盘、哪个文件夹由你决定，不再被默认下载目录卡住。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📱</span><span><b>手机导出弹系统「保存」面板</b>：在里面选「保存到文件 / 文件管理」就能自己挑目录（也可以直接发微信、存网盘）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">⚠️</span><span><b>兜底与失败</b>：浏览器不支持上面两种面板时，自动存到默认下载目录；失败只提示一句「转换失败」。</span></div>
                 </div>
             </div>
 

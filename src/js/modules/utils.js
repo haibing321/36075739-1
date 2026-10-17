@@ -850,25 +850,72 @@
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {
                     try { window.navigator.msSaveOrOpenBlob(blob, filename); return; } catch (e) {}
                 }
-                // 【2026-10-17 用户复核】原来桌面端先调 showSaveFilePicker（系统「另存为」）。
-                //   用户实测原话："导出点击后弹出的选择下载位置，实际无法选择保存位置，
-                //   只有保存默认位置，这个提示作用不明，实际无任何作用"。
-                //   真因：华为/鸿蒙的 ArkWeb 也实现了这个 API，但只给默认目录（弹了等于白弹）；
-                //   桌面 Chrome 的另存为什么时候弹也看浏览器策略，提示和结果对不上。
-                //   ⇒ **整条 picker 通路删除**：不再弹任何"选择位置"的对话框，一律原生下载到
-                //   浏览器默认下载目录（用户可在浏览器设置里改），成功静默、失败只说「转换失败」。
+                // 【2026-10-17 用户定稿·两端都要"能自己选位置"】（"把那一条默认保存路径限制改了，
+                //   可以任意保存文件"）两个端各走自己唯一可行的通路：
+                //   · 电脑（Windows/macOS/Linux）：系统「另存为」对话框，可任选文件夹；
+                //   · 手机（华为/安卓/iOS）：系统分享面板里的「保存到文件 / 文件管理」——
+                //     网页在手机上无权直接写任意目录，分享面板是唯一能挑目录的通路。
+                //   都不弹任何自绘说明；只有浏览器不支持时，才退回默认下载目录。
+                var _ua = navigator.userAgent || '';
+                var _isMobile = /Mobi|Android|iPhone|iPad|iPod|HarmonyOS|OpenHarmony|Tablet/i.test(_ua);
+
+                if (!_isMobile && window.showSaveFilePicker) {
+                    try {
+                        var _ext = (String(filename).split('.').pop() || '').toLowerCase();
+                        var _types = _ext ? [{ description: _ext.toUpperCase() + ' 文件', accept: (function () { var o = {}; o['application/' + (_ext === 'zip' ? 'zip' : 'octet-stream')] = ['.' + _ext]; return o; })() }] : undefined;
+                        var _handle = await window.showSaveFilePicker({ suggestedName: filename, types: _types });
+                        var _w = await _handle.createWritable();
+                        await _w.write(blob);
+                        await _w.close();
+                        return;                                  // 用户已选好位置并写完，结束
+                    } catch (e) {
+                        if (e && e.name === 'AbortError') return; // 用户主动取消：尊重，不再偷偷下载
+                        // 手势过期 / 该类型不被接受 → 落到下面的原生下载（不再弹第二个框）
+                    }
+                }
+
+                if (_isMobile) {
+                    var _s = await _shareSaveFile(blob, filename);
+                    if (_s !== 'fallback') return;               // 'ok' 已交给系统面板；'abort' 用户取消
+                }
+
                 _directDownload(blob, filename);
             };
 
             /**
-             * 【2026-10-17 用户最终口径】唯一的下载出口：**直接交给浏览器原生下载器**。
-             *   用户原话："手机端华为浏览器适配的那一套不要了，就简单导出，选择保存地点、保存就完成，
-             *   其它的说明就不要了，如果失败就弹出失败简单原因：转换失败"。
-             *   ⇒ 不再有：SW 直出附件（./__dl/…）、下载面板、「点此保存 / 在新标签页打开 / 已保存，关闭」、
-             *     以及任何"没开始下载怎么办"的说明文字。
-             *   · 所有端一律 blob + a[download] 交给系统下载管理器落盘（默认下载目录）；
-             *   · 不再调 showSaveFilePicker —— 它弹的"选择位置"在国产浏览器里选不了，等于白弹；
-             *   · 失败：只弹一句「转换失败」，不列排查步骤（用户明确不要说明）。
+             * 手机端「自己选保存位置」：走系统分享面板（分享 → 保存到文件 / 文件管理）。
+             * 手机上网页无法直接指定目录（File System Access 在移动浏览器普遍不可用，
+             *   华为 ArkWeb 那个"另存为"也只会给默认目录，用户已判"实际无任何作用"）——
+             *   系统分享面板是手机上唯一能挑任意目录的通路。
+             * @returns {Promise<'ok'|'abort'|'fallback'>} fallback = 该浏览器不支持，交给原生下载
+             */
+            function _shareSaveFile(blob, filename) {
+                return new Promise(function (resolve) {
+                    var _done = false;
+                    var finish = function (v) { if (!_done) { _done = true; resolve(v); } };
+                    try {
+                        if (!navigator.share || !navigator.canShare) { finish('fallback'); return; }
+                        var file = null;
+                        try { file = new File([blob], filename, { type: blob.type || 'application/octet-stream' }); }
+                        catch (e) { finish('fallback'); return; }
+                        if (!navigator.canShare({ files: [file] })) { finish('fallback'); return; }
+                        // 面板若长时间不返回（个别华为内核会挂起）：视为用户正在面板里操作，
+                        //   **绝不能再补一次原生下载**，否则会存出两份。
+                        setTimeout(function () { finish('ok'); }, 20000);
+                        Promise.resolve(navigator.share({ files: [file], title: filename }))
+                            .then(function () { finish('ok'); })
+                            .catch(function (e) {
+                                finish(e && e.name === 'AbortError' ? 'abort' : 'fallback');
+                            });
+                    } catch (e) { finish('fallback'); }
+                });
+            }
+
+            /**
+             * 兜底出口：直接交给浏览器原生下载器（默认下载目录）。
+             *   只在两种情况下走这里：① 电脑端没有 File System Access（旧浏览器）；
+             *   ② 手机端浏览器不支持文件分享（如旧版华为内核）。
+             *   全程无面板、无说明；失败只弹一句「转换失败」。
              */
             function _directDownload(blob, filename) {
                 var url = null, a = null;

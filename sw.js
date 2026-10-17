@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261017113904';
+var CACHE_VERSION = '20261017115321';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 【2026-10-17】SW 直出文件下载（DOCX/PDF/ZIP 等）==========
@@ -489,7 +489,9 @@ self.addEventListener('fetch', function(event) {
   // 注意：`<a download>` 触发的请求在部分浏览器里 mode 也是 navigate，
   //   所以这段必须在下面的"导航请求"分支**之前**拦截，否则会被当成页面导航。
   if (u.pathname.indexOf(DL_PREFIX) !== -1) {
-    var _dlToken = u.pathname.split('/').pop() || '';
+    // 路径形如 ./__dl/<token>/<文件名>：token 取 __dl/ 之后第一段。
+    //   带上文件名后缀（.docx）是为了兼容"只看扩展名不看 Content-Disposition"的手机浏览器。
+    var _dlToken = (u.pathname.split(DL_PREFIX)[1] || '').split('/')[0] || '';
     event.respondWith(
       caches.open(DL_CACHE).then(function (cache) {
         return cache.match(dlKey(_dlToken)).then(function (hit) {
@@ -509,6 +511,7 @@ self.addEventListener('fetch', function(event) {
           _h.set('Cache-Control', 'no-store');
           _h.set('X-Content-Type-Options', 'nosniff');
           return hit.blob().then(function (b) {
+            _h.set('Content-Length', String(b.size));   // 少数手机下载器没有它就拒绝落盘
             return new Response(b, { status: 200, headers: _h });
           });
         });

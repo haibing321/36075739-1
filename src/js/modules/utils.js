@@ -863,7 +863,7 @@
                     var finish = function (ok) {
                         if (settled) return;
                         settled = true;
-                        resolve(ok ? ('./__dl/' + token) : null);
+                        resolve(ok ? ('./__dl/' + token + '/' + encodeURIComponent(filename || 'download')) : null);
                     };
                     setTimeout(function () { finish(false); }, 2500);   // SW 休眠/不支持 → 走旧通路
                     try {
@@ -933,14 +933,19 @@
                 var _swP = _swDownloadRegister(blob, filename);
                 if (window.__lastDownload && window.__lastDownload.filename === filename) {
                     window.__lastDownload.swUrl = null;
-                    window.__lastDownload.swUrlP = _swP;   // 面板按钮可 await（通常已就绪）
+                    window.__lastDownload.swUrlP = _swP;
                 }
                 _swP.then(function (u) {
                     if (window.__lastDownload && window.__lastDownload.filename === filename) {
                         window.__lastDownload.swUrl = u || null;
                     }
                 });
-                _showMobileSavePanel(filename);
+                // 【2026-10-17 极简化】等 SW 登记结果再弹面板（通常 <50ms），这样"下载"按钮点击时
+                //   能**同步**拿到附件 URL；最多等 900ms，避免不支持 SW 时面板迟迟不出现。
+                Promise.race([
+                    _swP,
+                    new Promise(function (r) { setTimeout(r, 900); })
+                ]).then(function () { _showMobileSavePanel(filename); });
             };
 
             /**
@@ -982,120 +987,41 @@
             window._showDownloadHint = _showDownloadHint;
 
             /**
-             * 移动端「文件已生成」保存面板（2026-10-17 取代原 _showMobileRetryBtn）
-             * 为什么改：原实现自动 try share/picker 后才挂"点击下载"小按钮，且 **12 秒自动消失**；
-             *   华为浏览器上 share 会"假成功"（resolve 但没弹面板）、picker 会挂起 ⇒ 用户只看到
-             *   "DOCX 已生成"却拿不到文件（2026-10-17 用户实测反馈）。
-             * 现口径：**移动端导出的唯一出口 = 这个常驻面板**（不自动消失、可反复点）：
-             *   主按钮「📥 保存到手机」点击时才进入**新手势**，依次尝试 另存为(8s 超时) →
-             *   系统分享（华为/安卓可"保存到文件"、iOS 唯一稳妥路径）→ 锚点下载 → 常驻兜底链接；
-             *   次按钮「在新标签页打开」给第二条路（长按/菜单另存）。
+             * 移动端「下载」面板（2026-10-17 极简化，用户口径）
+             * 用户要求："恢复成和其他浏览器下载一样，只显示保存/下载，其他都不要了"。
+             * 所以这里**只有一个按钮**：没有标题、文件名、说明、状态行、次按钮、关闭键。
+             * 点击即同步触发下载（保住新手势）：
+             *   ① 有 SW 附件 URL → location.href（普通 HTTP 下载，交给原生下载管理器）
+             *   ② 没有（首次访问/未接管）→ blob 锚点（通用兜底）
+             * 不再自动 share / picker：实测华为浏览器上会"假成功"或挂起。
              */
             function _showMobileSavePanel(filename) {
                 var old = document.getElementById('_mb_dl_tip');
                 if (old && old.parentNode) old.parentNode.removeChild(old);
-                var _d0 = window.__lastDownload || {};
-                var sizeTxt = (_d0.blob && _d0.blob.size) ? ('（' + Math.max(1, Math.round(_d0.blob.size / 1024)) + ' KB）') : '';
-                var shortName = filename.length > 28 ? filename.slice(0, 25) + '…' : filename;
                 var tip = document.createElement('div');
                 tip.id = '_mb_dl_tip';
-                tip.dataset.kind = 'mobile';   // 供调用方区分：移动端已给"已生成"反馈，别再叠 Toast
-                tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:14px 16px;border-radius:14px;font-size:0.85rem;max-width:92vw;width:min(420px,92vw);box-shadow:0 12px 32px rgba(0,0,0,.45);text-align:center;';
-                tip.innerHTML = '<div style="font-weight:700;margin-bottom:2px;">✅ 文件已生成</div>'
-                    + '<div style="font-size:0.76rem;opacity:.9;margin-bottom:10px;word-break:break-all;">' + shortName + sizeTxt + '</div>'
-                    + '<button id="_mb_dl_save" style="display:block;width:100%;background:#10b981;color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:0.95rem;font-weight:700;cursor:pointer;">📥 保存文件</button>'
-                    + '<div id="_mb_dl_status" style="display:none;margin-top:8px;font-size:0.75rem;line-height:1.55;text-align:left;"></div>'
-                    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px;">'
-                    + '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-start;">'
-                    + '<button id="_mb_dl_tab" style="background:transparent;color:#9ca3af;border:none;padding:4px 0;font-size:0.74rem;cursor:pointer;text-decoration:underline;">在新标签页打开</button>'
-                    + '<button id="_mb_dl_share" style="background:transparent;color:#9ca3af;border:none;padding:4px 0;font-size:0.74rem;cursor:pointer;text-decoration:underline;">发送到其他位置</button>'
-                    + '</div>'
-                    + '<button id="_mb_dl_close" style="background:transparent;color:#9ca3af;border:none;padding:4px 6px;font-size:0.74rem;cursor:pointer;">关闭</button>'
-                    + '</div>'
-                    + '<div style="margin-top:6px;font-size:0.7rem;opacity:.7;line-height:1.5;text-align:left;">保存位置由浏览器/系统决定（默认「下载」目录）。若改过保存位置后失败，请在浏览器设置里改回默认目录，或用系统「分享 → 保存到文件」另选位置。</div>';
+                tip.dataset.kind = 'mobile';   // 供调用方区分：移动端已有"下载"面板，别再叠 Toast
+                tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;max-width:92vw;width:min(320px,92vw);';
+                tip.innerHTML = '<button id="_mb_dl_save" style="display:block;width:100%;background:#10b981;color:#fff;border:none;border-radius:12px;padding:14px 18px;font-size:1rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;">下载</button>';
                 document.body.appendChild(tip);
-                var _close2 = document.getElementById('_mb_dl_close');
-                if (_close2) _close2.addEventListener('click', function () { try { tip.remove(); } catch (e) {} });
-                var _tab2 = document.getElementById('_mb_dl_tab');
-                if (_tab2) _tab2.addEventListener('click', function () {
-                    try {
-                        var d = window.__lastDownload; if (!d) return;
-                        var u = d.swUrl || URL.createObjectURL(d.blob);
-                        window.open(u, '_blank', 'noopener');
-                        if (!d.swUrl) setTimeout(function () { URL.revokeObjectURL(u); }, 120000);
-                    } catch (e) {}
-                });
-                // 【2026-10-17 用户问"华为浏览器改保存位置就失败"】网页**无法指定**下载目录，
-                //   原生下载器只认浏览器的下载设置；想让用户自选位置，唯一通用办法是系统分享面板
-                //   （「保存到文件」→ 文件 App 选目录）。故这里给一个显式入口，而不是只靠兜底。
-                var _share2 = document.getElementById('_mb_dl_share');
-                if (_share2) _share2.addEventListener('click', async function () {
-                    var d = window.__lastDownload; if (!d) return;
-                    try {
-                        var f2 = new File([d.blob], d.filename, { type: d.blob.type || 'application/octet-stream' });
-                        if (navigator.share && navigator.canShare && navigator.canShare({ files: [f2] })) {
-                            await navigator.share({ files: [f2], title: d.filename });
-                            _setStat('已打开系统分享：选「保存到文件」即可自选保存目录。');
-                        } else {
-                            _setStat('当前浏览器不支持系统分享。请在浏览器设置里把下载目录改回默认「下载」，或换系统浏览器打开本页。', true);
-                        }
-                    } catch (e) {
-                        if (e && e.name !== 'AbortError') _setStat('分享失败：请把浏览器下载目录恢复为默认后重试，或换系统浏览器打开。', true);
-                    }
-                });
-                var _setStat = function (html, bad) {
-                    var s = document.getElementById('_mb_dl_status');
-                    if (!s) return;
-                    s.style.display = 'block';
-                    s.style.color = bad ? '#fca5a5' : '#a7f3d0';
-                    s.innerHTML = html;
-                };
-                var _fire = function (url, filename) {
-                    var a = document.createElement('a');
-                    a.href = url; a.download = filename; a.rel = 'noopener'; a.style.display = 'none';
-                    document.body.appendChild(a); a.click();
-                    setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 1200);
-                };
                 var _save = document.getElementById('_mb_dl_save');
-                if (_save) _save.addEventListener('click', async function () {
-                    var d = window.__lastDownload; if (!d) { try { tip.remove(); } catch (e) {} return; }
-                    // ① 主通路：SW 直出 HTTP 附件 —— 走浏览器原生下载管理器，
-                    //    不依赖 blob URL / Web Share / 另存为 API（华为浏览器最稳的一条）
-                    var sw = d.swUrl;
-                    if (!sw && d.swUrlP) {
-                        try {
-                            sw = await Promise.race([d.swUrlP, new Promise(function (r) { setTimeout(function () { r(null); }, 1500); })]);
-                        } catch (e) {}
-                    }
-                    if (sw) {
-                        // 【为什么不用 <a download>】实测（无头 Edge/Chromium）对 SW 生成的附件响应，
-                        //   a[download] 与隐藏 iframe **都不会发起下载**（连请求都没有），而
-                        //   `location.href = 同源附件URL` 能稳定交给原生下载器且主页面不跳走
-                        //   （响应带 Content-Disposition: attachment）。故主通路用导航。
-                        location.href = sw;
-                        _setStat('已交给浏览器下载，可在通知栏或「下载」里查看。');
-                        return;
-                    }
-                    // ② 系统分享（可自选保存位置：iOS「存储到文件」/ 安卓「保存到文件」）
-                    if (navigator.share && typeof navigator.canShare === 'function') {
-                        try {
-                            var file = new File([d.blob], d.filename, { type: d.blob.type || 'application/octet-stream' });
-                            if (navigator.canShare({ files: [file] })) {
-                                await navigator.share({ files: [file], title: d.filename });
-                                _setStat('已通过系统分享保存。');
-                                return;
-                            }
-                        } catch (e) { if (e && e.name === 'AbortError') return; }
-                    }
-                    // ③ 兜底：blob 锚点 + **同面板**提示（不再弹第二个面板）
+                if (_save) _save.addEventListener('click', function () {
+                    var d = window.__lastDownload;
+                    if (!d) { try { tip.remove(); } catch (e) {} return; }
+                    // ① SW 附件：就是一次普通 HTTP 下载（带 Content-Disposition），
+                    //    浏览器/华为都按原生下载处理；主页面不会跳走。
+                    if (d.swUrl) { location.href = d.swUrl; return; }
+                    // ② 通用兜底：blob 锚点。必须**同步**点击，不能 await（会丢用户手势）。
                     try {
                         var url = URL.createObjectURL(d.blob);
-                        _fire(url, d.filename);
-                        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-                        _setStat('已尝试直接下载。若没反应：在浏览器里允许本站「下载文件」，或点下方「在新标签页打开」后长按另存。', true);
-                    } catch (e2) {
-                        _setStat('保存失败：请改用系统浏览器打开本页后重试。', true);
-                    }
+                        var a = document.createElement('a');
+                        a.href = url; a.download = d.filename; a.style.display = 'none';
+                        document.body.appendChild(a); a.click();
+                        setTimeout(function () {
+                            if (a.parentNode) a.parentNode.removeChild(a);
+                            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+                        }, 1200);
+                    } catch (e) {}
                 });
             }
 

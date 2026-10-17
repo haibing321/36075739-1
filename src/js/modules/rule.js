@@ -1156,10 +1156,27 @@
                             //   "ReferenceError: _doc is not defined"（用户实测导入直接失败、整份文件被跳过）。
                             let _pdfDoc = null;
                             const _items = [];
+                            // 【2026-10-17 表格保留·逐页网格】边取文字边收"矢量框线"（表格线）：
+                            //   · 旧实现只在 pdf.numPages === 1 时启用网格，多页 PDF 一律"跳过表格"⇒ 表格全丢；
+                            //   · import-layout 现在支持 opts.pageSegments（按页给线段），多页也能逐页确定性还原；
+                            //   · 只对**有文字层**的页取 getOperatorList（扫描页没有文字，取了也没用，白花时间）。
+                            const _pageSegs = [];
+                            let _segTotal = 0;
                             for (let p = 1; p <= pdf.numPages; p++) {
                                 const page = await pdf.getPage(p);
                                 const content = await page.getTextContent();
                                 _items.push(content.items);
+                                let _sg = [];
+                                if (_lay && _lay.segmentsFromOperatorList && content.items && content.items.length) {
+                                    try {
+                                        _sg = _lay.segmentsFromOperatorList(
+                                            await page.getOperatorList(),
+                                            (window.pdfjsLib && window.pdfjsLib.OPS) || {}
+                                        ) || [];
+                                    } catch (eSG) { _sg = []; }
+                                }
+                                _pageSegs.push(_sg);
+                                _segTotal += _sg.length;
                             }
                             if (_lay) {
                                 // 【2026-10-03 用户给的实测语料】一次解决四件事：
@@ -1169,25 +1186,20 @@
                                 //   ④ 跨页剔除页码（"—— 1 ——"）、重复页眉页脚（"LZG/GW213 - 2026"）、
                                 //      打印水印戳（"10.211.6.89 lanzhl-dujianchun 610219 2026-07-10 02:13:41"）。
                                 // 【2026-10-09 正解落地·PDF 表格按"表格线"确定性还原】不再一律跳过：
-                                //   · 单页 PDF 且能取到矢量线段 ⇒ 交给 import-layout 的"网格优先路径"还原真实行列。
+                                //   · 能取到矢量线段 ⇒ 交给 import-layout 的"网格优先路径"还原真实行列。
                                 //     真机实测（用户那份《接触网维修规则》附件8 PDF）：226 条线段聚出 8×7 网格，
                                 //     把原本被拆成 12×6 + 22×8 的错表**一次还原成 8 行 × 7 列**，与原文一致。
-                                //   · 多页 PDF：各页线段混在一起会串行 ⇒ 暂不启用网格（保持"跳过表格"兜底）。
-                                //   · 网格不可用（扫描件无矢量线等）⇒ 仍按"跳过表格、只导文字"兜底，绝不静默丢内容。
+                                //   · 【2026-10-17】多页 PDF 不再被迫降级：改为**逐页**传 pageSegments
+                                //     （旧实现把各页线段混在一个全局变量里会串行，所以只敢对单页启用）。
+                                //   · 某页取不到框线（扫描页/无表格）⇒ 该页仍按"跳过表格、只导文字"兜底，绝不静默丢内容。
                                 try {
-                                    window.__pdfSkipTables = true;      // 默认保守：网格失败就跳过
                                     window.__pdfSkippedTables = 0;
+                                    window.__pdfGridTables = 0;
                                     window.__pdfGridSegments = null;
-                                    if (pdf.numPages === 1 && _lay.segmentsFromOperatorList) {
-                                        try {
-                                            var _pg1 = await pdf.getPage(1);
-                                            var _ol1 = await _pg1.getOperatorList();
-                                            var _sgs = _lay.segmentsFromOperatorList(_ol1, (window.pdfjsLib && window.pdfjsLib.OPS) || {});
-                                            if (_sgs && _sgs.length) { window.__pdfGridSegments = _sgs; window.__pdfSkipTables = false; }
-                                        } catch (eG) {}
-                                    }
+                                    // 全篇没有一条框线（扫描件）⇒ 保持旧兜底；逐页开关由 pageSegments 决定
+                                    window.__pdfSkipTables = !_segTotal;
                                 } catch (eS1) {}
-                                _pdfDoc = _lay.buildDocument(_items);
+                                _pdfDoc = _lay.buildDocument(_items, { pageSegments: _pageSegs });
                                 try { window.__pdfSkipTables = false; window.__pdfGridSegments = null; } catch (e) {}
                                 try {
                                     if (window.__pdfGridTables) {
@@ -1196,6 +1208,15 @@
                                     } else if (window.__pdfSkippedTables) {
                                         successNotes.push(file.name + '：已跳过 ' + window.__pdfSkippedTables
                                             + ' 张表格（该 PDF 未取到表格线，多为扫描件；如需表格请用 DOCX 格式导入）');
+                                    }
+                                } catch (e) {}
+                                // 【2026-10-17】"文字层不可读"如实告知：字体没带 Unicode 映射时（方正书版/加密字体常见），
+                                //   解析出来的就是 `!"#$%&'` 这类乱码。不提示的话用户以为导入成功，库里却全是乱码。
+                                try {
+                                    var _gb = _lay.textLooksGarbled ? _lay.textLooksGarbled(_pdfDoc.text) : null;
+                                    if (_gb && _gb.garbled) {
+                                        successNotes.push(file.name + '：**该 PDF 的文字层无法识别**（字体未带 Unicode 映射，'
+                                            + '常见于方正书版/加密字体），导入结果是乱码 —— 请改用 Word 原件，或先做 OCR 再导入');
                                     }
                                 } catch (e) {}
                                 // 【2026-10-05 用户需求】导入时自动去掉各种水印与"内部资料 不得外传"字样。

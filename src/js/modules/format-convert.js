@@ -50,7 +50,10 @@
     }
     if (typeof pdfjsLib === 'undefined') return { ok: false, note: 'PDF 解析库未就绪（离线首次需联网拉取）' };
     try { if (pdfjsLib.GlobalWorkerOptions) pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER; } catch (e) {}
-    var pages = [], numPages = 0;
+    var okL = await _ensureLayout();
+    var L = window.ImportLayout;
+    if (!okL || !L || typeof L.buildDocument !== 'function') return { ok: false, note: '版式还原组件未就绪' };
+    var pages = [], segsPage = [], segTotal = 0, numPages = 0;
     try {
       var buf = await file.arrayBuffer();
       var doc = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -58,31 +61,30 @@
       for (var p = 1; p <= numPages; p++) {
         var pg = await doc.getPage(p);
         var tc = await pg.getTextContent();
-        pages.push((tc && tc.items) || []);
+        var its = (tc && tc.items) || [];
+        pages.push(its);
+        // 【2026-10-17】边取文字边收"矢量框线"（表格线）：多页 PDF 也能逐页还原表格
+        //   （旧实现只对 pdf.numPages === 1 启用网格，多页一律跳表）。扫描页无文字 ⇒ 不取，省时间。
+        var sg = [];
+        if (L.segmentsFromOperatorList && its.length) {
+          try {
+            sg = L.segmentsFromOperatorList(await pg.getOperatorList(),
+              (typeof window !== 'undefined' && window.pdfjsLib && window.pdfjsLib.OPS) || {}) || [];
+          } catch (eG) { sg = []; }
+        }
+        segsPage.push(sg);
+        segTotal += sg.length;
       }
     } catch (e) {
       return { ok: false, note: 'PDF 读取失败：' + ((e && e.message) || e) };
     }
-    var okL = await _ensureLayout();
-    var L = window.ImportLayout;
-    if (!okL || !L || typeof L.buildDocument !== 'function') return { ok: false, note: '版式还原组件未就绪' };
     var r = null;
-    // 【2026-10-09 正解落地】与 rule.js 同口径：**单页且能取到矢量表格线 ⇒ 按网格确定性还原**；
-    //   多页或取不到线段（扫描件）⇒ 保持"跳过表格、只导文字"兜底，绝不静默丢内容。
+    // 【2026-10-17】与 rule.js 同口径：**逐页**给 pageSegments ⇒ 有框线的页按网格确定性还原行列；
+    //   取不到框线的页（扫描件/无表格）仍"跳过表格、只导文字"兜底，绝不静默丢内容。
     try {
-      window.__pdfSkipTables = true;
       window.__pdfGridSegments = null;
-      if (doc && doc.numPages === 1 && L.segmentsFromOperatorList) {
-        try {
-          var _pg1 = await doc.getPage(1);
-          var _ol1 = await _pg1.getOperatorList();
-          var _sgs = L.segmentsFromOperatorList(_ol1, (typeof window !== 'undefined' && window.pdfjsLib && window.pdfjsLib.OPS) || {});
-          if (_sgs && _sgs.length) { window.__pdfGridSegments = _sgs; window.__pdfSkipTables = false; }
-        } catch (eG) {}
-      }
-    } catch (eS) {}
-    try {
-      r = L.buildDocument(pages);
+      window.__pdfSkipTables = !segTotal;
+      r = L.buildDocument(pages, { pageSegments: segsPage });
     } catch (e) {
       return { ok: false, note: '版式还原失败：' + ((e && e.message) || e) };
     } finally {
@@ -96,9 +98,16 @@
         removed = ((wb && wb.removed) || []).length;
       }
     } catch (e) {}
+    // 【2026-10-17】文字层不可读时如实提示（字体无 Unicode 映射 ⇒ 全是乱码，换任何库都一样）
+    var _garbled = false;
+    try {
+      var _gb = (typeof L.textLooksGarbled === 'function') ? L.textLooksGarbled((r && r.text) || '') : null;
+      _garbled = !!(_gb && _gb.garbled);
+    } catch (e) {}
     return {
       ok: true, blocks: blocks, text: (r && r.text) || '', source: 'pdf',
       note: 'PDF ' + numPages + ' 页，识别 ' + blocks.length + ' 个块' + (removed ? '，清除水印/页眉页脚类 ' + removed + ' 处' : '')
+        + (_garbled ? '；⚠️ 该 PDF 的文字层无法识别（字体无 Unicode 映射），内容是乱码，建议改用 Word 原件或先 OCR' : '')
     };
   }
 

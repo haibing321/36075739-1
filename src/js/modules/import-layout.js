@@ -625,9 +625,37 @@
         OPS = OPS || {};
         var rev = {};
         for (var k in OPS) if (typeof OPS[k] === 'number') rev[OPS[k]] = k;
+        /* ------------------------------------------------------------------
+         * 【2026-10-17 · CTM 跟踪】算子列表里的路径坐标是**内容流本地坐标**，
+         *   必须乘上当时的 CTM（`cm` = OPS.transform，且 q/Q 成对入栈出栈）才是页面坐标。
+         * 为什么非改不可（实测证据，《铁路电务安全管理规定》80 页 PDF）：
+         *   · 第 50 页无 cm 算子 ⇒ 线段 0~420 与文字 0~420 对得上 ⇒ 还原出 11×4 表；
+         *   · 第 51/54/62 页分别有 385/415/36 个 cm ⇒ 线段被放大到 560~5584，
+         *     而文字仍在 0~420 ⇒ 网格矩形与文字**永不重叠** ⇒ `__ltbDiag.inBox=0`
+         *     ⇒ 32 页有表格线的页面里 31 页"表建不出来"（现象很像"没有表格"）。
+         * 这是业界常规做法（PDF 解析器一律维护 CTM 栈），不是启发式。
+         * ------------------------------------------------------------------ */
+        function mul(m1, m2) {   // 与 pdf.js Util.transform 同序：p * m1 * m2
+            return [
+                m1[0] * m2[0] + m1[2] * m2[1],
+                m1[1] * m2[0] + m1[3] * m2[1],
+                m1[0] * m2[2] + m1[2] * m2[3],
+                m1[1] * m2[2] + m1[3] * m2[3],
+                m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+                m1[1] * m2[4] + m1[3] * m2[5] + m1[5]
+            ];
+        }
+        var ctm = [1, 0, 0, 1, 0, 0];
+        var ctmStack = [];
+        function applyX(x, y) { return x * ctm[0] + y * ctm[2] + ctm[4]; }
+        function applyY(x, y) { return x * ctm[1] + y * ctm[3] + ctm[5]; }
+        var _tfTotal = 0;
         function addSeg(x1, y1, x2, y2) {
-            if (Math.abs(y1 - y2) < 0.6 && Math.abs(x2 - x1) > 4) out.push({ k: 'h', x1: x1, y1: y1, x2: x2, y2: y2 });
-            else if (Math.abs(x1 - x2) < 0.6 && Math.abs(y2 - y1) > 4) out.push({ k: 'v', x1: x1, y1: y1, x2: x2, y2: y2 });
+            // 先落到页面坐标域，再判"横/竖"（缩放/平移不影响水平性；旋转的线会被下面的阈值自然滤掉）
+            var ax = applyX(x1, y1), ay = applyY(x1, y1);
+            var bx = applyX(x2, y2), by = applyY(x2, y2);
+            if (Math.abs(ay - by) < 0.6 && Math.abs(bx - ax) > 4) out.push({ k: 'h', x1: ax, y1: ay, x2: bx, y2: by });
+            else if (Math.abs(ax - bx) < 0.6 && Math.abs(by - ay) > 4) out.push({ k: 'v', x1: ax, y1: ay, x2: bx, y2: by });
         }
         function handleSub(sub, sa) {
             var ci = 0, px = null, py = null;
@@ -647,9 +675,22 @@
         for (var i = 0; i < oplist.fnArray.length; i++) {
             var fn = oplist.fnArray[i], args = oplist.argsArray[i] || [];
             var n = rev[fn] || ('op' + fn);
-            if (n === 'rectangle') handleSub(['rectangle'], args[0] || args);
+            if (n === 'save') { ctmStack.push(ctm.slice()); }
+            else if (n === 'restore') { ctm = ctmStack.length ? ctmStack.pop() : [1, 0, 0, 1, 0, 0]; }
+            else if (n === 'transform') {
+                var m6 = (args.length === 6) ? args : (args[0] || null);
+                if (m6 && m6.length === 6) { ctm = mul(m6, ctm); _tfTotal++; }
+            } else if (n === 'paintFormXObjectBegin') {
+                // Form XObject：矩阵同样作用于其内部所有坐标，且与 q 一样需要出栈
+                ctmStack.push(ctm.slice());
+                var fm = args[0];
+                if (fm && fm.length === 6) { ctm = mul(fm, ctm); _tfTotal++; }
+            } else if (n === 'paintFormXObjectEnd') {
+                ctm = ctmStack.length ? ctmStack.pop() : [1, 0, 0, 1, 0, 0];
+            } else if (n === 'rectangle') handleSub(['rectangle'], args[0] || args);
             else if (n === 'constructPath') handleSub(args[0] || [], args[1] || []);
         }
+        try { out.__ctmOps = _tfTotal; } catch (eC) {}
         return out;
     }
 
@@ -721,7 +762,16 @@
         var rows = mat.map(function (row) {
             return row.map(function (cell) {
                 if (!cell.length) return '';
-                cell.sort(function (a, b) { return (b.y - a.y) || (a.x - b.x); });
+                // 【2026-10-17】格内排序要**跟着文字方向**走，不能一律"y 降序"：
+                //   整页横置排版（公文的"附表"，文字旋转 ±90°）时，阅读方向是 +y（角度 +90）或 -y（-90），
+                //   一律 y 降序会把格内文字**整串倒过来**。判据用实测角度（不是猜），且要求格内多数一致。
+                var _rot = 0;
+                cell.forEach(function (b0) { var a0 = (b0 && b0.angle) || 0; if (Math.abs(a0) >= 80) _rot += (a0 > 0 ? 1 : -1); });
+                var _dir = (_rot >= cell.length * 0.6) ? 1 : (_rot <= -cell.length * 0.6 ? -1 : 0);
+                cell.sort(function (a, b) {
+                    if (_dir > 0) return (a.y - b.y) || (a.x - b.x);    // 竖排/旋转 +90°：自下而上读
+                    return (b.y - a.y) || (a.x - b.x);                   // 正常 / -90°：自上而下读
+                });
                 return joinRun(cell.map(function (b2) { return b2.text; }));
             });
         });
@@ -853,7 +903,21 @@
             paras.forEach(function (p) { blocks.push({ type: 'para', text: p.text, kind: p.kind || 'body', lines: p.lines }); });
             pending = [];
         }
+        // 【2026-10-17 P0】图片按"锚点行号"插到对应段落之前（见 buildFromPageLines 的锚点计算）。
+        //   注意要先 sort：调用方按页面阅读顺序给，但多张图在同一行时顺序可能变。
+        var _imgQueue = (opts && opts.images) ? opts.images.slice().sort(function (a, b) {
+            return (a.anchorIndex || 0) - (b.anchorIndex || 0);
+        }) : [];
+        var _imgAt = 0;
+        function _flushImgs(upto) {
+            while (_imgAt < _imgQueue.length && (_imgQueue[_imgAt].anchorIndex || 0) <= upto) {
+                var _im = _imgQueue[_imgAt++];
+                flushPending();
+                blocks.push({ type: 'image', src: _im.src, w: _im.w, h: _im.h, alt: _im.alt || '图片' });
+            }
+        }
         while (i < arr.length) {
+            _flushImgs(i);
             var rc = rowsCells[i];
             if (rc.length >= minCells) {
                 // 往后找"表格区域"：以多列行为主体，**允许单列行夹在中间**（跨行合并单元格 / 竖排字）。
@@ -1050,8 +1114,12 @@
                         //   实现：跳过开关由**调用方**给（PDF/OFD 导入路径开启；ImportLayout 自身默认保持还原能力，
                         //     这样既有套件（表格还原断言）不受影响，也便于以后"表格线方案"成熟后一键切回）。
                         //   跳过时会累计 window.__pdfSkippedTables / __pdfSkippedRows，供导入提示如实报告。
-                        var _skipTbl = (opts && opts.skipTables === true);
-                        if (!_skipTbl) { try { _skipTbl = (window.__pdfSkipTables === true); } catch (e) {} }
+                        // 【2026-10-17】显式布尔值优先（true/false 都算数）：
+                        //   逐页传参时必须能**单独关掉**某一页的跳过（该页有矢量框线 ⇒ 走网格还原），
+                        //   而旧实现只看 `=== true`，调用方无法用 false 覆盖全局 window 开关。
+                        var _skipTbl;
+                        if (opts && typeof opts.skipTables === 'boolean') _skipTbl = opts.skipTables;
+                        else { try { _skipTbl = (window.__pdfSkipTables === true); } catch (e) {} }
                         flushPending();
                         if (_skipTbl) {
                             try {
@@ -1145,6 +1213,7 @@
             pending.push(arr[i]);
             i++;
         }
+        _flushImgs(Infinity);   // 锚点落在文末的图片
         flushPending();
         // 网格线还原的表放在最前（它是该页的主体结构，正文段落与无框线表随后）
         if (_gridTable) {
@@ -1159,8 +1228,43 @@
             if (b.type === 'table') {
                 return b.rows.map(function (r) { return r.join(' | ').replace(/\s+\|\s*$/, ''); }).join('\n');
             }
+            if (b.type === 'image') return '';   // 图片不进纯文本
             return String(b.text || '');
         }).filter(function (t) { return String(t).trim() !== ''; }).join('\n');
+    }
+
+    /**
+     * 【2026-10-17】"文字层不可读"检测 —— 导入后能不能给用户一句实话。
+     * 背景（用户给的《铁路电务安全管理规定》PDF 实测）：方正书版生成的 Type1 子集字体，
+     *   **没有 /ToUnicode**，编码是 `/Differences[33/G21 34/G22 …]`（纯字形编号）⇒ pdf.js 只能
+     *   把字符码原样吐出来 ⇒ 整篇是 `!"#$%&'()*+,-./0123456789:;<=>?@ABC…` 这种乱码。
+     *   这不是解析 bug（换任何库都一样），必须**明确告知用户**，否则他会以为导入成功、存进去一堆乱码。
+     * 判据（保守，只在"确实不像人话"时触发）：
+     *   ① 去空白后 ≥200 字（短文本不判，避免误伤）；
+     *   ② 汉字占比 < 5%（中文规章正常是 60%+）；
+     *   ③ 标点/拉丁扩展/控制类字符占比 > 45%，或拉丁扩展（À-ɏ）占比 > 6%
+     *      —— 后者是无 ToUnicode 字体解出来最典型的特征。
+     * 英文技术文档（汉字 0、标点一般 <20%）不会命中，这是刻意留的余量。
+     * @returns {{garbled:boolean, cjkRatio:number, weirdRatio:number, len:number}}
+     */
+    function textLooksGarbled(text) {
+        var s = String(text == null ? '' : text).replace(/[\s\u3000]+/g, '');
+        var n = s.length;
+        var out = { garbled: false, cjkRatio: 0, weirdRatio: 0, len: n };
+        if (n < 200) return out;
+        var cjk = 0, latin1 = 0, alnum = 0, other = 0, punct = 0;
+        for (var i = 0; i < n; i++) {
+            var c = s.charCodeAt(i);
+            if (c >= 0x4E00 && c <= 0x9FFF) cjk++;
+            else if (c >= 0x00A0 && c <= 0x024F) latin1++;
+            else if ((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) alnum++;
+            else if (c < 0x20 || (c >= 0x7F && c < 0xA0) || (c >= 0xE000 && c <= 0xF8FF)) other++;
+            else punct++;
+        }
+        out.cjkRatio = Math.round(cjk / n * 1000) / 1000;
+        out.weirdRatio = Math.round((punct + latin1 + other) / n * 1000) / 1000;
+        out.garbled = (cjk / n < 0.05) && (((punct + latin1 + other) / n > 0.45) || (latin1 / n > 0.06));
+        return out;
     }
     /**
      * 多页（已清理过的）行 ⇒ 文档块：段落按公文体例格式化 + **跨页段落合并** + 表格识别。
@@ -1259,7 +1363,49 @@
         if (_junkTotal) { opts = opts || {}; opts._stampRemoved = _junkTotal; }
         // ② 退化输入（整篇压成 1~2 行）⇒ 按明显分段点重新切行
         pageLines = (pageLines || []).map(splitDegenerateLines);
-        var pageBlocks = (pageLines || []).map(function (lines) { return linesToBlocks(lines, opts); });
+        // 【2026-10-17 P0·表格/图片保留】按页传参：
+        //   · pageSegments[i] → 该页的矢量框线（PDF 内容流 / OFD PathObject），用于确定性网格还原；
+        //   · pageImages[i]   → 该页图片，先按"图片顶边落在第几行之前"算锚点，再交给 linesToBlocks 插入。
+        //   这样多页 PDF 也能逐页还原表格（旧实现只管第 1 页 + 全局变量）。
+        var _pageSegs = opts.pageSegments || null;
+        var _pageImgs = opts.pageImages || null;
+        var _flipY = opts.flipY === true;   // PDF: y 向上（阅读顺序递减）；OFD: y 向下
+        var pageBlocks = (pageLines || []).map(function (lines, _pi) {
+            var _o = opts;
+            if (_pageSegs || _pageImgs) {
+                _o = {};
+                for (var _k in opts) { if (Object.prototype.hasOwnProperty.call(opts, _k)) _o[_k] = opts[_k]; }
+                // 【2026-10-17】逐页决定"跳过表格"：该页框线**真能聚出网格**（xs≥3 且 ys≥2）⇒ 不跳过；
+                //   否则（扫描页 / 只有页边框线）仍按产品口径"跳过表格、只导文字"，避免启发式建出乱表。
+                //   ⚠️ 判据必须与 linesToBlocks 里的门槛一致：只看"有没有线段"是不行的——每页都有 2 横 2 竖的
+                //     页边框，那样等于**全页都放开启发式**（真机会多出 3 张误判表）。
+                if (_pageSegs) {
+                    var _ps = _pageSegs[_pi] || [];
+                    _o.gridSegments = _ps;
+                    var _usable = false;
+                    if (_ps.length) {
+                        try {
+                            var _gm = gridFromSegments(_ps, _o);
+                            _usable = (_gm.xs.length >= 3 && _gm.ys.length >= 2);
+                        } catch (eGU) { _usable = false; }
+                    }
+                    _o.skipTables = !_usable;
+                }
+                var _imgs = (_pageImgs && _pageImgs[_pi]) || null;
+                if (_imgs && _imgs.length) {
+                    var _ls = lines || [];
+                    _o.images = _imgs.map(function (im) {
+                        var _idx = _ls.length;
+                        for (var _li = 0; _li < _ls.length; _li++) {
+                            var _ly = _ls[_li].y;
+                            if (_flipY ? (_ly <= im.top + 2) : (_ly >= im.top - 2)) { _idx = _li; break; }
+                        }
+                        return { type: 'image', src: im.src, w: im.w, h: im.h, alt: im.alt || '图片', anchorIndex: _idx };
+                    });
+                }
+            }
+            return linesToBlocks(lines, _o);
+        });
         // 段落公文体例格式化（表格块原样保留）
         pageBlocks = pageBlocks.map(function (bs) {
             return bs.map(function (b) {
@@ -1329,6 +1475,15 @@
                     return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
                 }).join('');
                 return '<div class="imp-table-wrap"><table class="imp-table"><thead><tr>' + h + '</tr></thead><tbody>' + bd + '</tbody></table></div>';
+            }
+            // 【2026-10-17 P0】图片块：w/h 是"版面显示尺寸"（px），DOCX 导出会按它写 EMU，
+            //   避免原图像素尺寸把页面撑破（PDF 提取时已按页宽限制）。
+            if (b.type === 'image') {
+                var _iw = (typeof b.w === 'number' && b.w > 0) ? Math.round(b.w) : 0;
+                var _ih = (typeof b.h === 'number' && b.h > 0) ? Math.round(b.h) : 0;
+                return '<figure class="imp-figure"><img src="' + esc(b.src) + '" alt="' + esc(b.alt || '图片') + '"'
+                    + (_iw ? ' width="' + _iw + '"' : '') + (_ih ? ' height="' + _ih + '"' : '')
+                    + ' style="max-width:100%;height:auto;"></figure>';
             }
             var kind = b.kind || 'body';
             var inner = esc(b.text || '');
@@ -1518,7 +1673,15 @@
         (pagesItems || []).forEach(function (items) {
             var r = fromPdfItems(items, opts);
             var good = [];
-            r.lines.forEach(function (l) { if (l.rotated) rotatedDropped++; else good.push(l); });
+            // 【2026-10-17】旋转口径修正：只有"**斜**的文字"才是水印特征（用户那批水印实测 45°）；
+            //   **±90° 是版式**（整页横置排版 / 竖排，公文的"附表"极常见——如《铁路电务安全管理规定》
+            //   第 51~79 页，整页表格横置）⇒ 一律保留。旧实现"只要 rotated 就丢"会把这类页面**整页清空**，
+            //   用户看到的就是"这份 PDF 什么都没导进来"（实测该文件 46/47 行被当水印删掉）。
+            r.lines.forEach(function (l) {
+                var a = Math.abs((l && l.angle) || 0);
+                var isLayoutRot = (a >= 80);            // ≈±90°：竖排/横置版式
+                if (l.rotated && !isLayoutRot) rotatedDropped++; else good.push(l);
+            });
             perPage.push(good);
         });
         var st = stripRunning(perPage, opts);
@@ -1643,6 +1806,7 @@
         tableFromGrid: tableFromGrid,
         cellsOfLine: cellsOfLine,          // 供套件直接量"一行被切成几个格子"
         blocksToText: blocksToText,
+        textLooksGarbled: textLooksGarbled,   // 供导入层判断"文字层不可读"并如实提示
         blocksToHtml: blocksToHtml,
         stripRunning: stripRunning,
         stripInlinePageMarks: stripInlinePageMarks,

@@ -2100,6 +2100,14 @@
     //   ⚠️ 2026-09-21：不再受 `_agentEnhanceOn()` 门控 —— 学习是纯本地零成本操作，
     //   而"关掉增强 → 画像永久冻结且无任何提示"会让偏好长期不更新（注入侧仍受该开关控制）。
     try { if (typeof window.learnFromConversation === 'function') window.learnFromConversation(userMessage, taskRecord); } catch (e) {}
+    // 【2026-10-17 用户采纳建议】反思"是否生效"回填：本轮 system 若注入过历史经验（__agentRefInjected），
+    //   收口时按"本次是否再犯同样弱点"给它们记 helped / ignored —— 行为级判定、零模型成本、不 await。
+    //   必须**先于**本次反思（本次反思产出的是新经验，不参与本轮判定）。
+    try {
+      if (typeof window.markReflectionOutcome === 'function' && typeof window.agentWeaknessOf === 'function') {
+        window.markReflectionOutcome(window.agentWeaknessOf(taskRecord.steps));
+      }
+    } catch (e) {}
     // 【2026-10-09 建议③·任务后反思】把"这次哪里好/哪里踩坑/下次怎么做"沉淀成经验，写回 taskRecord.reflection，
     //   下次任务启动时注入（见上方"历史经验"段）。
     //   ⚠️ 刻意**不 await**：反思是后台小请求（通常 2~5s），绝不让用户的结果等待变长；

@@ -309,22 +309,40 @@
                 updateApiStatusBadge();
                 // 加载多对话历史
                 dsLoadConversations();
-                // 默认显示新对话（但复用已有的空对话，避免重复创建）
-                const existingEmpty = dsConversations.find(c => !c.messages || c.messages.length === 0);
-                if (existingEmpty) {
-                    dsCurrentConvId = existingEmpty.id;
-                    dsHistory = [];
-                } else {
-                    dsCurrentConvId = dsGenerateId();
-                    dsHistory = [];
-                    dsConversations.unshift({
-                        id: dsCurrentConvId,
-                        title: '新对话',
-                        messages: [],
-                        timestamp: Date.now(),
-                        pinned: false
-                    });
-                    dsSaveConversations();
+                // 【2026-10-17 用户需求】打开智能对话默认恢复**上一次的会话内容**。
+                //   原实现每次启动都无条件走"新建/复用空对话"，`DS_CURRENT_CONV_ID` 只写不读 ⇒
+                //   刷新或重开面板后当前会话被换成空对话，用户感知为"上次的对话不见了"（数据其实还在侧栏）。
+                //   顺序：① 上次会话仍在且有消息 → 恢复它；② 否则复用已有空对话；③ 都没有则新建。
+                let _restoredLastConv = false;
+                try {
+                    const _lastId = localStorage.getItem(DS_CURRENT_CONV_ID);
+                    if (_lastId) {
+                        const _lastConv = dsConversations.find(c => c && c.id === _lastId);
+                        if (_lastConv && Array.isArray(_lastConv.messages) && _lastConv.messages.length > 0) {
+                            dsCurrentConvId = _lastConv.id;
+                            dsHistory = _lastConv.messages;
+                            _restoredLastConv = true;
+                        }
+                    }
+                } catch (e) {}
+                if (!_restoredLastConv) {
+                    // 默认显示新对话（但复用已有的空对话，避免重复创建）
+                    const existingEmpty = dsConversations.find(c => !c.messages || c.messages.length === 0);
+                    if (existingEmpty) {
+                        dsCurrentConvId = existingEmpty.id;
+                        dsHistory = [];
+                    } else {
+                        dsCurrentConvId = dsGenerateId();
+                        dsHistory = [];
+                        dsConversations.unshift({
+                            id: dsCurrentConvId,
+                            title: '新对话',
+                            messages: [],
+                            timestamp: Date.now(),
+                            pinned: false
+                        });
+                        dsSaveConversations();
+                    }
                 }
                 localStorage.setItem(DS_CURRENT_CONV_ID, dsCurrentConvId);
                 // 首次渲染：面板可见就立即渲染，否则推迟到用户真正切进智能助手时（见 dsEnsureChatRendered）
@@ -5338,7 +5356,7 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
           '【专业领域】接发列车、调车作业、施工登销记、非正常行车、CTC 操作、车机联控、防溜、行车室管理。\n' +
           '【应熟悉规章】《铁路技术管理规程》（行车组织）、《接发列车作业标准》、《调车作业标准》、《铁路营业线施工安全管理办法》、《车机联控标准》。\n' +
           '【典型风险】错办进路、抢钩/抢点作业、调车作业冲突/脱轨、施工登销记错误、进路未准备好接发列车、防溜措施失效、联控漏呼。\n' +
-          '【分析框架】从"作业标准→进路安全（敌对/分路不良）→施工登销记管控→联控互控"四维度核查，强调标准化作业与互控。\n' +
+          '【分析框架】从"作业标准→进路安全（敌对进路、分路不良影响）→施工登销记管控→联控互控"四维度核查，强调标准化作业与互控；分路不良的**设备定性归电务**，车务只述影响。\n' +
           '【术语与条款】规范术语：接发列车、进路（基本/敌对/延续）、调车（溜放/推送/取送）、登销记、车机联控、防溜（铁鞋/手闸/止轮器）、非正常行车；引用须到条款层级。\n' +
           '【专业边界】只对行车组织与作业标准定性；设备故障原因归电务/工务/车辆，不替其定性；调车机乘务问题归机务。\n' +
           '【必查项点】施工登销记与调度命令核对、进路准备与敌对进路防护、调车作业计划与防溜措施、联控用语与互控执行、非正常行车预案与演练。',
@@ -5353,11 +5371,11 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
           '【必查项点】进出站与检票流线、安检设备状态与危险品处置台账、站台防护与端部管控、扶梯年检与应急停梯、大客流应急预案与演练。',
         'jiwu':
           '你是机务安全监察专家。\n' +
-          '【专业领域】机车运用、乘务管理、LKJ/CIR 装备、机车检修、调车作业（调小车）安全、机车防火。\n' +
+          '【专业领域】机车运用、乘务管理、LKJ/机车信号车载装备、机车检修、调车作业（调小车）安全、机车防火。\n' +
           '【应熟悉规章】《铁路机车运用管理规则》、《机务行车安全管理规则》、《LKJ 数据管理规程》、《铁路机车操作规则》、《防止机车车辆溜逸管理办法》。\n' +
-          '【典型风险】乘务员超劳/待乘不足、LKJ 数据错误、退勤漏鉴、调车作业冒进信号、行安装备（CIR/LKJ）故障、超速运行、机车防火。\n' +
-          '【分析框架】从"人（乘务超劳/待乘）→机（LKJ/CIR 装备）→环境（运行图/施工）→管理（超劳/退勤）"四维度，强调防滑坡/防超速/防冒进。\n' +
-          '【术语与条款】规范术语：乘务超劳与待乘、LKJ 数据与监控装置、CIR、机车检修（段修/中修）、调车机、防溜、机车防火；引用须到"规则名 + 条款层级"。\n' +
+          '【典型风险】乘务员超劳/待乘不足、LKJ 数据错误、退勤漏鉴、调车作业冒进信号、LKJ 与机车信号车载设备故障、超速运行、机车防火。\n' +
+          '【分析框架】从"人（乘务超劳/待乘）→机（LKJ/机车信号装备）→环境（运行图/施工）→管理（超劳/退勤）"四维度，强调防滑坡/防超速/防冒进。\n' +
+          '【术语与条款】规范术语：乘务超劳与待乘、LKJ 数据与监控装置、机车检修（段修/中修）、调车机、防溜、机车防火；CIR/无线列调归通信，涉及时点明协同；引用须到"规则名 + 条款层级"。\n' +
           '【专业边界】只对机车运用与乘务管理定性；调车作业组织归车务，车辆走行部与制动归车辆，不替其定性。\n' +
           '【必查项点】乘务员待乘与超劳台账、LKJ 数据换装与版本核对、退勤与酒测执行、调车机作业与防溜措施、机车防火与灭火装置状态。',
         'cheliang':
@@ -5380,7 +5398,7 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
           '【必查项点】GSM-R 覆盖测试与弱场补强、列调通话质量与录音核查、光缆径路与施工防护、网管告警处理时限、应急通信演练。',
         'fangjian':
           '你是房建安全监察专家。\n' +
-          '【专业领域】站台限界、雨棚/站房屋面、地下空间、风雨棚钢结构、幕墙、客运流线设施。\n' +
+          '【专业领域】站台限界、雨棚/站房屋面、天桥/地道等旅客设施结构、地下空间、风雨棚钢结构、幕墙。\n' +
           '【应熟悉规章】《铁路技术管理规程》（建筑限界）、《铁路房屋建筑大修维修规则》、《铁路建筑限界管理办法》、《铁路旅客车站客运设施管理办法》。\n' +
           '【典型风险】站台/雨棚侵限、雨棚钢结构锈蚀或构件脱落、建筑限界变化未报批、站房屋面渗漏、幕墙脱落、地下空间积水。\n' +
           '【分析框架】从"限界管理→结构安全（雨棚/站房）→屋面防水→客运流线"四维度，突出侵限零容忍。\n' +
@@ -5423,7 +5441,7 @@ window.dsResponsesUrlCandidates = typeof dsResponsesUrlCandidates !== 'undefined
       };
 
       // 【v3.76】角色「输出规范」（所有**专业角色**统一追加；frontend 代码角色除外）
-      //   为什么需要：13 个角色写清了「专业领域 / 应熟悉规章 / 典型风险 / 分析框架」，
+      //   为什么需要：10 个专业角色都写清了「专业领域 / 应熟悉规章 / 典型风险 / 分析框架」，
       //   但**输出侧没有统一契约** —— 没规定结构、引用要细到什么程度、统计口径、建议要可执行、篇幅。
       //   而通用「专业回答准则」只覆盖了"知识分层 / 准确性分级 / 术语与风险分级"，
       //   所以这里只补它没覆盖的部分，不重复（避免提示词互相稀释）。
@@ -7768,7 +7786,7 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       var TRADE_KEY_MAP = {
         '工务': 'gongwu', '电务': 'dianwu', '供电': 'gongdian', '车务': 'chewu',
         '客运': 'keyun', '机务': 'jiwu', '车辆': 'cheliang', '通信': 'tongxin',
-        '房建': 'fangjian', '货运': 'huoyun', '综合': 'tongyong', '通用': 'default'
+        '房建': 'fangjian', '货运': 'huoyun', '综合': 'tongyong', '综合管理': 'tongyong', '通用': 'default'
       };
       window.dsTradeNorms = function (tradeNameOrKey) {
         try {
@@ -7851,7 +7869,8 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       try { window.__dsIsCodeQuery = window.dsIsCodeQuery; } catch (e) {}
       var DS_TRADE_TO_ROLE = {
         '电务': 'dianwu', '工务': 'gongwu', '供电': 'gongdian', '车务': 'chewu', '机务': 'jiwu',
-        '车辆': 'cheliang', '通信': 'tongxin', '房建': 'fangjian', '客运': 'keyun', '货运': 'huoyun'
+        '车辆': 'cheliang', '通信': 'tongxin', '房建': 'fangjian', '客运': 'keyun', '货运': 'huoyun',
+        '综合管理': 'tongyong'   // 词库trade口径（原缺失 ⇒ 综合类问题只能回落通用）
       };
       window.dsResolveRole = function (query) {
         var picked = window.dsGetRole();

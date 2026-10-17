@@ -178,7 +178,13 @@
         return { ok: false };
       }
       var clip = function(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, 60); };
-      var refl = { good: clip(j.good), bad: clip(j.bad), tip: clip(j.tip), at: Date.now() };
+      // 【2026-10-17 用户采纳建议】给反思挂**结构化"弱点标签"**（本次失败/0 命中的工具名），
+      //   供下一轮判定"这条经验到底有没有被采纳、是否再生效"（见 markReflectionOutcome）。
+      //   纯结构化提取、零模型成本；反思文本本身不变（仍 ≤60 字/条，不占 system 预算）。
+      var refl = {
+        good: clip(j.good), bad: clip(j.bad), tip: clip(j.tip), at: Date.now(),
+        weakness: (typeof window.agentWeaknessOf === 'function') ? window.agentWeaknessOf(taskRecord.steps) : []
+      };
       if (!refl.good && !refl.bad && !refl.tip) {
         window.__agentLastReflection = { ok: false, error: 'empty-json', ms: Date.now() - _t0 };
         return { ok: false };
@@ -193,21 +199,110 @@
     }
   };
 
+  /**
+   * 【2026-10-17】结构化弱点提取：从任务步骤里找出"失败 / 0 命中"的工具名（≤5 个）。
+   * 用途：① 反思生成时打标签（reflection.weakness）；② 任务收口时与"上轮注入经验的弱点"比对 ——
+   *   无交集 ⇒ 上次的经验没再犯同样的错（helped+1）；有交集 ⇒ 记 ignored（说明提示没被采纳）。
+   * 口径：只看**工具级**（不做参数级）—— 可解释、零模型成本；summary 含"共0条/0命中/未命中"也算弱点。
+   */
+  window.agentWeaknessOf = function(steps) {
+    var out = [];
+    try {
+      (steps || []).forEach(function(s) {
+        if (!s) return;
+        var tool = String(s.tool || '');
+        if (!tool) return;
+        var bad = (s.ok === false) || /共\s*0\s*条|0\s*命中|未命中/.test(String(s.summary || ''));
+        if (bad && out.indexOf(tool) < 0) out.push(tool);
+      });
+    } catch (e) {}
+    return out.slice(0, 5);
+  };
+
   /** 取最近几条"有反思"的经验（给下次任务的 system 注入用；只取 3 条、整体 ≤300 字，避免撑爆预算） */
   window.getRecentAgentReflections = async function() {
     try {
       var tasks = await window.getAgentTasks(6);
       var lines = [];
+      var picked = [];      // 本次真正注入的经验（id + 弱点），供收口时回填"是否生效"
+      var weakAll = [];
       (tasks || []).forEach(function(t) {
         var r = t && t.reflection;
         if (!r) return;
         var seg = [];
         if (r.bad) seg.push('上次踩坑：' + r.bad);
         if (r.tip) seg.push('建议：' + r.tip);
-        if (seg.length) lines.push('· [' + String(t.userIntent || '').slice(0, 24) + '] ' + seg.join('；'));
+        if (!seg.length) return;
+        // 【2026-10-17】带"生效统计"：让模型知道哪条经验真管用（≥2 次才标注，避免噪声）
+        var eff = '';
+        if (r.helped > 0 && r.used >= 2) eff = '（已生效 ' + r.helped + '/' + r.used + ' 次）';
+        else if (r.used >= 3 && !r.helped) eff = '（多次未生效，仅供参考）';
+        picked.push({ id: t.id, weakness: r.weakness || [] });
+        (r.weakness || []).forEach(function(w) { if (weakAll.indexOf(w) < 0) weakAll.push(w); });
+        lines.push('· [' + String(t.userIntent || '').slice(0, 24) + '] ' + seg.join('；') + eff);
       });
-      return lines.slice(0, 3).join('\n').slice(0, 300);
+      var txt = lines.slice(0, 3).join('\n').slice(0, 300);
+      if (picked.length) {
+        var useIds = picked.slice(0, 3);      // 只对被真正注入（前 3 条）的记 used，避免虚高
+        window.__agentRefInjected = {
+          ids: useIds.map(function(x) { return x.id; }),
+          weakness: weakAll.slice(0, 5), at: Date.now()
+        };
+        // 异步回写 used（不 await，不拖慢 system 构建；失败静默）
+        (async function() {
+          try {
+            for (var i = 0; i < useIds.length; i++) {
+              var tt = null;
+              for (var k = 0; k < tasks.length; k++) { if (tasks[k] && tasks[k].id === useIds[i].id) { tt = tasks[k]; break; } }
+              if (!tt) continue;
+              tt.reflection = tt.reflection || {};
+              tt.reflection.used = (tt.reflection.used || 0) + 1;
+              tt.reflection.lastUsedAt = Date.now();
+              await window.saveAgentTask(tt);
+            }
+          } catch (e) {}
+        })();
+      }
+      return txt;
     } catch (e) { return ''; }
+  };
+
+  /**
+   * 【2026-10-17 用户采纳建议】反思"是否被采纳 / 是否生效"回填（行为级判定，零模型成本）。
+   * 何时调用：**本次任务收口时**（已拿到 steps，且本轮 system 注入过经验）。
+   * 判定口径：把"上轮注入经验的弱点标签"与"本次任务弱点"比对 ——
+   *   · 无交集 = 这次没再犯同样的错 ⇒ helped+1（经验起作用/至少没重犯）；
+   *   · 有交集 = ignored+1（提示没被采纳，或经验不适用）；
+   *   · 经验本身没弱点标签 ⇒ unjudged（不污染统计）。
+   * 诊断：window.__agentLastOutcome。
+   */
+  window.markReflectionOutcome = async function(curWeakness) {
+    try {
+      var inj = window.__agentRefInjected;
+      window.__agentRefInjected = null;      // 一次性消费，避免下一轮误判
+      if (!inj || !inj.ids || !inj.ids.length) return { ok: false, error: 'no-injected' };
+      var cur = curWeakness || [];
+      var decided = [], unjudged = 0;
+      var tasks = await window.getAgentTasks(30);
+      for (var i = 0; i < inj.ids.length; i++) {
+        var t = null;
+        for (var k = 0; k < tasks.length; k++) { if (tasks[k] && tasks[k].id === inj.ids[i]) { t = tasks[k]; break; } }
+        if (!t || !t.reflection) continue;
+        var w = t.reflection.weakness || [];
+        if (!w.length) { unjudged++; continue; }
+        var gone = true;
+        for (var j = 0; j < w.length; j++) { if (cur.indexOf(w[j]) >= 0) { gone = false; break; } }
+        if (gone) { t.reflection.helped = (t.reflection.helped || 0) + 1; decided.push('helped'); }
+        else { t.reflection.ignored = (t.reflection.ignored || 0) + 1; decided.push('ignored'); }
+        t.reflection.lastCheckedAt = Date.now();
+        await window.saveAgentTask(t);
+      }
+      window.__agentLastOutcome = { ok: true, decided: decided, unjudged: unjudged, curWeakness: cur };
+      return { ok: true, decided: decided, unjudged: unjudged };
+    } catch (e) {
+      window.__agentLastOutcome = { ok: false, error: String((e && e.message) || e) };
+      return { ok: false };
+    }
   };
 
   /**

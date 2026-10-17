@@ -51,12 +51,12 @@
                 { term: "一度停车", trade: "车务" }, { term: "三盯", trade: "车务" }, { term: "会让", trade: "车务" }, { term: "分界点", trade: "车务" }, 
                 { term: "列车运行图", trade: "车务" }, { term: "区间占用", trade: "车务" }, { term: "发车", trade: "车务" }, { term: "呼唤应答", trade: "车务" }, 
                 { term: "始发", trade: "车务" }, { term: "引导接车", trade: "车务" }, { term: "接发列车", trade: "车务" }, { term: "接车", trade: "车务" }, 
-                { term: "终到", trade: "车务" }, { term: "编组", trade: "车务" }, { term: "自动闭塞", trade: "车务" }, { term: "越行", trade: "车务" }, 
+                { term: "终到", trade: "车务" }, { term: "编组", trade: "车务" }, { term: "股道", trade: "车务" }, { term: "咽喉", trade: "车务" }, { term: "自动闭塞", trade: "电务" }, { term: "越行", trade: "车务" }, 
                 { term: "车机联控", trade: "车务" }, { term: "运行揭示", trade: "车务" }, { term: "退行", trade: "车务" }, { term: "途中折返", trade: "车务" }, 
-                { term: "人力制动机", trade: "车务" }, { term: "取送车", trade: "车务" }, { term: "峰顶", trade: "车务" }, { term: "平面调车", trade: "车务" }, 
+                { term: "进路", trade: "车务" }, { term: "调车", trade: "车务" }, { term: "取送车", trade: "车务" }, { term: "峰顶", trade: "车务" }, { term: "平面调车", trade: "车务" }, 
                 { term: "推进", trade: "车务" }, { term: "推送调车", trade: "车务" }, { term: "止轮器", trade: "车务" }, { term: "溜放", trade: "车务" }, 
                 { term: "站内调车", trade: "车务" }, { term: "解体", trade: "车务" }, { term: "解编", trade: "车务" }, { term: "试拉", trade: "车务" }, 
-                { term: "调车作业", trade: "车务" }, { term: "越区调车", trade: "车务" }, { term: "车列", trade: "车务" }, { term: "铁鞋", trade: "车务" }, 
+                { term: "调车作业", trade: "车务" }, { term: "越区调车", trade: "车务" }, { term: "车列", trade: "车务" }, { term: "施工登销记", trade: "车务" }, { term: "错办进路", trade: "车务" }, { term: "确认车", trade: "车务" }, { term: "电话防护", trade: "车务" }, { term: "铁鞋", trade: "车务" }, 
                 { term: "防溜", trade: "车务" }, { term: "驼峰", trade: "车务" }, { term: "保压", trade: "机务" }, { term: "减压", trade: "机务" }, 
                 { term: "分段缓解", trade: "机务" }, { term: "快充", trade: "机务" }, { term: "慢充", trade: "机务" }, { term: "拉风", trade: "机务" }, 
                 { term: "持续保压", trade: "机务" }, { term: "排风", trade: "机务" }, { term: "缓解", trade: "机务" }, { term: "自然制动", trade: "机务" }, 
@@ -69,8 +69,8 @@
                 { term: "自动制动机", trade: "机务" }, { term: "防滑器", trade: "机务" }, { term: "全部试验", trade: "机务" }, { term: "安定试验", trade: "机务" }, 
                 { term: "感度保压", trade: "机务" }, { term: "感度试验", trade: "机务" }, { term: "简略试验", trade: "机务" }, { term: "紧急试验", trade: "机务" }, 
                 { term: "试风", trade: "机务" }, { term: "过球试验", trade: "机务" }, { term: "司机长", trade: "机务" }, { term: "学习司机", trade: "机务" }, 
-                { term: "指导司机", trade: "机务" }, { term: "机车司机", trade: "机务" }, { term: "添乘人员", trade: "机务" }, { term: "制动", trade: "机务" }, 
-                { term: "接管", trade: "机务" }, { term: "机车", trade: "机务" }, { term: "手柄", trade: "机务" }, { term: "换向手柄", trade: "机务" }, 
+                { term: "指导司机", trade: "机务" }, { term: "机车司机", trade: "机务" }, { term: "添乘人员", trade: "机务" }, { term: "添乘", trade: "机务" }, { term: "走行部", trade: "机务" }, { term: "制动", trade: "机务" }, 
+                { term: "待乘", trade: "机务" }, { term: "机车", trade: "机务" }, { term: "手柄", trade: "机务" }, { term: "换向手柄", trade: "机务" }, 
                 { term: "调速手柄", trade: "机务" }, { term: "东风型机车", trade: "机务" }, { term: "内燃机车", trade: "机务" }, { term: "动车组", trade: "机务" }, 
                 { term: "动车组列车", trade: "机务" }, { term: "双机牵引", trade: "机务" }, { term: "和谐型机车", trade: "机务" }, 
                 { term: "本务机车", trade: "机务" }, { term: "电力机车", trade: "机务" }, { term: "蒸汽机车", trade: "机务" }, { term: "补机", trade: "机务" }, 
@@ -80,11 +80,11 @@
                 { term: "励磁", trade: "机务" }, { term: "整流", trade: "机务" }, { term: "牵引变流器", trade: "机务" }, { term: "牵引电动机", trade: "机务" }, 
                 { term: "辅助逆变器", trade: "机务" }, { term: "逆变", trade: "机务" }, { term: "冷却器", trade: "机务" }, { term: "司机室", trade: "机务" }, 
                 { term: "操纵台", trade: "机务" }, { term: "散热器", trade: "机务" }, { term: "水泵", trade: "机务" }, { term: "油水分离器", trade: "机务" }, 
-                { term: "油泵", trade: "机务" }, { term: "燃泵", trade: "机务" }, { term: "轮缘润滑", trade: "机务" }, { term: "通风机", trade: "机务" }, 
+                { term: "油泵", trade: "机务" }, { term: "燃油泵", trade: "机务" }, { term: "轮缘润滑", trade: "机务" }, { term: "通风机", trade: "机务" }, 
                 { term: "预热锅炉", trade: "机务" }, { term: "走停走", trade: "机务" }, { term: "出入段模式", trade: "机务" }, { term: "定标", trade: "机务" }, 
                 { term: "常用制动模式", trade: "机务" }, { term: "监控模式", trade: "机务" }, { term: "监控装置", trade: "机务" }, 
                 { term: "目视行车模式", trade: "机务" }, { term: "紧急制动模式", trade: "机务" }, { term: "警惕", trade: "机务" }, 
-                { term: "调整状态", trade: "机务" }, { term: "调车模式", trade: "机务" }, { term: "车上信号", trade: "机务" }, { term: "运行监控", trade: "机务" }, 
+                { term: "调整状态", trade: "机务" }, { term: "调车模式", trade: "机务" }, { term: "车上信号", trade: "机务" }, { term: "运行监控", trade: "机务" }, { term: "冒进信号", trade: "机务" }, { term: "超速", trade: "机务" }, 
                 { term: "降级状态", trade: "机务" }, { term: "作用管", trade: "机务" }, { term: "储风缸", trade: "机务" }, { term: "列车管", trade: "机务" }, 
                 { term: "制动管", trade: "机务" }, { term: "副风缸", trade: "机务" }, { term: "压力表", trade: "机务" }, { term: "容积风缸", trade: "机务" }, 
                 { term: "工作风缸", trade: "机务" }, { term: "干燥器", trade: "机务" }, { term: "平均管", trade: "机务" }, { term: "总风缸管", trade: "机务" }, 
@@ -104,17 +104,17 @@
                 { term: "邮政车", trade: "车辆" }, { term: "集装箱车", trade: "车辆" }, { term: "餐车", trade: "车辆" }, { term: "密接式车钩", trade: "车辆" }, 
                 { term: "挂车", trade: "车辆" }, { term: "摘车", trade: "车辆" }, { term: "缓冲器", trade: "车辆" }, { term: "车钩", trade: "车辆" }, 
                 { term: "软管", trade: "车辆" }, { term: "连挂", trade: "车辆" }, { term: "钩尾框", trade: "车辆" }, { term: "钩舌", trade: "车辆" }, 
-                { term: "防跳装置", trade: "车辆" }, { term: "列车管系", trade: "车辆" }, { term: "车组", trade: "车辆" }, { term: "上道作业", trade: "工务" }, 
+                { term: "防跳装置", trade: "车辆" }, { term: "列车管系", trade: "车辆" }, { term: "车组", trade: "车辆" }, { term: "人力制动机", trade: "车辆" }, { term: "动车所", trade: "车辆" }, { term: "客整所", trade: "车辆" }, { term: "5T系统", trade: "车辆" }, { term: "列检", trade: "车辆" }, { term: "热轴", trade: "车辆" }, { term: "关门车", trade: "车辆" }, { term: "切轴", trade: "车辆" }, { term: "TFDS", trade: "车辆" }, { term: "THDS", trade: "车辆" }, { term: "TPDS", trade: "车辆" }, { term: "TADS", trade: "车辆" }, { term: "TCDS", trade: "车辆" }, { term: "上道作业", trade: "工务" }, 
                 { term: "巡道", trade: "工务" }, { term: "打磨", trade: "工务" }, { term: "换轨", trade: "工务" }, { term: "捣固", trade: "工务" }, 
                 { term: "探伤", trade: "工务" }, { term: "清筛", trade: "工务" }, { term: "焊轨", trade: "工务" }, { term: "线路封锁", trade: "工务" }, 
                 { term: "钢轨伤损", trade: "工务" }, { term: "四轮", trade: "工务" }, { term: "小车", trade: "工务" }, { term: "捣固机", trade: "工务" }, 
                 { term: "探伤仪", trade: "工务" }, { term: "轨道车", trade: "工务" }, { term: "轻型车辆", trade: "工务" }, { term: "专用线", trade: "工务" }, 
-                { term: "咽喉", trade: "工务" }, { term: "安全线", trade: "工务" }, { term: "尽头线", trade: "工务" }, { term: "护坡", trade: "工务" }, 
+                { term: "线路", trade: "工务" }, { term: "桥隧", trade: "工务" }, { term: "轨道几何尺寸", trade: "工务" }, { term: "安全线", trade: "工务" }, { term: "尽头线", trade: "工务" }, { term: "护坡", trade: "工务" }, 
                 { term: "挡墙", trade: "工务" }, { term: "排水沟", trade: "工务" }, { term: "桥台", trade: "工务" }, { term: "桥墩", trade: "工务" }, 
-                { term: "桥梁", trade: "工务" }, { term: "涵洞", trade: "工务" }, { term: "站台", trade: "工务" }, { term: "股道", trade: "工务" }, 
+                { term: "桥梁", trade: "工务" }, { term: "涵洞", trade: "工务" }, 
                 { term: "路基", trade: "工务" }, { term: "道口", trade: "工务" }, { term: "避难线", trade: "工务" }, { term: "隧道", trade: "工务" }, 
-                { term: "雨棚", trade: "工务" }, { term: "圆曲线", trade: "工务" }, { term: "扣件", trade: "工务" }, { term: "无砟轨道", trade: "工务" }, 
-                { term: "无缝线路", trade: "工务" }, { term: "曲线", trade: "工务" }, { term: "有砟轨道", trade: "工务" }, { term: "机械节", trade: "工务" }, 
+                { term: "胀轨跑道", trade: "工务" }, { term: "圆曲线", trade: "工务" }, { term: "扣件", trade: "工务" }, { term: "无砟轨道", trade: "工务" }, 
+                { term: "无缝线路", trade: "工务" }, { term: "曲线", trade: "工务" }, { term: "有砟轨道", trade: "工务" }, { term: "三角坑", trade: "工务" }, { term: "轨向", trade: "工务" }, 
                 { term: "焊缝", trade: "工务" }, { term: "缓和曲线", trade: "工务" }, { term: "超高", trade: "工务" }, { term: "轨底坡", trade: "工务" }, 
                 { term: "轨枕", trade: "工务" }, { term: "轨距", trade: "工务" }, { term: "道床", trade: "工务" }, { term: "钢轨", trade: "工务" }, 
                 { term: "长钢轨", trade: "工务" }, { term: "交叉渡线", trade: "工务" }, { term: "基本轨", trade: "工务" }, { term: "复式交分", trade: "工务" }, 
@@ -131,27 +131,24 @@
                 { term: "继电器", trade: "电务" }, { term: "臂板信号", trade: "电务" }, { term: "色灯信号", trade: "电务" }, { term: "轨道继电器", trade: "电务" }, 
                 { term: "进路信号机", trade: "电务" }, { term: "道口信号", trade: "电务" }, { term: "遮断信号机", trade: "电务" }, 
                 { term: "ATP", trade: "电务" }, { term: "BTM", trade: "电务" }, { term: "CBTC", trade: "电务" }, { term: "DMI", trade: "电务" }, 
-                { term: "GSM-R", trade: "电务" }, { term: "ITCS", trade: "电务" }, { term: "LEU", trade: "电务" }, { term: "LKJ", trade: "电务" }, 
+                { term: "分路不良", trade: "电务" }, { term: "ITCS", trade: "电务" }, { term: "LEU", trade: "电务" }, { term: "LKJ", trade: "电务" }, 
                 { term: "LKJ2000", trade: "电务" }, { term: "LKJ2000A", trade: "电务" }, { term: "RBC", trade: "电务" }, 
                 { term: "STM", trade: "电务" }, { term: "TCC", trade: "电务" }, { term: "TCR", trade: "电务" }, { term: "列控", trade: "电务" }, 
                 { term: "列控车载设备", trade: "电务" }, { term: "应答器", trade: "电务" }, { term: "无线闭塞中心", trade: "电务" }, 
-                { term: "码序", trade: "电务" }, { term: "轨道读取器", trade: "电务" }, { term: "故障状态", trade: "电务" }, { term: "区段锁闭", trade: "电务" }, 
+                { term: "码序", trade: "电务" }, { term: "轨道读取器", trade: "电务" }, { term: "红光带", trade: "电务" }, { term: "区段锁闭", trade: "电务" }, 
                 { term: "半自动闭塞", trade: "电务" }, { term: "单独锁闭", trade: "电务" }, { term: "抵触进路", trade: "电务" }, 
                 { term: "敌对进路", trade: "电务" }, { term: "电气集中联锁", trade: "电务" }, { term: "电话闭塞", trade: "电务" }, 
                 { term: "继电器联锁", trade: "电务" }, { term: "联锁", trade: "电务" }, { term: "自动站间闭塞", trade: "电务" }, { term: "解锁", trade: "电务" }, 
                 { term: "计算机联锁", trade: "电务" }, { term: "道岔锁闭", trade: "电务" }, { term: "闭塞", trade: "电务" }, { term: "CTC", trade: "电务" }, 
                 { term: "TDCS", trade: "电务" }, { term: "发码", trade: "电务" }, { term: "发码电路", trade: "电务" }, { term: "极性交叉", trade: "电务" }, 
-                { term: "死区段", trade: "电务" }, { term: "电化区段", trade: "电务" }, { term: "电气节", trade: "电务" }, { term: "相邻区段", trade: "电务" }, 
+                { term: "死区段", trade: "电务" }, { term: "电化区段", trade: "电务" }, { term: "电气绝缘节", trade: "电务" }, { term: "机械绝缘节", trade: "电务" }, { term: "相邻区段", trade: "电务" }, 
                 { term: "绝缘接头", trade: "电务" }, { term: "绝缘节", trade: "电务" }, { term: "轨道区段", trade: "电务" }, { term: "轨道电路", trade: "电务" }, 
                 { term: "轨道电路信息", trade: "电务" }, { term: "非电化区段", trade: "电务" }, { term: "发车进路", trade: "电务" }, 
                 { term: "引导进路", trade: "电务" }, { term: "接车进路", trade: "电务" }, { term: "调车进路", trade: "电务" }, { term: "进路解锁", trade: "电务" }, 
-                { term: "进路锁闭", trade: "电务" }, { term: "通过进路", trade: "电务" }, { term: "光纤通信", trade: "电务" }, { term: "同轴电缆", trade: "电务" }, 
-                { term: "数字调度", trade: "电务" }, { term: "区间电话", trade: "电务" }, { term: "有线列调", trade: "电务" }, 
-                { term: "站间行车电话", trade: "电务" }, { term: "调度电话", trade: "电务" }, { term: "CIR", trade: "电务" }, 
-                { term: "GSM-R手持台", trade: "电务" }, { term: "无线列调", trade: "电务" }, { term: "光缆", trade: "电务" }, 
-                { term: "漏泄电缆", trade: "电务" }, { term: "电缆", trade: "电务" }, { term: "对讲机", trade: "电务" }, { term: "录音设备", trade: "电务" }, 
-                { term: "语音记录仪", trade: "电务" }, { term: "中继站", trade: "电务" }, { term: "基站", trade: "电务" }, { term: "通信机房", trade: "电务" }, 
-                { term: "通信铁塔", trade: "电务" }, { term: "电话防护", trade: "电务" }, { term: "倒闸", trade: "供电" }, { term: "停电命令", trade: "供电" }, 
+                { term: "进路锁闭", trade: "电务" }, { term: "通过进路", trade: "电务" }, { term: "道岔缺口", trade: "电务" }, { term: "密贴力", trade: "电务" }, 
+                { term: "电源屏", trade: "电务" }, { term: "ZPW-2000", trade: "电务" }, { term: "集中监测", trade: "电务" }, 
+                { term: "转辙机", trade: "电务" }, { term: "扼流变压器", trade: "电务" }, { term: "电缆", trade: "电务" }, 
+                { term: "倒闸", trade: "供电" }, { term: "停电命令", trade: "供电" }, 
                 { term: "分闸", trade: "供电" }, { term: "合闸", trade: "供电" }, { term: "送电命令", trade: "供电" }, { term: "销令", trade: "供电" }, 
                 { term: "受电弓", trade: "供电" }, { term: "受电弓滑板", trade: "供电" }, { term: "碳滑板", trade: "供电" }, { term: "集电头", trade: "供电" }, 
                 { term: "保护线", trade: "供电" }, { term: "分区所", trade: "供电" }, { term: "变电所", trade: "供电" }, { term: "回流线", trade: "供电" }, 
@@ -167,33 +164,33 @@
                 { term: "线岔", trade: "供电" }, { term: "绝缘子", trade: "供电" }, { term: "腕臂", trade: "供电" }, { term: "避雷器", trade: "供电" }, 
                 { term: "弓网故障", trade: "供电" }, { term: "V形作业", trade: "供电" }, { term: "停电作业", trade: "供电" }, { term: "动态检测", trade: "供电" }, 
                 { term: "步行巡视", trade: "供电" }, { term: "添乘检查", trade: "供电" }, { term: "直接带电作业", trade: "供电" }, 
-                { term: "远离作业", trade: "供电" }, { term: "间接带电作业", trade: "供电" }, { term: "静态测量", trade: "供电" }, 
+                { term: "远离作业", trade: "供电" }, { term: "间接带电作业", trade: "供电" }, { term: "静态测量", trade: "供电" }, { term: "验电接地", trade: "供电" }, { term: "弓网", trade: "供电" }, { term: "拉出值", trade: "供电" }, { term: "导高", trade: "供电" }, { term: "硬点", trade: "供电" }, { term: "燃弧", trade: "供电" }, 
                 { term: "高空作业", trade: "供电" }, { term: "上水", trade: "客运" }, { term: "列车保洁", trade: "客运" }, { term: "列车整备", trade: "客运" }, 
                 { term: "排污", trade: "客运" }, { term: "临客列车", trade: "客运" }, { term: "快速列车", trade: "客运" }, { term: "旅客列车", trade: "客运" }, 
                 { term: "旅游列车", trade: "客运" }, { term: "普速列车", trade: "客运" }, { term: "特快列车", trade: "客运" }, { term: "直达特快", trade: "客运" }, 
                 { term: "通勤列车", trade: "客运" }, { term: "列车编组", trade: "客运" }, { term: "加挂", trade: "客运" }, { term: "欠编", trade: "客运" }, 
                 { term: "满编", trade: "客运" }, { term: "甩挂", trade: "客运" }, { term: "编组表", trade: "客运" }, { term: "客运规章", trade: "客运" }, 
                 { term: "客运记录", trade: "客运" }, { term: "广播通告", trade: "客运" }, { term: "投诉处理", trade: "客运" }, { term: "遗失物品", trade: "客运" }, 
-                { term: "重点旅客", trade: "客运" }, { term: "候车室", trade: "客运" }, { term: "出站口", trade: "客运" }, { term: "动车所", trade: "客运" }, 
-                { term: "售票厅", trade: "客运" }, { term: "售票窗口", trade: "客运" }, { term: "地道", trade: "客运" }, { term: "天桥", trade: "客运" }, 
-                { term: "客整所", trade: "客运" }, { term: "检票口", trade: "客运" }, { term: "行李房", trade: "客运" }, { term: "进站口", trade: "客运" }, 
+                { term: "重点旅客", trade: "客运" }, { term: "候车室", trade: "客运" }, { term: "出站口", trade: "客运" }, { term: "安检查危", trade: "客运" }, 
+                { term: "售票厅", trade: "客运" }, { term: "售票窗口", trade: "客运" }, { term: "突发客流", trade: "客运" }, { term: "站台端部", trade: "客运" }, 
+                { term: "扶梯", trade: "客运" }, { term: "检票口", trade: "客运" }, { term: "行李房", trade: "客运" }, { term: "进站口", trade: "客运" }, 
                 { term: "问讯处", trade: "客运" }, { term: "上水工", trade: "客运" }, { term: "列车员", trade: "客运" }, { term: "列车长", trade: "客运" }, 
                 { term: "售票员", trade: "客运" }, { term: "客运值班员", trade: "客运" }, { term: "广播员", trade: "客运" }, { term: "检票员", trade: "客运" }, 
                 { term: "乘车证", trade: "客运" }, { term: "实名制验证", trade: "客运" }, { term: "改签", trade: "客运" }, { term: "电子客票", trade: "客运" }, 
                 { term: "票务系统", trade: "客运" }, { term: "纸质车票", trade: "客运" }, { term: "退票", trade: "客运" }, { term: "包裹运输", trade: "客运" }, 
                 { term: "行包", trade: "客运" }, { term: "行包房", trade: "客运" }, { term: "行李托运", trade: "客运" }, { term: "停运", trade: "客运" }, 
-                { term: "客流高峰", trade: "客运" }, { term: "旅客乘降", trade: "客运" }, { term: "春运", trade: "客运" }, { term: "晚点", trade: "客运" }, 
+                { term: "客流高峰", trade: "客运" }, { term: "旅客乘降", trade: "客运" }, { term: "乘降组织", trade: "客运" }, { term: "无障碍设施", trade: "客运" }, { term: "春运", trade: "客运" }, { term: "晚点", trade: "客运" }, 
                 { term: "暑运", trade: "客运" }, { term: "正点", trade: "客运" }, { term: "站车交接", trade: "客运" }, { term: "节假日运输", trade: "客运" }, 
                 { term: "运行图调整", trade: "客运" }, { term: "装载机司机", trade: "货运" }, { term: "货检员", trade: "货运" }, 
                 { term: "货运值班员", trade: "货运" }, { term: "货运员", trade: "货运" }, { term: "门吊司机", trade: "货运" }, { term: "冷链货物", trade: "货运" }, 
-                { term: "危险品货物", trade: "货运" }, { term: "危险货物", trade: "货运" }, { term: "成件包装货物", trade: "货运" }, 
+                { term: "危险货物", trade: "货运" }, { term: "危险品", trade: "货运" }, { term: "成件包装货物", trade: "货运" }, 
                 { term: "散堆装货物", trade: "货运" }, { term: "整车货物", trade: "货运" }, { term: "笨重货物", trade: "货运" }, { term: "篷布", trade: "货运" }, 
-                { term: "装载加固", trade: "货运" }, { term: "货物装载方案", trade: "货运" }, { term: "超限货物", trade: "货运" }, 
+                { term: "装载加固", trade: "货运" }, { term: "货物装载方案", trade: "货运" }, { term: "超限货物", trade: "货运" }, { term: "超限超重", trade: "货运" }, 
                 { term: "阔大货物", trade: "货运" }, { term: "集装箱", trade: "货运" }, { term: "集装箱货物", trade: "货运" }, { term: "集重货物", trade: "货运" }, 
                 { term: "零担货物", trade: "货运" }, { term: "鲜活货物", trade: "货运" }, { term: "人力装卸", trade: "货运" }, { term: "捆绑加固", trade: "货运" }, 
-                { term: "散货装卸", trade: "货运" }, { term: "机械装卸", trade: "货运" }, { term: "蓬布苫盖", trade: "货运" }, { term: "装载方案", trade: "货运" }, 
+                { term: "散货装卸", trade: "货运" }, { term: "机械装卸", trade: "货运" }, { term: "篷布苫盖", trade: "货运" }, { term: "装载方案", trade: "货运" }, 
                 { term: "货物换装", trade: "货运" }, { term: "危险品检测", trade: "货运" }, { term: "押运", trade: "货运" }, { term: "货物异状", trade: "货运" }, 
-                { term: "货物撒漏", trade: "货运" }, { term: "货运事故", trade: "货运" }, { term: "超偏载检测", trade: "货运" }, 
+                { term: "货物撒漏", trade: "货运" }, { term: "匿报品名", trade: "货运" }, { term: "货运事故", trade: "货运" }, { term: "超偏载检测", trade: "货运" }, 
                 { term: "超限检测", trade: "货运" }, { term: "仓库", trade: "货运" }, { term: "地磅", trade: "货运" }, { term: "装卸线", trade: "货运" }, 
                 { term: "货位", trade: "货运" }, { term: "货场", trade: "货运" }, { term: "货物站台", trade: "货运" }, { term: "轨道衡", trade: "货运" }, 
                 { term: "集装箱场", trade: "货运" }, { term: "计费重量", trade: "货运" }, { term: "货物交付", trade: "货运" }, { term: "货物运价", trade: "货运" }, 
@@ -201,18 +198,26 @@
                 { term: "卸车", trade: "货运" }, { term: "待卸车", trade: "货运" }, { term: "排空", trade: "货运" }, { term: "日班计划", trade: "货运" }, 
                 { term: "空车", trade: "货运" }, { term: "装车", trade: "货运" }, { term: "货运计划", trade: "货运" }, { term: "重车", trade: "货运" }, 
                 { term: "供暖管网", trade: "房建" }, { term: "换热站", trade: "房建" }, { term: "空调机房", trade: "房建" }, { term: "通风系统", trade: "房建" }, 
-                { term: "锅炉房", trade: "房建" }, { term: "信号楼", trade: "房建" }, { term: "列检所", trade: "房建" }, { term: "工区", trade: "房建" }, 
-                { term: "调度楼", trade: "房建" }, { term: "车间", trade: "房建" }, { term: "运转室", trade: "房建" }, { term: "公寓", trade: "房建" }, 
+                { term: "锅炉房", trade: "房建" }, { term: "信号楼", trade: "房建" }, { term: "列检所", trade: "房建" }, 
+                { term: "调度楼", trade: "房建" }, { term: "运转室", trade: "房建" }, { term: "公寓", trade: "房建" }, 
                 { term: "单身宿舍", trade: "房建" }, { term: "食堂", trade: "房建" }, { term: "应急照明", trade: "房建" }, { term: "照明系统", trade: "房建" }, 
-                { term: "站台照明", trade: "房建" }, { term: "配电室", trade: "房建" }, { term: "候车大厅", trade: "房建" }, { term: "无柱雨棚", trade: "房建" }, 
-                { term: "站前广场", trade: "房建" }, { term: "站台雨棚", trade: "房建" }, { term: "站房", trade: "房建" }, { term: "站房结构", trade: "房建" }, 
+                { term: "站台照明", trade: "房建" }, { term: "配电室", trade: "房建" }, { term: "候车大厅", trade: "房建" }, { term: "站台", trade: "房建" }, { term: "雨棚", trade: "房建" }, { term: "无柱雨棚", trade: "房建" }, 
+                { term: "站前广场", trade: "房建" }, { term: "天桥", trade: "房建" }, { term: "地道", trade: "房建" }, { term: "站台雨棚", trade: "房建" }, { term: "站房", trade: "房建" }, { term: "站房结构", trade: "房建" }, 
                 { term: "站房面积", trade: "房建" }, { term: "风雨棚", trade: "房建" }, { term: "化粪池", trade: "房建" }, { term: "客车上水栓", trade: "房建" }, 
                 { term: "排水管网", trade: "房建" }, { term: "水塔", trade: "房建" }, { term: "水泵房", trade: "房建" }, { term: "消防水池", trade: "房建" }, 
-                { term: "给水所", trade: "房建" }, { term: "地面维修", trade: "房建" }, { term: "外墙粉刷", trade: "房建" }, { term: "大修", trade: "房建" }, 
-                { term: "屋面防水", trade: "房建" }, { term: "巡检", trade: "房建" }, { term: "房屋维修", trade: "房建" }, { term: "暖通维修", trade: "房建" }, 
+                { term: "给水所", trade: "房建" }, { term: "大修", trade: "房建" }, 
+                { term: "屋面防水", trade: "房建" }, { term: "房屋维修", trade: "房建" }, { term: "暖通维修", trade: "房建" }, 
                 { term: "管道疏通", trade: "房建" }, { term: "配电维修", trade: "房建" }, { term: "限界检查", trade: "房建" }, { term: "围墙", trade: "房建" }, 
-                { term: "大门", trade: "房建" }, { term: "硬化面", trade: "房建" }, { term: "绿化", trade: "房建" }, { term: "道路", trade: "房建" }, 
                 { term: "侵限", trade: "房建" }, { term: "站台限界", trade: "房建" }, { term: "风雨棚限界", trade: "房建" }, 
+                // 【2026-10-17】通信独立成专业：原把这批术语全部错标在电务下（电务段口径），
+                //   但系统里通信是独立角色（tongxin）、独立关键词表，无线列调/GSM-R/光传输均归通信维护。
+                { term: "无线列调", trade: "通信" }, { term: "有线列调", trade: "通信" }, { term: "CIR", trade: "通信" }, { term: "GSM-R", trade: "通信" },
+                { term: "GSM-R手持台", trade: "通信" }, { term: "光纤通信", trade: "通信" }, { term: "光传输", trade: "通信" }, { term: "光缆", trade: "通信" },
+                { term: "漏泄电缆", trade: "通信" }, { term: "同轴电缆", trade: "通信" }, { term: "数字调度", trade: "通信" }, { term: "区间电话", trade: "通信" },
+                { term: "站间行车电话", trade: "通信" }, { term: "调度电话", trade: "通信" }, { term: "对讲机", trade: "通信" }, { term: "录音设备", trade: "通信" },
+                { term: "语音记录仪", trade: "通信" }, { term: "中继站", trade: "通信" }, { term: "基站", trade: "通信" }, { term: "通信机房", trade: "通信" },
+                { term: "通信铁塔", trade: "通信" }, { term: "应急通信", trade: "通信" }, { term: "通信网管", trade: "通信" }, { term: "综合网管", trade: "通信" },
+                { term: "误码率", trade: "通信" }, { term: "纤芯劣化", trade: "通信" },
                 { term: "标准化作业", trade: "综合管理" }, { term: "安全教育", trade: "综合管理" }, { term: "安全考试", trade: "综合管理" }, 
                 { term: "安全评估", trade: "综合管理" }, { term: "岗前培训", trade: "综合管理" }, { term: "持证上岗", trade: "综合管理" }, 
                 { term: "隐患整改", trade: "综合管理" }, { term: "风险研判", trade: "综合管理" }, { term: "作业门", trade: "综合管理" }, 
@@ -232,10 +237,10 @@
                 { term: "非正常行车", trade: "综合管理" }, { term: "作业命令", trade: "综合管理" }, { term: "施工作业", trade: "综合管理" }, 
                 { term: "施工把关", trade: "综合管理" }, { term: "施工负责人", trade: "综合管理" }, { term: "电气化施工", trade: "综合管理" }, 
                 { term: "碰撞试验", trade: "综合管理" }, { term: "维修作业", trade: "综合管理" }, { term: "天窗", trade: "综合管理" }, 
-                { term: "天窗点", trade: "综合管理" }, { term: "天窗点外", trade: "综合管理" }, { term: "区间封锁", trade: "综合管理" }, 
+                { term: "天窗点外", trade: "综合管理" }, 
                 { term: "封锁区间", trade: "综合管理" }, { term: "开通区间", trade: "综合管理" }, { term: "施工封锁", trade: "综合管理" }, 
-                { term: "确认车", trade: "综合管理" }, { term: "检查作业", trade: "综合管理" }, { term: "施工计划", trade: "综合管理" }, 
-                { term: "维修计划", trade: "综合管理" }, { term: "慢行", trade: "综合管理" }, { term: "慢行地点", trade: "综合管理" }, 
+                { term: "双重预防机制", trade: "综合管理" }, { term: "检查作业", trade: "综合管理" }, { term: "施工计划", trade: "综合管理" }, 
+                { term: "维修计划", trade: "综合管理" }, { term: "慢行", trade: "综合管理" }, { term: "风险分级管控", trade: "综合管理" }, 
                 { term: "慢行处所", trade: "综合管理" }, { term: "撤除限速", trade: "综合管理" }, { term: "邻线限速", trade: "综合管理" }, 
                 { term: "阶梯限速", trade: "综合管理" }, { term: "限速", trade: "综合管理" }, { term: "动火作业", trade: "综合管理" }, 
                 { term: "动火审批", trade: "综合管理" }, { term: "应急广播", trade: "综合管理" }, { term: "手动报警按钮", trade: "综合管理" }, 
@@ -246,8 +251,22 @@
                 { term: "温感探测器", trade: "综合管理" }, { term: "火灾应急", trade: "综合管理" }, { term: "灭火器", trade: "综合管理" }, 
                 { term: "烟感探测器", trade: "综合管理" }, { term: "疏散指示", trade: "综合管理" }, { term: "疏散通道", trade: "综合管理" }, 
                 { term: "禁烟管理", trade: "综合管理" }, { term: "防火分区", trade: "综合管理" }, { term: "防火门", trade: "综合管理" }, 
-                { term: "岗位职责", trade: "综合管理" }, { term: "技术规章", trade: "综合管理" }, 
+                { term: "隐患排查治理", trade: "综合管理" }, { term: "三违", trade: "综合管理" }, { term: "安全生产责任制", trade: "综合管理" }, 
             ];
+
+            // 【2026-10-17】旧版内置词条清理名单（只用于**加载期**剔除老用户 localStorage 里的残留）：
+            //   本次词库整理把"燃泵→燃油泵""蓬布苫盖→篷布苫盖""机械节/电气节→机械/电气绝缘节"等
+            //   笔误/简称改正，并删掉重复与泛化条目（天窗点/区间封锁/慢行地点/道路/巡检…）。
+            //   老用户存储里仍是旧写法，若只在 DEFAULT_TERMS 里改，这些旧词会以"自定义词"身份留着，
+            //   等于一份词库两种写法（重命名）或删不掉（重复项）。故在此显式剔除；新写法由内置词条提供。
+            const TERM_LEGACY_DROP = new Set([
+                // 笔误 / 简称（改名）
+                '燃泵', '蓬布苫盖', '机械节', '电气节', '接管', '故障状态',
+                // 重复 / 口语化 / 机构名 / 泛化（删除）
+                '危险品货物', '慢行地点', '区间封锁', '天窗点',
+                '工区', '车间', '大门', '硬化面', '绿化', '道路',
+                '地面维修', '外墙粉刷', '巡检', '岗位职责', '技术规章'
+            ]);
 
             // 加载并迁移词库（旧版纯字符串 → 新版结构化）
             (function loadAndMigrateTerms() {
@@ -270,8 +289,21 @@
                 let _termsCleared = false;
                 try { _termsCleared = localStorage.getItem('patch_term_library_empty') === '1'; } catch (e) {}
                 if (!_termsCleared) DEFAULT_TERMS.forEach(item => map.set(item.term.toLowerCase(), item));
-                migrated.forEach(item => map.set(item.term.toLowerCase(), item));
-                savedTerms.forEach(item => { if (item && item.term) map.set(item.term.toLowerCase(), item); });
+                // 【2026-10-17】同名以内置为准（原实现 savedTerms/migrated 后写覆盖内置）：
+                //   否则词库的专业标注、规范写法（如"燃油泵""篷布苫盖"）修正后，老用户 localStorage
+                //   里存的旧同名词条会把修正**静默盖回去** —— 用户看到的就是"词库改了没生效"。
+                //   现在只**增量**合入用户自定义词（内置没有的词），既有自定义词一个不丢。
+                migrated.forEach(item => {
+                    if (TERM_LEGACY_DROP.has(item.term)) return;
+                    var _k = item.term.toLowerCase();
+                    if (!map.has(_k)) map.set(_k, item);
+                });
+                savedTerms.forEach(item => {
+                    if (!item || !item.term) return;
+                    if (TERM_LEGACY_DROP.has(item.term)) return;   // 旧版内置词：改名/删除后不再保留旧写法
+                    var _k = String(item.term).toLowerCase();
+                    if (!map.has(_k)) map.set(_k, item);
+                });
                 PATCH_TERM_LIBRARY = Array.from(map.values());
                 rebuildTermMap();
                 if (oldTerms.length > 0) localStorage.removeItem('railway_terms_custom');
@@ -341,10 +373,10 @@
                 //   （轨道电路分路不良，主责电务，车务只是受影响方）。实测后果：问"分路不良怎么处理"
                 //   被自动角色判成「车务」（检索方向、专业术语也会偏）。已移入电务。
                 //   同时补「调度」「运行图」：实测"列车运行图调整要求"原本推不出任何专业 ⇒ 回落通用角色。
-                '车务': ['接发列车', '调车', '进路', '行车凭证', '闭塞', '联控', '防溜', '调度命令', '调度',
+                '车务': ['接发列车', '调车', '进路', '行车凭证', '联控', '防溜', '调度命令', '调度',
                         '车机联控', '一度停车', '退行', '推进', '溜放', '司机', '运转', '行车日志', '运行图',
                         '信号员', '值班员', '助理值班员', '电子运统', '施工登销记', '错办进路',
-                        '超限列车', '专特运'],
+                        '超限列车', '专特运', '股道', '咽喉', '确认车'],
                 '工务': ['线路', '道岔', '钢轨', '轨枕', '道床', '限界', '防护栅栏', '上道作业',
                         '胀轨', '无缝线路', '巡道', '探伤', '轨道几何', '道口', '栅栏', '护网',
                         '路基', '桥隧', '护坡', '排水', '轨距', '水平', '高低', '轨向', '三角坑',
@@ -357,17 +389,21 @@
                         '验电接地', '绝缘子', '供电线', '分区所', '开闭所', '牵引变', '接触线',
                         '回流线', '架空地线', '保护线', '弓网', '拉出值', '导高', '硬点', '燃弧'],
                 '机务': ['机车', '动车组', '制动', '司机', '添乘', 'LKJ', '牵引', '制动机',
-                        '走行部', '轮对', '受电弓', '动车', '驾驶', '送车', '接车', '整备',
+                        '走行部', '动车', '驾驶', '送车', '整备',
                         '待乘', '试风', '监控关机', '违章解锁', '冒进', '冒出', '超速'],
-                '车辆': ['客车', '货车', '轮对', '闸瓦', '转向架', '轴温', '5T', '列检', '防溜',
+                '车辆': ['客车', '货车', '轮对', '闸瓦', '转向架', '轴温', '5T', '列检',
                         '制动梁', '车钩', '风管', '缓解阀', '制动机试验', 'TFDS', 'THDS',
                         'TPDS', '切轴', '热轴', '关门车'],
                 '货运': ['装载', '加固', '超限', '偏载', '集重', '危险品', '集装箱', '篷布',
                         '轮重测定仪', '货物', '装卸', '货检', '超长货物', '混运', '匿报品名'],
-                '通信': ['无线列调', 'CIR', 'GSM-R', '光纤', '漏缆', '直放站', '电源屏', '传输',
+                '通信': ['无线列调', 'CIR', 'GSM-R', '光纤', '漏缆', '直放站', '传输',
                         '数调', '录音', '广播', '综合网管', '纤芯劣化', '误码率'],
-                '房建': ['站台', '雨棚', '房屋', '给排水', '围墙', '站房', '天桥', '地道', '限界',
+                '房建': ['站台限界', '雨棚', '房屋', '给排水', '围墙', '站房', '天桥', '地道', '限界',
                         '防雷', '侵限', '轻飘物'],
+                // 【2026-10-17】补客运：原关键词表**没有客运**，选了「自动」时客运类问题
+                //   （乘降、安检查危、突发客流）永远落到通用/车务 —— 与 UI 的 14 角色不一致。
+                '客运': ['客运', '旅客', '乘降', '安检', '实名制', '客流', '候车', '检票', '站台',
+                        '电梯', '扶梯', '重点旅客', '列车长', '售票'],
                 '通用': []
             };
 

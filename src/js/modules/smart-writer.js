@@ -4460,7 +4460,9 @@
                                 { style: style }
                             );
                             if (filled && filled.bytes && filled.bytes.length > 1000) {
-                                window.downloadBlob(new Blob([filled.bytes], { type: WR_DOCX_MIME }), (fileName || '报告') + '.docx');
+                                // 【2026-10-17】await：移动端下载会走"文件已生成→保存面板"，
+                                //   且失败能进本 try 的 catch 回退 B/C 通道（原来未 await ⇒ 抛错只进控制台）
+                                await window.downloadBlob(new Blob([filled.bytes], { type: WR_DOCX_MIME }), (fileName || '报告') + '.docx');
                                 notify('DOCX 已生成（套用上传模板' + (filled.stat && filled.stat.bodyInjected ? '·正文已注入' : '') + '）');
                                 return;
                             }
@@ -4473,7 +4475,7 @@
                             images: true
                         });
                         if (bytes && bytes.length > 1000) {
-                            window.downloadBlob(new Blob([bytes], { type: WR_DOCX_MIME }), (fileName || '报告') + '.docx');
+                            await window.downloadBlob(new Blob([bytes], { type: WR_DOCX_MIME }), (fileName || '报告') + '.docx');
                             notify('DOCX 已生成（' + (style === 'plain' ? '通用排版' : '公文格式') + '）');
                             return;
                         }
@@ -4564,7 +4566,8 @@
                     isFallbackDoc = true;
                     blob = _buildWordHtmlBlob(cleanHtml, fileName);
                 }
-                window.downloadBlob(blob, (fileName || '报告') + (isFallbackDoc ? '.doc' : '.docx'));
+                // 兜底通道同样 await（移动端"文件已生成→保存面板"的 UI 需要先挂好）
+                await window.downloadBlob(blob, (fileName || '报告') + (isFallbackDoc ? '.doc' : '.docx'));
                 if (isFallbackDoc) {
                     if (typeof Toast !== 'undefined') Toast.success('已生成 Word 文档(.doc)，可离线打开');
                     else alert('已生成 Word 文档(.doc)，可离线打开；如需 .docx 请在电脑端导出。');

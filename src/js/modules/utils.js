@@ -851,7 +851,9 @@
                 // 【2026-09-23 用户反馈"华为浏览器全量导出不弹下载确认框、无法下载"】
                 //   ① 优先 File System Access API：**真正弹出"另存为"确认框**（部分国产浏览器会静默拦截 a.download）
                 //   ② 不支持 / 报错 → 继续走下面的分享 / 锚点，并且**桌面端也挂兜底指引**（以前只有移动端有）
-                if (window.showSaveFilePicker) {
+                // 【2026-10-17】只在**桌面端**自动弹「另存为」；移动端统一放到保存面板的按钮手势内做
+                //   （异步生成后 transient activation 已过期，自动调用会被拒或挂起 ⇒ 用户看不到任何界面）。
+                if (window.showSaveFilePicker && !isMobile) {
                     try {
                         var _ext = (String(filename).split('.').pop() || '').toLowerCase();
                         var _types = _ext ? [{ description: _ext.toUpperCase() + ' 文件', accept: (function () { var o = {}; o['application/' + (_ext === 'zip' ? 'zip' : 'octet-stream')] = ['.' + _ext]; return o; })() }] : undefined;
@@ -880,22 +882,17 @@
                     return;
                 }
 
-                // 移动端：优先系统分享（Web Share API 带文件，华为/Edge 新版均支持，可调起系统存文件）
-                if (navigator.share && typeof navigator.canShare === 'function') {
-                    try {
-                        var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-                        if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({ files: [file], title: filename });
-                            return;
-                        }
-                    } catch (e) {
-                        if (e && e.name === 'AbortError') return; // 用户取消分享
-                        // 其它错误（含激活过期 NotAllowedError）落到简洁兜底
-                    }
-                }
-
-                // 移动端兜底：简洁「点击下载」按钮（在真实用户手势内重试 share / a.click，逻辑干净不绕）
-                _showMobileRetryBtn(filename);
+                // 【2026-10-17 用户反馈·华为浏览器导出 DOCX 只见"已生成"、拿不到文件】根因：
+                //   DOCX 生成是**异步**的（RGDocx 处理 HTML+图片，手机上常 >1s）⇒ 到下载时用户手势
+                //   (transient activation) 已过期，`navigator.share` / `showSaveFilePicker` 全部受限；
+                //   更隐蔽的是：share 可能"假成功"（resolve 但面板没弹/用户没选保存），
+                //   showSaveFilePicker 也可能**挂起**（不 resolve 不 reject）⇒ 原实现静默 return/静默等，
+                //   用户只见"DOCX 已生成"提示、界面再无下文。
+                //   口径（2026-10-17 用户选定"修下载通路"，不做"存资料库再取"）：
+                //   **移动端一律显示常驻「文件已生成 + 📥 保存到手机」面板** —— 保存动作放在
+                //   面板按钮的**新手势**内执行（另存为 → 系统分享 → 锚点下载依次尝试），
+                //   并给"在新标签页打开"作为第二条路；面板不自动消失、可反复试。
+                _showMobileSavePanel(filename);
             };
 
             /**
@@ -935,47 +932,83 @@
             }
             window._showDownloadHint = _showDownloadHint;
 
-            function _showMobileRetryBtn(filename) {
+            /**
+             * 移动端「文件已生成」保存面板（2026-10-17 取代原 _showMobileRetryBtn）
+             * 为什么改：原实现自动 try share/picker 后才挂"点击下载"小按钮，且 **12 秒自动消失**；
+             *   华为浏览器上 share 会"假成功"（resolve 但没弹面板）、picker 会挂起 ⇒ 用户只看到
+             *   "DOCX 已生成"却拿不到文件（2026-10-17 用户实测反馈）。
+             * 现口径：**移动端导出的唯一出口 = 这个常驻面板**（不自动消失、可反复点）：
+             *   主按钮「📥 保存到手机」点击时才进入**新手势**，依次尝试 另存为(8s 超时) →
+             *   系统分享（华为/安卓可"保存到文件"、iOS 唯一稳妥路径）→ 锚点下载 → 常驻兜底链接；
+             *   次按钮「在新标签页打开」给第二条路（长按/菜单另存）。
+             */
+            function _showMobileSavePanel(filename) {
                 var old = document.getElementById('_mb_dl_tip');
                 if (old && old.parentNode) old.parentNode.removeChild(old);
+                var _d0 = window.__lastDownload || {};
+                var sizeTxt = (_d0.blob && _d0.blob.size) ? ('（' + Math.max(1, Math.round(_d0.blob.size / 1024)) + ' KB）') : '';
+                var shortName = filename.length > 28 ? filename.slice(0, 25) + '…' : filename;
                 var tip = document.createElement('div');
                 tip.id = '_mb_dl_tip';
-                tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:12px 14px;border-radius:12px;font-size:0.85rem;max-width:92vw;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
-                var shortName = filename.length > 26 ? filename.slice(0, 23) + '…' : filename;
-                tip.innerHTML = '<div style="margin-bottom:8px;">当前浏览器需手动触发下载</div>'
-                    + '<button id="_mb_dl_retry" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:0.9rem;font-weight:600;cursor:pointer;">📥 点击下载：' + shortName + '</button>'
-                    + '<div style="margin-top:8px;font-size:0.72rem;opacity:.85;">如仍无效，请用手机系统浏览器打开本页</div>';
+                tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:14px 16px;border-radius:14px;font-size:0.85rem;max-width:92vw;width:min(420px,92vw);box-shadow:0 12px 32px rgba(0,0,0,.45);text-align:center;';
+                tip.innerHTML = '<div style="font-weight:700;margin-bottom:2px;">✅ 文件已生成</div>'
+                    + '<div style="font-size:0.76rem;opacity:.9;margin-bottom:10px;word-break:break-all;">' + shortName + sizeTxt + '</div>'
+                    + '<button id="_mb_dl_save" style="display:block;width:100%;background:#10b981;color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:0.95rem;font-weight:700;cursor:pointer;">📥 保存到手机</button>'
+                    + '<div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;">'
+                    + '<button id="_mb_dl_tab" style="background:#374151;color:#e5e7eb;border:none;border-radius:8px;padding:7px 12px;font-size:0.78rem;cursor:pointer;">在新标签页打开</button>'
+                    + '<button id="_mb_dl_close" style="background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:8px;padding:7px 12px;font-size:0.78rem;cursor:pointer;">已保存，关闭</button>'
+                    + '</div>'
+                    + '<div style="margin-top:8px;font-size:0.72rem;opacity:.8;">点了没反应？请允许本站「下载文件」，或改用系统浏览器打开本页</div>';
                 document.body.appendChild(tip);
-                document.getElementById('_mb_dl_retry').addEventListener('click', async function () {
-                    tip.remove();
-                    var d = window.__lastDownload; if (!d) return;
-                    // 新手势内先试"另存为对话框"（Chromium 内核支持时最可靠）
+                var _close2 = document.getElementById('_mb_dl_close');
+                if (_close2) _close2.addEventListener('click', function () { try { tip.remove(); } catch (e) {} });
+                var _tab2 = document.getElementById('_mb_dl_tab');
+                if (_tab2) _tab2.addEventListener('click', function () {
+                    try {
+                        var d = window.__lastDownload; if (!d) return;
+                        var u = URL.createObjectURL(d.blob);
+                        window.open(u, '_blank', 'noopener');
+                        setTimeout(function () { URL.revokeObjectURL(u); }, 120000);
+                    } catch (e) {}
+                });
+                var _save = document.getElementById('_mb_dl_save');
+                if (_save) _save.addEventListener('click', async function () {
+                    var d = window.__lastDownload; if (!d) { try { tip.remove(); } catch (e) {} return; }
+                    // ① 另存为对话框（真·新手势内最可靠）；8s 超时防国产浏览器"静默挂起"
                     if (window.showSaveFilePicker) {
                         try {
-                            var _h = await window.showSaveFilePicker({ suggestedName: d.filename });
-                            var _w = await _h.createWritable(); await _w.write(d.blob); await _w.close(); return;
+                            var _h = await Promise.race([
+                                window.showSaveFilePicker({ suggestedName: d.filename }),
+                                new Promise(function (_, rej) { setTimeout(function () { rej(new Error('picker-timeout')); }, 8000); })
+                            ]);
+                            var _w = await _h.createWritable(); await _w.write(d.blob); await _w.close();
+                            try { tip.remove(); } catch (e) {}
+                            return;
                         } catch (e) { if (e && e.name === 'AbortError') return; }
                     }
-                    // 新手势内再尝试系统分享
+                    // ② 系统分享（华为/安卓可"保存到文件"或发微信；iOS 唯一稳妥路径）
                     if (navigator.share && typeof navigator.canShare === 'function') {
                         try {
                             var file = new File([d.blob], d.filename, { type: d.blob.type || 'application/octet-stream' });
-                            if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: d.filename }); return; }
+                            if (navigator.canShare({ files: [file] })) {
+                                await navigator.share({ files: [file], title: d.filename });
+                                try { tip.remove(); } catch (e) {}
+                                return;
+                            }
                         } catch (e) { if (e && e.name === 'AbortError') return; }
                     }
-                    // 最后尝试 a.download（真实手势内，部分浏览器可用）
+                    // ③ 锚点下载 + 常驻兜底（链接 / 新标签页）—— 不再静默
                     try {
                         var url = URL.createObjectURL(d.blob);
                         var a = document.createElement('a');
                         a.href = url; a.download = d.filename; a.style.display = 'none';
                         document.body.appendChild(a); a.click();
                         setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); }, 1500);
-                        _showDownloadHint(d.filename, url, true);      // 仍挂着"没成？"的兜底（不再自动消失）
+                        _showDownloadHint(d.filename, url, true);
                     } catch (e2) {
-                        alert('自动下载失败，请复制文件名并用电脑访问本页下载：\n' + d.filename);
+                        alert('保存失败，请在电脑上打开本页重新导出：\n' + d.filename);
                     }
                 });
-                setTimeout(function () { if (tip && tip.parentNode) tip.remove(); }, 12000);
             }
 
             // ========== 复制文本（移动端 webview 兜底）==========

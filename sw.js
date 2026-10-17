@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261017123338';
+var CACHE_VERSION = '20261017131949';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== 【2026-10-17】SW 直出文件下载（DOCX/PDF/ZIP 等）==========

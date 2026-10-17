@@ -739,84 +739,171 @@
             xs: dedup(xs),
             ys: dedup(ys).slice().reverse(),
             vlines: vc.filter(function (l) { return (l.b - l.a) >= Math.max(8, maxV * 0.25); })
-                .map(function (l) { return { x: l.c, y1: l.a, y2: l.b }; })
+                .map(function (l) { return { x: l.c, y1: l.a, y2: l.b }; }),
+            // 【2026-10-17】横线也要带 **x 跨度**：它是判定**跨行合并（rowspan）**的唯一证据
+            //   （某条横线若只画到一半、没有跨过某列，说明那几行的该列在原文里就是一个单元格）。
+            hlines: hc.filter(function (l) { return (l.b - l.a) >= Math.max(20, maxH * 0.35); })
+                .map(function (l) { return { y: l.c, x1: l.a, x2: l.b }; })
         };
     }
 
-    /** 用网格把文本块还原成表格（确定性）：落在哪个格就归哪个格，同格内按"上→下、左→右"拼接。 */
+    /** 格内文字拼接：排序方向跟随文字角度（旋转页/竖排不能一律按 y 降序，否则整串倒置） */
+    function joinCell(cell) {
+        if (!cell || !cell.length) return '';
+        var _rot = 0;
+        cell.forEach(function (b0) { var a0 = (b0 && b0.angle) || 0; if (Math.abs(a0) >= 80) _rot += (a0 > 0 ? 1 : -1); });
+        var _dir = (_rot >= cell.length * 0.6) ? 1 : (_rot <= -cell.length * 0.6 ? -1 : 0);
+        cell.sort(function (a, b) {
+            if (_dir > 0) return (a.y - b.y) || (a.x - b.x);    // 竖排/旋转 +90°：自下而上读
+            return (b.y - a.y) || (a.x - b.x);                   // 正常 / -90°：自上而下读
+        });
+        return joinRun(cell.map(function (b2) { return b2.text; }));
+    }
+
+    /**
+     * 用网格把文本块还原成表格（确定性）：落在哪个格就归哪个格，同格内按"上→下、左→右"拼接。
+     *
+     * 【2026-10-17 用户报"表格行列多分、该合并的没合并"】三处根因与对策：
+     *   ① **页面边框线混进网格**：PDF 每页都画了整页外框（x≈0 / x≈页宽、y≈0 / y≈页高），
+     *      被当成表格边界 ⇒ 左右各多一列空列、上下各多一空行（真机第 51 页：14 列 34 行，
+     *      而原表只有 10 列左右）。⇒ 先用**文字包围盒**把文字范围之外的边缘边界裁掉。
+     *   ② **只在行内合并、不做跨行**：旧实现只在"某行缺竖线"时把几个格拼起来，且**只有该段有文字才拼**
+     *      ⇒ 空白的表头合并区照旧被拆开。⇒ 改成**按线段重建单元格**：竖线定列、横线定行，
+     *      竖线在某行缺失 ⇒ 跨列（colspan）；横线在某列缺失 ⇒ 跨行（rowspan），与文字无关。
+     *   ③ 合并信息算出来却没交给下游（块里没 merges，HTML/DOCX 自然不合并）。
+     *      ⇒ 本函数返回的 merges 带 rowSpan/colSpan（同时保留 row/c1/c2 兼容老调用方）。
+     */
     function tableFromGrid(boxes, grid) {
-        var xs = (grid && grid.xs) || [], ys = (grid && grid.ys) || [];
+        var xs0 = (grid && grid.xs) || [], ys0 = (grid && grid.ys) || [];
+        if (xs0.length < 2 || ys0.length < 2) return null;
+        var list = (boxes || []).filter(function (b) { return b && String(b.text == null ? '' : b.text).trim() !== ''; });
+        if (!list.length) return null;
+        var xs = xs0.slice(), ys = ys0.slice();
         var cols = xs.length - 1, rowsN = ys.length - 1;
         if (cols < 2 || rowsN < 1) return null;
-        var mat = [];
-        for (var r = 0; r < rowsN; r++) { var row = []; for (var c = 0; c < cols; c++) row.push([]); mat.push(row); }
-        (boxes || []).forEach(function (b) {
-            var t = String(b.text == null ? '' : b.text);
-            if (!t.trim()) return;
-            var ci = -1, ri = -1;
-            for (var i = 0; i < cols; i++) if (b.x >= xs[i] - 1.5 && b.x < xs[i + 1] + 1.5) { ci = i; break; }
-            for (var j = 0; j < rowsN; j++) if (b.y <= ys[j] + 1.5 && b.y > ys[j + 1] - 1.5) { ri = j; break; }
-            if (ci < 0 || ri < 0) return;
-            mat[ri][ci].push(b);
+
+        // ② 边界证据：竖线跨了哪些行 / 横线跨了哪些列（有证据才谈合并，OFD 无线段时保持不合并）
+        var vls = (grid && grid.vlines) || [], hls = (grid && grid.hlines) || [];
+        var hasEvid = !!(vls.length || hls.length);
+        var vAt = [], hAt = [];
+        var _i, _j;
+        for (_i = 0; _i <= cols; _i++) { vAt[_i] = []; for (_j = 0; _j < rowsN; _j++) vAt[_i][_j] = false; }
+        for (_j = 0; _j <= rowsN; _j++) { hAt[_j] = []; for (_i = 0; _i < cols; _i++) hAt[_j][_i] = false; }
+        vls.forEach(function (L) {
+            var ci = -1;
+            for (_i = 0; _i <= cols; _i++) if (Math.abs(L.x - xs[_i]) <= 1.5) { ci = _i; break; }
+            if (ci < 0) return;
+            for (var r = 0; r < rowsN; r++) {
+                if (L.y2 >= ys[r] - 1 && L.y1 <= ys[r + 1] + 1) vAt[ci][r] = true;
+            }
         });
-        var rows = mat.map(function (row) {
-            return row.map(function (cell) {
-                if (!cell.length) return '';
-                // 【2026-10-17】格内排序要**跟着文字方向**走，不能一律"y 降序"：
-                //   整页横置排版（公文的"附表"，文字旋转 ±90°）时，阅读方向是 +y（角度 +90）或 -y（-90），
-                //   一律 y 降序会把格内文字**整串倒过来**。判据用实测角度（不是猜），且要求格内多数一致。
-                var _rot = 0;
-                cell.forEach(function (b0) { var a0 = (b0 && b0.angle) || 0; if (Math.abs(a0) >= 80) _rot += (a0 > 0 ? 1 : -1); });
-                var _dir = (_rot >= cell.length * 0.6) ? 1 : (_rot <= -cell.length * 0.6 ? -1 : 0);
-                cell.sort(function (a, b) {
-                    if (_dir > 0) return (a.y - b.y) || (a.x - b.x);    // 竖排/旋转 +90°：自下而上读
-                    return (b.y - a.y) || (a.x - b.x);                   // 正常 / -90°：自上而下读
-                });
-                return joinRun(cell.map(function (b2) { return b2.text; }));
-            });
+        hls.forEach(function (L) {
+            var ri = -1;
+            for (_j = 0; _j <= rowsN; _j++) if (Math.abs(L.y - ys[_j]) <= 1.5) { ri = _j; break; }
+            if (ri < 0) return;
+            for (var c = 0; c < cols; c++) {
+                if (L.x1 <= xs[c] + 1 && L.x2 >= xs[c + 1] - 1) hAt[ri][c] = true;
+            }
         });
-        // 【2026-10-09 合并单元格（跨列表头）·确定性还原】
-        //   依据**不是启发式**，而是表格线本身：某内部竖线若在**某行区间内不存在**，说明该行此处
-        //   没有分隔 ⇒ 这几个格在原文里就是一个单元格（附件8 的"缺陷性质"横跨两格正是如此）。
-        //   · 有竖线证据（grid.vlines，来自 PDF 矢量线段）⇒ 按证据合并；
-        //   · 没有证据（如 OFD 源或调用方未提供线段）⇒ **一律不合并**（宁可保守，也不乱动真实数据）。
-        //   坑：一开始用"整行单段 + 短文本"的启发式，会把"甲|乙|丙"这类短数据行也误合并
-        //   （套件 ⑫b 当场抓到）⇒ 改为证据驱动后不存在该风险。
-        var _merges = [];
-        var _vls = (grid && grid.vlines) || [];
-        if (_vls.length && cols >= 2) {
-            for (var _r0 = 0; _r0 < rowsN; _r0++) {
-                var _yTop = ys[_r0], _yBot = ys[_r0 + 1];
-                var _cut = [];   // _cut[i]：第 i 与 i+1 列之间，该行是否存在竖线
-                for (var _c0 = 1; _c0 < cols; _c0++) {
-                    var _bx = xs[_c0], _has = false;
-                    for (var _vi = 0; _vi < _vls.length; _vi++) {
-                        var _L = _vls[_vi];
-                        if (Math.abs(_L.x - _bx) > 1.5) continue;
-                        // 竖线必须**跨越整行区间**才算"该行有分隔"（留 1pt 容差）
-                        if (_L.y2 >= _yTop - 1 && _L.y1 <= _yBot + 1) { _has = true; break; }
+
+        // ③ 按线段重建单元格（有证据时）：先向右扩（缺竖线=同格），再向下扩（缺横线=同格）
+        var cells = [], cover = {};
+        if (hasEvid) {
+            var used = [];
+            for (_i = 0; _i < rowsN; _i++) { used[_i] = []; for (_j = 0; _j < cols; _j++) used[_i][_j] = false; }
+            for (var r0 = 0; r0 < rowsN; r0++) {
+                for (var c0 = 0; c0 < cols; c0++) {
+                    if (used[r0][c0]) continue;
+                    var c2 = c0;
+                    while (c2 + 1 < cols && !vAt[c2 + 1][r0]) c2++;
+                    var r2 = r0;
+                    while (r2 + 1 < rowsN) {
+                        var blocked = false;
+                        for (var cc = c0; cc <= c2; cc++) if (hAt[r2 + 1][cc]) { blocked = true; break; }
+                        if (blocked) break;
+                        // 向下扩时必须"左右边界仍在"，否则会跨到隔壁格（L 形）
+                        if (c0 > 0 && !vAt[c0][r2 + 1]) break;
+                        if (c2 + 1 < cols && !vAt[c2 + 1][r2 + 1]) break;
+                        r2++;
                     }
-                    _cut.push(_has);
+                    var cl = { r: r0, c: c0, rs: r2 - r0 + 1, cs: c2 - c0 + 1, boxes: [] };
+                    for (var rr = r0; rr <= r2; rr++) for (var cc2 = c0; cc2 <= c2; cc2++) { used[rr][cc2] = true; cover[rr + ',' + cc2] = cl; }
+                    cells.push(cl);
                 }
-                var _run = 0;
-                while (_run < _cut.length) {
-                    if (_cut[_run]) { _run++; continue; }
-                    var _s = _run;
-                    while (_run < _cut.length && !_cut[_run]) _run++;
-                    var _e = _run, _txt = '';
-                    for (var _k = _s; _k <= _e; _k++) {
-                        var _tk = String(rows[_r0][_k] == null ? '' : rows[_r0][_k]).trim();
-                        if (_tk) _txt += _tk;
-                    }
-                    if (_txt) {
-                        rows[_r0][_s] = _txt;
-                        for (var _k2 = _s + 1; _k2 <= _e; _k2++) rows[_r0][_k2] = '';
-                        if (_e > _s) _merges.push({ row: _r0, c1: _s, c2: _e });
-                    }
+            }
+        } else {
+            for (var r1 = 0; r1 < rowsN; r1++) {
+                for (var c1 = 0; c1 < cols; c1++) {
+                    var cl1 = { r: r1, c: c1, rs: 1, cs: 1, boxes: [] };
+                    cells.push(cl1); cover[r1 + ',' + c1] = cl1;
                 }
             }
         }
-        return { rows: rows, cols: cols, merges: _merges };
+
+        // ④ 文本归位（用格中心判定；超界的夹到边缘格，避免"整行文字消失"）
+        //   hits 记的是"**文字真正落在哪个带宽里**"（按坐标，不按合并后的行矩阵），
+        //   下面裁空条带只认它：合并表头把字并到左边那格后，右边那条带**不算有字**（否则永远裁不掉页外框）。
+        var hits = [];
+        for (_i = 0; _i < rowsN; _i++) { hits[_i] = []; for (_j = 0; _j < cols; _j++) hits[_i][_j] = 0; }
+        list.forEach(function (b) {
+            var ci = -1, ri = -1;
+            for (var i = 0; i < cols; i++) if (b.x >= xs[i] - 1.5 && b.x < xs[i + 1] + 1.5) { ci = i; break; }
+            for (var j = 0; j < rowsN; j++) if (b.y <= ys[j] + 1.5 && b.y > ys[j + 1] - 1.5) { ri = j; break; }
+            if (ci < 0) ci = (b.x < xs[0]) ? 0 : cols - 1;
+            if (ri < 0) ri = (b.y > ys[0]) ? 0 : rowsN - 1;
+            hits[ri][ci] = 1;
+            var tgt = cover[ri + ',' + ci];
+            if (tgt) tgt.boxes.push(b);
+            else cover[ri + ',' + ci] = { r: ri, c: ci, rs: 1, cs: 1, boxes: [b] };
+        });
+
+        var rows = [];
+        for (_i = 0; _i < rowsN; _i++) { var row = []; for (_j = 0; _j < cols; _j++) row.push(''); rows.push(row); }
+        var merges = [];
+        cells.forEach(function (cl) {
+            rows[cl.r][cl.c] = joinCell(cl.boxes);
+            if (cl.rs > 1 || cl.cs > 1) {
+                merges.push({ row: cl.r, c1: cl.c, c2: cl.c + cl.cs - 1, rowSpan: cl.rs, colSpan: cl.cs });
+            }
+        });
+
+        // ⑤ 裁掉**最外侧整行/整列都没有文字**的条带。
+        //   为什么要裁：PDF 每页都画了整页外框（x≈0 / x≈页宽、y≈0 / y≈页高），会被当成表格边界，
+        //   于是左右各多一列、上下各多一行**空**条带——用户看到的就是"行列多分"。
+        //   为什么只裁最外侧、且要求"整条带无文字"：中间的空列/空行可能是原表结构（合并表头、留白栏），
+        //   绝不能动；而被"带文字跨行格"覆盖的行也不算空（否则会把 rowspan 截断）。
+        // 判据用 hits（文字真实落点），**不看合并后的行矩阵、也不看合并区覆盖**：
+        //   真机第 51 页的页外框被贪心扩成一个横跨 14 列的大格，若"被合并区覆盖"算有内容，就永远裁不掉空列；
+        //   反过来若只看 rows 矩阵，表头合并格的字在左格、右格为空 ⇒ 会把有字的列误裁。hits 两个坑都避开。
+        function _rowHasText(r) {
+            for (var c = 0; c < cols; c++) if (hits[r][c]) return true;
+            return false;
+        }
+        function _colHasText(c) {
+            for (var r = 0; r < rowsN; r++) if (hits[r][c]) return true;
+            return false;
+        }
+        var _top = 0, _bot = rowsN - 1, _lf = 0, _rt = cols - 1;
+        while (_top <= _bot && !_rowHasText(_top)) _top++;
+        while (_bot >= _top && !_rowHasText(_bot)) _bot--;
+        while (_lf <= _rt && !_colHasText(_lf)) _lf++;
+        while (_rt >= _lf && !_colHasText(_rt)) _rt--;
+        if (_top > _bot || _lf > _rt) return null;
+        if (_top !== 0 || _bot !== rowsN - 1 || _lf !== 0 || _rt !== cols - 1) {
+            var _nRows = _bot - _top + 1, _nCols = _rt - _lf + 1;
+            rows = rows.slice(_top, _bot + 1).map(function (r) { return r.slice(_lf, _rt + 1); });
+            var _m2 = [];
+            merges.forEach(function (m) {
+                var rs = m.rowSpan || 1, cs = m.colSpan || ((m.c2 - m.c1) + 1);
+                var r0 = Math.max(m.row, _top), r1 = Math.min(m.row + rs - 1, _bot);
+                var c0 = Math.max(m.c1, _lf), c1x = Math.min(m.c1 + cs - 1, _rt);
+                if (r1 < r0 || c1x < c0) return;
+                if ((r1 - r0 + 1) < 2 && (c1x - c0 + 1) < 2) return;   // 裁完只剩 1×1 ⇒ 不算合并
+                _m2.push({ row: r0 - _top, c1: c0 - _lf, c2: c1x - _lf, rowSpan: r1 - r0 + 1, colSpan: c1x - c0 + 1 });
+            });
+            return { rows: rows, cols: _nCols, merges: _m2 };
+        }
+        return { rows: rows, cols: cols, merges: merges };
     }
 
     function linesToBlocks(lines, opts) {
@@ -1217,7 +1304,12 @@
         flushPending();
         // 网格线还原的表放在最前（它是该页的主体结构，正文段落与无框线表随后）
         if (_gridTable) {
-            blocks.unshift({ type: 'table', rows: _gridTable.rows, cols: _gridTable.cols, fromGrid: true });
+            // 【2026-10-17】merges 必须**随块带走**：下游（HTML / DOCX / XLSX）靠它渲染 colspan/rowspan；
+            //   旧实现算了 merges 却不往外传 ⇒ 用户看到的永远是"该合并的没合并"。
+            blocks.unshift({
+                type: 'table', rows: _gridTable.rows, cols: _gridTable.cols, fromGrid: true,
+                merges: _gridTable.merges || []
+            });
             try { window.__pdfGridTables = (window.__pdfGridTables || 0) + 1; } catch (e) {}
         }
         return blocks;
@@ -1468,13 +1560,35 @@
     function blocksToHtml(blocks, opts) {
         return (blocks || []).map(function (b) {
             if (b.type === 'table') {
-                var head = b.rows[0] || [];
-                var body = b.rows.slice(1);
-                var h = head.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('');
-                var bd = body.map(function (r) {
-                    return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
-                }).join('');
-                return '<div class="imp-table-wrap"><table class="imp-table"><thead><tr>' + h + '</tr></thead><tbody>' + bd + '</tbody></table></div>';
+                var _rows = b.rows || [];
+                // 【2026-10-17】渲染合并单元格：merges 带 rowSpan/colSpan（老数据只有 row/c1/c2）
+                //   · start：合并区左上角 → 跨几行几列；covered：被合并盖住的格（不再输出 <td>）。
+                //   没有 merges 时输出与原样完全一致（表头 <th>、其余 <td>），不影响既有断言。
+                var _start = {}, _cov = {};
+                (b.merges || []).forEach(function (m) {
+                    var rs = m.rowSpan || 1, cs = m.colSpan || ((m.c2 - m.c1) + 1);
+                    _start[m.row + ',' + m.c1] = { rs: rs, cs: cs };
+                    for (var rr = m.row; rr < m.row + rs; rr++) {
+                        for (var cc = m.c1; cc < m.c1 + cs; cc++) if (rr !== m.row || cc !== m.c1) _cov[rr + ',' + cc] = 1;
+                    }
+                });
+                function rowHtml(rIdx, cells, tag) {
+                    var h = '';
+                    for (var c = 0; c < cells.length; c++) {
+                        if (_cov[rIdx + ',' + c]) continue;
+                        var sp = _start[rIdx + ',' + c], attr = '';
+                        if (sp) {
+                            if (sp.cs > 1) attr += ' colspan="' + sp.cs + '"';
+                            if (sp.rs > 1) attr += ' rowspan="' + sp.rs + '"';
+                        }
+                        h += '<' + tag + attr + '>' + esc(cells[c]) + '</' + tag + '>';
+                    }
+                    return '<tr>' + h + '</tr>';
+                }
+                var head = _rows[0] || [];
+                var body = _rows.slice(1);
+                return '<div class="imp-table-wrap"><table class="imp-table"><thead>' + rowHtml(0, head, 'th') + '</thead><tbody>'
+                    + body.map(function (r, i) { return rowHtml(i + 1, r, 'td'); }).join('') + '</tbody></table></div>';
             }
             // 【2026-10-17 P0】图片块：w/h 是"版面显示尺寸"（px），DOCX 导出会按它写 EMU，
             //   避免原图像素尺寸把页面撑破（PDF 提取时已按页宽限制）。
@@ -1667,10 +1781,54 @@
      * 一站式：多页 items ⇒ 正文
      *   = 行内清空格（分散对齐）+ 聚行 + 段落还原 + 丢弃倾斜水印 + 跨页去页眉页脚/页码/水印戳
      */
+    /** 页面整体 90° 横置的判定：正文里绝大多数文字都是 ±90° ⇒ 这是**版式**（公文附表极常见） */
+    function pageRotateAngle(items) {
+        var pos = 0, neg = 0, all = 0;
+        (items || []).forEach(function (it) {
+            if (!it || !it.transform || !String(it.str == null ? '' : it.str).trim()) return;
+            all++;
+            var a = it.transform[0] || 0, b = it.transform[1] || 0;
+            var ang = Math.atan2(b, a) * 180 / Math.PI;
+            if (ang >= 45) pos++; else if (ang <= -45) neg++;
+        });
+        if (all < 8) return 0;
+        if (pos >= all * 0.6) return 90;
+        if (neg >= all * 0.6) return -90;
+        return 0;
+    }
+    function rotPoint(x, y, rot) { return rot > 0 ? [y, -x] : [-y, x]; }
+    function rotateItems(items, rot) {
+        return (items || []).map(function (it) {
+            if (!it || !it.transform) return it;
+            var t = it.transform;
+            var e1 = rotPoint(t[0], t[1], rot), e2 = rotPoint(t[2], t[3], rot), o = rotPoint(t[4], t[5], rot);
+            return { str: it.str, transform: [e1[0], e1[1], e2[0], e2[1], o[0], o[1]], width: it.width, height: it.height, dir: it.dir };
+        });
+    }
+    function rotateSegs(segs, rot) {
+        return (segs || []).map(function (s) {
+            if (!s) return s;
+            var p1 = rotPoint(s.x1, s.y1, rot), p2 = rotPoint(s.x2, s.y2, rot);
+            var k = (Math.abs(p1[1] - p2[1]) < 0.6) ? 'h' : ((Math.abs(p1[0] - p2[0]) < 0.6) ? 'v' : s.k);
+            return { k: k, x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] };
+        });
+    }
+
     function buildDocument(pagesItems, opts) {
         opts = opts || {};
+        // 【2026-10-17 用户报"表格行列多分"·真因之一】整页横置（90°）的附表如果**不把坐标系转正**，
+        //   表格会整个**转置**：真机《铁路电务安全管理规定》第 51 页（附件2 电务行车一般D类事故统计表）
+        //   原表是 13 行 × 33 列，旧实现建出的是 33 行 × 13 列 —— 用户看到的就是"行列多分/对不上"。
+        var _segsIn = (opts && opts.pageSegments) || null;
+        var _segsOut = _segsIn ? _segsIn.slice() : null;
+        var _opts = opts;
         var perPage = [], rotatedDropped = 0;
-        (pagesItems || []).forEach(function (items) {
+        (pagesItems || []).forEach(function (items, _pi) {
+            var _rot = pageRotateAngle(items);
+            if (_rot) {
+                items = rotateItems(items, _rot);
+                if (_segsOut && _segsOut[_pi]) _segsOut[_pi] = rotateSegs(_segsOut[_pi], _rot);
+            }
             var r = fromPdfItems(items, opts);
             var good = [];
             // 【2026-10-17】旋转口径修正：只有"**斜**的文字"才是水印特征（用户那批水印实测 45°）；
@@ -1684,8 +1842,13 @@
             });
             perPage.push(good);
         });
-        var st = stripRunning(perPage, opts);
-        var built = buildFromPageLines(st.pages, opts);
+        if (_segsOut) {
+            _opts = {};
+            for (var _kOpt in opts) _opts[_kOpt] = opts[_kOpt];
+            _opts.pageSegments = _segsOut;   // 转正后的线段（与原文字同一坐标系，网格才对得上）
+        }
+        var st = stripRunning(perPage, _opts);
+        var built = buildFromPageLines(st.pages, _opts);
         return {
             text: built.text,
             blocks: built.blocks,

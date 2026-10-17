@@ -940,20 +940,34 @@
                         window.__lastDownload.swUrl = u || null;
                     }
                 });
-                // 【2026-10-17 极简化】等 SW 登记结果再弹面板（通常 <50ms），这样"下载"按钮点击时
-                //   能**同步**拿到附件 URL；最多等 900ms，避免不支持 SW 时面板迟迟不出现。
+                // 【2026-10-17 二次反馈】移动端不再单独做"只一个下载按钮"的极简面板，
+                //   改为**与电脑端同一套下载面板**（用户原话："导出 DOCX 弹出页面改成和电脑端一样的"）。
+                //   等 SW 登记结果再弹（通常 <50ms），这样面板一出现主链接就带着可点的附件 URL；
+                //   最多等 900ms，避免不支持 SW 时面板迟迟不出现。
                 Promise.race([
                     _swP,
                     new Promise(function (r) { setTimeout(r, 900); })
-                ]).then(function () { _showMobileSavePanel(filename); });
+                ]).then(function () {
+                    var _d = window.__lastDownload || {};
+                    var _href = (_d.filename === filename && _d.swUrl) ? _d.swUrl : null;
+                    if (!_href) {
+                        // 没有 SW 附件（首次访问/未接管）⇒ 用 blob URL 兜底
+                        try { _href = URL.createObjectURL(blob); } catch (e) { _href = null; }
+                    }
+                    _showDownloadHint(filename, _href, true);
+                });
             };
 
             /**
-             * 下载兜底面板：**桌面端与移动端共用**。
-             * 【2026-09-23】原来只有移动端有兜底，桌面/折叠屏遇到"浏览器静默拦截 a.download"
-             *   （华为浏览器等）就完全没提示、用户以为功能坏了。
-             * 面板里给三条可操作出路：① 直接点链接 ② 新标签页打开（可长按/右键保存）③ 浏览器设置提示。
-             * ⚠️ 不再自动消失（下载受阻时用户需要时间操作），只能手动关闭。
+             * 下载面板：**桌面端与移动端共用同一套 UI**。
+             * 【2026-10-17 用户口径】"导出 DOCX 弹出页面改成和电脑端一样的" ⇒ 移动端不再用那个
+             *   只有一个绿色「下载」的极简面板，统一成这一套（标题 + 主保存链接 + 新标签页 + 关闭）。
+             * 主链接的 href 分两种，处理方式必须不同：
+             *   · `./__dl/…`（SW 直出的 HTTP 附件，带 Content-Disposition）⇒ **不加 download 属性**，
+             *     当普通链接导航交给原生下载器。手机浏览器只认这条；加了 download 反而可能没反应。
+             *   · `blob:` ⇒ 保留 download 属性（通用兜底，桌面/Edge 都吃）。
+             * 【2026-10-17 二次反馈】"下载按钮点击后无法消失" ⇒ 点过主链接后 900ms **自动收起**
+             *   （留 900ms 让下载/导航先被浏览器接住），手动关闭按钮照旧保留。
              */
             function _showDownloadHint(filename, href, isMobile) {
                 try {
@@ -961,21 +975,29 @@
                     if (old && old.parentNode) old.parentNode.removeChild(old);
                     var tip = document.createElement('div');
                     tip.id = '_mb_dl_tip';
-                    tip.dataset.kind = 'desktop';
-                    tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:12px 14px;border-radius:12px;font-size:0.85rem;max-width:92vw;width:auto;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
+                    tip.dataset.kind = isMobile ? 'mobile' : 'desktop';
+                    tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;padding:14px;border-radius:12px;font-size:0.85rem;width:min(360px,92vw);box-sizing:border-box;box-shadow:0 6px 24px rgba(0,0,0,.3);text-align:center;';
                     var shortName = filename.length > 26 ? filename.slice(0, 23) + '…' : filename;
-                    tip.innerHTML = '<div style="margin-bottom:8px;">没弹出下载/保存对话框？用下面任一方式保存：</div>'
-                        + '<a id="_mb_dl_link" href="' + href + '" download="' + window.safeFileName(filename) + '" '
-                        + 'style="display:inline-block;background:#10b981;color:#fff;border-radius:8px;padding:10px 18px;font-size:0.9rem;font-weight:600;text-decoration:none;">📥 点此保存：' + shortName + '</a>'
-                        + '<div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;">'
-                        + '<button id="_mb_dl_tab" style="background:#374151;color:#e5e7eb;border:none;border-radius:8px;padding:7px 12px;font-size:0.78rem;cursor:pointer;">在新标签页打开</button>'
-                        + '<button id="_mb_dl_close" style="background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:8px;padding:7px 12px;font-size:0.78rem;cursor:pointer;">已保存，关闭</button>'
+                    var _isSw = !!(href && /(^|\/)__dl\//.test(href));
+                    var _attr = (!href || _isSw) ? '' : ' download="' + window.safeFileName(filename) + '"';
+                    var _linkHtml = href
+                        ? '<a id="_mb_dl_link" href="' + href + '"' + _attr + ' '
+                            + 'style="display:block;box-sizing:border-box;width:100%;background:#10b981;color:#fff;border-radius:8px;padding:12px 14px;font-size:0.9rem;font-weight:700;text-decoration:none;word-break:break-all;">📥 点此保存：' + shortName + '</a>'
+                        : '<div style="color:#fca5a5;margin-bottom:8px;">文件链接生成失败，请重新导出一次</div>';
+                    tip.innerHTML = '<div style="margin-bottom:10px;">文件已生成，点下面按钮保存：</div>'
+                        + _linkHtml
+                        + '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap;">'
+                        + (href ? '<button id="_mb_dl_tab" style="background:#374151;color:#e5e7eb;border:none;border-radius:8px;padding:8px 12px;font-size:0.78rem;cursor:pointer;">在新标签页打开</button>' : '')
+                        + '<button id="_mb_dl_close" style="background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:8px;padding:8px 12px;font-size:0.78rem;cursor:pointer;">已保存，关闭</button>'
                         + '</div>'
-                        + '<div style="margin-top:8px;font-size:0.72rem;opacity:.85;">'
-                        + (isMobile ? '华为/国产浏览器：请在菜单里允许本站「下载文件」，或改用系统浏览器打开本页；'
-                                    : '若浏览器拦截了下载，请在地址栏允许「下载多个文件」，或改用系统浏览器；')
-                        + '也可在新标签页打开后长按/右键另存。</div>';
+                        + '<div style="margin-top:10px;font-size:0.72rem;opacity:.85;line-height:1.5;">'
+                        + '没开始下载？请允许本站「下载文件」，或在新标签页打开后另存。</div>';
                     document.body.appendChild(tip);
+                    var _link = document.getElementById('_mb_dl_link');
+                    if (_link) _link.addEventListener('click', function () {
+                        // 点过就收（用户反馈：按钮点完不消失，一直挡在页面上）
+                        setTimeout(function () { try { tip.remove(); } catch (e) {} }, 900);
+                    });
                     var _tab = document.getElementById('_mb_dl_tab');
                     if (_tab) _tab.addEventListener('click', function () {
                         try { window.open(href, '_blank', 'noopener'); } catch (e) {}
@@ -986,44 +1008,9 @@
             }
             window._showDownloadHint = _showDownloadHint;
 
-            /**
-             * 移动端「下载」面板（2026-10-17 极简化，用户口径）
-             * 用户要求："恢复成和其他浏览器下载一样，只显示保存/下载，其他都不要了"。
-             * 所以这里**只有一个按钮**：没有标题、文件名、说明、状态行、次按钮、关闭键。
-             * 点击即同步触发下载（保住新手势）：
-             *   ① 有 SW 附件 URL → location.href（普通 HTTP 下载，交给原生下载管理器）
-             *   ② 没有（首次访问/未接管）→ blob 锚点（通用兜底）
-             * 不再自动 share / picker：实测华为浏览器上会"假成功"或挂起。
-             */
-            function _showMobileSavePanel(filename) {
-                var old = document.getElementById('_mb_dl_tip');
-                if (old && old.parentNode) old.parentNode.removeChild(old);
-                var tip = document.createElement('div');
-                tip.id = '_mb_dl_tip';
-                tip.dataset.kind = 'mobile';   // 供调用方区分：移动端已有"下载"面板，别再叠 Toast
-                tip.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;max-width:92vw;width:min(320px,92vw);';
-                tip.innerHTML = '<button id="_mb_dl_save" style="display:block;width:100%;background:#10b981;color:#fff;border:none;border-radius:12px;padding:14px 18px;font-size:1rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;">下载</button>';
-                document.body.appendChild(tip);
-                var _save = document.getElementById('_mb_dl_save');
-                if (_save) _save.addEventListener('click', function () {
-                    var d = window.__lastDownload;
-                    if (!d) { try { tip.remove(); } catch (e) {} return; }
-                    // ① SW 附件：就是一次普通 HTTP 下载（带 Content-Disposition），
-                    //    浏览器/华为都按原生下载处理；主页面不会跳走。
-                    if (d.swUrl) { location.href = d.swUrl; return; }
-                    // ② 通用兜底：blob 锚点。必须**同步**点击，不能 await（会丢用户手势）。
-                    try {
-                        var url = URL.createObjectURL(d.blob);
-                        var a = document.createElement('a');
-                        a.href = url; a.download = d.filename; a.style.display = 'none';
-                        document.body.appendChild(a); a.click();
-                        setTimeout(function () {
-                            if (a.parentNode) a.parentNode.removeChild(a);
-                            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-                        }, 1200);
-                    } catch (e) {}
-                });
-            }
+            /* 【2026-10-17 删除】原 `_showMobileSavePanel`（只一个绿色「下载」按钮的极简面板）已并入
+             *   上面的 `_showDownloadHint`：用户要求"导出 DOCX 弹出页面改成和电脑端一样的"，
+             *   两端共用一套 UI；且点过主链接后自动收起（原面板点完永远留在页面上）。 */
 
             // ========== 复制文本（移动端 webview 兜底）==========
             window.copyTextToClipboard = async function(text) {

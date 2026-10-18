@@ -1128,8 +1128,10 @@ window.onclick = function(e) {
                 return;
             }
             if (typeof showInstallButton === 'function') showInstallButton();
-            alert('请用浏览器菜单里的「添加到主屏幕 / 安装应用」重新添加一次，并删掉旧图标。\n\n'
-                + '当前地址：' + here + '\n（关键是结尾那个 “/” —— 有它才在离线组件的保护范围内）');
+            // 【2026-10-18】原来用阻塞式 alert（会挂住页面 JS）；改为一次性浮层，
+            //   内容也更准确：鸿蒙 6/7 上根本没有页面内安装弹窗，只能走浏览器菜单。
+            if (typeof showManualInstallTip === 'function') showManualInstallTip();
+            else alert('请用浏览器菜单里的「添加到主屏幕 / 安装应用」重新添加一次，并删掉旧图标。\n\n当前地址：' + here);
         } catch (e) {}
     };
 
@@ -1164,12 +1166,29 @@ window.onclick = function(e) {
         requestAnimationFrame(function() { _installBtn.style.transform = 'translateY(0)'; });
 
         document.getElementById('_pwa_install_btn').onclick = function() {
-            if (!_deferredPrompt) return;
-            _deferredPrompt.prompt();
-            _deferredPrompt.userChoice.then(function(choice) {
-                console.log('[PWA] 用户选择:', choice.outcome);
-                _deferredPrompt = null;
-            });
+            // 【2026-10-18 鸿蒙 6/7】页面内安装依赖 Chromium 专有的 beforeinstallprompt，
+            //   鸿蒙 ArkWeb 并不保证实现；拿不到安装弹窗时旧代码是 `if (!_deferredPrompt) return;`
+            //   —— 点了完全没反应（用户实测）。这里一律兜底到「手动添加」，不再静默。
+            var p = _deferredPrompt;
+            if (!p) { showManualInstallTip(); return; }
+            var settled = false;
+            function goManual() { if (!settled) { settled = true; showManualInstallTip(); } }
+            try {
+                p.prompt();
+                if (p.userChoice && typeof p.userChoice.then === 'function') {
+                    p.userChoice.then(function(choice) {
+                        settled = true;
+                        console.log('[PWA] 用户选择:', choice && choice.outcome);
+                        _deferredPrompt = null;
+                    }, function() { goManual(); });
+                } else {
+                    goManual();
+                }
+            } catch (e) {
+                goManual();
+            }
+            // 有些实现既不 resolve 也不 reject（鸿蒙上就是"点完没反应"），2.5s 无结果即转手动步骤
+            setTimeout(function() { if (!settled) goManual(); }, 2500);
         };
         document.getElementById('_pwa_install_close').onclick = function() {
             hideInstallButton();
@@ -1187,6 +1206,40 @@ window.onclick = function(e) {
             }, 300);
         }
     }
+
+    /**
+     * 【2026-10-18 鸿蒙 6/7】安装条点了没反应时的兜底：给出浏览器菜单里的手动添加步骤。
+     * 不用 alert（会阻断页面 JS），用一次性浮层；顺带把当前网址显示出来便于复制。
+     */
+    function showManualInstallTip() {
+        try {
+            var old = document.getElementById('_pwa_install_tip');
+            if (old) old.remove();
+            var box = document.createElement('div');
+            box.id = '_pwa_install_tip';
+            box.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px;';
+            var card = document.createElement('div');
+            card.style.cssText = 'background:var(--card-bg,#fff);color:var(--text,#0f172a);border-radius:14px;max-width:430px;width:100%;padding:16px;font-size:.86rem;line-height:1.75;';
+            card.innerHTML = ''
+                + '<div style="font-weight:700;margin-bottom:8px;">📲 添加到桌面（手动一步）</div>'
+                + '<div style="margin-bottom:8px;">当前浏览器没有提供页面内的安装弹窗（鸿蒙 6/7 的浏览器未开放该接口），请用菜单添加：</div>'
+                + '<ol style="margin:0 0 10px 18px;padding:0;">'
+                + '<li>点浏览器右上角/底部 <b>「☰」或「⋮」</b> 菜单；</li>'
+                + '<li>选 <b>「添加到桌面」</b>（有的版本叫「添加到主屏幕」）；</li>'
+                + '<li>回桌面用新图标打开即可。</li>'
+                + '</ol>'
+                + '<div style="color:#64748b;font-size:.8rem;margin-bottom:10px;">说明：鸿蒙上该图标可能以独立窗口打开，那种窗口<b>不允许下载文件</b>；需要导出时请改用浏览器标签页打开同一网址。</div>'
+                + '<div style="background:rgba(148,163,184,.15);border-radius:8px;padding:8px;font-size:.76rem;word-break:break-all;margin-bottom:10px;">' + (location.href || '') + '</div>';
+            var btn = document.createElement('button');
+            btn.textContent = '知道了';
+            btn.style.cssText = 'width:100%;padding:10px;border:0;border-radius:10px;background:#1d4ed8;color:#fff;font-weight:700;';
+            btn.onclick = function () { try { box.remove(); } catch (e) {} };
+            card.appendChild(btn);
+            box.appendChild(card);
+            document.body.appendChild(box);
+        } catch (e) {}
+    }
+    window.dsShowManualInstallTip = showManualInstallTip;
 
     if (window.matchMedia('(display-mode: standalone)').matches) {
         console.log('[PWA] 已作为应用运行');
@@ -1909,7 +1962,7 @@ window._updateModelList = function() {
 console.log('%c安监智能辅助系统 · app.js 已加载', 'color:#1a365d;font-weight:bold;');
 
 // ==================== 版本管理 ====================
-const APP_VERSION = 'v4.86'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
+const APP_VERSION = 'v4.87'; // 单一版本源：设置面板与关于面板的版本号均在 DOMContentLoaded 时从此注入；发版时只需改此处 + 同步 version.json
 // ⚠️【2026-10-05 用户实测踩坑】"手机提示发现 v4.15，更新后仍显示 v4.14" —— 就是因为这里没跟着改：
 //   提示更新靠的是 **SW 缓存时间戳**（version.json 的 sw / sw.js 的 CACHE_VERSION），
 //   而界面上显示的版本号读的是**这个常量**。**发版必须同时改三处**：

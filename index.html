@@ -2165,7 +2165,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.81</span> · 2026.10.18</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.82</span> · 2026.10.18</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2212,17 +2212,17 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.81 近期更新</span>
+                    <span>v4.82 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📦</span><span><b>华为浏览器「全数据导出」点了没反应已修</b>：原按钮点的是隐藏元素，华为浏览器不派发这类点击，改为直接调用；进度条现在会正常出现。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📄</span><span><b>华为浏览器其它格式导出适配</b>：其下载器按文件类型分流，导出统一改用可落盘的类型（内容与扩展名不变，Edge/Chrome 行为不变）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">📥</span><span><b>报告「下载TXT」不再静默失败</b>：没有内容会明确提示，刚生成的报告可直接下载，不再出现“点了没反应”。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">🧪</span><span><b>真实数据回归修正</b>：90MB 备份往返的术语库断言按“内置词并入 + 旧写法剔除”口径校准，不再误报丢数据。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📱</span><span><b>华为手机浏览器所有格式都能导出了</b>：其下载器只认同源 HTTP 文件、不认页面内的 blob，现改为由离线缓存直出一个同源附件地址（与发票类网站的下载方式一致），DOCX/TXT/CSV/ZIP 一并解决。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🔧</span><span><b>找到旧方案反复失败的真正原因</b>：缓存键按根目录拼（/__dl/…），而站点部署在子目录，两边对不上必然 404；现改为按站点作用域拼，根目录/子目录都命中。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">📦</span><span><b>「全数据导出」点击不触发已修</b>：原按钮点的是隐藏元素，华为不派发这类点击（进度条都不出现），改为直接调用。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">📥</span><span><b>报告「下载TXT」不再静默失败</b>：没有内容会明确提示，刚生成的报告可直接下载。</span></div>
                 </div>
             </div>
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.80 及以前）更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.81 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 技术信息 -->

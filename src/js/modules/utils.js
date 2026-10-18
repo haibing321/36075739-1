@@ -840,29 +840,48 @@
                 catch (e) { try { alert(msg); } catch (e2) {} }
             }
 
-            // 【2026-10-17 删除】原 `_swDownloadRegister`（把 Blob 登记给 SW 换 ./__dl/ HTTP 附件 URL，
-            //   用来绕开华为浏览器 blob 下载问题）随「华为适配那一套」一起退役：
-            //   用户明确要"就简单导出，选择保存地点、保存就完成，其它的说明就不要了"。
+            // ========== 手机端：同源 HTTP 附件（SW 直出）==========
+            // 【2026-10-18 真机定案，别再改回纯 blob】
+            //   ① 同一台手机、同一份代码：Edge 全格式正常；华为浏览器**全格式都不落盘**
+            //      （连同步、无依赖、纯文本的 .txt 都不行；改 MIME 成 application/json 也没用）。
+            //   ② 对照参考站点（用户给的 dppt.gansu.chinatax.gov.cn 发票页）：整站 0 处
+            //      createObjectURL / new Blob，下载是 `<a href="同源 API 地址" download>`
+            //      ⇒ 华为要的是**同源 HTTP 资源**，不是 blob:。
+            //   ③ 静态站没有后端，能产出同源 HTTP 文件的只有 SW（sw.js 的 ./__dl/<token>）。
+            //      ⚠️ 旧实现"一直不行"的真原因：缓存键用 origin + '/__dl/'，而子路径部署下
+            //      请求 URL 是 /<仓库名>/__dl/<token> ⇒ cache.match 必 miss ⇒ 404。现已改 scope 相对键。
+            //   没有 SW（如 U 盘 file:// 打开）或登记失败时，仍退回原来的 blob 下载，不阻断桌面端。
+            function _swDlUrl(blob, filename) {
+                return new Promise(function (resolve) {
+                    try {
+                        var sw = navigator.serviceWorker;
+                        if (!sw || !sw.getRegistration) return resolve(null);
+                        sw.getRegistration().then(function (reg) {
+                            var worker = (reg && (reg.active || reg.waiting)) || sw.controller;
+                            if (!worker) return resolve(null);
+                            var token = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                            var done = false;
+                            var timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 20000);
+                            var ch = new MessageChannel();
+                            ch.port1.onmessage = function (e) {
+                                if (done) return;
+                                done = true; clearTimeout(timer);
+                                if (!(e.data && e.data.ok)) return resolve(null);
+                                resolve(new URL('__dl/' + token, reg.scope).href);
+                            };
+                            worker.postMessage({
+                                type: 'DL_STORE', token: token, filename: filename,
+                                mime: (blob && blob.type) || 'application/octet-stream',
+                                blob: blob
+                            }, [ch.port2]);
+                        }).catch(function () { resolve(null); });
+                    } catch (e) { resolve(null); }
+                });
+            }
 
             window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
                 filename = window.safeFileName(filename);   // ← 单点净化：所有导出都受益
-                // 【2026-10-18 华为浏览器：下载器按 MIME 决定"存 / 交给别的应用"】
-                //   实测对照（同一台手机、同一份代码）：Edge 手机端**所有格式**都能存；
-                //   华为浏览器只有 `application/json` 的导出能存，`.txt/.csv/.docx/.xlsx/.zip`
-                //   全部"点了没反应"（点击事件正常、进度条正常、无异常）。
-                //   ⇒ 代码链路无问题，是华为的下载管理器按 blob.type 分流；文本类被当"可预览"、
-                //     其余被交给第三方应用，没接住就静默丢弃。
-                //   改法：只对华为/鸿蒙把 MIME 归一成语义无关的 `application/json`——
-                //     · 字节内容不变（Blob 组合是引用式的，不复制 90MB 数据）；
-                //     · 文件名/扩展名不变（`a[download]` 的名字优先），存下来仍是 .docx/.zip/.txt。
-                //   ⚠️ 以前多次改动动的都是"通道"（SW 直出 / 系统分享 / 保存按钮 / 另存为），
-                //     这里动的是"类型判定"，两者互不替代 —— 别再往通道上加东西。
-                if (/Mobi|Android|HarmonyOS|OpenHarmony|Tablet/i.test(navigator.userAgent || '')
-                    && /HuaweiBrowser|HONORBrowser|HarmonyOS|OpenHarmony|ArkWeb|HUAWEI/i.test(navigator.userAgent || '')
-                    && String(blob.type || '').toLowerCase() !== 'application/json') {
-                    try { blob = new Blob([blob], { type: 'application/json' }); } catch (e) {}
-                }
                 window.__lastDownload = { blob: blob, filename: filename };
                 // 旧 IE / EdgeHTML：直接调系统 API
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {
@@ -876,6 +895,15 @@
                 //     也只是存默认目录，多这一步反而添乱；要换文件夹在「文件管理 → 下载」里移动即可。
                 var _ua = navigator.userAgent || '';
                 var _isMobile = /Mobi|Android|iPhone|iPad|iPod|HarmonyOS|OpenHarmony|Tablet/i.test(_ua);
+
+                // 【2026-10-18】手机端先走同源 HTTP 附件（见上方 _swDlUrl 说明）：
+                //   location.href 到 attachment 响应 = 浏览器原生下载，页面不跳走、无需手势、无任何 UI。
+                if (_isMobile) {
+                    var _swUrl = await _swDlUrl(blob, filename);
+                    if (_swUrl) {
+                        try { window.location.href = _swUrl; return; } catch (e) { /* 退回 blob */ }
+                    }
+                }
 
                 if (!_isMobile && window.showSaveFilePicker) {
                     var _okPick = await _saveViaPicker(blob, filename);

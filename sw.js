@@ -11,14 +11,41 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261018143900';
+var CACHE_VERSION = '20261018151723';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
-// ========== 【2026-10-17 退役】原「SW 直出文件下载」（./__dl/<token> + DL_STORE）==========
-// 用户口径："手机端华为浏览器适配的那一套不要了，就简单导出，选择保存地点、保存就完成，
-//   其它的说明就不要了。" ⇒ 下载改由页面侧 blob + a[download] 直接交给系统下载管理器，
-//   本文件不再拦截 __dl 路径、也不再接收 DL_STORE 消息（相关缓存键 `aj-dl-v1` 由旧版本遗留，
-//   下次清理旧缓存时自然消失，不用专门处理）。
+// ========== SW 直出文件下载（./__dl/<token> + DL_STORE）==========
+// 【2026-10-18 结论：华为只认 HTTP 资源，不下载 blob:】
+//   真机对照：① 同一台手机、同一份代码，Edge 全格式正常、华为全格式不落盘；
+//   ② 把 blob 的 MIME 改成 application/json 也没救（说明不是"按类型挑"）；
+//   ③ 用户给的参考站点（dppt.gansu.chinatax.gov.cn 发票页）**整站 0 处**
+//      createObjectURL / new Blob，下载是 `<a href="同源 API 地址" download>` ⇒ 纯 HTTP 资源。
+//   ⇒ 静态站要产出"同源 HTTP 文件"，唯一办法是 SW 直出。
+// ⚠️ 旧实现（2026-10-17 那版）为什么在 GitHub Pages 上"一直不行"——这是个真 bug，不是方案不行：
+//   它用 `self.location.origin + '/__dl/' + token` 当缓存键，而页面请求的 URL 是
+//   `/<仓库名>/__dl/<token>` ⇒ cache.match 永远 miss ⇒ 404；根目录以外连 SW 作用域都覆盖不到。
+//   现在统一用 **scope 相对键**（`new URL('__dl/x', registration.scope)`），根目录/子目录一致。
+var DL_PREFIX = '/__dl/';
+var DL_CACHE = 'aj-dl-v1';
+var DL_TTL_MS = 30 * 60 * 1000;   // 未取走的下载件最多留 30 分钟，避免缓存膨胀
+
+/** 下载件在 Cache Storage 里的固定键（必须与页面请求的 URL 逐字符一致） */
+function dlKey(token) {
+  var base = (self.registration && self.registration.scope) || (self.location.origin + '/');
+  return new Request(new URL('__dl/' + token, base).href);
+}
+
+/** 取走/过期清理（Cache API 不能持久保存 Blob 元数据，文件名放在响应头里） */
+function dlCleanup(cache) {
+  return cache.keys().then(function (keys) {
+    return Promise.all(keys.map(function (k) {
+      return cache.match(k).then(function (r) {
+        var at = r ? Number(r.headers.get('X-DL-At') || 0) : 0;
+        if (!at || Date.now() - at > DL_TTL_MS) return cache.delete(k);
+      }).catch(function () {});
+    }));
+  }).catch(function () {});
+}
 
 // ========== 预缓存资源列表（App Shell）==========
 // 【重要】本清单是「最小兜底集」，不再作为唯一依据。
@@ -461,9 +488,38 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // 【2026-10-17 退役】此处原有「SW 直出附件下载」分支（拦截 ./__dl/ 并回 Content-Disposition）。
-  //   用户口径："手机端华为浏览器适配的那一套不要了，就简单导出" ⇒ 下载不再经 SW，
-  //   由页面 blob + a[download] 直接走系统下载管理器。路径拦截一并删除，避免死代码误导后人。
+  // ========== 0. SW 直出附件下载（见文件头说明）==========
+  // 必须排在**所有缓存策略之前**：location.href 触发的请求 mode 也可能是 navigate，
+  //   落到下面的"导航请求"分支就会被当成页面返回 index.html。
+  if (u.pathname.indexOf(DL_PREFIX) !== -1) {
+    var _dlToken = u.pathname.split('/').pop() || '';
+    event.respondWith(
+      caches.open(DL_CACHE).then(function (cache) {
+        return cache.match(dlKey(_dlToken)).then(function (hit) {
+          if (!hit) {
+            return new Response('下载内容已过期，请回到应用重新导出。', {
+              status: 404,
+              headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
+            });
+          }
+          var _name = 'download';
+          try { _name = decodeURIComponent(hit.headers.get('X-DL-Name') || '') || 'download'; } catch (e) {}
+          // ASCII 兜底名 + RFC 5987 中文名：老浏览器读 filename，新浏览器读 filename*
+          var _ascii = _name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+          var _h = new Headers();
+          _h.set('Content-Type', hit.headers.get('Content-Type') || 'application/octet-stream');
+          _h.set('Content-Disposition', 'attachment; filename="' + _ascii + '"; filename*=UTF-8\'\'' + encodeURIComponent(_name));
+          _h.set('Cache-Control', 'no-store');
+          _h.set('X-Content-Type-Options', 'nosniff');
+          return hit.blob().then(function (b) {
+            _h.set('Content-Length', String(b.size));   // 让下载器一开始就知道总大小（华为显示进度用）
+            return new Response(b, { status: 200, headers: _h });
+          });
+        });
+      })
+    );
+    return;
+  }
 
   // --- 策略选择 ---
 
@@ -609,7 +665,31 @@ self.addEventListener('fetch', function(event) {
 self.addEventListener('message', function(event) {
   var data = event.data || {};
   switch (data.type) {
-    // 【2026-10-17 退役】原 DL_STORE（页面把待下载 Blob 登记进缓存）已随「SW 直出下载」一并删除。
+    // 【2026-10-18 见文件头】页面把待下载文件登记进来。
+    //   回执必须在 cache.put 完成后发：否则页面立刻 location.href，请求可能先到、缓存还没有 ⇒ 404
+    //   （404 是 text/plain，浏览器会把它当页面显示 ⇒ 用户看到"白屏/没反应"）。
+    case 'DL_STORE':
+      event.waitUntil(
+        caches.open(DL_CACHE).then(function (cache) {
+          var resp = new Response(data.blob, {
+            headers: {
+              'Content-Type': data.mime || 'application/octet-stream',
+              'X-DL-Name': encodeURIComponent(data.filename || 'download'),
+              'X-DL-At': String(Date.now())
+            }
+          });
+          // 先清过期件再 put：全量备份（90MB 级）在手机上很容易顶到配额，
+          //   留着上次没取走的旧件会直接让 cache.put 失败（回执 ok:false ⇒ 又退回 blob ⇒ 华为仍不落盘）。
+          return dlCleanup(cache).then(function () {
+            return cache.put(dlKey(String(data.token || '')), resp);
+          }).then(function () {
+            if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: true });
+          });
+        }).catch(function (e) {
+          if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: false, error: String((e && e.message) || e) });
+        })
+      );
+      break;
     case 'SKIP_WAITING':
       self.skipWaiting();
       break;

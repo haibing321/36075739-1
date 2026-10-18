@@ -768,7 +768,7 @@
                     var s = String(n).replace(/^deepseek-v4-/, '').replace(/^deepseek-/, '');
                     // V4.1 Flash 为当前主力模型（原生多模态），简称统一显示 v4.1-flash；
                     // 旧名 flash-vision-exp / v4-flash-vision-exp 亦已被官方路由到 V4.1 Flash，一并归并。
-                    var map = { 'flash': 'v4.1-flash', 'chat': 'chat', 'reasoner': '推理', 'v4-flash': 'v4.1-flash', 'v4-flash-vision-exp': 'v4.1-flash', 'flash-vision-exp': 'v4.1-flash' };
+                    var map = { 'flash': 'v4.1-flash', 'pro': 'v4-pro', 'chat': 'chat', 'reasoner': '推理', 'v4-flash': 'v4.1-flash', 'v4-flash-vision-exp': 'v4.1-flash', 'flash-vision-exp': 'v4.1-flash' };
                     return map[s] || (s.length > 10 ? s.slice(0, 9) + '…' : s);
                 }
                 var sub = _dsCurrentSub || 'chat';
@@ -1139,12 +1139,20 @@
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">名称（显示用）</label><input id="ds-pe-name" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="如：DeepSeek V4"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API 地址</label><input id="ds-pe-url" list="api-url-list" onchange="if(window.dsAutoDetectModel)dsAutoDetectModel()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="https://api.deepseek.com/chat/completions"></div>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">模型名称</label><input id="ds-pe-model" list="api-model-list" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="deepseek-flash"></div>';
+                // 【2026-10-18】补上被引用却一直不存在的 datalist：官方 GET /v1/models 实测只有这两个 id，
+                //   写成版本号（如 ds-v4.1-Flash-1017 / deepseek-flash-1017）会被 400 拒绝并回显"支持的名字"。
+                //   flash = V4.1 Flash（原生多模态，可看图、1M 上下文）；v4-pro = 纯文本推理档（不可送图）。
+                html += '<datalist id="api-model-list">'
+                    + '<option value="deepseek-flash">DeepSeek V4.1 Flash（原生多模态 · 可看图）</option>'
+                    + '<option value="deepseek-v4-pro">DeepSeek V4 Pro（纯文本 · 深度推理）</option>'
+                    + '</datalist>';
                 html += '<div><label style="font-weight:600;display:block;margin-bottom:4px;">API Key</label><input id="ds-pe-key" type="password" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;" placeholder="sk-..."></div>';
-                // 联网搜索（Web Search）开关：经 DeepSeek Anthropic 兼容层的服务端检索（web_search_20250305）
-                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 经 Anthropic 联网通道（deepseek-flash 服务端检索）</label>';
+                // 联网搜索（Web Search）开关：默认走本地工具通道（web_search / web_fetch，**返回明文网址**，可与本地工具同用）；
+                //   仅当端点不支持 function calling 时自动回落到 Anthropic 兼容层的服务端检索（web_search_20250305，无链接）。
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 检索外部实时信息并给出网址（不支持工具调用的端点自动回落到服务端检索）</label>';
                 // 【多模态模型快捷预设】一键填好名称/URL/模型名，免手敲
                 // V4.1 Flash 已原生支持多模态（图文通用），不再需要单独的「视觉模型」配置
-                html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" class="ds-vision-btn" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 一键填入 DeepSeek V4.1 Flash</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">deepseek-flash · 原生多模态，看图/识别照片与文字对话同一模型</span></div>';
+                html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" class="ds-vision-btn" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 一键填入 DeepSeek V4.1 Flash</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">deepseek-flash · 原生多模态（可看图）；另有纯文本档 deepseek-v4-pro 可手填</span></div>';
                 html += '</div>';
                 html += '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;"><button class="ds-cancel-btn" onclick="dsCancelEditProvider()" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;cursor:pointer;">取消</button><button onclick="dsSaveProviderFromForm()" class="btn-primary-sm">保存模型</button></div>';
                 html += '</div>';
@@ -1605,6 +1613,12 @@
                     '你是一名铁路安全监察智能助手，专注于铁路安全规章、检查信息的查询与分析。',
                     '回答请使用中文，条理清晰，引用数据时注明来源（如"规章制度：XXX"、"检查信息：XXX"）。',
                     '若业务数据中未找到相关内容，如实告知，不得捏造。',
+                    // 【2026-10-18 实测 A/B】此前主对话提示词**没有篇幅约束**，同一问题的回答明显偏长
+                    //   （实测 3 问合计 2333 字 / 1381 输出 token）。加上这条后 1424 字 / 861 token
+                    //   （-39% 字数、-38% token），且要点（高挂低用、营业线、结论口径）全部保留。
+                    //   为什么放在 sysParts 前段：纯静态常量，属**稳定前缀**，不破坏 DeepSeek 前缀缓存。
+                    '回答默认简洁：先给结论，再给要点；正文控制在 400 字以内（条款原文、表格、代码不计入），'
+                    + '仅在用户明确要求"详细/全面/写报告/展开"时才放宽。不要用"好的，我来帮你分析"这类开场白。',
                     // 【2026-10-06 用户反馈修复】模型曾在回答里说"本地数据库未提供检索工具，只有 web_search" —
                     //   事实是：**本地资料由系统自动检索并注入**（见下方【本地资料】段），模型侧本来就没有
                     //   "检索本地库"的工具，这不是缺陷，也不该被当成"只能联网"的理由。
@@ -3064,7 +3078,8 @@
                     if (useWebSearch) {
                         // 关键纪律：联网能力「已开启」不等于「已检索到」。若把两者混为一谈，模型会把内部旧知识
                         // 包装成「今日热点」（曾出现把一个月前的日期当作今天的事故）。故此处按「有无真实检索结果」分档约束。
-                        systemPrompt += '\n\n【联网搜索已启用】本次会话你具备服务端联网检索能力（web_search 工具）。'
+                        systemPrompt += '\n\n【联网搜索已启用】本次会话你具备联网检索能力（web_search 工具，**返回标题与明文网址**；'
+                            + '需要网页正文时可用 web_fetch）。'
                             + '注意：这是「可用能力」而不是「必须动作」——**是否检索由你按问题需要自行判断**，不要为了走流程而检索。\n'
                             + '一、按需检索的判断标准：\n'
                             + '1) 需要检索：问题涉及新闻时事、天气、价格行情、政策法规最新动态、赛事结果、产品/软件最新版本、'
@@ -3215,14 +3230,17 @@
                     if (!_useTools) {
                         // 修复②：能力边界**如实告诉模型**，否则它会臆测检索机制（实测它把本地 KB 注入
                         // 说成"平台侧检索"，并给出"请触发一次新检索"这类错误操作建议）
+                        // ⚠️ 两份都要追加：systemPrompt 与 messages[0] 是同一条信息的两份快照，
+                        //   下面那处"无条件同步"（messages[0].content = systemPrompt）会覆盖只写一份的内容 ——
+                        //   agent-call-audit 的 E 项就是靠这个区分（只写 messages 时会被覆盖 → 提示词丢失）。
                         try {
-                            if (messages[0] && messages[0].role === 'system') {
-                                messages[0].content += '\n\n【能力说明】本轮未提供本地数据查询工具（tools）。'
-                                    + (_toolsUnsupported ? '（原因：本机记录当前模型不支持 function calling）' : '')
-                                    + '若用户要求按条件精确统计/查询本地台账，请如实说明"这一轮我没有查询工具"，'
-                                    + '并建议在输入框直接用「/agent 任务」触发本地工具精确查询（或改用支持工具调用的模型）；'
-                                    + '不要猜测、不要描述检索/注入机制，也不要声称"检索由平台侧完成"。';
-                            }
+                            var _capNote = '\n\n【能力说明】本轮未提供本地数据查询工具（tools）。'
+                                + (_toolsUnsupported ? '（原因：本机记录当前模型不支持 function calling）' : '')
+                                + '若用户要求按条件精确统计/查询本地台账，请如实说明"这一轮我没有查询工具"，'
+                                + '并建议在输入框直接用「/agent 任务」触发本地工具精确查询（或改用支持工具调用的模型）；'
+                                + '不要猜测、不要描述检索/注入机制，也不要声称"检索由平台侧完成"。';
+                            systemPrompt += _capNote;
+                            if (messages[0] && messages[0].role === 'system') messages[0].content += _capNote;
                         } catch (e) {}
                     }
                     // 【2026-10-08 体检修复·最大单点节省】工具清单改为**按本轮问题召回**（原来每轮全量 23 个）。
@@ -3234,20 +3252,43 @@
                     // 【2026-10-09 真机实测后改进】第二个参数传**本轮角色**：代码角色(frontend)只挂最小工具集
                     //   （实测：问"帮我写一个节流函数"时角色已正确判为 frontend，却仍挂全量 23 个铁路业务工具
                     //    —— 业务意图正则全不命中 ⇒ 走"全量兜底"分支 ⇒ 白烧 token 且可能被误调用）。
-                    var _toolsParamArr = _useTools ? window._agentToolsParam(_dsJudgeText(finalText), { roleKey: selectedRole }) : null;
-                    // 【v3.76 审计】联网与「本地检索工具」目前**互斥**：联网走 Responses/Anthropic 通道，
-                    //   请求体里 tools 只放服务端 web_search；工具需要"模型调用→前端执行→回灌"的闭环，
-                    //   而联网通道的流解析器只处理 server_tool_use/web_search 结果，不处理本地工具调用。
-                    //   → 因此联网时本地工具不参与（本地资料仍通过 system/instructions 注入，能力不丢）。
-                    //   这里打印一条诊断日志，避免"静默降级"难以排查；界面上也有对应说明（联网菜单）。
-                    if (useWebSearch && _useTools && typeof console !== 'undefined') {
-                        // 【2026-10-07 用户反馈修复】级别 warn → info，并把文案改准：
-                        //   ① 这是**设计取舍的说明**、不是异常 ⇒ 原来用 console.warn 在控制台显示成醒目警告，
-                        //     用户误以为出错（与"静默检查更新打 warn"同类问题，一并修正）；
-                        //   ② 原文案说"本地检索工具不参与"容易被读成"本地资料也不参与" —— 事实是
-                        //      本地资料**仍会由系统检索后注入 system**（能力不丢），只是**不能按条件精确统计**。
-                        console.info('[ds] 联网已开启：本轮只带服务端 web_search；本地资料仍会自动检索后注入（'
-                            + '但不能按条件精确统计台账）。需要精确查明细：关闭联网，或用「/agent 任务」。');
+                    // 【2026-10-18 用户口径「尽量用新功能」】联网模式改走**本地工具通道**（web_search / web_fetch）：
+                    //   好处是能拿到明文链接、且不再与本地工具互斥（可以一次回答"规定依据 + 本单位台账"）。
+                    //   降级：工具未就绪 / 端点不支持 function calling 时，`_wsViaTools` 为 false，仍走旧的服务端 web_search 通道。
+                    var _wsViaTools = !!(useWebSearch && _useTools);
+                    // ⚠️ 关键：`messages` 是在联网提示词之前构造的（systemPrompt 快照），旧通道走 systemPrompt 发请求、
+                    //   所以历史上只改 systemPrompt 就够；改走 chat/completions 后用的是 messages
+                    //   ⇒ 必须把本轮累积的提示词（含联网段、链接预读正文）同步进 messages[0]。
+                    // 【2026-10-18】改为**无条件同步**：此前只在联网模式同步，其它路径依赖"每处都记得同时改两份"，
+                    //   漏一处就是"提示词写了但模型没收到"的静默故障（本次已踩过一次）—— 一行覆盖全部路径。
+                    try { if (messages[0] && messages[0].role === 'system') messages[0].content = systemPrompt; } catch (e) {}
+                    var _toolsParamArr = _useTools
+                        ? window._agentToolsParam(_dsJudgeText(finalText), {
+                            roleKey: selectedRole,
+                            // 联网模式：强制挂联网工具（不靠关键词召回）；本地核心工具照常挂
+                            forceTools: _wsViaTools ? ['web_search', 'web_fetch'] : null
+                        })
+                        : null;
+                    // 【2026-10-18】联网走工具时补一段"怎么用"：旧通道由服务端自动检索，模型不需要知道调用细节；
+                    //   新通道必须由模型自己调，且**时效性问题必须真检索一次**，否则又会回到"用内部知识冒充最新"。
+                    if (_wsViaTools) {
+                        var _wsToolNote = '\n\n【联网工具用法（本轮）】'
+                            + 'web_search：检索外部实时信息，返回标题 + 明文网址；拿到结果**先读 summary**，'
+                            + '需要正文再对最相关的 1~2 条调 web_fetch。引用标「据联网检索：标题（网址）」。'
+                            + (_dsRealtimeQ
+                                ? '\n**本轮问题涉及时效性信息，请先调用 web_search 检索一次再作答**；'
+                                    + '检索不到就如实说明"本次未取得实时信息"，禁止用内部知识冒充最新。'
+                                : '');
+                        systemPrompt += _wsToolNote;
+                        try { if (messages[0] && messages[0].role === 'system') messages[0].content += _wsToolNote; } catch (e) {}
+                    }
+                    // 【2026-10-18 用户口径「尽量用新功能」】联网不再与本地工具互斥：
+                    //   `_wsViaTools` 为真时走 chat/completions + 本地工具通道（web_search / web_fetch 强制挂载），
+                    //   本地工具照常可用 ⇒ 一次回答里可以既给外部依据（带网址）又给本单位台账。
+                    //   仅当工具未就绪 / 端点不支持 function calling 时，才回落到旧的服务端 web_search 通道。
+                    if (_wsViaTools && typeof console !== 'undefined') {
+                        console.info('[ds] 联网已开启：本轮挂 web_search/web_fetch（返回明文链接）+ 本地工具；'
+                            + '不再使用服务端 web_search 通道。');
                     }
                     var _toolExec = (typeof window._agentExecuteTool === 'function') ? window._agentExecuteTool : null;
                     // 思考模式会消耗推理 token，适当抬高 max_tokens 避免回答被截断
@@ -3331,7 +3372,8 @@
                     var resp;
                     var _respEndpointUsed = '';
                     var _wsKindUsed = '';
-                    if (useWebSearch) {
+                    // 只有"旧服务端通道"才走这一支；联网走工具时（_wsViaTools）落到下面的 chat/completions 分支
+                    if (useWebSearch && !_wsViaTools) {
                         // 依次尝试候选通道：仅当「端点/请求不被接受」（400/404/405）才换下一个；
                         // 鉴权失败(401)、余额(402)、限流(429)、5xx 换通道无意义，直接如实报错。
                         var _wsFail = null;
@@ -3397,7 +3439,7 @@
                         //   去掉 tools 重新请求，并记住本机不再尝试（避免每轮都白失败一次）。降级后会在气泡里补一行说明。
                         // ⚠️ 必须限定在 chat/completions 分支（!useWebSearch）：联网走 Responses 通道，其 400 可能提到
                         //   "web_search tool"，误判会平白把请求切到另一条通道。
-                        if (resp.status === 400 && !useWebSearch && _useTools && /tool|function/i.test(String(errText))) {
+                        if (resp.status === 400 && (!useWebSearch || _wsViaTools) && _useTools && /tool|function/i.test(String(errText))) {
                             try { localStorage.setItem('ds_tools_unsupported', '1'); } catch (e) {}
                             console.warn('[ds] 当前端点不支持 function calling → 本轮自动降级重试（不带 tools）。要精确查本地台账请用 /agent：' + String(errText).slice(0, 200));
                             _useTools = false; _toolsParamArr = null;
@@ -3434,7 +3476,7 @@
                         return;
                     }
 
-                    if (useWebSearch) {
+                    if (useWebSearch && !_wsViaTools) {
                         // ── 流式读取：按实际生效的通道选择解析器 ──
                         // Anthropic 通道：server_tool_use / web_search_tool_result 内容块；
                         // Responses 通道：web_search_call item（DeepSeek 会忽略该工具，故一般恒为 0 次检索）。
@@ -3522,6 +3564,8 @@
                         }
                         // 若模型请求调用工具：本地执行后回灌结果，再请求一轮让其总结（最多 4 轮，避免无限循环）
                         var _tcRound = 1;
+                        // 【2026-10-18】联网走工具通道时的证据计数（供"本次参考"证据条与 __dsLastWs）
+                        var _wsSearchCount = 0, _wsFetchCount = 0, _wsQueries = [];
                         // 【2026-10-08 体检修复】4 → 6：原条件下循环体最多执行 **3** 次（1<4→2<4→3<4→4 停），
                         //   第 4 次请求若又产出 tool_calls 就**既不执行也不再请求**，而气泡内容此时已被
                         //   工具状态行（"🔧 正在调用…"）覆盖 ⇒ 用户可能看到**永久"思考中"的空气泡**。
@@ -3580,6 +3624,20 @@
                                 var _call = _pendingToolCalls[_k];
                                 var _exec = _tcResults[_k];
                                 var _summary = '';
+                                // 联网工具计数：web_search=检索、web_fetch=读正文（都算"真的联网了"）
+                                var _fnm = (_call.function && _call.function.name) || '';
+                                if (_fnm === 'web_search') {
+                                    _wsSearchCount++;
+                                    try {
+                                        var _qa = JSON.parse((_call.function && _call.function.arguments) || '{}');
+                                        if (_qa && _qa.query) _wsQueries.push(String(_qa.query).slice(0, 60));
+                                    } catch (e) {}
+                                } else if (_fnm === 'web_fetch') {
+                                    _wsFetchCount++;
+                                }
+                                if (_wsSearchCount || _wsFetchCount) {
+                                    try { if (window.__dsLastWs) window.__dsLastWs.searches = (_wsSearchCount + _wsFetchCount); } catch (e) {}
+                                }
                                 if (_exec && _exec.ok) {
                                     if (_exec.result && typeof _exec.result.total === 'number') _summary = '✅ ' + _call.function.name + '：共 ' + _exec.result.total + ' 条';
                                     else _summary = '✅ ' + _call.function.name + '：执行成功';
@@ -3654,6 +3712,20 @@
                                 }
                             } catch (eL) { /* 收尾请求失败不阻塞：下方统一渲染会把已累积内容呈现给用户 */ }
                             _pendingToolCalls = [];
+                        }
+                        // ── 联网（工具通道）证据：沿用旧服务端通道那一套展示口径（searches / queries / timeSensitive），
+                        //   否则"本次参考"里联网维度会显示 0，用户会以为开了联网却没搜（假成功/假失败都成因）。
+                        if (_wsViaTools) {
+                            dsHistory[assistantIdx].web = {
+                                searches: _wsSearchCount + _wsFetchCount,
+                                queries: _wsQueries,
+                                endpoint: dsApiUrl,
+                                channel: 'tools',
+                                linkRead: (window.__dsLinkRead || null),
+                                failed: false,
+                                timeSensitive: _dsRealtimeQ
+                            };
+                            try { if (window.__dsLastWs) window.__dsLastWs.searches = (_wsSearchCount + _wsFetchCount); } catch (e) {}
                         }
                     }
 
@@ -4345,7 +4417,7 @@
             // 联网检索证据条：把「本轮是否真的联网」摆在用户眼前，杜绝「说联网其实没联网」的假成功
                 /**
      * 【2026-09-29】把链接正文**存为资料**（智能对话内「📥 存为资料」按钮共用）。
-     * 取正文顺序（越前越省）：① 预读缓存（30 分钟内、含正文与标题）→ ② 阅读器单页直取（第 2 层）→ ③ 模型定向读（第 1 层）。
+     * 取正文顺序（越前越省）：① 预读缓存（30 分钟内）→ ② Fetch REST 取正文（最快最省）→ ③ 模型定向读（摘录，兜底）。
      * 落库走 smart-writer 的 wrSaveTextMaterial（同一 URL ⇒ 更新，不堆重复条目），并失效检索索引。
      */
     window.dsSaveLinkAsMaterial = async function (url, title) {
@@ -4360,10 +4432,12 @@
                 text = hit.text; t = t || hit.title || ''; ch = hit.channel || 'cache';
             }
         } catch (e) {}
-        if (!text && typeof window.dsFetchPage === 'function') {
+        // 【2026-10-18 用户口径「尽量用新功能」】Fetch REST 优先：正文直取（70ms~5s）、无模型调用；
+        //   dsFetchPage（r.jina.ai）在生产被 offline-gate 硬拦，已不参与本链。存资料要全文，故上限 20000 字。
+        if (!text && typeof window.__dsToolFetchUrl === 'function') {
             try {
-                var r = await window.dsFetchPage(u, { maxChars: 20000 });
-                if (r && r.ok) { text = r.text; t = t || r.title || ''; ch = 'reader'; }
+                var r = await window.__dsToolFetchUrl(u, { timeoutMs: 15000 });
+                if (r && r.ok) { text = r.text; t = t || r.title || ''; ch = 'rest'; }
             } catch (e) {}
         }
         if (!text && typeof window.dsLinkPreRead === 'function') {
@@ -4405,7 +4479,8 @@ function dsWebChip(m) {
                                 var _rows = _srcs.map(function (x, i) {
                                     var href = (typeof dsSafeUrl === 'function') ? dsSafeUrl(x.url) : x.url;
                                     var label = (x.title && String(x.title).trim()) ? String(x.title).trim().slice(0, 46) : String(x.url).replace(/^https?:\/\//, '').slice(0, 46);
-                                    var ch = (x.channel === 'reader') ? '阅读器' : (x.channel === 'model' ? '联网检索' : '');
+                                    var ch = (x.channel === 'rest') ? '正文接口'
+                                        : ((x.channel === 'reader') ? '阅读器' : (x.channel === 'model' ? '联网检索' : ''));
                                     var meta = ' · ' + (x.chars || 0) + ' 字' + (ch ? ' · ' + ch : '') + (x.cached ? ' · 缓存' : '');
                                     return '<div style="display:flex;gap:6px;align-items:center;">'
                                         + '<a href="' + dsEsc(href) + '" target="_blank" rel="noopener" '

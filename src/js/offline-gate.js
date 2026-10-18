@@ -29,7 +29,11 @@
         if (AI_HOSTS.test(u)) return true;
         // 用户可在「设置 → API 配置」里填任意地址：只认出**推理端点**这一形态（POST /chat/completions 等），
         // 不因为"域名没在白名单里"就把 AI 功能一起禁掉。
-        return /\/(chat\/completions|v1\/messages|completions)(\?|$)/i.test(u);
+        // 【2026-10-18】把 DeepSeek 官方工具端点也算进"AI 推理"：/v1/tools/search、/v1/tools/fetch
+        //   （智能对话/智能体的联网检索与网页阅读；官方域名本就在 AI_HOSTS 里，这一条是为自定义网关）。
+        //   不加的话：官方端点能用、换网关后这两个工具恒被拦，表现为"联网检索失败/读取失败"，且面板被拦次数上涨。
+        return /\/(chat\/completions|v1\/messages|completions)(\?|$)/i.test(u)
+            || /\/tools\/(search|fetch)(\?|$)/i.test(u);
     }
 
     /** 判定某个请求是否放行；放行时把命中意图记进 stats */

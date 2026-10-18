@@ -1910,8 +1910,12 @@
                         <div class="st-row">
                             <span class="st-row-label">📦 全局数据</span>
                             <span class="st-actions">
-                                <button onclick="document.getElementById('global-restore-btn').click();" class="st-mini btn-data-blue">导入</button>
-                                <button onclick="document.getElementById('global-backup-btn').click();" class="st-mini btn-data-green">导出</button>
+                                <!-- 【2026-10-18 华为真机】原来点的是 display:none 里的隐藏按钮（#global-backup-btn）：
+                                     华为浏览器/鸿蒙对**不可渲染元素**的 .click() 不派发事件 ⇒ 全数据导出连
+                                     oneClickBackup 都没执行（用户实测：进度条根本不出现）。改为直接调函数，
+                                     隐藏按钮仍保留（bind() 挂 onclick + 旧调用点兼容），两条路都能用。 -->
+                                <button onclick="window.oneClickRestore && window.oneClickRestore()" class="st-mini btn-data-blue">导入</button>
+                                <button onclick="window.oneClickBackup && window.oneClickBackup()" class="st-mini btn-data-green">导出</button>
                                 <button onclick="clearAllGlobalData()" class="st-mini btn-data-red">清空</button>
                             </span>
                         </div>
@@ -2135,7 +2139,7 @@
                     <section class="st-sec" data-sec="about">
                         <div class="st-group-title">版本</div>
                         <button id="check-update-btn" onclick="checkForUpdate()" class="st-btn">
-                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.79</span></span>
+                            <span id="check-update-label"><span id="check-update-title" style="font-weight:600;">🔄 检查更新</span> <span class="st-row-sub" id="setting-current-version">v4.80</span></span>
                             <span id="check-update-arrow" class="st-btn-arrow">点击检查 →</span>
                         </button>
                         <div id="update-status" class="st-hint"></div>
@@ -2161,7 +2165,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.79</span> · 2026.10.18</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.81</span> · 2026.10.18</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2208,16 +2212,17 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.79 近期更新</span>
+                    <span>v4.81 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#7c3aed;margin-top:1px;">🌐</span><span><b>智能体能读网页了</b>：在任务里贴一个网址（通报 / 标准 / 公告），它能直接读取并标注「据网页：…」引用，不再只会回答"读不到"。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🛡️</span><span><b>只读你给的链接</b>：本系统搜不出"关键词→链接"（联网检索由模型服务端完成、不返回明文网址），所以没网址时它不会瞎猜；读取只允许 http/https，本机/内网地址一律拒绝，网页里写的"指令"不会被当成命令执行。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">⚠️</span><span><b>读不到就直说</b>：未能读取时如实提示"读不到、请粘贴正文"，绝不照着域名编内容；本单位台账与规章仍以本地库为准。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📦</span><span><b>华为浏览器「全数据导出」点了没反应已修</b>：原按钮点的是隐藏元素，华为浏览器不派发这类点击，改为直接调用；进度条现在会正常出现。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📄</span><span><b>华为浏览器其它格式导出适配</b>：其下载器按文件类型分流，导出统一改用可落盘的类型（内容与扩展名不变，Edge/Chrome 行为不变）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">📥</span><span><b>报告「下载TXT」不再静默失败</b>：没有内容会明确提示，刚生成的报告可直接下载，不再出现“点了没反应”。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">🧪</span><span><b>真实数据回归修正</b>：90MB 备份往返的术语库断言按“内置词并入 + 旧写法剔除”口径校准，不再误报丢数据。</span></div>
                 </div>
             </div>
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.69 及以前）更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.80 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 技术信息 -->

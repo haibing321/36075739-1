@@ -847,6 +847,22 @@
             window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
                 filename = window.safeFileName(filename);   // ← 单点净化：所有导出都受益
+                // 【2026-10-18 华为浏览器：下载器按 MIME 决定"存 / 交给别的应用"】
+                //   实测对照（同一台手机、同一份代码）：Edge 手机端**所有格式**都能存；
+                //   华为浏览器只有 `application/json` 的导出能存，`.txt/.csv/.docx/.xlsx/.zip`
+                //   全部"点了没反应"（点击事件正常、进度条正常、无异常）。
+                //   ⇒ 代码链路无问题，是华为的下载管理器按 blob.type 分流；文本类被当"可预览"、
+                //     其余被交给第三方应用，没接住就静默丢弃。
+                //   改法：只对华为/鸿蒙把 MIME 归一成语义无关的 `application/json`——
+                //     · 字节内容不变（Blob 组合是引用式的，不复制 90MB 数据）；
+                //     · 文件名/扩展名不变（`a[download]` 的名字优先），存下来仍是 .docx/.zip/.txt。
+                //   ⚠️ 以前多次改动动的都是"通道"（SW 直出 / 系统分享 / 保存按钮 / 另存为），
+                //     这里动的是"类型判定"，两者互不替代 —— 别再往通道上加东西。
+                if (/Mobi|Android|HarmonyOS|OpenHarmony|Tablet/i.test(navigator.userAgent || '')
+                    && /HuaweiBrowser|HONORBrowser|HarmonyOS|OpenHarmony|ArkWeb|HUAWEI/i.test(navigator.userAgent || '')
+                    && String(blob.type || '').toLowerCase() !== 'application/json') {
+                    try { blob = new Blob([blob], { type: 'application/json' }); } catch (e) {}
+                }
                 window.__lastDownload = { blob: blob, filename: filename };
                 // 旧 IE / EdgeHTML：直接调系统 API
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {

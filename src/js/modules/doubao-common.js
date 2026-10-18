@@ -1049,7 +1049,9 @@
         var MAX = opts.maxLinks || 4;                 // 【第 3 层】默认最多读 4 个链接（超出者在摘录里列名说明；有总预算兜底）
         var todo = uniq.slice(0, MAX);
         var restOf = uniq.slice(MAX);
-        if (typeof window.dsWebSearchOnce !== 'function') return { ok: false, reason: 'no-websearch-api' };
+        // 新通道（Fetch REST）可用时不再依赖旧模型联网通道；两者都没有才算"无读网页能力"
+        var _hasRest = typeof window.__dsToolFetchUrl === 'function';
+        if (!_hasRest && typeof window.dsWebSearchOnce !== 'function') return { ok: false, reason: 'no-websearch-api' };
         var KEY = '_ds_link_read_cache_v1';
         var TTL = 30 * 60 * 1000;
         var cache = {};
@@ -1088,14 +1090,21 @@
                     continue;
                 }
                 var _txt = '', _ch = '', _title = '', _err = '';
-                // ① 第 2 层：阅读器代理直取 Markdown（质量最高、不耗额度）
-                if (typeof window.dsFetchPage === 'function') {
+                // ① 新通道：官方 Fetch REST 直取正文（2026-10-18 实测 70ms~5.3s，返回 Markdown 正文 + 标题）
+                //   用户口径「尽量用新功能」：它比旧的两层都快且便宜 ——
+                //   · reader（r.jina.ai）在生产会被 offline-gate 硬拦（还灌"被拦次数"面板），已从本链移除；
+                //   · 模型定向读只有摘录、且要多计一次模型调用，降为 ② 兜底。
+                //   单链上限 8000 字：正文过长时 4 个链接会把 system 撑爆（模型摘录原本只有约 3 千字）。
+                if (typeof window.__dsToolFetchUrl === 'function') {
                     try {
-                        var _pr = await window.dsFetchPage(u, { timeoutMs: opts.readerTimeoutMs || 15000, maxChars: CACHE_CAP });
-                        if (_pr && _pr.ok && _pr.text) { _txt = _pr.text; _ch = 'reader'; _title = _pr.title || ''; }
-                        else { _err = (_pr && _pr.error) || 'reader-failed'; }
+                        var _fr = await window.__dsToolFetchUrl(u, { timeoutMs: opts.restTimeoutMs || 15000 });
+                        if (_fr && _fr.ok && _fr.text) {
+                            var _cap = opts.restMaxChars || 8000;
+                            _txt = _fr.text.length > _cap ? (_fr.text.slice(0, _cap) + '\n\n（正文较长，已截取前 ' + _cap + ' 字）') : _fr.text;
+                            _ch = 'rest'; _title = _fr.title || '';
+                        } else { _err = (_fr && _fr.error) || 'rest-failed'; }
                     } catch (e) { _err = String((e && e.message) || e); }
-                } else { _err = 'no-reader'; }
+                } else { _err = 'no-rest'; }
                 // ② 第 1 层兜底：用联网通道"以该网址为目标"定向读（reader 不可用时仍能读到）
                 if (!_txt) {
                     var sys = '你是网页正文读取器。请**打开并阅读**用户给出的这个网址，逐段摘录其正文要点，'

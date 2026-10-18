@@ -4694,15 +4694,19 @@
 
             window.wrDownloadReport = function() {
                 const modal = document.getElementById('wr-report-modal');
-                const r = modal._currentReport;
-                if (!r) return;
-                // 【2026-09-21】补空内容判断：原来空报告也照样下载一个 0 字节 txt，用户以为导出失败
-                if (!String(r.content || '').trim()) {
-                    if (window.showToast) window.showToast('该报告内容为空，无法下载', true, 6000); else alert('报告内容为空');
+                const r = (modal && modal._currentReport) || null;
+                // 【2026-10-18 华为真机报"点完无反应"】原实现是 `if (!r) return;` —— **静默返回**：
+                //   报告弹窗若不是经 wrViewReport 打开（刚生成完直接展示 / 其他入口），
+                //   `_currentReport` 为空，这条导出就什么都不做、也不给提示，用户看到的就是"没反应"。
+                //   现在：内存里刚生成的内容（_wrCurrentReportContent）当兜底；确实没有内容就明说一句。
+                const content = r ? r.content : window._wrCurrentReportContent;
+                if (!String(content || '').trim()) {
+                    if (window.showToast) window.showToast('没有可下载的报告内容', true, 6000);
+                    else alert('没有可下载的报告内容');
                     return;
                 }
-                const blob = new Blob([r.content], { type: 'text/plain;charset=utf-8' });
-                window.downloadBlob(blob, (r.title || '报告') + '.txt');
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                window.downloadBlob(blob, ((r && r.title) || '报告') + '.txt');
             };
 
             window.wrDeleteReport = async function(id) {

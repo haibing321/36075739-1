@@ -2171,7 +2171,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.85</span> · 2026.10.18</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.86</span> · 2026.10.18</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2218,17 +2218,16 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.85 近期更新</span>
+                    <span>v4.86 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📱</span><span><b>手机端导出回到最直接的方式</b>：去掉中间通道，所有格式统一交给浏览器原生下载（标签页里能存为文件，与 JSON 导出同一条路）。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">⚠️</span><span><b>查明华为「已安装」窗口的限制</b>：该窗口里浏览器整体禁用下载（连自检的三条通道都点不动），导出时会明确提示改用浏览器标签页——这是浏览器行为，不是系统缺陷。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">🧪</span><span><b>保留「导出通道自检」</b>（设置 → 通用 → 调试）：三条链接若全部无反应，即表示当前是已安装窗口；标签页里点则可用于复核通道。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">📥</span><span><b>报告「下载TXT」不再静默失败</b>：没有内容会明确提示，刚生成的报告可直接下载。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">🪟</span><span><b>「已安装」窗口里点导出不再毫无反应</b>：会弹出说明并给一个「在浏览器中打开」按钮，点完直接切到浏览器标签页再导出（两者数据同一份，不用重新导入）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">📱</span><span><b>标签页导出保持原样</b>：所有格式（TXT / DOCX / CSV / ZIP，含 90MB 全量备份）都可正常存进「下载」，无需任何额外步骤。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">🖥️</span><span><b>电脑端与其它浏览器零变化</b>：仍走系统「另存为」，失败才回退到默认下载目录。</span></div>
                 </div>
             </div>
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.84 及以前）更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.85 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 技术信息 -->

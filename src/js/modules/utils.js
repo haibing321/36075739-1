@@ -861,6 +861,57 @@
                 return window.navigator.standalone === true;
             }
 
+            /** 在浏览器标签页打开本系统（同源，数据是同一份）；失败则退回当前页重载 */
+            function _openInBrowserTab() {
+                try {
+                    var w = window.open(location.href, '_blank');
+                    if (!w) { try { location.href = location.href; } catch (e2) {} }
+                } catch (e) {
+                    try { location.href = location.href; } catch (e2) {}
+                }
+            }
+
+            /**
+             * 【2026-10-18 B 方案】华为「已安装」窗口里浏览器整体禁用了下载（连 data:/blob: 的锚点都不触发），
+             * 本窗口内没有任何办法落盘 ⇒ 明确告知并一键转到浏览器标签页（同源，数据通用）。
+             * 打开动作在按钮的点击回调里**同步**执行（保住用户手势，window.open 才不被拦）。
+             */
+            function _askOpenInBrowser() {
+                return new Promise(function (resolve) {
+                    var old = document.getElementById('dl-standalone-tip');
+                    if (old) { old.remove(); }
+                    var box = document.createElement('div');
+                    box.id = 'dl-standalone-tip';
+                    box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px;';
+                    var card = document.createElement('div');
+                    card.style.cssText = 'background:#fff;border-radius:14px;max-width:440px;width:100%;padding:16px;font-size:.86rem;color:#0f172a;line-height:1.75;';
+                    var t = document.createElement('div');
+                    t.style.cssText = 'font-weight:700;margin-bottom:8px;';
+                    t.textContent = '此窗口不支持下载';
+                    var p = document.createElement('div');
+                    p.style.cssText = 'color:#334155;margin-bottom:12px;';
+                    p.textContent = '华为浏览器的“已安装/桌面图标”窗口会拦截所有文件下载（连系统自带的下载界面都不会弹出）。' +
+                        '请在浏览器标签页中打开本系统后再导出——两者数据是同一份，不需要重新导入。';
+                    card.appendChild(t); card.appendChild(p);
+
+                    var ok = document.createElement('button');
+                    ok.textContent = '在浏览器中打开';
+                    ok.style.cssText = 'width:100%;padding:10px;border:0;border-radius:10px;background:#1d4ed8;color:#fff;font-weight:700;margin-bottom:8px;';
+                    ok.onclick = function () {
+                        try { box.remove(); } catch (e) {}
+                        _openInBrowserTab();     // 必须在点击回调里同步调用
+                        resolve(true);
+                    };
+                    var cancel = document.createElement('button');
+                    cancel.textContent = '取消';
+                    cancel.style.cssText = 'width:100%;padding:9px;border:0;border-radius:10px;background:#e2e8f0;font-weight:600;';
+                    cancel.onclick = function () { try { box.remove(); } catch (e) {} resolve(false); };
+                    card.appendChild(ok); card.appendChild(cancel);
+                    box.appendChild(card);
+                    document.body.appendChild(box);
+                });
+            }
+
             function _swDlUrl(blob, filename) {
                 return new Promise(function (resolve) {
                     try {
@@ -1001,13 +1052,14 @@
 
                 // 【2026-10-18 真机定案，手机端就用最朴素的 blob + a[download]，别再套通道】
                 //   实测三条通道（同源 __dl/ 附件、data:、blob:）在华为"已安装"窗口里点了**全无反应**，
-                //   而浏览器标签页里 JSON（blob 原生下载）是真能存下来的。
+                //   而浏览器标签页里所有格式（含 90MB 备份）都能正常导出。
                 //   · 标签页：blob 原生下载可用 ⇒ 不要中间层（__dl 会被华为下载器直连取到 404，反而更糟）；
-                //   · 已安装窗口：华为整体禁用下载（连 data:/blob: 都不触发）⇒ 代码侧无解，只能提示用户改用标签页。
+                //   · 已安装窗口：华为整体禁用下载（连 data:/blob: 都不触发）⇒ 代码侧无解。
+                //     按用户选定的 B 方案：弹一句说明 + 一键「在浏览器中打开」（同源，数据是同一份），
+                //     在本窗口继续尝试下载没有意义（连下载界面都不会弹），直接 return。
                 if (_isMobile && _isHuaweiUa() && _isStandaloneMode()) {
-                    if (window.showToast) {
-                        window.showToast('华为浏览器的"已安装"窗口不允许下载文件：请在浏览器标签页打开本系统后再导出。', true, 9000);
-                    }
+                    await _askOpenInBrowser();   // 弹窗内直接完成"在浏览器中打开"（保住手势），关掉才继续
+                    return;
                 }
                 if (!_isMobile && window.showSaveFilePicker) {
                     var _okPick = await _saveViaPicker(blob, filename);

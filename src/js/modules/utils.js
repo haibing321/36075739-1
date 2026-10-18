@@ -857,11 +857,14 @@
                         var sw = navigator.serviceWorker;
                         if (!sw || !sw.getRegistration) return resolve(null);
                         sw.getRegistration().then(function (reg) {
-                            var worker = (reg && (reg.active || reg.waiting)) || sw.controller;
+                            // ⚠️ 关键：新 SW 常常停在 waiting（旧壳还在控制页面）。
+                            //   若把 DL_STORE 发给旧 SW，那边没有这个 handler ⇒ 只能干等到超时 ⇒ 退回 blob ⇒ 华为仍然不落盘。
+                            //   所以优先发给 waiting/installing（写的是新代码），最后才用 active/controller。
+                            var worker = (reg && (reg.waiting || reg.installing || reg.active)) || sw.controller;
                             if (!worker) return resolve(null);
                             var token = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
                             var done = false;
-                            var timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 20000);
+                            var timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 8000);
                             var ch = new MessageChannel();
                             ch.port1.onmessage = function (e) {
                                 if (done) return;
@@ -896,8 +899,9 @@
                 var _ua = navigator.userAgent || '';
                 var _isMobile = /Mobi|Android|iPhone|iPad|iPod|HarmonyOS|OpenHarmony|Tablet/i.test(_ua);
 
-                // 【2026-10-18】手机端先走同源 HTTP 附件（见上方 _swDlUrl 说明）：
-                //   location.href 到 attachment 响应 = 浏览器原生下载，页面不跳走、无需手势、无任何 UI。
+                // 【2026-10-18】手机端先走同源 HTTP 附件（见上方 _swDlUrl 说明）。
+                //   触发方式用 location.href：实测（本机 CDP）能真实落盘；而 `a[download]` 指向同源
+                //   __dl/ 地址时连请求都不发（与 2026-10-17 的历史结论一致），别改回锚点点击。
                 if (_isMobile) {
                     var _swUrl = await _swDlUrl(blob, filename);
                     if (_swUrl) {

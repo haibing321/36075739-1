@@ -2165,7 +2165,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.82</span> · 2026.10.18</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.83</span> · 2026.10.18</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2212,17 +2212,17 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.82 近期更新</span>
+                    <span>v4.83 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📱</span><span><b>华为手机浏览器所有格式都能导出了</b>：其下载器只认同源 HTTP 文件、不认页面内的 blob，现改为由离线缓存直出一个同源附件地址（与发票类网站的下载方式一致），DOCX/TXT/CSV/ZIP 一并解决。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🔧</span><span><b>找到旧方案反复失败的真正原因</b>：缓存键按根目录拼（/__dl/…），而站点部署在子目录，两边对不上必然 404；现改为按站点作用域拼，根目录/子目录都命中。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📱</span><span><b>华为手机浏览器导出的真正卡点已修</b>：新版本离线缓存常停在「等待接管」，导出请求被发给了旧版（它不认识这个请求）⇒ 只能超时退回 blob ⇒ 华为一律不落盘。现在优先发给等待中的新版本，并缩短为 8 秒。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🔗</span><span><b>手机端导出改走同源 HTTP 附件</b>：与发票类网站的下载方式一致（华为只认同源文件、不认页面内 blob），DOCX/TXT/CSV/ZIP 统一走这条；离线缓存不可用时仍自动退回原方式。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">📦</span><span><b>「全数据导出」点击不触发已修</b>：原按钮点的是隐藏元素，华为不派发这类点击（进度条都不出现），改为直接调用。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">📥</span><span><b>报告「下载TXT」不再静默失败</b>：没有内容会明确提示，刚生成的报告可直接下载。</span></div>
                 </div>
             </div>
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.81 及以前）更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.82 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 技术信息 -->

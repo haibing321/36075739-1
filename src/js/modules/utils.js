@@ -861,14 +861,72 @@
                 return window.navigator.standalone === true;
             }
 
-            /** 在浏览器标签页打开本系统（同源，数据是同一份）；失败则退回当前页重载 */
-            function _openInBrowserTab() {
+            /** 复制文本（https 下优先 Clipboard API，失败退 textarea + execCommand） */
+            function _copyText(text) {
                 try {
-                    var w = window.open(location.href, '_blank');
-                    if (!w) { try { location.href = location.href; } catch (e2) {} }
-                } catch (e) {
-                    try { location.href = location.href; } catch (e2) {}
-                }
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).catch(function () {});
+                        return true;
+                    }
+                } catch (e) {}
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                    return true;
+                } catch (e2) { return false; }
+            }
+
+            /**
+             * 在浏览器标签页打开本系统（同源，数据是同一份）。
+             * 【2026-10-18 鸿蒙真机】独立窗口里 window.open 会被拦（返回 null 且毫无动静），
+             * 原来的兜底 `location.href = location.href` 只是把同一个窗口重载 ⇒ 用户看到的就是"没反应"。
+             * 现改为：open 被拦 → 复制网址 + 明确提示去浏览器地址栏粘贴，绝不再静默。
+             */
+            function _openInBrowserTab() {
+                var url = location.href;
+                var w = null;
+                try { w = window.open(url, '_blank'); } catch (e) { w = null; }
+                if (w) return true;
+                _copyText(url);
+                _showBrowserOpenTip(url);
+                return false;
+            }
+
+            /** 打开新窗口被拦时的兜底提示（含可复制的网址） */
+            function _showBrowserOpenTip(url) {
+                try {
+                    var old = document.getElementById('dl-open-browser-tip');
+                    if (old) old.remove();
+                    var box = document.createElement('div');
+                    box.id = 'dl-open-browser-tip';
+                    box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px;';
+                    var card = document.createElement('div');
+                    card.style.cssText = 'background:#fff;border-radius:14px;max-width:440px;width:100%;padding:16px;font-size:.86rem;color:#0f172a;line-height:1.75;';
+                    card.innerHTML = '<div style="font-weight:700;margin-bottom:8px;">当前窗口不允许打开新窗口</div>'
+                        + '<div style="color:#334155;margin-bottom:10px;">网址已复制。请点浏览器右上角「☰/⋮」→「在浏览器中打开」或「复制链接」后粘贴到浏览器标签页，'
+                        + '在那里导出（数据同一份，不需要重新导入）。</div>'
+                        + '<div style="background:#f1f5f9;border-radius:8px;padding:8px;font-size:.74rem;word-break:break-all;color:#334155;">' + url + '</div>';
+                    var again = document.createElement('button');
+                    again.textContent = '再试一次打开';
+                    again.style.cssText = 'width:100%;padding:9px;border:0;border-radius:10px;background:#1d4ed8;color:#fff;font-weight:700;margin:10px 0 8px;';
+                    again.onclick = function () {
+                        var w2 = null;
+                        try { w2 = window.open(url, '_blank'); } catch (e) {}
+                        if (w2) { try { box.remove(); } catch (e) {} }
+                    };
+                    var ok = document.createElement('button');
+                    ok.textContent = '知道了';
+                    ok.style.cssText = 'width:100%;padding:9px;border:0;border-radius:10px;background:#e2e8f0;font-weight:600;';
+                    ok.onclick = function () { try { box.remove(); } catch (e) {} };
+                    card.appendChild(again); card.appendChild(ok);
+                    box.appendChild(card);
+                    document.body.appendChild(box);
+                } catch (e) {}
             }
 
             /**
@@ -1036,6 +1094,17 @@
             window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
                 filename = window.safeFileName(filename);   // ← 单点净化：所有导出都受益
+                // 【2026-10-18 华为：统一按 application/json 交给下载器】
+                //   用户实测（标签页里）：JSON 导出走的是**干净的下载页**，而 TXT/DOCX/ZIP 会走华为的
+                //   "需要办公/压缩应用打开"的推荐页（带广告、样式也不同）。
+                //   差别就在 blob.type：application/json 被当普通文件，其余被当"要应用打开"的类型。
+                //   这里只对华为/鸿蒙把 MIME 统一成 application/json —— 字节内容与文件名（扩展名）都不变，
+                //   只是让下载器按同一条路处理，页面样式与 JSON 一致。
+                if (/Mobi|Android|HarmonyOS|OpenHarmony|Tablet/i.test(navigator.userAgent || '')
+                    && _isHuaweiUa()
+                    && String(blob.type || '').toLowerCase() !== 'application/json') {
+                    try { blob = new Blob([blob], { type: 'application/json' }); } catch (e) {}
+                }
                 window.__lastDownload = { blob: blob, filename: filename };
                 // 旧 IE / EdgeHTML：直接调系统 API
                 if (window.navigator && window.navigator.msSaveOrOpenBlob) {

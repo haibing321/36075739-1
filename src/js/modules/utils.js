@@ -882,6 +882,95 @@
                 });
             }
 
+            // ========== 导出通道自检（仅排查用，入口在 设置 → 通用 → 调试）==========
+            // 目的：不再靠猜。把三条通道各做成一个**真链接**摆出来，用户点哪个能存进「下载」，
+            // 就说明那条通道可用；再配合 SW 状态行定位是"没接管"还是"浏览器拦"。
+            window.dlSelfTest = async function () {
+                var diag = [];
+                var ver = '';
+                try { ver = (document.getElementById('about-app-version') || {}).textContent || ''; } catch (e) {}
+                diag.push('版本：' + (ver || '(未取到)'));
+                diag.push('UA：' + (navigator.userAgent || ''));
+                var swUrl = null;
+                try {
+                    var reg = await navigator.serviceWorker.getRegistration();
+                    diag.push('SW：reg=' + !!reg + ' active=' + !!(reg && reg.active)
+                        + ' waiting=' + !!(reg && reg.waiting) + ' installing=' + !!(reg && reg.installing)
+                        + ' controller=' + !!navigator.serviceWorker.controller);
+                    diag.push('Scope：' + ((reg && reg.scope) || '(无)'));
+                    if (reg && (reg.waiting || reg.installing || reg.active)) {
+                        swUrl = await _swDlUrl(
+                            new Blob(['SW 自检 PK'], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+                            '自检-同源.docx');
+                        diag.push('登记同源文件：' + (swUrl ? '成功' : '失败/超时'));
+                        if (swUrl) diag.push('附件地址：' + swUrl);
+                    }
+                } catch (e) { diag.push('SW 检测异常：' + ((e && e.message) || e)); }
+                try {
+                    var keys = await caches.open('aj-dl-v1').then(function (c) { return c.keys(); });
+                    diag.push('下载缓存条目：' + keys.length);
+                } catch (e) {}
+
+                var dataUrl = 'data:text/plain;charset=utf-8;base64,' + btoa(unescape(encodeURIComponent('数据地址自检')));
+                var blobUrl = URL.createObjectURL(new Blob(['页面内文件自检'], { type: 'text/plain;charset=utf-8' }));
+
+                var old = document.getElementById('dl-selftest');
+                if (old) old.remove();
+                var box = document.createElement('div');
+                box.id = 'dl-selftest';
+                box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:14px;';
+                var card = document.createElement('div');
+                card.style.cssText = 'background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:82vh;overflow:auto;padding:16px 16px 12px;font-size:.82rem;color:#0f172a;';
+                var h = document.createElement('div');
+                h.style.cssText = 'font-weight:700;margin-bottom:8px;font-size:.95rem;';
+                h.textContent = '导出通道自检';
+                card.appendChild(h);
+                var tip = document.createElement('div');
+                tip.style.cssText = 'color:#475569;line-height:1.7;margin-bottom:10px;';
+                tip.textContent = '下面 3 个链接请逐个点一次，然后看「文件管理 → 下载」里出现了哪些文件名：' +
+                    '能出现的就说明那条通道在你手机上可用。点完回来告诉我哪些出现了（以及第 1 个是否灰显）。';
+                card.appendChild(tip);
+
+                function linkRow(no, label, url, name, note) {
+                    var row = document.createElement('div');
+                    row.style.cssText = 'border:1px solid #e2e8f0;border-radius:10px;padding:9px 10px;margin-bottom:8px;';
+                    var t = document.createElement('div');
+                    t.style.cssText = 'font-weight:600;margin-bottom:4px;';
+                    t.textContent = no + ' ' + label;
+                    row.appendChild(t);
+                    if (url) {
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = name;
+                        a.textContent = '点我下载 ' + name;
+                        a.style.cssText = 'display:inline-block;padding:7px 12px;border-radius:8px;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:600;';
+                        row.appendChild(a);
+                    } else {
+                        var s = document.createElement('div');
+                        s.style.cssText = 'color:#b91c1c;';
+                        s.textContent = '不可用' + (note || '');
+                        row.appendChild(s);
+                    }
+                    card.appendChild(row);
+                }
+                linkRow('①', '同源附件（__dl/，与正式导出同一路径）', swUrl, '自检-同源.docx', '（离线缓存未接管或登记失败）');
+                linkRow('②', '数据地址（data:）', dataUrl, '自检-数据.txt');
+                linkRow('③', '页面内文件（blob:）', blobUrl, '自检-页面内.txt');
+
+                var pre = document.createElement('pre');
+                pre.style.cssText = 'background:#0f172a;color:#cbd5e1;border-radius:8px;padding:8px;font-size:.68rem;line-height:1.55;white-space:pre-wrap;word-break:break-all;margin:6px 0 10px;';
+                pre.textContent = diag.join('\n');
+                card.appendChild(pre);
+
+                var btn = document.createElement('button');
+                btn.textContent = '关闭';
+                btn.style.cssText = 'width:100%;padding:9px;border:0;border-radius:10px;background:#e2e8f0;font-weight:600;';
+                btn.onclick = function () { box.remove(); };
+                card.appendChild(btn);
+                box.appendChild(card);
+                document.body.appendChild(box);
+            };
+
             window.downloadBlob = async function(blob, filename) {
                 if (!blob) return;
                 filename = window.safeFileName(filename);   // ← 单点净化：所有导出都受益

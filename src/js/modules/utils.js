@@ -840,17 +840,27 @@
                 catch (e) { try { alert(msg); } catch (e2) {} }
             }
 
-            // ========== 手机端：同源 HTTP 附件（SW 直出）==========
-            // 【2026-10-18 真机定案，别再改回纯 blob】
-            //   ① 同一台手机、同一份代码：Edge 全格式正常；华为浏览器**全格式都不落盘**
-            //      （连同步、无依赖、纯文本的 .txt 都不行；改 MIME 成 application/json 也没用）。
-            //   ② 对照参考站点（用户给的 dppt.gansu.chinatax.gov.cn 发票页）：整站 0 处
-            //      createObjectURL / new Blob，下载是 `<a href="同源 API 地址" download>`
-            //      ⇒ 华为要的是**同源 HTTP 资源**，不是 blob:。
-            //   ③ 静态站没有后端，能产出同源 HTTP 文件的只有 SW（sw.js 的 ./__dl/<token>）。
-            //      ⚠️ 旧实现"一直不行"的真原因：缓存键用 origin + '/__dl/'，而子路径部署下
-            //      请求 URL 是 /<仓库名>/__dl/<token> ⇒ cache.match 必 miss ⇒ 404。现已改 scope 相对键。
-            //   没有 SW（如 U 盘 file:// 打开）或登记失败时，仍退回原来的 blob 下载，不阻断桌面端。
+            // ========== SW 直出附件（现仅用于「导出通道自检」，正式导出不再走）==========
+            // 【2026-10-18 真机最终结论（把以前的推断全部推翻，别再重踩）】
+            //   ① 标签页打开时：**blob 原生下载可用**（JSON 真能存下来即证据）。
+            //      ⇒ 正式导出就用 `_directDownload`（blob + a[download]），不要再套任何中间层。
+            //   ② 华为下载器**不经过页面 SW**：`location.href = __dl/...` 时它自己去取，
+            //      站点上并不存在该文件 ⇒ 弹出下载界面后"下载失败"（404）。
+            //      ⇒ 这条通道在华为上必然失败，v4.82~v4.84 走过的弯路即此。
+            //   ③ 华为「已安装/桌面版」窗口**整体禁用下载**：连 `data:`、`blob:` 的锚点都点不动
+            //      （三条自检链接实测全无反应）。代码侧无解，只能提示用户改用浏览器标签页。
+            function _isHuaweiUa() {
+                return /HuaweiBrowser|HONORBrowser|HarmonyOS|OpenHarmony|ArkWeb|HUAWEI/i.test(navigator.userAgent || '');
+            }
+            /** 是否运行在「已安装/桌面图标」窗口（华为在该窗口里禁用下载） */
+            function _isStandaloneMode() {
+                try {
+                    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+                    if (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+                } catch (e) {}
+                return window.navigator.standalone === true;
+            }
+
             function _swDlUrl(blob, filename) {
                 return new Promise(function (resolve) {
                     try {
@@ -927,8 +937,9 @@
                 card.appendChild(h);
                 var tip = document.createElement('div');
                 tip.style.cssText = 'color:#475569;line-height:1.7;margin-bottom:10px;';
-                tip.textContent = '下面 3 个链接请逐个点一次，然后看「文件管理 → 下载」里出现了哪些文件名：' +
-                    '能出现的就说明那条通道在你手机上可用。点完回来告诉我哪些出现了（以及第 1 个是否灰显）。';
+                tip.textContent = '下面 3 个链接请逐个点一次，然后看「文件管理 → 下载」里出现了哪些文件名。' +
+                    '若三条点了全都没有反应 ⇒ 说明当前是「已安装/桌面图标」窗口（华为在该窗口里禁用下载），' +
+                    '请改用浏览器标签页打开本系统再导出。';
                 card.appendChild(tip);
 
                 function linkRow(no, label, url, name, note) {
@@ -988,16 +999,16 @@
                 var _ua = navigator.userAgent || '';
                 var _isMobile = /Mobi|Android|iPhone|iPad|iPod|HarmonyOS|OpenHarmony|Tablet/i.test(_ua);
 
-                // 【2026-10-18】手机端先走同源 HTTP 附件（见上方 _swDlUrl 说明）。
-                //   触发方式用 location.href：实测（本机 CDP）能真实落盘；而 `a[download]` 指向同源
-                //   __dl/ 地址时连请求都不发（与 2026-10-17 的历史结论一致），别改回锚点点击。
-                if (_isMobile) {
-                    var _swUrl = await _swDlUrl(blob, filename);
-                    if (_swUrl) {
-                        try { window.location.href = _swUrl; return; } catch (e) { /* 退回 blob */ }
+                // 【2026-10-18 真机定案，手机端就用最朴素的 blob + a[download]，别再套通道】
+                //   实测三条通道（同源 __dl/ 附件、data:、blob:）在华为"已安装"窗口里点了**全无反应**，
+                //   而浏览器标签页里 JSON（blob 原生下载）是真能存下来的。
+                //   · 标签页：blob 原生下载可用 ⇒ 不要中间层（__dl 会被华为下载器直连取到 404，反而更糟）；
+                //   · 已安装窗口：华为整体禁用下载（连 data:/blob: 都不触发）⇒ 代码侧无解，只能提示用户改用标签页。
+                if (_isMobile && _isHuaweiUa() && _isStandaloneMode()) {
+                    if (window.showToast) {
+                        window.showToast('华为浏览器的"已安装"窗口不允许下载文件：请在浏览器标签页打开本系统后再导出。', true, 9000);
                     }
                 }
-
                 if (!_isMobile && window.showSaveFilePicker) {
                     var _okPick = await _saveViaPicker(blob, filename);
                     if (_okPick) return;                          // 已写入 / 用户取消

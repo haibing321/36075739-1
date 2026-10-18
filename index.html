@@ -2171,7 +2171,7 @@
                     <img src="icons/icon-192.png" alt="" width="32" height="32" style="flex-shrink:0;display:block;">
                     <div>
                         <div style="font-weight:700;font-size:1.05rem;color:var(--primary);">安监智能辅助系统</div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.84</span> · 2026.10.18</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">版本 <span id="about-app-version">v4.85</span> · 2026.10.18</div>
                     </div>
                 </div>
                 <button onclick="var p=document.getElementById('about-panel');p.style.display='none';" class="btn-close" style="font-size:1.4rem;">✕</button>
@@ -2218,17 +2218,17 @@
             <div style="margin-bottom:12px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                     <span>🆕</span>
-                    <span>v4.84 近期更新</span>
+                    <span>v4.85 近期更新</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;text-align:left;color:var(--text-secondary);">
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">🧪</span><span><b>新增「导出通道自检」</b>（设置 → 通用 → 调试）：给出 3 个可直接点的下载链接（同源附件 / 数据地址 / 页面内文件），哪个能存进「下载」就说明那条通道可用，用来定位华为等浏览器到底拦在哪一层。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">🔍</span><span><b>自检同时给出离线缓存状态</b>：注册/激活/等待/是否接管、作用域、登记结果与下载缓存条目，能直接区分「缓存没接管」和「浏览器拦下载」。</span></div>
-                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">📦</span><span><b>正式导出行为本轮未改</b>：手机仍优先走同源附件，离线缓存不可用时自动退回原方式；桌面端「另存为」不变。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b91c1c;margin-top:1px;">📱</span><span><b>手机端导出回到最直接的方式</b>：去掉中间通道，所有格式统一交给浏览器原生下载（标签页里能存为文件，与 JSON 导出同一条路）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0d9488;margin-top:1px;">⚠️</span><span><b>查明华为「已安装」窗口的限制</b>：该窗口里浏览器整体禁用下载（连自检的三条通道都点不动），导出时会明确提示改用浏览器标签页——这是浏览器行为，不是系统缺陷。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#b45309;margin-top:1px;">🧪</span><span><b>保留「导出通道自检」</b>（设置 → 通用 → 调试）：三条链接若全部无反应，即表示当前是已安装窗口；标签页里点则可用于复核通道。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="color:#0f766e;margin-top:1px;">📥</span><span><b>报告「下载TXT」不再静默失败</b>：没有内容会明确提示，刚生成的报告可直接下载。</span></div>
                 </div>
             </div>
 
-            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.83 及以前）更新记录已归档，如需查阅请联系开发者。</div>
+            <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px;">📦 更早版本（v4.84 及以前）更新记录已归档，如需查阅请联系开发者。</div>
 
 
             <!-- 技术信息 -->

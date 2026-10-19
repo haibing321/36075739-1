@@ -32,12 +32,26 @@
   // 全仓无调用点（仅 AppRegistry.phone.search 在用）。规章/检查信息统一走 KB（knowledge.js）。
 
   // ---------- 2. 智能上下文注入（自动感知当前 Tab，使用真实 API） ----------
+  // 【修复·模块上下文恒空】两级原因：① 下面的 switch 只覆盖 5 个业务 panel，而对话面板是
+  //   panel-doubao ⇒ 在对话页永远拿到 ''；② 该函数原来只在页面加载时调用一次（见文件末尾），
+  //   之后切 Tab 不再刷新 ⇒ 即便在业务页也拿的是加载时那个面板。
+  //   这里：记住"最近访问的业务模块"，对话页复用它的语境（用户常问"这条/这个怎么处理"），
+  //   并由 utils.js 的 switchTab 在每次切换后刷新（window.__dsGetTabContext）。
+  var _lastBizPanelId = '';
   function getTabContext() {
     if (!window.ENABLE_UNIFIED) return '';
     let active = null;
     try { active = document.querySelector('.panel.active'); } catch (e) { active = null; }
     if (!active) return '';
-    const id = active.id;
+    let id = active.id;
+    let _fromChat = false;
+    if (!id || id === 'panel-doubao') {
+      if (!_lastBizPanelId) return '';       // 从没进过业务模块：无语境可注入
+      id = _lastBizPanelId;
+      _fromChat = true;
+    } else {
+      _lastBizPanelId = id;
+    }
     const parts = [];
     // 每个模块独立 try-catch：单个模块未加载/抛错只跳过该模块，不拖垮整个上下文注入
     function safePart(label, fn) {
@@ -87,8 +101,13 @@
         break;
     }
     const summary = parts.join('｜');
-    return summary ? `【当前模块上下文】${summary}` : '';
+    if (!summary) return '';
+    return _fromChat
+      ? `【当前模块上下文】用户刚从该模块转到对话提问，语境如下：${summary}`
+      : `【当前模块上下文】${summary}`;
   }
+  // 供 utils.js 的 switchTab 在每次切换后刷新（否则只在加载时算一次，切 Tab 后上下文不更新）
+  window.__dsGetTabContext = getTabContext;
   function refreshTabContext() {
     window.UNIFIED_TAB_CONTEXT = getTabContext();
     log('context updated', window.UNIFIED_TAB_CONTEXT);
@@ -137,7 +156,25 @@
         + '-' + (localStorage.getItem('ds_model_v1') || '');
     } catch (e) { return 'na'; }
   }
-  function _cacheKey(q, ctx) { return _hash(q + '|' + (ctx || '').slice(0, 50) + '|' + _dataSig()); }
+  // 【修复·附件绕过缓存】键原来只含 问题+上下文+数据条数+模型，**不看附件**：
+  //   15 分钟内"换一张现场照片、问同样一句话"会直接命中旧答案 —— 图片根本没发出去，答案却是上一张图的。
+  //   现在：① 附件指纹并入键（换附件即换键）；② 带附件的一律不读也不写缓存（最稳妥：
+  //   附件问答通常是一次性的现场判断，缓存收益本就小，宁可少命中也不能给错答案）。
+  function _attSig() {
+    try {
+      var arr = (window._dsAttachments && window._dsAttachments.length) ? window._dsAttachments : null;
+      if (!arr) return '';
+      var h = 0, n = 0;
+      for (var i = 0; i < arr.length; i++) {
+        var a = arr[i] || {};
+        var s = String(a.name || a.fileName || '') + ':' + String(a.size || (a.dataUrl ? a.dataUrl.length : 0));
+        for (var j = 0; j < s.length; j++) { h = ((h << 5) - h) + s.charCodeAt(j); h |= 0; }
+        n++;
+      }
+      return 'att' + n + '_' + (h >>> 0);
+    } catch (e) { return ''; }
+  }
+  function _cacheKey(q, ctx) { return _hash(q + '|' + (ctx || '').slice(0, 50) + '|' + _dataSig() + '|' + _attSig()); }
   // 启动时从 localStorage 载入未过期项（并回写裁剪，清除已过期项避免存储膨胀）
   function _loadCache() {
     try {
@@ -167,12 +204,14 @@
   }
   function getCachedAnswer(q, ctx) {
     if (!window.ENABLE_UNIFIED) return null;
+    if (_attSig()) return null;          // 【修复】带附件不读缓存（换图/换附件问同一句不能返回旧答案）
     const e = _cache.get(_cacheKey(q, ctx));
     if (e && (Date.now() - e.t) < CACHE_TTL) { log('cache hit'); return e.a; }
     return null;
   }
   function setCachedAnswer(q, ctx, a) {
     if (!window.ENABLE_UNIFIED || !a) return;
+    if (_attSig()) return;               // 【修复】带附件的回答不写缓存（附件清理后不会污染纯文本问答）
     _cache.set(_cacheKey(q, ctx), { a: a, t: Date.now() });
     _saveCache();
   }

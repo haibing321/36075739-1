@@ -104,6 +104,13 @@
             if (typeof window['onShow_' + tab] === 'function') {
                 try { window['onShow_' + tab](); } catch (e) { console.warn('onShow_' + tab + ' 失败', e); }
             }
+            // 【修复·模块上下文恒空】切 Tab 后刷新"当前模块上下文"（原来只在页面加载时算一次，
+            //   切到哪个模块都不更新 ⇒ 对话里拿到的永远是加载时那个面板，通常还是空）。
+            try {
+                if (typeof window.__dsGetTabContext === 'function') {
+                    window.UNIFIED_TAB_CONTEXT = window.__dsGetTabContext();
+                }
+            } catch (e) {}
             if (window.perfMonitor) perfMonitor.end('tab_switch', { targetTab: tab });
         };
 

@@ -2396,6 +2396,21 @@
     var CTX_TOOL_KEEP = 6;
     function _compactMessages(messages) {
       if (!messages || messages.length < 12) return;
+      // 【优化·上下文预算】① 较早的 **assistant 正文**同样会被重复发送：一次 save_report / 长报告
+      //   可达上万字，此后每轮都原样重发（15 轮 = 15 倍 token）。这里对较早的助手正文做头尾保留，
+      //   最近 2 条保持完整（"把上面那条改一下"通常指最近一条）。
+      try {
+        var asstIdx = [];
+        for (var k = 0; k < messages.length; k++) if (messages[k] && messages[k].role === 'assistant') asstIdx.push(k);
+        var keepAsst = 2;
+        asstIdx.slice(0, Math.max(0, asstIdx.length - keepAsst)).forEach(function (i) {
+          var m = messages[i];
+          if (typeof m.content !== 'string' || m.content.length <= 1800) return;
+          if (m.content.indexOf('（较早回答已压缩') === 0) return;
+          var _omit = m.content.length - 800 - 600;
+          m.content = '（较早回答已压缩）' + m.content.slice(0, 800) + '…（省略 ' + _omit + ' 字）…' + m.content.slice(-600);
+        });
+      } catch (e) {}
       var toolIdx = [];
       for (var i = 0; i < messages.length; i++) if (messages[i].role === 'tool') toolIdx.push(i);
       if (toolIdx.length <= CTX_TOOL_KEEP) return;

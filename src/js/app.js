@@ -1720,6 +1720,13 @@ window.stFillAboutOffline = async function () {
         var _aiSum = (typeof window.dsAiMetricsSummary === 'function') ? window.dsAiMetricsSummary(20) : '';
         if (_aiSum) parts.push('AI 对话指标（' + _aiSum + '）');
     } catch (e) {}
+    // 【反馈与评估】智能体工具指标一行：调用次数 / 失败 / 重试 / 缓存命中 / 最慢工具。
+    //   此前 __agentToolMetrics 只采集不展示（数据只进不出＝没有反馈回路），这里补上消费端；
+    //   「臆造工具 / 参数不合法」单独提示 —— 它们是工具定义需要收紧的信号，不是执行错误。
+    try {
+        var _agSum = (typeof window.dsAgentMetricsSummary === 'function') ? window.dsAgentMetricsSummary() : '';
+        if (_agSum) parts.push('智能体工具指标（' + _agSum + '）');
+    } catch (e) {}
     // 【2026-10-03 用户口径】离线门禁**自证**：折叠开合/切 Tab/重建到底有没有联网，这里给硬数字。
     //   用户此前的困惑是"感觉一直在远程加载、无解" —— 现在拦截/放行都记账，且提供一键自测（开合两轮，
     //   数字不应变化），把结论交到可验证的事实上。

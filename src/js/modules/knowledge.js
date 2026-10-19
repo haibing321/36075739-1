@@ -1105,17 +1105,32 @@
                 return a;
             });
             var rest = total - sum;
-            for (var i = 0; i < full.length && rest > 0; i++) {
-                var room = Math.min(full[i].length, budget) - alloc[i];
-                if (room <= 0) continue;
-                var add = Math.min(room, rest);
-                alloc[i] += add; rest -= add;
+            // 【修复·预算分配】第二轮原先是"按源顺序一次吃光"：第一个源（rules）room 通常就有 2000+，
+            //   一步把剩余 2025 字全部拿走，其余 8 源永远停在保底 275 字（扣掉 header 只剩约 200 字，
+            //   连一块 500 字的正文都放不下）⇒ 手册/电话/日志这些"短而关键"的依据被腰斩。
+            //   改为**轮转分配**：每轮给每个还有余量的源追加一小笔（约 total/(4×源数)），
+            //   直到预算用尽或所有源都取满 ⇒ 预算在各源之间摊开，而不是被头一个源独占。
+            var _quantum = Math.max(120, Math.floor(total / (srcs.length * 4)));
+            var _guard = 0;
+            while (rest > 0 && _guard++ < 200) {
+                var _progressed = false;
+                for (var _i = 0; _i < full.length && rest > 0; _i++) {
+                    var room = Math.min(full[_i].length, budget) - alloc[_i];
+                    if (room <= 0) continue;
+                    var add = Math.min(room, rest, _quantum);
+                    alloc[_i] += add; rest -= add; _progressed = true;
+                }
+                if (!_progressed) break;      // 所有源都取满
             }
         }
         var out = '';
         for (var j = 0; j < full.length; j++) {
             var t = full[j];
-            if (alloc[j] < t.length) { t = t.slice(0, alloc[j]) + '\n（内容已截断）\n'; truncated++; }
+            if (alloc[j] < t.length) {
+                // 说清"为什么只到这里"：预算不够而不是本源没数据，避免模型误判"只有这些内容"。
+                t = t.slice(0, alloc[j]) + '\n（本源的后续块因单轮总预算限制未注入；如需更多请缩小范围再问）\n';
+                truncated++;
+            }
             out += t + '\n';
         }
         // 【P2 统计】记下"实际注入多少 / 过滤与截断多少"，供「关于」面板与后续调参（此前完全没有数据）

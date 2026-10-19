@@ -1332,5 +1332,60 @@
         return parts.join(' · ');
     };
 
+    // ==================== 智能体角色解析（跨作用域取角色入口）====================
+    // 为什么需要：角色是**逐轮解析**的（用户选「自动」时按问题推断专业），而智能体路径（agent-core）
+    //   与对话路径分处不同 IIFE / 不同函数 —— 智能体拿不到对话里的 selectedRole 局部变量。
+    //   实测缺陷：智能体的 system 提示里此前**完全没有角色与规范**（见 agent-core 的 __agentRun），
+    //   于是同一个问题"走对话"与"走智能体"表现不一致：术语不准、爱写通用套话、条款口径松。
+    //   这里给一个统一入口：先按问题解析（支持「自动」），退回用户在设置里手选的角色。
+    window.dsAgentRoleKey = function (text) {
+        try {
+            if (typeof window.dsResolveRole === 'function') {
+                var r = window.dsResolveRole(String(text || '').slice(0, 300));
+                if (r && r.key && r.key !== 'auto') return r.key;
+            }
+            if (typeof window.dsGetRole === 'function') {
+                var g = window.dsGetRole();
+                if (g && g.key && g.key !== 'auto') return g.key;
+            }
+        } catch (e) {}
+        return '';
+    };
+
+    // 【反馈与评估】智能体工具指标：__agentToolMetrics 一直在采集（calls/ok/fail/retries/cacheHits/ms），
+    //   但此前**没有任何界面消费** —— 数据只进不出，等于没有反馈。这里汇总成一行供「关于」面板展示。
+    //   口径：只统计具名工具；__unknown__（模型臆造工具）与 __invalid__（参数校验失败）是**工具定义质量**的
+    //   探针，单独提示而不混进"失败"（它们的含义是"该收紧工具描述"，不是"执行出错"）。
+    window.dsAgentMetricsSummary = function () {
+        try {
+            var m = (typeof window.__agentToolMetrics === 'function') ? window.__agentToolMetrics() : null;
+            if (!m) return '';
+            var names = Object.keys(m);
+            if (!names.length) return '';
+            var calls = 0, fail = 0, cacheHits = 0, retries = 0, slowest = null;
+            names.forEach(function (k) {
+                if (k === '__unknown__' || k === '__invalid__') return;
+                var v = m[k] || {};
+                calls += v.calls || 0;
+                fail += v.fail || 0;
+                cacheHits += v.cacheHits || 0;
+                retries += v.retries || 0;
+                var avg = (v.calls > 0 && v.ms) ? Math.round(v.ms / v.calls) : 0;
+                if (avg && (!slowest || avg > slowest.ms)) slowest = { name: k, ms: avg };
+            });
+            var parts = [];
+            if (calls) parts.push('工具调用 ' + calls + ' 次');
+            if (fail) parts.push('失败 ' + fail);
+            if (retries) parts.push('重试 ' + retries);
+            if (cacheHits) parts.push('缓存命中 ' + cacheHits);
+            if (slowest) parts.push('最慢 ' + slowest.name + ' ' + (slowest.ms / 1000).toFixed(1) + 's');
+            var unk = (m.__unknown__ && m.__unknown__.calls) || 0;
+            var inv = (m.__invalid__ && m.__invalid__.calls) || 0;
+            if (unk) parts.push('⚠️ 臆造工具 ' + unk + ' 次');
+            if (inv) parts.push('⚠️ 参数不合法 ' + inv + ' 次');
+            return parts.join(' · ');
+        } catch (e) { return ''; }
+    };
+
     console.log('✅ doubao-common.js 已加载');
 })();

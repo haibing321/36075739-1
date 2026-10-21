@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261021193546';
+var CACHE_VERSION = '20261021201911';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== SW 直出文件下载（./__dl/<token> + DL_STORE）==========
@@ -241,22 +241,20 @@ var CORE_PRECACHE = [
  * 预缓存首屏关键资源（install 阶段，数量刻意保持很少）
  * 逐条 add（而非 cache.addAll）—— 单条 404 不会导致整批失败。
  */
-function precache(event) {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache) {
-      return Promise.all(CORE_PRECACHE.map(function(u) {
-        // 【v3.76 修复】必须**带 cache:'no-cache' 重新校验**再入缓存。
-        //   原因：cache.add() 会走浏览器的 HTTP 缓存，而本项目部署在"不发 Cache-Control"的
-        //   http.server 之类环境时，浏览器按"启发式新鲜度"直接返回旧副本 → 新版本 SW 把**旧文件**
-        //   存进新缓存名里，于是"发版了但打开还是旧界面，非得手动清缓存"，而且导航是 CacheFirst，
-        //   旧壳会被一直复用。no-cache = 条件请求：没变就是 304（几乎零流量），变了才真正下载，
-        //   既解决陈旧问题，也不会像 reload 那样无脑重复下载。
-        return cache.add(new Request(u, { cache: 'no-cache' })).catch(function(err) {
-          console.warn('[SW] 核心预缓存失败(已跳过):', u, err && err.message);
-        });
-      }));
-    })
-  );
+function precacheCore() {
+  return caches.open(CACHE_NAME).then(function(cache) {
+    return Promise.all(CORE_PRECACHE.map(function(u) {
+      // 【v3.76 修复】必须**带 cache:'no-cache' 重新校验**再入缓存。
+      //   原因：cache.add() 会走浏览器的 HTTP 缓存，而本项目部署在"不发 Cache-Control"的
+      //   http.server 之类环境时，浏览器按"启发式新鲜度"直接返回旧副本 → 新版本 SW 把**旧文件**
+      //   存进新缓存名里，于是"发版了但打开还是旧界面，非得手动清缓存"，而且导航是 CacheFirst，
+      //   旧壳会被一直复用。no-cache = 条件请求：没变就是 304（几乎零流量），变了才真正下载，
+      //   既解决陈旧问题，也不会像 reload 那样无脑重复下载。
+      return cache.add(new Request(u, { cache: 'no-cache' })).catch(function(err) {
+        console.warn('[SW] 核心预缓存失败(已跳过):', u, err && err.message);
+      });
+    }));
+  });
 }
 
 /**
@@ -429,10 +427,19 @@ function _fallbackShell(retryCount) {
 
 // ========== 事件监听 ==========
 
-// 安装：预缓存核心资源
+// 安装：**只在首次安装时**预缓存核心资源
 self.addEventListener('install', function(event) {
   console.log('[SW] 安装中...', CACHE_VERSION);
-  event.waitUntil(precache(event));
+  // 【2026-10-21 用户口径·未点更新不得下载】
+  //   浏览器会在导航后按自己的节流（约 24h 一次）自动 soft update：拉 sw.js → 发现变化就
+  //   触发 install。此时用户**没有**点「立即更新」。若仍在这里 precache，就等于"没点更新
+  //   也从仓库下载"（核心壳约 1MB）。因此：
+  //     · 首次安装（registration.active 为空，即"第一次打开 / 刚清除过缓存"）→ 照常预缓存；
+  //     · 更新安装（active 已存在）→ 这里什么都不下，只进入 waiting；
+  //       等用户点「立即更新」→ SKIP_WAITING → activate 时才补齐核心壳（见 activate）。
+  if (!self.registration || !self.registration.active) {
+    event.waitUntil(precacheCore());
+  }
   // 【2026-09-28 用户口径（不可擅改）】
   //   刷新 / 重启 / 折叠  ⇒ **必须离线加载**（走本机缓存，不得联网）
   //   清除缓存 / 系统更新 ⇒ **必须远程加载**（真联网取新版）
@@ -464,10 +471,15 @@ self.addEventListener('activate', function(event) {
 
   // 延迟 2.5s 再补齐：避开首屏资源加载高峰，避免与页面自己的请求抢带宽。
   // 兜底：即使此处失败也不影响 SW 已接管的事实（缺的资源会在实际请求时按需缓存）。
+  // 【2026-10-21】更新的 SW 在 install 阶段**没有**下载核心壳（见 install 注释），
+  //   所以这里要先 precacheCore() 再 precacheRest()。首次安装时核心壳已在 install 下过，
+  //   这里的 cache.add 走 no-cache 条件请求，未变化只回 304，几乎零流量。
   setTimeout(function() {
-    precacheRest()
-      .catch(function(e) { console.warn('[SW] 补齐 App Shell 失败:', e && e.message); })
-      .then(function() { warmCdnLibs(); });
+    precacheCore()
+      .catch(function(e) { console.warn('[SW] 核心补齐失败:', e && e.message); })
+      .then(precacheRest)
+      .then(function() { warmCdnLibs(); })
+      .catch(function(e) { console.warn('[SW] 补齐 App Shell 失败:', e && e.message); });
   }, 2500);
 });
 

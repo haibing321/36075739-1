@@ -626,17 +626,20 @@ window.onclick = function(e) {
     // 表现就是「部分功能点不了」。
     var _regPromise = null;
     try {
-        // 【优化·更新可靠性】必须传 updateViaCache:'none'：不传时取默认值 'imports'，
-        //   即**离线组件脚本 sw.js 本身可以走浏览器的 HTTP 缓存**。本项目部署在
-        //   "不发 Cache-Control"的静态托管上时，浏览器会按启发式新鲜度直接复用旧副本，
-        //   于是「设置 → 检查更新 → 立即更新」里的 reg.update() 可能拿到**同一个旧 sw.js**
-        //   ⇒ 新 SW 永远不进入 waiting ⇒ 20×400ms 轮询超时 ⇒ 落到 forceHardReload 核弹路径
-        //   （清掉全部离线缓存 + 注销 SW + 整包重下），用户感受就是"更新很慢，且更新后第一次
-        //   打开还是远程"。加上该选项后，sw.js 的检查**永远真联网**（这正是"系统更新要走远程"
-        //   的应有语义），正常路径才能生效：新 SW 后台预缓存 → 用户点更新 → 换版本 → 重载走新缓存。
-        //   注意：它只影响"检查 sw.js 更新"这一步，不影响导航——页面仍是缓存优先（本地加载）。
-        _regPromise = (!_swSkipForFile && navigator.serviceWorker && navigator.serviceWorker.register)
-            ? navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+        // 【2026-10-21 用户口径·启动零联网】关键点：**已有注册时不要再调用 register()**。
+        //   原因：每次 register() 都会触发浏览器对 sw.js 做「soft update」（重新联网取脚本），
+        //   再叠加 updateViaCache:'none'，就等于"每次打开都强制联网"——正是用户要去掉的行为。
+        //   现在改为：
+        //     · 有注册  → getRegistration() 直接复用，**不发任何请求**（导航仍由 SW 拦截，走本机缓存）；
+        //     · 无注册  → 首次安装，必须 register() 一次（这一次要联网，属首次安装成本）。
+        //   新版本只由「设置 → 检查更新」触发：checkForUpdate() → reg.update()。
+        //   保留 updateViaCache:'none'：只作用于**注册/更新检查那一刻**，保证手动更新不会拿到旧 sw.js。
+        _regPromise = (!_swSkipForFile && navigator.serviceWorker && navigator.serviceWorker.getRegistration)
+            ? navigator.serviceWorker.getRegistration().then(function (existing) {
+                if (existing) return existing;                       // 已安装：零请求，纯本机启动
+                if (!navigator.serviceWorker.register) return null;
+                return navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+            })
             : null;
     } catch (swErr) {
         console.warn('[PWA] SW 注册异常，降级为无离线模式:', swErr && swErr.message);
@@ -2084,18 +2087,19 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
     }
-    // 【2026-10-03 用户口径·恢复自动检查】用户明确要求：启动后**自动检查一次系统更新**，发现新版本时
-    //   弹出更新按钮，用户点击即可更新 —— 否则"根本发现不了有没有新版本"。
-    //   这与"只有更新系统/清除缓存允许联网"的口径并不冲突：这条自动检查**本身就是"检查更新"**，
-    //   统一走 OfflineGate 的 update 意图放行，其余远程加载仍一律拦截。
-    //   时点：**启动 30 秒后**（用户指定；离线加载/首屏稳定之后，不抢启动带宽）。
-    //   节流：10 分钟内最多一次（silentCheckUpdate 内部 _last_version_check）；网络恢复时补一次。
+    // 【2026-10-21 用户口径·自动检查保留，但不下载】
+    //   用户明确：**启动 30s 自动检查 + 网络恢复补查要保留**（否则发现不了新版本）。
+    //   同时另一条口径也必须成立：**只有点击「立即更新」、且确实有新系统时才从仓库下载**。
+    //   两者的分工就落在 performUpdateCheck 的 showStatus 参数上：
+    //     · 自动检查 → showStatus=false ⇒ 只读 version.json、只置红点/横幅，**不触碰 triggerApplyUpdate**；
+    //     · 手动点击 → showStatus=true 且判定 isNew ⇒ 才 reg.update() 预取新版本。
+    //   注意：刷新/折叠/切 Tab 不在这条路径上，仍完全走本机缓存（见 offline-boot-audit ①③④）。
     if (navigator.onLine !== false) {
         setTimeout(function () {
             if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') silentCheckUpdate();
         }, 30000);
     }
-    // 网络恢复后补一次（此前若离线打开，就不可能收到更新提示）；同样只做"检查更新"这一件事。
+    // 网络恢复后补一次（离线打开时不可能收到更新提示）；同样只做"检查"，不下载。
     window.addEventListener('online', function () {
         try { if (typeof silentCheckUpdate === 'function') silentCheckUpdate(); } catch (e) {}
     });
@@ -2117,27 +2121,27 @@ async function checkForUpdate() {
     if (window.switchUpdateBtn) window.switchUpdateBtn('checking');
     statusEl.textContent = '⏳ 正在检查...';
     statusEl.style.color = 'var(--primary)';
-    // 【2026-10-03 用户口径】这是**唯二允许联网**的入口之一：显式开 `update` 意图放行，
-    //   包内的 version.json / sw.js / 更新包请求都会被离线门禁放行；包外任何远程加载仍被拦截。
+    // 【2026-10-21 用户口径】这是**唯一允许联网的更新入口**（另一处是「清除缓存」）：
+    //   显式开 `update` 意图放行，包内的 version.json / sw.js / 更新包请求才被放行；包外仍一律拦截。
+    //
+    //   ⚠️ 这里**不再无条件调用 triggerApplyUpdate()**：上一版在检查结束后补了一次，
+    //   即使结果"已是最新版本"也会 reg.update() 拉取 sw.js，服务端 sw.js 有任何字节变化
+    //   还可能触发整包预缓存 —— 用户口径是"只有**有新系统**时才从仓库下载"。
+    //   现在下载动作只发生在 performUpdateCheck 内部判定 isNew 之后（见该函数 2264 行分支），
+    //   已是最新就只更新提示文案，不发任何下载请求。
     await (window.OfflineGate
         ? OfflineGate.run('update', function () { return performUpdateCheck(UPDATE_CHECK_URL, true); })
         : performUpdateCheck(UPDATE_CHECK_URL, true));
-    // 同时触发 SW 实际拉取并预备新版本（离线优先策略下，更新只在此时发生）
-    if (window.OfflineGate) OfflineGate.run('update', function () { if (window.triggerApplyUpdate) window.triggerApplyUpdate(); });
-    else if (window.triggerApplyUpdate) window.triggerApplyUpdate();
 }
 
-// 静默检查（自动）—— 【2026-10-03 用户口径·恢复】
-//   用户明确要求"启动后自动检查一次系统更新、发现新版本弹更新按钮"，否则发现不了新版本。
-//   这与"只有更新系统/清除缓存允许联网"不冲突：**这条本身就是"检查更新"**，所以统一走
-//   OfflineGate 的 update 意图放行（不这样包一层，会被离线门禁拦下来 ⇒ 自动检查等于失效）。
-//   节流 10 分钟（_last_version_check），避免频繁请求（version.json 很小，但也没必要刷）。
+// 静默检查（启动 30s 后 + 网络恢复时各一次）
+//   【2026-10-21 口径】保留自动检查，但**只检查、不下载**：
+//     showStatus=false ⇒ performUpdateCheck 内部不会调用 triggerApplyUpdate（见其 isNew 分支注释），
+//     因此不会 reg.update()、不会触发新 SW 的整包预缓存。真正下载只发生在用户点击「立即更新」时。
+//   走 OfflineGate 的 update 意图放行（不包这一层会被离线门禁拦下，自动检查等于失效）。
+//   节流 10 分钟（_last_version_check），避免弱网下反复请求。
 async function silentCheckUpdate() {
-    // 【2026-10-07 修复】以**本地文件**方式直接双击打开（`file://`）时提前返回：
-    //   浏览器对 file:// 页面禁止 fetch（报 "Cross origin requests are only supported for
-    //   protocol schemes: http, https…"）、也禁用 Service Worker 与 manifest ⇒ 更新检查**必然失败**，
-    //   发这个请求只会白等 8 秒超时并在控制台刷出红色报错，让用户误以为应用坏了。
-    //   正式使用请通过 http(s) 地址访问站点（本地验证可 `npx serve -s . -l 8080`）。
+    // file:// 打开时浏览器禁止 fetch（CORS），必然失败；直接跳过，避免控制台刷红。
     if (typeof location !== 'undefined' && location.protocol === 'file:') return;
     const lastCheck = localStorage.getItem('_last_version_check');
     if (lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) return;
@@ -2279,13 +2283,13 @@ async function performUpdateCheck(url, showStatus) {
                 statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteLabel + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已就绪，点击上方「🔄 立即更新」应用新版本';
                 statusEl.style.color = '#dc2626';
             }
-            // 【2026-09-23 用户反馈修复】静默检查（showStatus=false）**不再自动预下载整个应用**。
-            //   原来只要判定"有新版本"就 triggerApplyUpdate() → reg.update() → 新 SW 的 install
-            //   会把 51 项预缓存**全部重新从远程下载**。用户实测：断网打开秒开（这条路径被跳过），
-            //   联网打开却"和清除缓存一样慢"—— 就是它整包重下造成的。
-            //   现在静默检查只做提示（红点 + 顶部横幅），真正的下载交给用户点「🔄 立即更新」，
-            //   保证折叠开合 / 刷新始终只读本机离线数据。手动检查（showStatus=true）保持原有预下载行为。
-            if (showStatus && window.triggerApplyUpdate) window.triggerApplyUpdate();
+            // 【2026-10-21 用户口径·下载只在"点击更新"时发生】
+            //   这里**一律不发起 reg.update()**（无论自动检查还是手动检查）：
+            //   手动「检查更新」只负责读 version.json、把按钮切成「🔄 立即更新」并弹横幅；
+            //   真正的下载发生在用户点这个按钮 → applyPendingUpdate() → reg.update()
+            //   → 新 SW install → 缓存就绪 → SKIP_WAITING → controllerchange → 重载。
+            //   这样"检查到新版本"本身不产生任何包下载，符合"后点击更新才远程更新"。
+            //   （2026-09-23 那版只对静默检查做了限制，手动检查仍会预下载；本次统一收敛。）
             // 页面顶部弹出更新提示条（手动/静默检查均生效），点击即应用
             if (window.showUpdateBanner) window.showUpdateBanner(remoteLabel);
         } else {

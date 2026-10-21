@@ -573,6 +573,52 @@ window.onclick = function(e) {
         console.log('[PWA] SW 注册中(离线优先)...');
     }
 
+    /**
+     * 【2026-10-21】file:// 直开提示条
+     * 为什么加：U 盘里最常见的一步是"双击 index.html"。这样打开**不是**正常入口 ——
+     *   ① 浏览器禁用 Service Worker ⇒ 离线与「安装为应用」全部失效；
+     *   ② file:// 与 http://127.0.0.1 是**两个不同的源** ⇒ 看到的数据是空的，用户会误以为"数据丢了"；
+     *   ③ manifest 不注入、检查更新不可用（已有注释说明）。
+     * 原来这些只写在控制台/更新面板里，用户看不到。这里在页面顶部给一条可关闭的说明，
+     * 并直接告诉他正确入口是哪个脚本。仅 file:// 触发，http/https 与 PWA 独立窗口不受影响。
+     */
+    function _showFileModeBanner() {
+        try {
+            if (document.getElementById('_file_mode_tip')) return;
+            if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return;
+            var bar = document.createElement('div');
+            bar.id = '_file_mode_tip';
+            bar.setAttribute('role', 'note');
+            bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:12000;background:#16324f;color:#fff;'
+                + 'box-sizing:border-box;max-width:100vw;'
+                + 'border-bottom:2px solid #b78a3c;padding:9px 42px 9px 14px;font-size:12.5px;line-height:1.65;'
+                + 'box-shadow:0 4px 14px rgba(0,0,0,.25);';
+            bar.innerHTML = '<b>⚠️ 当前是"本地文件"打开方式</b>（地址以 file:// 开头）：'
+                + '离线缓存、安装到桌面、检查更新都不可用，这里看到的数据与正常入口相互独立。'
+                + '<br>请关闭本页，改用目录里的 <b>启动（双击运行）.bat</b>（麒麟/统信：终端执行 <b>bash start-linux.sh</b>）。';
+            var x = document.createElement('button');
+            x.type = 'button';
+            x.textContent = '✕';
+            x.setAttribute('aria-label', '关闭提示');
+            x.style.cssText = 'position:absolute;right:8px;top:6px;background:none;border:none;color:#c9d7e6;'
+                + 'font-size:15px;cursor:pointer;padding:2px 6px;';
+            x.onclick = function () {
+                try { sessionStorage.setItem('_file_mode_tip_closed', '1'); } catch (e) {}
+                bar.remove();
+            };
+            bar.appendChild(x);
+            var mount = function () {
+                try {
+                    var closed = sessionStorage.getItem('_file_mode_tip_closed') === '1';
+                    if (!closed) document.body.appendChild(bar);
+                } catch (e) {}
+            };
+            if (document.body) mount();
+            else document.addEventListener('DOMContentLoaded', mount);
+        } catch (e) {}
+    }
+    if (_swSkipForFile) _showFileModeBanner();
+
     // 必须给 register 兜底：非 HTTPS 站点、隐私模式、被裁剪的 WebView 都可能让
     // register 直接抛错或 reject。原实现既无 try/catch 也无 .catch()，一旦失败
     // 整个 IIFE 就中断了 —— 后面的 triggerApplyUpdate / switchUpdateBtn /

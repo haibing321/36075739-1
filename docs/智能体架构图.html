@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>智能体（ReAct Agent）架构 · 铁路安监智能辅助系统</title>
+<style>
+  :root{
+    --navy:#16324f; --navy-2:#1f4a72; --deep:#0e2237;
+    --gold:#b78a3c; --gold-bg:#fdf8ef; --gold-line:#e6d3ae;
+    --ink:#1d2733; --ink-2:#4b5b6b; --ink-3:#7b8a99;
+    --line:#dde3ea; --line-2:#e9eef3; --card:#fff; --bg:#eef1f5;
+    --blue-bg:#f2f6fb;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:28px 18px 40px;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{width:1180px;max-width:100%;margin:0 auto;background:#fff;border:1px solid #e3e8ee;border-radius:16px;overflow:hidden;box-shadow:0 18px 50px rgba(16,32,56,.10);}
+
+  header{display:flex;align-items:center;gap:16px;padding:20px 30px;color:#fff;
+    background:linear-gradient(100deg,#0e2237 0%,#16324f 55%,#1f4a72 100%);border-bottom:3px solid var(--gold);}
+  header img{width:46px;height:46px;border-radius:11px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.35);}
+  .ht{flex:1;min-width:0;}
+  .ht h1{margin:0;font-size:20px;letter-spacing:2px;font-weight:700;}
+  .ht .sub{margin-top:5px;font-size:12px;letter-spacing:.6px;color:#c9d7e6;}
+  .hmeta{text-align:right;font-size:11px;line-height:1.85;color:#c9d7e6;}
+  .hmeta b{color:#e8c98d;font-weight:600;}
+
+  main{padding:20px 26px 6px;}
+  .band{display:grid;grid-template-columns:86px 1fr;gap:14px;align-items:stretch;}
+  .rail{border-radius:10px;color:#fff;background:linear-gradient(160deg,var(--navy),var(--deep));
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px 6px;text-align:center;}
+  .rail .no{font-size:11px;letter-spacing:1px;color:#e8c98d;font-weight:700;}
+  .rail .nm{font-size:13px;font-weight:600;letter-spacing:1.5px;line-height:1.35;}
+  .rail .en{font-size:8.5px;color:#8fa6bd;letter-spacing:.6px;text-transform:uppercase;}
+  .rail.gold{background:linear-gradient(160deg,#8d6a2c,#6d4f1c);}
+  .rail.gold .en{color:#e3cb9c;}
+
+  .body{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px 14px;}
+  .bhead{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;}
+  .bhead h2{margin:0;font-size:13.5px;letter-spacing:.6px;color:var(--navy);font-weight:700;}
+  .bhead .hint{font-size:11px;color:var(--ink-3);}
+
+  .grid{display:grid;gap:9px;}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .g3{grid-template-columns:repeat(3,1fr);}
+  .g2{grid-template-columns:1fr 1fr;}
+
+  .chip{border:1px solid var(--line);border-radius:9px;padding:9px 10px;background:#fbfcfe;text-align:center;}
+  .chip .k{display:block;font-weight:600;font-size:12.5px;color:var(--navy);}
+  .chip .d{display:block;font-size:10.5px;color:var(--ink-3);margin-top:2px;line-height:1.5;}
+
+  .card{border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:#fff;}
+  .card .t{font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:3px;}
+  .card .d{font-size:10.7px;color:var(--ink-2);line-height:1.58;}
+  .card em{font-style:normal;color:var(--gold);font-weight:600;}
+
+  .note{margin-top:9px;font-size:10.5px;color:var(--ink-3);line-height:1.6;}
+  .note b{color:var(--ink-2);font-weight:600;}
+
+  /* 循环 */
+  .loop{display:flex;align-items:stretch;gap:6px;}
+  .step{flex:1;border:1px solid var(--gold-line);background:#fffdf8;border-radius:10px;padding:9px 10px;}
+  .step .n{font-size:9.5px;color:#b39158;letter-spacing:1px;font-weight:700;}
+  .step .k{font-size:12px;font-weight:700;color:#7a5a1f;margin:1px 0 3px;}
+  .step .d{font-size:10.2px;color:#6b5a3c;line-height:1.5;}
+  .arw{display:flex;align-items:center;color:#c9a86a;font-size:14px;font-weight:700;}
+  .loopback{margin-top:8px;border-top:1px dashed #d8c39a;padding-top:7px;display:flex;align-items:center;gap:8px;font-size:10.3px;color:#9c8557;}
+  .loopback .pill{border:1px solid #e6d3ae;background:#fff;border-radius:20px;padding:2px 10px;color:#7a5a1f;font-weight:600;}
+
+  /* 退出条件 */
+  .exits{display:flex;flex-wrap:wrap;gap:6px;}
+  .exits span{font-size:10.3px;color:#7a2b2b;background:#fdf3f3;border:1px solid #f0d4d4;border-radius:20px;padding:3px 9px;}
+
+  /* 工具区 */
+  .tools{display:grid;grid-template-columns:1.05fr .95fr;gap:9px;}
+  .tbox{border:1px solid var(--line);border-radius:10px;background:var(--blue-bg);padding:10px 11px;}
+  .tbox .t{font-size:11.5px;font-weight:700;color:var(--navy);margin-bottom:5px;}
+  .tbox ul{margin:0;padding-left:13px;}
+  .tbox li{font-size:10.5px;color:var(--ink-2);line-height:1.66;}
+  .tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;}
+  .tags span{font-size:10.2px;background:#fff;border:1px solid var(--line);border-radius:5px;padding:2px 7px;color:var(--ink-2);}
+  .tags span.core{border-color:#c9a86a;background:#fffdf8;color:#7a5a1f;font-weight:600;}
+
+  .flow{display:flex;align-items:center;gap:9px;height:24px;padding-left:100px;}
+  .flow .ln{width:1px;height:13px;background:repeating-linear-gradient(to bottom,#b9c6d4 0 3px,transparent 3px 6px);}
+  .flow .lb{font-size:10px;color:var(--ink-3);}
+
+  .legend{margin:14px 26px 0;border-top:1px solid var(--line-2);padding:10px 0 13px;display:flex;flex-wrap:wrap;gap:18px;font-size:10.5px;color:var(--ink-3);}
+  .legend b{color:var(--ink-2);font-weight:600;}
+  .legend .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:1px;background:var(--navy);}
+  .legend .dot.g{background:var(--gold);}
+  .legend .dot.d{background:#8fb3d9;}
+
+  footer{padding:10px 26px 16px;font-size:10px;color:#9aa8b6;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+
+  .printbtn{position:fixed;right:18px;top:16px;z-index:9;border:none;border-radius:20px;cursor:pointer;
+    background:var(--navy);color:#fff;font-size:12px;padding:8px 14px;letter-spacing:.5px;box-shadow:0 4px 14px rgba(16,32,56,.28);}
+  .printbtn:hover{background:var(--navy-2);}
+
+  @media print{
+    body{background:#fff;padding:0;}
+    .page{box-shadow:none;border:none;width:100%;border-radius:0;}
+    .printbtn{display:none;}
+    @page{size:A4 portrait;margin:8mm;}
+    .band,.loop{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+
+<button class="printbtn" onclick="window.print()">打印 / 另存 PDF</button>
+
+<div class="page">
+
+  <header>
+    <img src="../icons/icon-192.png" alt="">
+    <div class="ht">
+      <h1>智能体（ReAct Agent）架构</h1>
+      <div class="sub">铁路安监智能辅助系统 ｜ 自主规划 · 调用工具 · 本地举证 · 任务后反思</div>
+    </div>
+    <div class="hmeta">
+      版本 <b>v4.88</b><br>
+      2026-10-19<br>
+      25 个工具 · 15 轮上限
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ① 入口 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">①</div>
+        <div class="nm">入口<br>触发</div>
+        <div class="en">Entry</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>四条触发路径，两种执行形态</h2><span class="hint">同一个工具执行器</span></div>
+        <div class="grid g4">
+          <div class="chip"><span class="k">/agent 命令</span><span class="d">对话内显式调用完整 ReAct 循环</span></div>
+          <div class="chip"><span class="k">智能体页</span><span class="d">独立面板发任务，可随时停止</span></div>
+          <div class="chip"><span class="k">对话自动挂工具</span><span class="d">不带 /agent 时按意图挂工具，共用执行器</span></div>
+          <div class="chip"><span class="k">自主盯控 /goal</span><span class="d">后台 5 分钟轮询，只发提醒、不进循环</span></div>
+        </div>
+        <div class="note"><b>单工具调试：</b>调试入口可直接执行某个工具（不经模型），用于排查数据与口径。</div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">任务文本 + 界面上下文</span></div>
+
+    <!-- ② 上下文编排 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">②</div>
+        <div class="nm">上下文<br>编排</div>
+        <div class="en">Context</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>系统提示分两段：稳定段可复用，动态段每任务重建</h2><span class="hint">前缀稳定 → 缓存命中更高</span></div>
+        <div class="grid g3">
+          <div class="card"><div class="t">稳定段</div><div class="d">角色设定 + 规则 0~19（数据口径、引用规范、写库边界…），内容固定并打指纹，便于模型侧前缀缓存。</div></div>
+          <div class="card"><div class="t">动态段</div><div class="d">数据概览、当前日期、同类历史任务、最近 3 条任务、反思经验、界面上下文、用户偏好画像。</div></div>
+          <div class="card"><div class="t">预算裁剪</div><div class="d">系统提示上限 12000 字符，超限保留头 45% + 尾 15%；含「必须 / 不得 / 口径」等规则行永不裁。</div></div>
+        </div>
+        <div class="note"><b>写库闸门：</b>「写日志 / 存资料库」类工具默认 fail-closed —— 只有用户明确表达"写入 / 保存"意图才放行，避免静默写库。</div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">进入循环</span></div>
+
+    <!-- ③ ReAct 循环 -->
+    <section class="band">
+      <div class="rail gold">
+        <div class="no">③</div>
+        <div class="nm">ReAct<br>循环</div>
+        <div class="en">Loop</div>
+      </div>
+      <div class="body" style="background:var(--gold-bg);border-color:var(--gold-line);">
+        <div class="bhead"><h2 style="color:#7a5a1f;">决策 → 执行 → 回灌 → 判定</h2><span class="hint" style="color:#a48b5f;">单飞锁防重入 · 停止令牌可中断</span></div>
+        <div class="loop">
+          <div class="step"><div class="n">STEP 1</div><div class="k">模型决策</div><div class="d">携带按意图挑出的工具集请求模型；兼容 tool_calls 与文本 JSON 两种返回。</div></div>
+          <div class="arw">→</div>
+          <div class="step"><div class="n">STEP 2</div><div class="k">并行执行</div><div class="d">同一轮多个工具 Promise.all 并发；每个工具带超时、只读失败重试一次、只读结果 60s 缓存。</div></div>
+          <div class="arw">→</div>
+          <div class="step"><div class="n">STEP 3</div><div class="k">结果回灌</div><div class="d">结果裁剪（单次 12000 字 / 列表 50 条），失败与 0 命中补"换词/放宽"提示，配对为 tool 消息。</div></div>
+          <div class="arw">→</div>
+          <div class="step"><div class="n">STEP 4</div><div class="k">完成判定</div><div class="d">无工具调用即进入完成度门禁：核对是否真取到数据，再输出答案与本次引用。</div></div>
+        </div>
+        <div class="loopback">
+          <span class="pill">↺ 未完成</span>
+          <span>回到 STEP 1 继续下一轮 —— 上限 <b>15 轮</b> / 单任务 <b>8 分钟</b> / 工具总耗时 <b>120 秒</b></span>
+          <span class="pill">首轮即可收敛时不必调工具</span>
+        </div>
+        <div style="margin-top:9px;">
+          <div class="exits">
+            <span>退出：模型给出最终答案</span>
+            <span>退出：达到 15 轮</span>
+            <span>退出：8 分钟墙钟耗尽</span>
+            <span>退出：用户点停止</span>
+            <span>退出：连续重复同一调用（先反思跳过，再终止）</span>
+            <span>退出：工具预算用尽（回灌"未执行"并催结论）</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">工具清单按意图挂载</span></div>
+
+    <!-- ④ 工具体系 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">④</div>
+        <div class="nm">工具<br>体系</div>
+        <div class="en">Tools</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>25 个工具：5 个常驻 + 11 组按意图召回</h2><span class="hint">工具越多越容易选错，故按需收敛</span></div>
+        <div class="tools">
+          <div class="tbox">
+            <div class="t">常驻（每轮都挂，保证关键动作可见）</div>
+            <div class="tags">
+              <span class="core">search_issues</span><span class="core">count_issues</span><span class="core">kb_search</span><span class="core">save_report</span><span class="core">write_diary</span>
+            </div>
+            <div class="t" style="margin-top:9px;">按意图召回的分组</div>
+            <div class="tags">
+              <span>台账与导出</span><span>规章与对规</span><span>检查手册</span><span>事故案例</span><span>工作日志</span>
+              <span>写作资料</span><span>应急通讯录</span><span>知识库运维</span><span>天气</span><span>网页阅读</span><span>联网检索</span>
+            </div>
+          </div>
+          <div class="tbox">
+            <div class="t">元数据单一注册表（增删只改两处）</div>
+            <ul>
+              <li><b>kind</b>：read / write / export / net —— 决定能否重试与缓存</li>
+              <li><b>timeout</b>：默认 15s，导出类 30s</li>
+              <li><b>whenNotToUse</b>：显式写"何时不该用"，并入 description 供模型判断</li>
+              <li><b>purpose</b>：用于步骤卡与透明日志，避免只显示"调用工具"</li>
+            </ul>
+            <div class="note" style="margin-top:5px;"><b>双向审计：</b>注册表与工具定义互相校验，防止改名漏改导致元数据漂移。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">任务收口：写记录 → 结算经验 → 异步反思</span></div>
+
+    <!-- ⑤ 记忆与学习 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">⑤</div>
+        <div class="nm">记忆<br>学习</div>
+        <div class="en">Memory</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>任务记忆 + 反思 + 跨任务画像</h2><span class="hint">不是自进化，是 Reflexion 式经验复用</span></div>
+        <div class="grid g3">
+          <div class="card"><div class="t">任务记忆</div><div class="d">本机 IndexedDB 存最近 30 条 / 30 天：意图、计划、每步工具与耗时、产出、用量、反思结论。</div></div>
+          <div class="card"><div class="t">三通道注入</div><div class="d">最近 3 条任务摘要；与本次意图相关的任务（2-gram 相似度 ≥0.28，最多 2 条）；最近 3 条反思经验。</div></div>
+          <div class="card"><div class="t">任务后反思</div><div class="d">结束后异步调一次模型，产出「问题 / 建议 / 短板」，回写同一条任务记录，不新建表。</div></div>
+          <div class="card"><div class="t">经验是否真生效</div><div class="d">下次任务若避开既有短板记 helped，否则记 ignored，形成可用性统计而非"反思了就算完"。</div></div>
+          <div class="card"><div class="t">跨任务画像</div><div class="d">从历史任务沉淀关注单位、关键词、问题性质、时间范围，注入为偏好，减少重复交代。</div></div>
+          <div class="card"><div class="t">自主盯控（独立）</div><div class="d">5 分钟轮询台账/规章/日志/电话/备忘；首次建基线，之后按增量或阈值判定，6 小时冷却防打扰。</div></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">依赖与保障</span></div>
+
+    <!-- ⑥ 依赖与保障 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">⑥</div>
+        <div class="nm">依赖<br>保障</div>
+        <div class="en">Runtime</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>数据、检索、模型与离线约束</h2><span class="hint">全程本机数据优先</span></div>
+        <div class="grid g3">
+          <div class="card"><div class="t">本机业务数据</div><div class="d">台账 / 规章 / 手册 / 事故案例 / 日志 / 资料 / 通讯录，全部经只读接口取用。</div></div>
+          <div class="card"><div class="t">知识库检索</div><div class="d">KB 分块索引与相关性排序，为条款级引用提供跨源证据。</div></div>
+          <div class="card"><div class="t">模型通道</div><div class="d">智能体独立发起请求（不走对话流式），复用思考分级与视觉能力检测，多厂商可切换。</div></div>
+          <div class="card"><div class="t">上下文治理</div><div class="d">消息超 12 条才裁剪：最近 2 条助手正文保完整，更早正文留头尾；工具结果只保最近 6 条。</div></div>
+          <div class="card"><div class="t">可观测</div><div class="d">规划 / 思考 / 工具开始 / 进度心跳 / 工具完成 / 答案六类事件，逐步卡片可见。</div></div>
+          <div class="card"><div class="t">离线边界</div><div class="d">模型推理与联网检索需联网；其余读写全部本机，门禁拦截额外外联。</div></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="legend">
+    <span><i class="dot"></i><b>实线路径：</b>入口 → 编排 → 循环 → 收口</span>
+    <span><i class="dot g"></i><b>循环体：</b>决策 / 执行 / 回灌 / 判定</span>
+    <span><i class="dot d"></i><b>旁路：</b>自主盯控只发提醒，不占用 ReAct 循环</span>
+  </div>
+
+  <footer>
+    <span>依据 agent-core.js / agent-memory.js / agent-goals.js / doubao.js 实际实现绘制</span>
+    <span>铁路安监智能辅助系统 · v4.88 · 2026-10-19</span>
+  </footer>
+</div>
+
+</body>
+</html>

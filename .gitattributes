@@ -1,0 +1,8 @@
+# 行尾按平台约定固定，避免 checkout 时把脚本行尾改坏：
+#   · .sh 必须 LF（CRLF 会让 shebang 失效）
+#   · .bat / .ps1 必须 CRLF
+#   · SHA256SUMS.txt 保持字节原样（-text），否则 Linux 上 sha256sum -c 无法解析
+*.sh   text eol=lf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+SHA256SUMS.txt -text

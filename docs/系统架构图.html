@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>铁路安监智能辅助系统 · 总体架构图</title>
+<style>
+  :root{
+    --navy:#16324f; --navy-2:#1f4a72; --deep:#0e2237;
+    --gold:#b78a3c; --gold-bg:#fdf8ef; --gold-line:#e6d3ae;
+    --ink:#1d2733; --ink-2:#4b5b6b; --ink-3:#7b8a99;
+    --line:#dde3ea; --line-2:#e9eef3; --card:#ffffff; --bg:#eef1f5;
+    --blue-bg:#f2f6fb;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased; padding:28px 18px 40px;
+  }
+  .page{
+    width:1180px; max-width:100%; margin:0 auto; background:#fff;
+    border:1px solid #e3e8ee; border-radius:16px; overflow:hidden;
+    box-shadow:0 18px 50px rgba(16,32,56,.10);
+  }
+
+  /* ---------- 页头 ---------- */
+  header{
+    display:flex; align-items:center; gap:16px;
+    padding:20px 30px; color:#fff;
+    background:linear-gradient(100deg,#0e2237 0%,#16324f 55%,#1f4a72 100%);
+    border-bottom:3px solid var(--gold);
+  }
+  header img{width:46px;height:46px;border-radius:11px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.35);}
+  .ht{flex:1;min-width:0;}
+  .ht h1{margin:0;font-size:20px;letter-spacing:2px;font-weight:700;}
+  .ht .sub{margin-top:5px;font-size:12px;letter-spacing:.6px;color:#c9d7e6;}
+  .hmeta{text-align:right;font-size:11px;line-height:1.85;color:#c9d7e6;letter-spacing:.3px;}
+  .hmeta b{color:#e8c98d;font-weight:600;}
+
+  /* ---------- 主体 ---------- */
+  main{padding:22px 26px 8px;}
+  .band{display:grid;grid-template-columns:86px 1fr;gap:14px;align-items:stretch;}
+  .rail{
+    position:relative;border-radius:10px;color:#fff;
+    background:linear-gradient(160deg,var(--navy) 0%,var(--deep) 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:6px;padding:10px 6px;text-align:center;
+  }
+  .rail .no{font-size:11px;letter-spacing:1px;color:#e8c98d;font-weight:700;}
+  .rail .nm{font-size:13px;font-weight:600;letter-spacing:1.5px;line-height:1.35;}
+  .rail .en{font-size:8.5px;color:#8fa6bd;letter-spacing:.6px;text-transform:uppercase;}
+  .rail.gold{background:linear-gradient(160deg,#8d6a2c 0%,#6d4f1c 100%);}
+  .rail.gold .en{color:#e3cb9c;}
+
+  .body{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:13px 15px 14px;
+  }
+  .bhead{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;}
+  .bhead h2{margin:0;font-size:13.5px;letter-spacing:.6px;color:var(--navy);font-weight:700;}
+  .bhead .hint{font-size:11px;color:var(--ink-3);}
+
+  /* 通用小卡 */
+  .grid{display:grid;gap:9px;}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .g6{grid-template-columns:repeat(6,1fr);}
+  .g3{grid-template-columns:repeat(3,1fr);}
+  .chip{
+    border:1px solid var(--line);border-radius:9px;padding:9px 10px;background:#fbfcfe;
+    font-size:12px;color:var(--ink);text-align:center;line-height:1.5;
+  }
+  .chip .k{display:block;font-weight:600;font-size:12.5px;color:var(--navy);}
+  .chip .d{display:block;font-size:10.5px;color:var(--ink-3);margin-top:2px;line-height:1.45;}
+
+  .panel-chip{
+    border:1px solid var(--line);border-radius:9px;background:#f7fafd;padding:8px 6px;text-align:center;
+  }
+  .panel-chip .k{font-size:12px;font-weight:600;color:var(--navy);}
+  .panel-chip .d{font-size:9.5px;color:var(--ink-3);margin-top:2px;letter-spacing:.2px;}
+
+  .note{margin-top:9px;font-size:10.5px;color:var(--ink-3);line-height:1.6;}
+  .note b{color:var(--ink-2);font-weight:600;}
+
+  /* 业务卡 / 能力卡 */
+  .card{
+    border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:#fff;
+  }
+  .card .t{font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:3px;letter-spacing:.3px;}
+  .card .d{font-size:10.8px;color:var(--ink-2);line-height:1.55;}
+  .band-ai .body{background:var(--gold-bg);border-color:var(--gold-line);}
+  .band-ai .card{background:#fffdf8;border-color:var(--gold-line);}
+  .band-ai .card .t{color:#7a5a1f;}
+  .band-ai .bhead h2{color:#7a5a1f;}
+
+  /* 数据层 */
+  .cols{display:grid;grid-template-columns:1.35fr 1fr .85fr;gap:9px;}
+  .dbox{border:1px solid var(--line);border-radius:10px;background:var(--blue-bg);padding:10px 11px;}
+  .dbox .t{font-size:11.5px;font-weight:700;color:var(--navy);margin-bottom:5px;letter-spacing:.4px;}
+  .dbox ul{margin:0;padding-left:13px;}
+  .dbox li{font-size:10.6px;color:var(--ink-2);line-height:1.62;}
+
+  /* 连接线 */
+  .flow{display:flex;align-items:center;gap:9px;height:26px;padding-left:100px;}
+  .flow .ln{width:1px;height:14px;background:repeating-linear-gradient(to bottom,#b9c6d4 0 3px,transparent 3px 6px);}
+  .flow .lb{font-size:10px;color:var(--ink-3);letter-spacing:.3px;}
+
+  /* 模型带 */
+  .link-band{
+    display:grid;grid-template-columns:86px 1fr;gap:14px;align-items:stretch;
+  }
+  .link-box{
+    border:1px dashed #c9a86a;border-radius:12px;background:#fffaf1;padding:10px 14px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .link-box .lt{font-size:12px;font-weight:700;color:#7a5a1f;letter-spacing:.4px;white-space:nowrap;}
+  .prov{display:flex;gap:7px;flex-wrap:wrap;}
+  .prov span{
+    font-size:10.8px;color:#5f4715;background:#fff;border:1px solid #ecd9b6;border-radius:20px;
+    padding:3px 10px;line-height:1.5;
+  }
+  .prov em{font-style:normal;color:#9c8557;font-size:10px;}
+  .link-note{font-size:10.3px;color:#9c8557;margin-left:auto;white-space:nowrap;}
+
+  /* 图例 */
+  .legend{
+    margin:16px 26px 0;border-top:1px solid var(--line-2);padding:11px 0 14px;
+    display:flex;flex-wrap:wrap;gap:18px;font-size:10.5px;color:var(--ink-3);
+  }
+  .legend b{color:var(--ink-2);font-weight:600;}
+  .legend .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:1px;background:var(--navy);}
+  .legend .dot.g{background:var(--gold);}
+  .legend .dot.d{background:#8fb3d9;}
+
+  footer{
+    padding:11px 26px 16px;font-size:10px;color:#9aa8b6;line-height:1.7;
+    display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  }
+
+  .printbtn{
+    position:fixed;right:18px;top:16px;z-index:9;border:none;border-radius:20px;cursor:pointer;
+    background:var(--navy);color:#fff;font-size:12px;padding:8px 14px;letter-spacing:.5px;
+    box-shadow:0 4px 14px rgba(16,32,56,.28);
+  }
+  .printbtn:hover{background:var(--navy-2);}
+
+  @media print{
+    body{background:#fff;padding:0;}
+    .page{box-shadow:none;border:none;width:100%;border-radius:0;}
+    .printbtn{display:none;}
+    @page{size:A4 portrait;margin:8mm;}
+    .band,.link-band{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+
+<button class="printbtn" onclick="window.print()">打印 / 另存 PDF</button>
+
+<div class="page">
+
+  <header>
+    <img src="../icons/icon-192.png" alt="">
+    <div class="ht">
+      <h1>铁路安监智能辅助系统 · 总体架构</h1>
+      <div class="sub">纯静态 PWA ｜ 本地优先 ｜ AI 辅助查条款 · 写材料 · 做研判</div>
+    </div>
+    <div class="hmeta">
+      版本 <b>v4.88</b><br>
+      2026-10-19<br>
+      单页应用 · 零自建服务端
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ① 终端形态 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">①</div>
+        <div class="nm">终端<br>形态</div>
+        <div class="en">Entry</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>多形态启动，同一套代码</h2><span class="hint">不依赖安装包与服务器</span></div>
+        <div class="grid g4">
+          <div class="chip"><span class="k">浏览器标签页</span><span class="d">在线访问，Service Worker 首次接管</span></div>
+          <div class="chip"><span class="k">桌面 / 主屏图标</span><span class="d">PWA 安装，独立窗口运行</span></div>
+          <div class="chip"><span class="k">U 盘启动</span><span class="d">Windows 双击 / 麒麟 bash 启动本机服务</span></div>
+          <div class="chip"><span class="k">手机端</span><span class="d">iPhone PWA · 鸿蒙 · Android</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">加载外壳与模块（版本化缓存壳）</span></div>
+
+    <!-- ② 交互层 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">②</div>
+        <div class="nm">交互<br>层</div>
+        <div class="en">UI</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>七个业务面板 · 单页切换</h2><span class="hint">折叠屏 / 横竖屏 / 手势切页</span></div>
+        <div class="grid g4" style="grid-template-columns:repeat(7,1fr);">
+          <div class="panel-chip"><div class="k">检查手册</div><div class="d">四级目录</div></div>
+          <div class="panel-chip"><div class="k">检查信息</div><div class="d">台账检索</div></div>
+          <div class="panel-chip"><div class="k">规章制度</div><div class="d">分专业库</div></div>
+          <div class="panel-chip"><div class="k">工作日志</div><div class="d">写实考勤</div></div>
+          <div class="panel-chip"><div class="k">应急电话</div><div class="d">一键拨号</div></div>
+          <div class="panel-chip"><div class="k">资料中心</div><div class="d">归档查阅</div></div>
+          <div class="panel-chip" style="background:#fdf8ef;border-color:var(--gold-line);"><div class="k" style="color:#7a5a1f;">智能助手</div><div class="d">对话 / 对规 / 写作 / 研判</div></div>
+        </div>
+        <div class="note"><b>统一入口：</b>「智能助手」聚合 AI 能力；<b>页面状态：</b>折叠屏开合保留当前面板与编辑会话，避免重建丢内容。</div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">业务操作 / 数据读写</span></div>
+
+    <!-- ③ 业务功能层 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">③</div>
+        <div class="nm">业务<br>功能</div>
+        <div class="en">Domain</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>六项核心业务能力</h2><span class="hint">离线可查、可录入、可归档</span></div>
+        <div class="grid g3">
+          <div class="card"><div class="t">检查手册</div><div class="d">章·节·条·款四级体系，专业筛选、大纲浏览、全文速查，附事故案例对照。</div></div>
+          <div class="card"><div class="t">检查信息台账</div><div class="d">问题录入与六维检索，按单位、专业、时间、类别统计分析，支撑研判取证。</div></div>
+          <div class="card"><div class="t">规章制度库</div><div class="d">分专业建库，全文检索与条款比对，导入 PDF / OFD / Word 自动还原版式。</div></div>
+          <div class="card"><div class="t">工作日志</div><div class="d">工作写实、问题记录、拍照录像、考勤与备忘提醒，按日历回溯。</div></div>
+          <div class="card"><div class="t">应急通讯录</div><div class="d">站段与岗位通讯录检索，移动端一键拨号。</div></div>
+          <div class="card"><div class="t">资料中心</div><div class="d">写作模板、历史报告、业务资料统一归档，供写作与研判引用。</div></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">上下文 / 检索请求 ↑↓ 结论 / 引用回填</span></div>
+
+    <!-- ④ AI 能力层 -->
+    <section class="band band-ai">
+      <div class="rail gold">
+        <div class="no">④</div>
+        <div class="nm">AI<br>能力</div>
+        <div class="en">Intelligence</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>六类智能能力 + 三项支撑机制</h2><span class="hint">本地举证，联网只补理论</span></div>
+        <div class="grid g3">
+          <div class="card"><div class="t">智能对话</div><div class="d">流式回答，按需调用工具；本地资料优先举证，联网检索补理论与政策。</div></div>
+          <div class="card"><div class="t">智能对规</div><div class="d">两阶段：本地召回候选条款 → AI 筛选判定，输出依据与整改口径。</div></div>
+          <div class="card"><div class="t">智能写作</div><div class="d">套用模板与台账数据，引用规章到条款层级，导出规范公文。</div></div>
+          <div class="card"><div class="t">风险研判</div><div class="d">台账统计 + 案例 + 条款 + 重点时段因子，分专业输出等级与判定依据。</div></div>
+          <div class="card"><div class="t">智能体（ReAct）</div><div class="d">自主规划、多步调工具、任务记忆与结束复盘，可设定目标持续盯控。</div></div>
+          <div class="card"><div class="t">知识库检索 KB</div><div class="d">分块索引 + 相关性排序 + 证据注入，条款级出处可追溯。</div></div>
+        </div>
+        <div class="grid g3" style="margin-top:9px;">
+          <div class="chip" style="background:#fffdf8;border-color:var(--gold-line);"><span class="k" style="color:#7a5a1f;">语义缓存</span><span class="d">15 分钟内同问复用；带附件不读不写</span></div>
+          <div class="chip" style="background:#fffdf8;border-color:var(--gold-line);"><span class="k" style="color:#7a5a1f;">上下文注入</span><span class="d">当前模块 + 编辑会话，指代有据</span></div>
+          <div class="chip" style="background:#fffdf8;border-color:var(--gold-line);"><span class="k" style="color:#7a5a1f;">引用溯源</span><span class="d">回答尾部列本次参考，可核对原文</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 模型接入 -->
+    <div class="link-band" style="margin-top:9px;">
+      <div></div>
+      <div class="link-box">
+        <span class="lt">↔ 大模型接入（可切换）</span>
+        <div class="prov">
+          <span>DeepSeek</span>
+          <span>通义千问</span>
+          <span>智谱 GLM</span>
+          <span>OpenAI 兼容 <em>任意端点</em></span>
+          <span>Anthropic 兼容</span>
+        </div>
+        <span class="link-note">密钥仅存本机 · 一处切换全模块生效</span>
+      </div>
+    </div>
+
+    <div class="flow"><span class="ln"></span><span class="lb">读写本机数据（无云端库）</span></div>
+
+    <!-- ⑤ 数据层 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">⑤</div>
+        <div class="nm">数据<br>资产</div>
+        <div class="en">Storage</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>业务数据全部留存本机</h2><span class="hint">IndexedDB + localStorage + 文件产物</span></div>
+        <div class="cols">
+          <div class="dbox">
+            <div class="t">IndexedDB（结构化数据）</div>
+            <ul>
+              <li>检查信息台账 · 规章制度与条款图片</li>
+              <li>写作模板 / 报告 / 资料；智能体任务记忆</li>
+              <li>知识库索引缓存 · 手册与事故案例</li>
+              <li>日志媒体（照片 / 录像）· 备忘 · 通讯录</li>
+            </ul>
+          </div>
+          <div class="dbox">
+            <div class="t">localStorage（配置与状态）</div>
+            <ul>
+              <li>模型与接口配置、数据源开关</li>
+              <li>会话历史、AI 记忆、盯控目标</li>
+              <li>界面偏好、版本标记</li>
+            </ul>
+          </div>
+          <div class="dbox">
+            <div class="t">文件产物</div>
+            <ul>
+              <li>全量备份 ZIP（含媒体）</li>
+              <li>单文件 HTML 兜底备份</li>
+              <li>导出 DOCX / XLSX / TXT</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flow"><span class="ln"></span><span class="lb">安装 / 缓存 / 门禁 / 监控</span></div>
+
+    <!-- ⑥ 运行底座 -->
+    <section class="band">
+      <div class="rail">
+        <div class="no">⑥</div>
+        <div class="nm">运行<br>底座</div>
+        <div class="en">Runtime</div>
+      </div>
+      <div class="body">
+        <div class="bhead"><h2>离线优先的运行时支撑</h2><span class="hint">无自建服务端，浏览器即运行时</span></div>
+        <div class="grid" style="grid-template-columns:repeat(3,1fr);">
+          <div class="card"><div class="t">Service Worker 离线壳</div><div class="d">导航与静态资源 CacheFirst，版本化缓存壳，发版整包更换。</div></div>
+          <div class="card"><div class="t">网络门禁</div><div class="d">只放行「检查更新 / 清缓存 / AI 推理」，其余远程请求一律拦截并计数。</div></div>
+          <div class="card"><div class="t">PWA 安装与更新</div><div class="d">安装提示拦截、检查更新、缓存重装、切回本机加载。</div></div>
+          <div class="card"><div class="t">导入版式还原</div><div class="d">PDF / OFD / Word：段落合并、表格重建、页眉页脚与水印清理。</div></div>
+          <div class="card"><div class="t">导出引擎</div><div class="d">真 OOXML 公文排版（GB/T 9704 口径），浏览器原生下载。</div></div>
+          <div class="card"><div class="t">可观测性</div><div class="d">性能采样、错误监控、折叠屏状态实况、备份与恢复。</div></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="legend">
+    <span><i class="dot"></i><b>业务与数据主线：</b>面板 → 业务能力 → 本机数据</span>
+    <span><i class="dot g"></i><b>智能链路：</b>本地检索举证 → 模型生成 → 引用回填</span>
+    <span><i class="dot d"></i><b>离线边界：</b>除更新与 AI 推理外，不产生对外请求</span>
+  </div>
+
+  <footer>
+    <span>依据当前代码结构绘制：7 个业务面板 · 27 个前端模块 · 单页应用（index.html + src/js/modules）</span>
+    <span>铁路安监智能辅助系统 · v4.88 · 2026-10-19</span>
+  </footer>
+</div>
+
+</body>
+</html>

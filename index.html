@@ -2262,6 +2262,9 @@
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="flex-shrink:0;width:1.2em;">📄</span><span><b>华为手机下载页与 JSON 导出一致</b>：TXT / DOCX / ZIP 此前被识别为「需应用打开」类型，会进入带推荐内容的页面；现统一按普通文件交由浏览器处理，页面表现与 JSON 导出一致（文件内容与扩展名均不变）。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="flex-shrink:0;width:1.2em;">🪟</span><span><b>安装版「在浏览器中打开」可正常使用</b>：独立窗口会拦截新窗口弹出，现被拦截时自动复制网址并提示粘贴至地址栏访问，另提供「再试一次」。</span></div>
                     <div style="display:flex;align-items:flex-start;gap:6px;"><span style="flex-shrink:0;width:1.2em;">📤</span><span><b>标签页导出通道正常</b>：所有格式（含 90MB 全量备份）均可正常保存至「下载」。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="flex-shrink:0;width:1.2em;">📊</span><span><b>PDF / OFD 表格导入保真</b>：按框线网格还原行列（不再一列串成一行），合并单元格按「缺竖线」证据判断；表内数字不再被当成页码删掉（页边带 + 值不超过总页数两条同时满足才算页码）。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="flex-shrink:0;width:1.2em;">🖼️</span><span><b>图片随文导入</b>：PDF / OFD 中的图片按原位置内嵌入库（转 Word 时就地还原），取不到图片时如实提示，不臆造图片内文字。</span></div>
+                    <div style="display:flex;align-items:flex-start;gap:6px;"><span style="flex-shrink:0;width:1.2em;">📝</span><span><b>导出 Word 的标题层级不再误判</b>：标题识别只认排版证据（字号、居中、编号体例），避免把正文段落批量提成「标题 1」，目录结构更可信。</span></div>
                 </div>
             </div>
 

@@ -232,6 +232,18 @@
             pageLocs = found.sort();
         }
 
+        // 【2026-10-22 保真度】页高（mm）：来自 Document.xml 的 ofd:PageArea/ofd:PhysicalBox（如 "0 0 210 297"）。
+        //   用途：给"页码对象"判据加一条**位置**约束 —— 页码只会出现在页面上下边缘带，
+        //   而表格里的数字在页面中部（实测该通知：表格数字 y=72~156、页高 297）。
+        var _pageH = 0;
+        try {
+            var _pb = byLocal(docXml, 'PhysicalBox')[0];
+            if (_pb) {
+                var _pv = String(_pb.textContent || '').split(/\s+/).map(parseFloat);
+                if (_pv.length >= 4 && _pv[3] > 0) _pageH = _pv[3];
+            }
+        } catch (ePH) {}
+
         // ---------- ③ 逐页抽正文 + 去水印 ----------
         var pageTexts = [], images = 0, pageLines = [], paragraphs = [];
         for (var pg = 0; pg < pageLocs.length; pg++) {
@@ -273,8 +285,23 @@
                 var _ptxt = String(s == null ? '' : s).trim();
                 var _sizeAttr = parseFloat(attrAny(o, ['Size', 'size']));
                 if (isFinite(_sizeAttr) && _sizeAttr > 0 && _sizeAttr <= 4 && /^\d{1,4}$/.test(_ptxt)) {
-                    removed.push('页码对象「' + _ptxt + '」');
-                    continue;
+                    // 【2026-10-22 保真度·误删修复】原判据只有"小字号 + 纯数字"，实测把**表格里的数字**
+                    //   全部当页码删掉：该通知 24 页里有 78 个被删，其中 54 个数值大于总页数
+                    //   （2026 / 412 / 2835 / 4190 …显然不是页码），而 116 个表格数字的 Size 统一是 3.8806、
+                    //   坐标都在页面中部（y≈72~156，页高 297）。丢掉这些数字后，表格只剩标签没有值。
+                    //   现补两条必需条件：
+                    //     ① 页码值不可能大于总页数；
+                    //     ② 页码位于页面**上下边缘带**（各 13%，与常见页眉页脚位置相符）。
+                    //   两条都不满足时一律保留（宁可留噪声，不能删正文）。
+                    var _pnNum = parseInt(_ptxt, 10);
+                    var _edgeOk = true;
+                    if (_pageH > 0 && _xy.y != null) {
+                        _edgeOk = (_xy.y <= _pageH * 0.13) || (_xy.y >= _pageH * 0.87);
+                    }
+                    if (_pnNum <= pageLocs.length && _edgeOk) {
+                        removed.push('页码对象「' + _ptxt + '」');
+                        continue;
+                    }
                 }
                 rows.push({ y: _xy.y, x: _xy.x, size: _xy.size, s: s });
             }

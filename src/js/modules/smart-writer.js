@@ -4879,18 +4879,48 @@
                     const tag = (node.tagName || '').toLowerCase();
 
                     // 表格：每行输出 pipe 格式
+                    // 【2026-10-22 保真度修复】原实现用 textContent 直接拼格子，**完全不看 colspan/rowspan**：
+                    //   · 横向合并：`<td colspan=2>合计</td><td>42</td>` ⇒ 输出 `| 合计 | 42 |` 只有 2 格
+                    //     ⇒ 后续列整体左移，"42" 会被读成「问题类别」而不是「数量」（实测样本确实如此）；
+                    //   · 纵向合并：续行只输出 1 格 ⇒ 列数忽多忽少，AI 更难对齐。
+                    //   现在按「列坐标网格」铺开：被合并吸收的列用空串占位，保证**每一行的列数恒定**、
+                    //   每个数字仍落在它原本那一列（宁可留空，也不能让数值错列）。
                     if (tag === 'table') {
-                        const rows = node.querySelectorAll('tr');
+                        const rows = Array.from(node.querySelectorAll('tr'));
                         if (rows.length > 0) {
+                            const pending = {};                 // 列号 → 还需向下延续的行数（rowspan 占位）
                             rows.forEach(tr => {
-                                const cells = tr.querySelectorAll('td, th');
-                                if (cells.length > 0) {
-                                    const rowText = '| ' + Array.from(cells).map(c => c.textContent.trim()).join(' | ') + ' |';
-                                    lines.push(rowText);
+                                const cells = Array.from(tr.querySelectorAll('td, th'));
+                                if (!cells.length) return;
+                                const out = [];
+                                let col = 0, ci = 0;
+                                // 先按"被上行 rowspan 占用的列"填空
+                                const _skipOccupied = () => { while (pending[col] > 0) { out.push(''); pending[col]--; col++; } };
+                                _skipOccupied();
+                                while (ci < cells.length) {
+                                    const c = cells[ci++];
+                                    const cs = Math.max(1, parseInt(c.getAttribute('colspan'), 10) || 1);
+                                    const rs = Math.max(1, parseInt(c.getAttribute('rowspan'), 10) || 1);
+                                    out.push(c.textContent.replace(/\s+/g, ' ').trim());
+                                    if (rs > 1) pending[col] = rs - 1;   // 本列后续行由该格延续
+                                    for (let k = 1; k < cs; k++) { out.push(''); col++; }
+                                    col++;
+                                    _skipOccupied();
                                 }
+                                // 收尾：把本行末尾仍被 rowspan 占用的列补空
+                                while (pending[col] > 0) { out.push(''); pending[col]--; col++; }
+                                lines.push('| ' + out.join(' | ') + ' |');
                             });
                             lines.push(''); // 表格后空行分隔
                         }
+                        return;
+                    }
+
+                    // 【2026-10-22 保真度修复】图片原被 textContent 取成空串 ⇒ **静默消失**，
+                    //   用户/AI 都不知道原文这里有图。现在至少留一个占位标记（有 alt 就带上）。
+                    if (tag === 'img') {
+                        const alt = (node.getAttribute('alt') || '').trim();
+                        lines.push(alt ? ('[图片：' + alt + ']') : '[图片]');
                         return;
                     }
 
@@ -4898,6 +4928,16 @@
                     if (tag === 'p' || /^h[1-6]$/.test(tag) || tag === 'li' || tag === 'div') {
                         const text = node.textContent.trim();
                         if (text) lines.push(text);
+                        // 【保真度修复】Word 转换出来的图片几乎都是 `<p><img/></p>` 形态，
+                        //   而段落分支会提前 return ⇒ 图片分支永远走不到、图片静默消失。
+                        //   这里在返回前主动收集本段落里的图片，补上占位标记。
+                        try {
+                            const _imgs = node.querySelectorAll ? node.querySelectorAll('img') : [];
+                            Array.prototype.forEach.call(_imgs, function (im) {
+                                const alt = (im.getAttribute && im.getAttribute('alt') || '').trim();
+                                lines.push(alt ? ('[图片：' + alt + ']') : '[图片]');
+                            });
+                        } catch (e) {}
                         return;
                     }
 

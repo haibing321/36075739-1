@@ -396,6 +396,23 @@
         return k === 'title' ? 1 : k === 'h1' ? 2 : k === 'h2' ? 3 : k === 'h3' ? 4 : 2;
     }
 
+    /**
+     * 【2026-10-22 修复·历史数据兜底】已入库的规章 contentHtml 里可能已经带着被误标的 `imp-title`
+     *   （旧判据是"≤30 字 + 无标点"，表格碎片与部门名都会被判成标题）。导入侧已修正，
+     *   但**老数据不会自动重导** ⇒ 导出时再兜一层：这类文本即使带 imp-title 也降级为正文，
+     *   否则导航窗格里会一直有"供电部""全四、""序 | 号 | 13 …"。
+     */
+    function isBogusHeadingText(t) {
+        var s = String(t || '').replace(/\s+/g, '').trim();
+        if (!s) return true;
+        if (/[|｜]/.test(s)) return true;                         // 表格行级拼行的产物
+        var _ord = /^([一二三四五六七八九十百]+[、．.]|[（(][一二三四五六七八九十百0-9]+[）)]|\d{1,2}[、．.]|第[一二三四五六七八九十百千0-9]+[章节条款部分篇])/;
+        if (s.length <= 8 && !_ord.test(s)) return true;           // 短词/部门名/残片
+        if (/(部|段|室|科|组|处|所|中心|车间)$/.test(s)) return true; // 单位名或"标题+单位"残片
+        if (/^\S{0,24}\d{4}年\d{1,2}月\d{1,2}日$/.test(s)) return true; // 落款日期
+        return false;
+    }
+
     function walkBlocks(container, blocks) {
         var buf = [], bufImgs = [];
 
@@ -421,10 +438,17 @@
             // —— 标题：语义标签 <h1>~<h6>，**或**带 imp-title / imp-h1…class 的段落（导入链路产物，见 classHeadingLevel）
             var _hLvl = /^h[1-6]$/.test(t) ? parseInt(t.charAt(1), 10) : classHeadingLevel(el);
             if (_hLvl > 0) {
-                flush();
-                var hr = trimRuns(inlineOf(el));
-                if (runsText(hr).trim()) blocks.push({ t: 'h', tagLevel: _hLvl, runs: hr });
-                return;
+                var _hr0 = trimRuns(inlineOf(el));
+                var _hTxt = runsText(_hr0).replace(/\s+/g, ' ').trim();
+                // class 派生的标题若"不像标题"（表格碎片 / 短词），降级走段落分支；
+                // 语义 <h*> 标签仍尊重作者意图，不降级。
+                if (!/^h[1-6]$/.test(t) && isBogusHeadingText(_hTxt)) {
+                    // 什么都不做，落到下面 `<p>` 分支
+                } else {
+                    flush();
+                    if (_hTxt) blocks.push({ t: 'h', tagLevel: _hLvl, runs: _hr0 });
+                    return;
+                }
             }
             // —— 段落（内含 figure/div 等块级子元素时下钻，保证图注与图片的先后顺序）
             if (t === 'p' || t === 'dd' || t === 'dt' || t === 'caption') {
@@ -539,6 +563,9 @@
     function classifyParagraph(txt) {
         if (!txt || txt.length > 40) return 0;
         if (/[。；！？]$/.test(txt)) return 0;
+        // 【2026-10-22】晋升路径也必须过"像不像标题"这一关：实测"四、施工运输部"（表格行残片）
+        //   因以"四、"开头被 classifyText 判成一级标题 —— 与 walkBlocks 用的是同一把尺子。
+        if (isBogusHeadingText(txt)) return 0;
         return classifyText(txt);
     }
 

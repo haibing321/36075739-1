@@ -1162,15 +1162,32 @@
                             //   · 只对**有文字层**的页取 getOperatorList（扫描页没有文字，取了也没用，白花时间）。
                             const _pageSegs = [];
                             let _segTotal = 0;
+                            // 【2026-10-22 保真度】图片与"无文字层页"计数：PDF 只取文字/表格线，
+                            //   但必须如实告诉用户有多少图片被跳过（实测该规则 87 页里有 9 处图片、
+                            //   第 1 页是纯图片封面）。图片统计复用同一次 getOperatorList，零额外开销。
+                            let _pdfImgOps = 0, _pdfNoTextPages = 0;
                             for (let p = 1; p <= pdf.numPages; p++) {
                                 const page = await pdf.getPage(p);
                                 const content = await page.getTextContent();
                                 _items.push(content.items);
+                                if (!(content.items && content.items.length)) _pdfNoTextPages++;
                                 let _sg = [];
                                 if (_lay && _lay.segmentsFromOperatorList && content.items && content.items.length) {
                                     try {
+                                        const _ops = await page.getOperatorList();
+                                        try {
+                                            const _OPS = (window.pdfjsLib && window.pdfjsLib.OPS) || {};
+                                            const _imgOpList = [
+                                                _OPS.paintImageXObject, _OPS.paintInlineImageXObject,
+                                                _OPS.paintJpegXObject, _OPS.paintImageMaskXObject
+                                            ].filter(function (v) { return v !== undefined; });
+                                            const _fn = (_ops && _ops.fnArray) || [];
+                                            for (let _fi = 0; _fi < _fn.length; _fi++) {
+                                                if (_imgOpList.indexOf(_fn[_fi]) !== -1) _pdfImgOps++;
+                                            }
+                                        } catch (eImg) {}
                                         _sg = _lay.segmentsFromOperatorList(
-                                            await page.getOperatorList(),
+                                            _ops,
                                             (window.pdfjsLib && window.pdfjsLib.OPS) || {}
                                         ) || [];
                                     } catch (eSG) { _sg = []; }
@@ -1210,8 +1227,20 @@
                                             + ' 张表格（该 PDF 未取到表格线，多为扫描件；如需表格请用 DOCX 格式导入）');
                                     }
                                 } catch (e) {}
-                                // 【2026-10-17】"文字层不可读"如实告知：字体没带 Unicode 映射时（方正书版/加密字体常见），
-                                //   解析出来的就是 `!"#$%&'` 这类乱码。不提示的话用户以为导入成功，库里却全是乱码。
+                                // 【2026-10-22 保真度·如实告知】PDF 导入**只取文字与表格线**，图片一律不提取。
+                                //   实测用户这份《高速铁路接触网运行维修规则》（87 页）：第 1 页是纯图片封面
+                                //   （0 文字 + 1 图），第 28/29/30/86 页各有 1~3 张示意图，共 9 处图片。
+                                //   不提示的话，用户会以为"整份导入成功"，却不知道封面和所有示意图都丢了 ——
+                                //   而正文里还有"如图 1 所示"这类引用，模型也看不到图。
+                                try {
+                                    var _imgBits = [];
+                                    if (_pdfImgOps > 0) _imgBits.push('含 ' + _pdfImgOps + ' 处图片（封面/示意图/截图等）');
+                                    if (_pdfNoTextPages > 0) _imgBits.push(_pdfNoTextPages + ' 页无文字层（多为封面或扫描页）');
+                                    if (_imgBits.length) {
+                                        successNotes.push(file.name + '：' + _imgBits.join('，')
+                                            + '；本次**只导入文字与表格，图片内容未提取**（如需图片请用 DOCX 原件导入）');
+                                    }
+                                } catch (e) {}
                                 try {
                                     var _gb = _lay.textLooksGarbled ? _lay.textLooksGarbled(_pdfDoc.text) : null;
                                     if (_gb && _gb.garbled) {

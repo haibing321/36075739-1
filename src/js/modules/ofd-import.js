@@ -118,6 +118,76 @@
         return '';
     }
 
+    // ==================== 【2026-10-22】表格线与图片：转成 ImportLayout 既有通道 ====================
+    // 背景：OFD 此前 `skipTables: true` + 不取图片 ⇒ 表格只剩散落的文字、图片完全丢失。
+    //   ImportLayout 早已支持 `pageSegments`（逐页矢量框线 → 网格还原表格）与 `pageImages`
+    //   （逐页图片 → 按位置插入块流），PDF 侧用的就是这两条通道。OFD 只是没把数据喂进去。
+    //   OFD 的表格线是独立 `ofd:PathObject`：`Boundary="x y w h"` 给起点，`AbbreviatedData` 里的
+    //   M/L 是**相对该起点的局部坐标**（实测 `M 0.0847 0.0847 L 246.0872 0.0847`）。
+    //   这里把它们换算成与 PDF 完全相同的线段格式 `{k:'h'|'v', x1,y1,x2,y2}`，直接复用同一套网格算法。
+    function ofdPathSegments(cx) {
+        var out = [];
+        var addSeg = function (x1, y1, x2, y2) {
+            if (Math.abs(y1 - y2) < 0.6 && Math.abs(x2 - x1) > 4) out.push({ k: 'h', x1: x1, y1: y1, x2: x2, y2: y2 });
+            else if (Math.abs(x1 - x2) < 0.6 && Math.abs(y2 - y1) > 4) out.push({ k: 'v', x1: x1, y1: y1, x2: x2, y2: y2 });
+        };
+        var paths = byLocal(cx, 'PathObject');
+        for (var pi = 0; pi < paths.length; pi++) {
+            var p = paths[pi];
+            var bnd = attrAny(p, ['Boundary', 'boundary']);
+            var bp = bnd ? bnd.split(/\s+/).map(parseFloat) : [];
+            if (bp.length < 2 || !isFinite(bp[0]) || !isFinite(bp[1])) continue;
+            var bx = bp[0], by = bp[1];
+            var sx = 1, sy = 1;
+            var ctm = attrAny(p, ['CTM', 'ctm']);
+            if (ctm) {
+                var cp = ctm.split(/\s+/).map(parseFloat);
+                if (cp.length >= 4 && isFinite(cp[0]) && cp[0] !== 0) sx = cp[0];
+                if (cp.length >= 4 && isFinite(cp[3]) && cp[3] !== 0) sy = cp[3];
+            }
+            var ad = byLocal(p, 'AbbreviatedData')[0];
+            var s = ad ? String(ad.textContent || '') : '';
+            if (!s) continue;
+            var toks = s.replace(/,/g, ' ').split(/\s+/);
+            var px = null, py = null;
+            for (var i = 0; i < toks.length; i++) {
+                var t = toks[i];
+                if (t === 'M' || t === 'L') {
+                    var nx = parseFloat(toks[++i]), ny = parseFloat(toks[++i]);
+                    if (!isFinite(nx) || !isFinite(ny)) break;
+                    var ax = bx + nx * sx, ay = by + ny * sy;
+                    if (px != null) addSeg(px, py, ax, ay);
+                    px = ax; py = ay;
+                } else if (t === 'C' || t === 'c') { i += 6; px = py = null; }   // 贝塞尔：表格线用不到，跳过参数
+                else if (t === 'Q' || t === 'q') { i += 4; px = py = null; }
+                else if (t === 'Z' || t === 'z') { px = py = null; }
+                else if (/^[A-Za-z]$/.test(t)) { break; }                        // 弧等复杂命令：本对象放弃
+            }
+        }
+        return out;
+    }
+
+    /** 图片：ImageObject → {src(dataURI), w, h, top}；资源来自 PublicRes/DocumentRes 的 MultiMedia */
+    function ofdImageBoxes(cx, resMap) {
+        var out = [];
+        var imgs = byLocal(cx, 'ImageObject');
+        for (var i = 0; i < imgs.length; i++) {
+            var im = imgs[i];
+            var rid = attrAny(im, ['ResourceID', 'resourceid']);
+            var bnd = attrAny(im, ['Boundary', 'boundary']);
+            var bp = bnd ? bnd.split(/\s+/).map(parseFloat) : [];
+            var ent = (rid && resMap) ? resMap[rid] : null;
+            out.push({
+                src: (ent && ent.dataUri) ? ent.dataUri : '',
+                w: (bp.length >= 4 && bp[2] > 0) ? bp[2] : 0,
+                h: (bp.length >= 4 && bp[3] > 0) ? bp[3] : 0,
+                top: (bp.length >= 2 && isFinite(bp[1])) ? bp[1] : 0,
+                alt: '图片'
+            });
+        }
+        return out;
+    }
+
     /** 元素自身或祖先（最多 4 层）是否命中水印特征/版式特征 */
     function layerMark(el, kind) {
         var cur = el, hop = 0;
@@ -244,12 +314,56 @@
             }
         } catch (ePH) {}
 
+        // 资源映射（图片）：PublicRes.xml/DocumentRes.xml 里的 ofd:MultiMedia ID → MediaFile。
+        //   读出图片字节后转 data URI（本项目 DOCX 规章路径也是把图片转成可渲染形式再入库）。
+        var _resMap = {};
+        try {
+            var _resXml = parseXml(await readZipText(zip, 'Doc_0/PublicRes.xml'))
+                || parseXml(await readZipText(zip, 'PublicRes.xml'))
+                || parseXml(await readZipText(zip, 'Doc_0/DocumentRes.xml'));
+            if (_resXml) {
+                var _resBase = attrAny(_resXml.documentElement || {}, ['BaseLoc', 'baseloc']) || 'Res';
+                var _base = 'Doc_0/' + String(_resBase).replace(/^\.?\/?/, '').replace(/\/?$/, '') + '/';
+                var _mms = byLocal(_resXml, 'MultiMedia');
+                for (var _mi = 0; _mi < _mms.length; _mi++) {
+                    var _mid = attrAny(_mms[_mi], ['ID', 'id']);
+                    // OFD 规范里 MediaFile 通常写成**子元素** `<ofd:MediaFile>Res/logo.png</ofd:MediaFile>`，
+                    //   而不是属性；只读属性会得到空串 ⇒ 图片 src 为空（实测正是这个原因）。
+                    var _mf = attrAny(_mms[_mi], ['MediaFile', 'mediafile']);
+                    if (!_mf) {
+                        var _mfe = byLocal(_mms[_mi], 'MediaFile')[0];
+                        if (_mfe) _mf = String(_mfe.textContent || '').trim();
+                    }
+                    if (!_mid || !_mf) continue;
+                    // MediaFile 可能已带目录（"Res/logo.png"）：带了就直接用，避免拼成 Doc_0/Res/Res/...
+                    var _path = _mf.indexOf('/') !== -1
+                        ? 'Doc_0/' + _mf.replace(/^\.?\//, '')
+                        : _base + _mf.replace(/^\.?\//, '');
+                    var _bf = zip.file(_path) || zip.file('Doc_0/Res/' + _mf.replace(/^\.?\/?(Res\/)?/, ''));
+                    if (!_bf) continue;
+                    var _ext = (_mf.split('.').pop() || '').toLowerCase();
+                    var _mime = _ext === 'jpg' || _ext === 'jpeg' ? 'image/jpeg'
+                        : _ext === 'gif' ? 'image/gif'
+                        : _ext === 'bmp' ? 'image/bmp'
+                        : _ext === 'svg' ? 'image/svg+xml' : 'image/png';
+                    try {
+                        var _b64 = await _bf.async('base64');
+                        _resMap[_mid] = { dataUri: 'data:' + _mime + ';base64,' + _b64 };
+                    } catch (eB64) {}
+                }
+            }
+        } catch (eRes) {}
+
         // ---------- ③ 逐页抽正文 + 去水印 ----------
         var pageTexts = [], images = 0, pageLines = [], paragraphs = [];
+        var _pageSegs = [], _pageImgs = [];   // 逐页矢量框线（表格）+ 图片，交给 ImportLayout
         for (var pg = 0; pg < pageLocs.length; pg++) {
             var cx = parseXml(await readZipText(zip, pageLocs[pg]));
-            if (!cx) { pageTexts.push(''); continue; }
+            if (!cx) { pageTexts.push(''); _pageSegs.push([]); _pageImgs.push([]); continue; }
             images += byLocal(cx, 'ImageObject').length;
+            // 【2026-10-22】把 OFD 的表格线与图片喂给 ImportLayout（PDF 用的是同两条通道）
+            try { _pageSegs.push(ofdPathSegments(cx)); } catch (eSg) { _pageSegs.push([]); }
+            try { _pageImgs.push(ofdImageBoxes(cx, _resMap)); } catch (eIm) { _pageImgs.push([]); }
             var objs = byLocal(cx, 'TextObject');
             var rows = [];
             for (var oi = 0; oi < objs.length; oi++) {
@@ -326,7 +440,48 @@
             if (_lay.buildFromPageLines) {
                 // PDF 的全套处理（跨页段落合并 + 公文体例 + 表格还原）走**同一个**入口，避免两套实现漂移
                 // 【2026-10-09 用户决策】OFD 与 PDF 同链路 ⇒ 同样"跳过表格、只导文字"（见 import-layout 的 skipTables）
-                var _built = _lay.buildFromPageLines(pageLines, { skipTables: true });
+                // 【2026-10-22】不再一刀切 `skipTables:true`：把逐页框线与图片交给共用布局层 ——
+                //   · pageSegments：该页框线能聚出网格（xs≥3 且 ys≥2）⇒ 确定性还原表格；否则该页仍按"只导文字"兜底；
+                //   · pageImages：图片按"顶边落在第几行之前"插回块流（src 为 data URI，可直接渲染）；
+                //   · flipY:false —— OFD 的 Y 轴朝下（PDF 朝上），方向错了段落会整体倒序。
+                // ⚠️ 先克隆一份：buildFromPageLines 会**就地改写** pageLines（网格建表时把表格文字从行里摘走），
+                //   回退重建必须用"没被摘过"的原始行，否则表格里的文字会被二次构建丢掉（实测正文从 11.5k 掉到 5.8k）。
+                var _linesBackup = null;
+                try { _linesBackup = JSON.parse(JSON.stringify(pageLines)); } catch (eBk) { _linesBackup = null; }
+                var _built = _lay.buildFromPageLines(pageLines, {
+                    pageSegments: _pageSegs,
+                    pageImages: _pageImgs,
+                    flipY: false
+                });
+                // ⚠️【质量门禁·必须有】OFD 的框线常不足以表达列结构（实测兰州局通知第 12 页：
+                //   只聚出 6 条竖线 / 5 列，而文字块是跨格短语 ⇒ 整段正文被吞进一个单元格，
+                //   重建出的表像"二、查管理 | 否存在7成量化指标…"这种串行垃圾）。
+                //   错表比无表更糟（正文被切碎，且看起来像"还原成功了"）⇒ 建完先体检：
+                //   任一单元格文字超过 OFD_TABLE_CELL_MAX 字 ⇒ 判定"线不够"，**回退为纯文本**重建。
+                try {
+                    var OFD_TABLE_CELL_MAX = 60;
+                    var _dirty = false, _tblN = 0;
+                    (_built.blocks || []).forEach(function (b) {
+                        if (!b || b.type !== 'table') return;
+                        _tblN++;
+                        var rows = b.rows || [];
+                        for (var _ri2 = 0; _ri2 < rows.length && !_dirty; _ri2++) {
+                            var row = rows[_ri2] || [];
+                            for (var _ci2 = 0; _ci2 < row.length; _ci2++) {
+                                if (String(row[_ci2] == null ? '' : row[_ci2]).length > OFD_TABLE_CELL_MAX) { _dirty = true; break; }
+                            }
+                        }
+                    });
+                    if (_tblN && _dirty) {
+                        _built = _lay.buildFromPageLines(_linesBackup || pageLines, {
+                            pageImages: _pageImgs,
+                            skipTables: true,        // 显式回到"只导文字"，且不带框线
+                            flipY: false
+                        });
+                        try { window.__ofdDirtyTables = _tblN; } catch (eD1) {}
+                        removed.push('表格重建质量不足（单元格吞入正文），已回退为纯文本');
+                    }
+                } catch (eGate) {}
                 text = _built.text;
                 blocks = _built.blocks || [];
                 paragraphs = _built.paragraphs || [];
@@ -356,7 +511,17 @@
 
         var note = '';
         if (!text.trim()) note = '未解析出文字（可能是扫描件/纯图片版 OFD，或文本被画成了矢量路径）';
-        if (images > 0) note += (note ? '；' : '') + '文档含 ' + images + ' 张图片，未提取图片内文字';
+        if (images > 0) {
+            // 【2026-10-22】图片现在会按原位置**插入**（src 为 data URI），只是不做 OCR ⇒ 提示要准确，
+            //   否则用户以为图片又丢了（旧文案"未提取"会让人以为整张图都没了）。
+            var _emb = 0;
+            (_pageImgs || []).forEach(function (arr) {
+                (arr || []).forEach(function (im) { if (im && im.src) _emb++; });
+            });
+            note += (note ? '；' : '') + '文档含 ' + images + ' 张图片，'
+                + (_emb > 0 ? ('已按原位置插入 ' + _emb + ' 张') : '未能取到图片资源')
+                + '（图片内文字未识别）';
+        }
 
         return { text: text, paragraphs: paragraphs, blocks: blocks, pageCount: pageLocs.length, removed: uniq, note: note, images: images };
     }

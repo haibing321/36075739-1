@@ -924,6 +924,14 @@
             try { window.__ltbDiag = { segs: _segs ? _segs.length : -1, xs: 0, ys: 0, inBox: 0, rows: 0, keptRows: -1, err: '' }; } catch (e1) {}
             if (_segs && _segs.length) {
                 var _g = gridFromSegments(_segs, opts);
+                // 【2026-10-22 坐标系方向】网格约定 `ys[0]` = **表格顶边**。
+                //   · PDF：y 轴向上 ⇒ 顶边是最大 y（gridFromSegments 的排序正好给到"从顶到底"）；
+                //   · OFD：y 轴向下 ⇒ 顶边是最小 y ⇒ 必须反转，否则**整张表行序倒置**
+                //     （实测合成样本：首行"单位/问题类别/数量"跑到了最后一行）。
+                //   只在调用方**显式**声明 flipY:false 时反转 —— PDF 路径不传 flipY（undefined），行为不变。
+                if (opts.flipY === false && _g && _g.ys && _g.ys.length > 1) {
+                    _g.ys = _g.ys.slice().reverse();
+                }
                 try { window.__ltbDiag.xs = _g.xs.length; window.__ltbDiag.ys = _g.ys.length; } catch (e2) {}
                 if (_g.xs.length >= 3 && _g.ys.length >= 2) {
                     var _gx0 = _g.xs[0], _gx1 = _g.xs[_g.xs.length - 1];

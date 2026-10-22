@@ -362,7 +362,9 @@
             if (!cx) { pageTexts.push(''); _pageSegs.push([]); _pageImgs.push([]); continue; }
             images += byLocal(cx, 'ImageObject').length;
             // 【2026-10-22】把 OFD 的表格线与图片喂给 ImportLayout（PDF 用的是同两条通道）
-            try { _pageSegs.push(ofdPathSegments(cx)); } catch (eSg) { _pageSegs.push([]); }
+            var _segsNow = [];
+            try { _segsNow = ofdPathSegments(cx); } catch (eSg) { _segsNow = []; }
+            _pageSegs.push(_segsNow);
             try { _pageImgs.push(ofdImageBoxes(cx, _resMap)); } catch (eIm) { _pageImgs.push([]); }
             var objs = byLocal(cx, 'TextObject');
             var rows = [];
@@ -418,6 +420,72 @@
                     }
                 }
                 rows.push({ y: _xy.y, x: _xy.x, size: _xy.size, s: s });
+            }
+            // 【预筛】这一页的框线到底能不能表达列结构？
+            //   判据：网格列数够（≥3 列）+ 落在网格 y 范围内的文字**x 聚类数**没有远超列数。
+            //   实测：合成 3×3 样本 → 3 簇 vs 3 列 ⇒ 可信（交给网格建表）；
+            //         兰州局通知第 12 页 → 40 簇 vs 5 列 ⇒ 线不够（走下面的行级拼行，不硬造表）。
+            var _gridOk = false;
+            try {
+                var _layPre = window.ImportLayout;     // 注意：下面才声明 _lay，这里必须直接取 window
+                if (_segsNow.length && _layPre && _layPre.gridFromSegments) {
+                    var _gPre = _layPre.gridFromSegments(_segsNow, {});
+                    if (_gPre && _gPre.xs.length >= 4 && _gPre.ys.length >= 3) {
+                        var _gy0 = Math.min.apply(null, _gPre.ys), _gy1 = Math.max.apply(null, _gPre.ys);
+                        var _xsIn = rows.filter(function (r) { return r.y != null && r.y >= _gy0 - 2 && r.y <= _gy1 + 2; })
+                            .map(function (r) { return r.x || 0; }).sort(function (a, b) { return a - b; });
+                        var _cl = 0, _lastX = -1e9;
+                        _xsIn.forEach(function (x) { if (x - _lastX > 3) { _cl++; _lastX = x; } });
+                        _gridOk = !(_cl > Math.max(6, (_gPre.xs.length - 1) * 2));
+                    }
+                }
+            } catch (eGO) {}
+            // 【2026-10-22 行级还原】横线是该文件里**最可靠的**结构证据（实测每页 9 条，
+            //   而竖线只有 6 条、中间列的分隔线在文件里根本不存在 ⇒ 列结构无法确定）。
+            //   这里只做"行"这一级：把落在同一横线带（相邻两条横线之间）的文字块按 x 拼成一行。
+            //   不声称列结构（不会假装还原成表格），但保证**同一表格行的内容在同一行文本里** ——
+            //   对 AI 阅读（"序号 1 的供电分段示意图，6 个工区都是 √"）和人工核对都有实益。
+            //   ⚠️ 只在"网格不可信"时启用：网格可信的页要留给表格还原（否则会把行拼成一条、
+            //      破坏网格所需的逐格文字块 —— 合成 3×3 样本实测会退化成 1 个段落）。
+            var _hs = [];
+            if (!_gridOk) {
+                for (var _si = 0; _si < _segsNow.length; _si++) {
+                    if (_segsNow[_si].k === 'h') _hs.push((_segsNow[_si].y1 + _segsNow[_si].y2) / 2);
+                }
+            }
+            if (_hs.length >= 3 && rows.length >= _hs.length * 2) {
+                try {
+                    _hs.sort(function (a, b) { return a - b; });
+                    var _bands = [];
+                    for (var _rj = 0; _rj < rows.length; _rj++) {
+                        var _r = rows[_rj];
+                        if (_r.y == null) continue;
+                        var _bi = 0;
+                        for (var _hi = 0; _hi < _hs.length; _hi++) { if (_r.y >= _hs[_hi]) _bi = _hi; }
+                        (_bands[_bi] = _bands[_bi] || []).push(_r);
+                    }
+                    var _merged = 0, _outRows = [];
+                    _bands.forEach(function (arr) {
+                        if (!arr || !arr.length) return;
+                        arr.sort(function (a, b) { return (a.x || 0) - (b.x || 0); });
+                        var _txt = arr.map(function (a) { return a.s; }).join(' | ');
+                        // 【长度门禁】真正的表格行都很短；一旦拼接后超过 200 字，说明这一"带"里
+                        //   混进了整段正文（横线可能是标题下的分隔线），**不拼**、保持原样，
+                        //   否则会把正文压成一条 300+ 字的怪行（实测出现过 9 条）。
+                        if (arr.length > 1 && _txt.length <= 200) {
+                            _merged++;
+                            var _midY = arr.reduce(function (acc, a) { return acc + (a.y || 0); }, 0) / arr.length;
+                            _outRows.push({ x: arr[0].x, y: _midY, size: arr[0].size, s: _txt });
+                        } else {
+                            arr.forEach(function (a) { _outRows.push(a); });
+                        }
+                    });
+                    // 至少 2 个"多块行"才认为确实是逐行排列的表格；否则维持原样（避免误合并段落）
+                    if (_merged >= 2 && _outRows.length >= 3) {
+                        rows = _outRows;
+                        try { window.__ofdRowBands = (window.__ofdRowBands || 0) + 1; } catch (eRb) {}
+                    }
+                } catch (eBand) {}
             }
             // 阅读顺序与分段交给共享模块 ImportLayout（行内按 X、行间按 Y、段落按标点/间距/条款头/缩进）
             var _lay = window.ImportLayout;

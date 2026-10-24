@@ -11,7 +11,7 @@
 
 var CACHE_PREFIX = 'aj-v';
 // 使用时间戳作为缓存版本，每次部署自动更新，确保用户获取最新资源
-var CACHE_VERSION = '20261022214251';
+var CACHE_VERSION = '20261024210929';
 var CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // ========== SW 直出文件下载（./__dl/<token> + DL_STORE）==========
@@ -427,19 +427,27 @@ function _fallbackShell(retryCount) {
 
 // ========== 事件监听 ==========
 
-// 安装：**只在首次安装时**预缓存核心资源
+// 安装：把这一版资源先缓存到本机（首次安装只下核心壳；更新安装下整套 App Shell）
 self.addEventListener('install', function(event) {
   console.log('[SW] 安装中...', CACHE_VERSION);
-  // 【2026-10-21 用户口径·未点更新不得下载】
-  //   浏览器会在导航后按自己的节流（约 24h 一次）自动 soft update：拉 sw.js → 发现变化就
-  //   触发 install。此时用户**没有**点「立即更新」。若仍在这里 precache，就等于"没点更新
-  //   也从仓库下载"（核心壳约 1MB）。因此：
-  //     · 首次安装（registration.active 为空，即"第一次打开 / 刚清除过缓存"）→ 照常预缓存；
-  //     · 更新安装（active 已存在）→ 这里什么都不下，只进入 waiting；
-  //       等用户点「立即更新」→ SKIP_WAITING → activate 时才补齐核心壳（见 activate）。
-  if (!self.registration || !self.registration.active) {
-    event.waitUntil(precacheCore());
-  }
+  // 【2026-10-24 用户口径·先缓存、后更新】（**取代** 2026-10-21 的"未点更新一律不下载"）
+  //   原话："发现新版本就开始缓存本地，点更新时直接从本地缓存更新，这样加载更快"。
+  //   做法：install 阶段就把**这一版**的 App Shell 下进本机（缓存名带新的时间戳，与旧版互不干扰）：
+  //     · 首次安装（registration.active 为空，即"第一次打开 / 刚清除过缓存"）
+  //         → 只下核心壳，其余交给 activate 延迟补齐（首屏还在加载，几十个请求会抢带宽，
+  //           见 CORE_PRECACHE 注释）；
+  //     · 更新安装（active 已存在）
+  //         → **整套 App Shell 一起下**，这就是"后台把新版本缓存到本机"。
+  //           装完新 SW 停在 waiting（不 skipWaiting，页面仍由旧版服务），此时缓存已就绪；
+  //           用户点「立即更新」只剩 SKIP_WAITING → activate → claim → 刷新，
+  //           重载直接吃本机缓存 ⇒ 秒开，不用再等整包下载。
+  //   ⚠️ 预缓存失败**不能**连累 install（否则新 SW 装不上、更新永远不生效），故统一兜错。
+  var _isFirstInstall = !(self.registration && self.registration.active);
+  var _prefetch = precacheCore();
+  if (!_isFirstInstall) _prefetch = _prefetch.then(precacheRest);
+  event.waitUntil(_prefetch.catch(function (e) {
+    console.warn('[SW] 预缓存未全部完成（不影响安装）:', e && e.message);
+  }));
   // 【2026-09-28 用户口径（不可擅改）】
   //   刷新 / 重启 / 折叠  ⇒ **必须离线加载**（走本机缓存，不得联网）
   //   清除缓存 / 系统更新 ⇒ **必须远程加载**（真联网取新版）
@@ -471,9 +479,9 @@ self.addEventListener('activate', function(event) {
 
   // 延迟 2.5s 再补齐：避开首屏资源加载高峰，避免与页面自己的请求抢带宽。
   // 兜底：即使此处失败也不影响 SW 已接管的事实（缺的资源会在实际请求时按需缓存）。
-  // 【2026-10-21】更新的 SW 在 install 阶段**没有**下载核心壳（见 install 注释），
-  //   所以这里要先 precacheCore() 再 precacheRest()。首次安装时核心壳已在 install 下过，
-  //   这里的 cache.add 走 no-cache 条件请求，未变化只回 304，几乎零流量。
+  // 【2026-10-24】install 阶段已经把整套 App Shell 下过（更新安装时），这里只做**查漏补缺**：
+  //   precacheCore 逐条 cache.add(no-cache) 未变化只回 304；precacheRest 会先比对缓存键，
+  //   已经在缓存里的直接跳过（见其实现）⇒ 正常情况下这里几乎零流量，只是兜住"install 中途失败"。
   setTimeout(function() {
     precacheCore()
       .catch(function(e) { console.warn('[SW] 核心补齐失败:', e && e.message); })

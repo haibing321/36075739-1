@@ -97,6 +97,8 @@
                 dsApiKey = p.apiKey || ''; dsApiUrl = _u; dsModel = p.model || DS_DEFAULT_MODEL;
                 // 【2026-09-19】配置变更收口：刷新"依赖是否已配置 API"的界面（工作写实的「✨ 一键修改」显隐）
                 try { if (typeof window.diaryAiSyncBtn === 'function') window.diaryAiSyncBtn(); } catch (e) {}
+                // 【2026-10-24】没配 API 时知识库启动不载入；这里保存好配置后补上载入，无需重启
+                try { if (window.KB && typeof window.KB.onApiConfigChanged === 'function') window.KB.onApiConfigChanged(); } catch (e) {}
             }
             function setActiveProvider(id) {
                 var arr = getProviders();

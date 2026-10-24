@@ -574,50 +574,15 @@ window.onclick = function(e) {
     }
 
     /**
-     * 【2026-10-21】file:// 直开提示条
-     * 为什么加：U 盘里最常见的一步是"双击 index.html"。这样打开**不是**正常入口 ——
-     *   ① 浏览器禁用 Service Worker ⇒ 离线与「安装为应用」全部失效；
-     *   ② file:// 与 http://127.0.0.1 是**两个不同的源** ⇒ 看到的数据是空的，用户会误以为"数据丢了"；
-     *   ③ manifest 不注入、检查更新不可用（已有注释说明）。
-     * 原来这些只写在控制台/更新面板里，用户看不到。这里在页面顶部给一条可关闭的说明，
-     * 并直接告诉他正确入口是哪个脚本。仅 file:// 触发，http/https 与 PWA 独立窗口不受影响。
+     * 【2026-10-24 用户要求】已移除 file:// 直开提示条（_showFileModeBanner）。
+     * 为什么删：用户反馈"这个提示不要了" —— 顶部横幅会遮挡界面、干扰 U 盘自测时的正常使用。
+     * 保留的行为：http/https（含 PWA 独立窗口）逻辑完全不变；file:// 下仍按浏览器硬限制
+     *   跳过 Service Worker（离线/安装为应用不可用），但不再在界面上打扰用户。
+     *   正确入口仍写在《安全说明（先读我）.txt》《启动说明（麒麟Linux）.txt》和启动脚本里。
      */
-    function _showFileModeBanner() {
-        try {
-            if (document.getElementById('_file_mode_tip')) return;
-            if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return;
-            var bar = document.createElement('div');
-            bar.id = '_file_mode_tip';
-            bar.setAttribute('role', 'note');
-            bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:12000;background:#16324f;color:#fff;'
-                + 'box-sizing:border-box;max-width:100vw;'
-                + 'border-bottom:2px solid #b78a3c;padding:9px 42px 9px 14px;font-size:12.5px;line-height:1.65;'
-                + 'box-shadow:0 4px 14px rgba(0,0,0,.25);';
-            bar.innerHTML = '<b>⚠️ 当前是"本地文件"打开方式</b>（地址以 file:// 开头）：'
-                + '离线缓存、安装到桌面、检查更新都不可用，这里看到的数据与正常入口相互独立。'
-                + '<br>请关闭本页，改用目录里的 <b>启动（双击运行）.bat</b>（麒麟/统信：终端执行 <b>bash start-linux.sh</b>）。';
-            var x = document.createElement('button');
-            x.type = 'button';
-            x.textContent = '✕';
-            x.setAttribute('aria-label', '关闭提示');
-            x.style.cssText = 'position:absolute;right:8px;top:6px;background:none;border:none;color:#c9d7e6;'
-                + 'font-size:15px;cursor:pointer;padding:2px 6px;';
-            x.onclick = function () {
-                try { sessionStorage.setItem('_file_mode_tip_closed', '1'); } catch (e) {}
-                bar.remove();
-            };
-            bar.appendChild(x);
-            var mount = function () {
-                try {
-                    var closed = sessionStorage.getItem('_file_mode_tip_closed') === '1';
-                    if (!closed) document.body.appendChild(bar);
-                } catch (e) {}
-            };
-            if (document.body) mount();
-            else document.addEventListener('DOMContentLoaded', mount);
-        } catch (e) {}
+    if (_swSkipForFile) {
+        console.log('[PWA] file:// 本地打开：已跳过引导提示条（Service Worker 仍不可用，请用 启动（双击运行）.bat 进入）');
     }
-    if (_swSkipForFile) _showFileModeBanner();
 
     // 必须给 register 兜底：非 HTTPS 站点、隐私模式、被裁剪的 WebView 都可能让
     // register 直接抛错或 reject。原实现既无 try/catch 也无 .catch()，一旦失败
@@ -632,8 +597,10 @@ window.onclick = function(e) {
         //   现在改为：
         //     · 有注册  → getRegistration() 直接复用，**不发任何请求**（导航仍由 SW 拦截，走本机缓存）；
         //     · 无注册  → 首次安装，必须 register() 一次（这一次要联网，属首次安装成本）。
-        //   新版本只由「设置 → 检查更新」触发：checkForUpdate() → reg.update()。
-        //   保留 updateViaCache:'none'：只作用于**注册/更新检查那一刻**，保证手动更新不会拿到旧 sw.js。
+        //   【2026-10-24】版本来源两处：启动 30s 自动检查（silentCheckUpdate → prefetchNewVersion）
+        //   与「设置 → 检查更新」（checkForUpdate）。两者判定有新版本后都会 reg.update()，
+        //   由新 SW 的 install 阶段把这一版资源先缓存到本机（先缓存、后更新）。
+        //   保留 updateViaCache:'none'：只作用于**注册/更新检查那一刻**，保证更新不会拿到旧 sw.js。
         _regPromise = (!_swSkipForFile && navigator.serviceWorker && navigator.serviceWorker.getRegistration)
             ? navigator.serviceWorker.getRegistration().then(function (existing) {
                 if (existing) return existing;                       // 已安装：零请求，纯本机启动
@@ -854,9 +821,10 @@ window.onclick = function(e) {
         //   提早到 900ms 执行，保证自动刷新发生在用户开始操作之前。
         try { setTimeout(function () { _swClaimRescue(reg); }, 900); } catch (e) {}
 
-        // 【v3.38】离线优先：打开时【不】调用 reg.update()，避免在后台静默从远程重新下载新 SW/资源。
-        // 系统默认打开完全使用离线内容（SW 已 CacheFirst 提供页面）。
-        // 新版本仅在用户点击「设置 → 检查更新」时通过 triggerApplyUpdate() 主动拉取并预备（waiting 状态）。
+        // 【v3.38】离线优先：**打开时**不调用 reg.update()，页面本身完全由 SW 缓存提供、零联网。
+        // 【2026-10-24 用户口径】启动满 30s 才做一次版本检查（见 DOMContentLoaded 里的 30s 定时器）；
+        //   判出新版本后由 prefetchNewVersion() 在后台把新版资源缓存到本机（等待期间页面仍是旧版、照常使用），
+        //   用户点「立即更新」时从本机缓存切换 ⇒ 秒开。所以这里依然不写任何"打开即更新"的逻辑。
 
         // 检测新版本：仅手动检查时才提示，避免打开即打扰
         reg.addEventListener('updatefound', function() {
@@ -1050,6 +1018,39 @@ window.onclick = function(e) {
 
     var _applyingUpdate = false;   // 防重入：等待新 SW 期间禁止重复点击
 
+    /**
+     * 【2026-10-24】新 SW 正在 install（= 正在后台把新版本缓存到本机）时的"等它装完再切"。
+     * 为什么不能用原来的 8s 轮询 + forceHardReload：forceHardReload 会**清空全部缓存并注销 SW**，
+     * 刚预缓存好的新版本会被一起删掉，等于把"先缓存、后更新"白做一遍，还要重新整包下载（更慢）。
+     * 这里等 statechange：installed（成功）→ SKIP_WAITING 切到新版本；
+     *   redundant（装失败）→ 才退回硬刷新。另设 60s 兜底，避免按钮永远停在"正在缓存"。
+     */
+    function _waitInstallingThenSkip(sw) {
+        var done = false;
+        var finish = function (ok) {
+            if (done) return;
+            done = true;
+            navigator.serviceWorker.getRegistration().then(function (r) {
+                if (r && r.waiting) {
+                    r.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    _armReloadFallback(3000);
+                    return;
+                }
+                if (!ok) { forceHardReload(r || null); return; }   // 装失败 ⇒ 退回硬刷新
+                // 已装好但不在 waiting（浏览器已自行激活）：刷新即吃到新缓存
+                window.location.reload();
+            }).catch(function () { forceHardReload(null); });
+        };
+        try {
+            sw.addEventListener('statechange', function () {
+                if (sw.state === 'installed') finish(true);
+                else if (sw.state === 'redundant') finish(false);
+            });
+            if (sw.state === 'installed') finish(true);
+        } catch (e) {}
+        setTimeout(function () { finish(false); }, 60000);
+    }
+
     function applyPendingUpdate() {
         if (_applyingUpdate) return;
         _applyingUpdate = true;
@@ -1069,10 +1070,16 @@ window.onclick = function(e) {
         }
         navigator.serviceWorker.getRegistration().then(function(reg) {
             if (!reg) { forceHardReload(null); return; }
-            // 快速路径：新 SW 已在 waiting，直接令其接管
+            // 快速路径：新 SW 已在 waiting（后台预缓存已完成），直接令其接管 ⇒ 重载直接吃本机缓存
             if (reg.waiting) {
                 reg.waiting.postMessage({ type: 'SKIP_WAITING' });
                 _armReloadFallback(3000);
+                return;
+            }
+            // 新 SW 正在 install（后台缓存还没下完）：等它装完再切，**不要**清缓存硬刷新
+            if (reg.installing) {
+                if (_updTitle) _updTitle.textContent = '⏳ 正在缓存新版本…';
+                _waitInstallingThenSkip(reg.installing);
                 return;
             }
             // 关键修复：waiting 尚未就绪时（triggerApplyUpdate 的 reg.update() 仍在进行），
@@ -2087,21 +2094,21 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window._restorePageState) {
         try { window._restorePageState(); } catch (e) { console.warn('[page-state] 恢复失败', e); }
     }
-    // 【2026-10-21 用户口径·自动检查保留，但不下载】
-    //   用户明确：**启动 30s 自动检查 + 网络恢复补查要保留**（否则发现不了新版本）。
-    //   同时另一条口径也必须成立：**只有点击「立即更新」、且确实有新系统时才从仓库下载**。
-    //   两者的分工就落在 performUpdateCheck 的 showStatus 参数上：
-    //     · 自动检查 → showStatus=false ⇒ 只读 version.json、只置红点/横幅，**不触碰 triggerApplyUpdate**；
-    //     · 手动点击 → showStatus=true 且判定 isNew ⇒ 才 reg.update() 预取新版本。
-    //   注意：刷新/折叠/切 Tab 不在这条路径上，仍完全走本机缓存（见 offline-boot-audit ①③④）。
+    // 【2026-10-24 用户口径·启动 30 秒就检查，发现新版先缓存到本机】
+    //   用户原话："系统启动 30 秒检查更新改为 30 秒就检查更新，如果有新版本就开始缓存本地，
+    //             当点击更新时就从本地缓存更新，这样就加载快点。"
+    //   ⇒ ① 启动后 **30 秒真查一次**（force=true，不再被上一次的 10 分钟节流挡掉）；
+    //      ② 判出新版本后**立刻在后台把新版本整套资源缓存到本机**（见 prefetchNewVersion）；
+    //      ③ 用户点「立即更新」时只做缓存切换 + 刷新，不再等整包下载。
+    //   刷新/折叠/切 Tab 仍完全走本机缓存，不在这条路径上（见 offline-boot-audit ①③④）。
     if (navigator.onLine !== false) {
         setTimeout(function () {
-            if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') silentCheckUpdate();
+            if (navigator.onLine !== false && typeof silentCheckUpdate === 'function') silentCheckUpdate(true);
         }, 30000);
     }
-    // 网络恢复后补一次（离线打开时不可能收到更新提示）；同样只做"检查"，不下载。
+    // 网络恢复后补查一次（离线打开时不可能发现新版本）；这次仍走 10 分钟节流，避免频繁联网。
     window.addEventListener('online', function () {
-        try { if (typeof silentCheckUpdate === 'function') silentCheckUpdate(); } catch (e) {}
+        try { if (typeof silentCheckUpdate === 'function') silentCheckUpdate(false); } catch (e) {}
     });
 });
 
@@ -2135,16 +2142,15 @@ async function checkForUpdate() {
 }
 
 // 静默检查（启动 30s 后 + 网络恢复时各一次）
-//   【2026-10-21 口径】保留自动检查，但**只检查、不下载**：
-//     showStatus=false ⇒ performUpdateCheck 内部不会调用 triggerApplyUpdate（见其 isNew 分支注释），
-//     因此不会 reg.update()、不会触发新 SW 的整包预缓存。真正下载只发生在用户点击「立即更新」时。
+//   【2026-10-24 口径】启动那次（force=true）**一定真查**，判出新版本后就后台缓存到本机
+//     （performUpdateCheck 的 isNew 分支会调 prefetchNewVersion，见该函数注释）。
+//     网络恢复补查（force=false）仍走 10 分钟节流，避免弱网下反复请求。
 //   走 OfflineGate 的 update 意图放行（不包这一层会被离线门禁拦下，自动检查等于失效）。
-//   节流 10 分钟（_last_version_check），避免弱网下反复请求。
-async function silentCheckUpdate() {
+async function silentCheckUpdate(force) {
     // file:// 打开时浏览器禁止 fetch（CORS），必然失败；直接跳过，避免控制台刷红。
     if (typeof location !== 'undefined' && location.protocol === 'file:') return;
     const lastCheck = localStorage.getItem('_last_version_check');
-    if (lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) return;
+    if (!force && lastCheck && (Date.now() - parseInt(lastCheck)) < 600000) return;
     try {
         if (window.OfflineGate) {
             await window.OfflineGate.run('update', function () { return performUpdateCheck(UPDATE_CHECK_URL, false); });
@@ -2159,20 +2165,39 @@ async function silentCheckUpdate() {
     }
 }
 
-// 页面顶部更新提示条：发现新版本时弹出小窗，点击即应用更新（离线优先策略下，
-// 新 SW 已由 triggerApplyUpdate 预拉取进入 waiting，点击触发 SKIP_WAITING + 刷新）。
-function showUpdateBanner(remoteVersion) {
+// 页面顶部更新提示条：发现新版本时弹出小窗，点击即应用更新。
+// 【2026-10-24】文案分两态（对应"先缓存、后更新"）：
+//   caching → 发现新版本，正在后台缓存到本机（用户可以先继续干活）；
+//   ready   → 已缓存到本机，点此立即更新（此时只剩 SKIP_WAITING + 刷新，秒开）。
+var _bannerLabel = '';
+function _bannerText(ver, state) {
+    if (state === 'ready') return '✅ 新版本 ' + ver + ' 已缓存到本机，点此立即更新（秒开）';
+    // idle：后台缓存没跑起来（例如只更新了 version.json、sw.js 没变）⇒ 退回原来的中性文案
+    if (state === 'idle') return '🆕 发现新版本 ' + ver + '，点击立即更新';
+    return '🆕 发现新版本 ' + ver + '，正在后台缓存到本机…（可先继续使用，稍后点击更新）';
+}
+// 供 prefetchNewVersion 在"缓存完成"时把横幅/文案切成 ready 态
+function setUpdateBannerState(state) {
+    var bar = document.getElementById('_update_banner');
+    if (!bar || !_bannerLabel) return;
+    var txt = bar.querySelector('[data-ver]');
+    if (txt) txt.textContent = _bannerText(_bannerLabel, state);
+}
+window.setUpdateBannerState = setUpdateBannerState;
+
+function showUpdateBanner(remoteVersion, state) {
     if (!remoteVersion) return;
+    _bannerLabel = remoteVersion;
     var existing = document.getElementById('_update_banner');
     if (existing) {
         var txt = existing.querySelector('[data-ver]');
-        if (txt) txt.textContent = '🆕 发现新版本 ' + remoteVersion + '，点击立即更新';
+        if (txt) txt.textContent = _bannerText(remoteVersion, state);
         return;
     }
     var bar = document.createElement('div');
     bar.id = '_update_banner';
     bar.innerHTML =
-        '<span data-ver style="flex:1;text-align:left;line-height:1.3;">🆕 发现新版本 ' + remoteVersion + '，点击立即更新</span>' +
+        '<span data-ver style="flex:1;text-align:left;line-height:1.3;">' + _bannerText(remoteVersion, state) + '</span>' +
         '<button data-close style="background:none;border:none;color:rgba(255,255,255,0.75);' +
         'font-size:1.1rem;cursor:pointer;margin-left:8px;padding:0 4px;line-height:1;">✕</button>';
     Object.assign(bar.style, {
@@ -2211,6 +2236,86 @@ function hideUpdateBanner(skipAnimate) {
 }
 window.showUpdateBanner = showUpdateBanner;
 window.hideUpdateBanner = hideUpdateBanner;
+
+// ==================== 【2026-10-24】新版本后台预缓存 ====================
+// 用户口径："发现有新版本就开始缓存本地，点更新时直接从本地缓存更新，加载更快"。
+// 链路：reg.update() 取新 sw.js → 浏览器 install 新 SW
+//       → sw.js 的 install 把整套 App Shell 下进「带新时间戳的缓存」（旧缓存原样保留）
+//       → 新 SW 装完停在 waiting（不 skipWaiting，页面仍由旧版服务）
+//       → 点「立即更新」= SKIP_WAITING + 刷新，重载直接吃新缓存 ⇒ 秒开。
+// 状态机：_prefetchState.running（正在下）/ ready（已下好，可秒切）。
+var _prefetchState = { running: false, ready: false, label: '' };
+
+function prefetchNewVersion(label) {
+    try {
+        if (label) _prefetchState.label = label;
+        if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistration) return;
+        if (_prefetchState.ready) { setUpdateBannerState('ready'); return; }   // 已缓存过，不重复下
+        if (_prefetchState.running) return;                                    // 正在下，别叠加请求
+        _prefetchState.running = true;
+        navigator.serviceWorker.getRegistration().then(function (reg) {
+            if (!reg) { _prefetchState.running = false; return; }
+            // 浏览器已把新 SW 装好（waiting）= 资源已在本机，直接切 ready
+            if (reg.waiting) { _markPrefetchReady(); return; }
+            // 浏览器已在自己装（导航时的 soft update）：跟着它的 statechange 即可
+            if (reg.installing) { _watchInstalling(reg.installing); return; }
+            // 主动拉一次：新 sw.js 有变化才会触发 install（= 才会开始下资源）
+            reg.update().then(function () {
+                // updatefound 之后 reg.installing 才有值，稍等一拍再取
+                setTimeout(function () {
+                    navigator.serviceWorker.getRegistration().then(function (r) {
+                        if (!r) { _prefetchState.running = false; return; }
+                        if (r.waiting) { _markPrefetchReady(); return; }
+                        if (r.installing) { _watchInstalling(r.installing); return; }
+                        // 没有新 SW 可装（version.json 比 sw.js 新、或已是最新）⇒ 交给点击时的常规链路
+                        _prefetchState.running = false;
+                        setUpdateBannerState('idle');   // 别让横幅一直停在"正在缓存…"
+                        console.info('[update] 未发现可安装的新版本（version.json 已是最新或 sw.js 无变化）');
+                    }).catch(function () { _prefetchState.running = false; });
+                }, 800);
+            }).catch(function (e) {
+                _prefetchState.running = false;
+                console.info('[update] 后台预缓存未能开始（离线或网络受限）：' + ((e && e.message) || e));
+            });
+        }).catch(function () { _prefetchState.running = false; });
+    } catch (e) { _prefetchState.running = false; }
+}
+window.prefetchNewVersion = prefetchNewVersion;
+
+// 盯住"正在安装"的新 SW：installed = 预缓存完成；redundant = 装失败（放弃，不打扰用户）
+function _watchInstalling(sw) {
+    try {
+        var onState = function () {
+            if (sw.state === 'installed') _markPrefetchReady();
+            else if (sw.state === 'redundant') {
+                _prefetchState.running = false;
+                setUpdateBannerState('idle');
+                console.info('[update] 新版本安装失败（redundant），点击更新时再重试');
+            }
+        };
+        sw.addEventListener('statechange', onState);
+        if (sw.state === 'installed') onState();      // 挂监听前就已装好
+    } catch (e) { _prefetchState.running = false; }
+}
+
+// 预缓存完成：切文案 + 记住"已就绪"（刷新后由 localStorage 兜住，避免重复下载）
+function _markPrefetchReady() {
+    _prefetchState.running = false;
+    if (_prefetchState.ready) return;
+    _prefetchState.ready = true;
+    try { localStorage.setItem('_update_prefetched', _prefetchState.label || '1'); } catch (e) {}
+    setUpdateBannerState('ready');
+    try {
+        var st = document.getElementById('update-status');
+        // 只在面板正显示"发现新版本"时改写，别覆盖用户正在看的其它提示
+        if (st && _prefetchState.label && st.textContent && st.textContent.indexOf('发现新版本') >= 0) {
+            st.innerHTML = '✅ 新版本 <strong>' + _prefetchState.label + '</strong> 已缓存到本机<br>'
+                + '点击「🔄 立即更新」直接切换（不再等下载）';
+            st.style.color = '#16a34a';
+        }
+    } catch (e) {}
+    try { console.info('[update] 新版本已缓存到本机，点「立即更新」可直接切换'); } catch (e) {}
+}
 
 // 核心检测函数
 async function performUpdateCheck(url, showStatus) {
@@ -2280,18 +2385,20 @@ async function performUpdateCheck(url, showStatus) {
             // v3.26：「立即更新」按钮原位覆盖「检查更新」按钮（循环图标样式）
             if (window.switchUpdateBtn) window.switchUpdateBtn('update');
             if (showStatus) {
-                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteLabel + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>新版已就绪，点击上方「🔄 立即更新」应用新版本';
+                statusEl.innerHTML = '🆕 发现新版本 <strong>' + remoteLabel + '</strong>（当前 ' + APP_VERSION + '）<br>' + (releaseNotes ? '📝 ' + releaseNotes.slice(0, 120) + (releaseNotes.length > 120 ? '…' : '') : '') + '<br>正在后台缓存到本机，完成后点「🔄 立即更新」即可秒开';
                 statusEl.style.color = '#dc2626';
             }
-            // 【2026-10-21 用户口径·下载只在"点击更新"时发生】
-            //   这里**一律不发起 reg.update()**（无论自动检查还是手动检查）：
-            //   手动「检查更新」只负责读 version.json、把按钮切成「🔄 立即更新」并弹横幅；
-            //   真正的下载发生在用户点这个按钮 → applyPendingUpdate() → reg.update()
-            //   → 新 SW install → 缓存就绪 → SKIP_WAITING → controllerchange → 重载。
-            //   这样"检查到新版本"本身不产生任何包下载，符合"后点击更新才远程更新"。
-            //   （2026-09-23 那版只对静默检查做了限制，手动检查仍会预下载；本次统一收敛。）
+            // 【2026-10-24 用户口径·先缓存、后更新】（**取代** 2026-10-21 的"点了才下载"）
+            //   用户原话："如果有新版本就开始缓存本地，当点击更新时就从本地缓存更新，这样就加载快点。"
+            //   ⇒ 判定 isNew 的这一刻就发起后台预缓存：
+            //     reg.update() → 取新 sw.js → 新 SW install 阶段把整套 App Shell 下进新缓存
+            //     → 装完停在 waiting（缓存已就绪，页面仍由旧版服务）→ 横幅/文案切成"已缓存完成"。
+            //   之后用户点「立即更新」= applyPendingUpdate()：SKIP_WAITING → activate → claim →
+            //   刷新，整页直接吃本机缓存 ⇒ 不再有"点更新后等整包下载"的等待。
+            //   自动检查与手动检查都走这一条（两者只是"要不要显示状态文字"的区别）。
+            if (window.prefetchNewVersion) window.prefetchNewVersion(remoteLabel);
             // 页面顶部弹出更新提示条（手动/静默检查均生效），点击即应用
-            if (window.showUpdateBanner) window.showUpdateBanner(remoteLabel);
+            if (window.showUpdateBanner) window.showUpdateBanner(remoteLabel, 'caching');
         } else {
             setUpdateBadge(false);
             localStorage.removeItem('_has_update');

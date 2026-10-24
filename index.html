@@ -2054,6 +2054,8 @@
                                         <button onclick="clearDiagData()" class="st-mini btn-data-red">清空</button>
                                     </span>
                                 </div>
+                                <!-- 【2026-10-24】未配置大模型 API 时提示"为何启动不载入"（KB.panelRender 控制显隐） -->
+                                <div class="st-hint" id="kb-ai-hint" style="display:none;margin:0;"></div>
                                 <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                                     <input type="checkbox" id="kb-autoload-chk" onchange="KB.setAutoLoad(this.checked)" style="cursor:pointer;">
                                     <span>启动后自动载入索引（低配手机可关）</span>

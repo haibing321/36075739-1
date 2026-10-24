@@ -1348,6 +1348,16 @@
                     + (_lastCacheErr ? ' · ⚠️缓存写入失败' : '')
                     + (cacheCapable() ? '' : ' · ⚠️缓存能力缺失，请强刷 Ctrl+F5');
             }
+            // 【2026-10-24】没配大模型 API 时，说明"为什么不载入"（否则用户会以为索引坏了）
+            var aiHint = document.getElementById('kb-ai-hint');
+            if (aiHint) {
+                var noApi = !aiConfigured();
+                aiHint.style.display = noApi ? 'block' : 'none';
+                if (noApi) {
+                    aiHint.textContent = '⚠️ 未配置大模型 API：启动不载入知识库索引（省内存 / 省 CPU）。'
+                        + '台账、规章、手册、电话、日志等本地数据不受影响；配置 API 后会自动载入，也可点上方「载入索引」立即载入。';
+                }
+            }
             var scopeEl = document.getElementById('kb-issue-scope');
             if (scopeEl) {
                 var lim = issueLimit();
@@ -1486,10 +1496,66 @@
         try { on = localStorage.getItem('kb_autoload') !== '0'; } catch (e) {}
         return on;
     }
+
+    /**
+     * 【2026-10-24 用户口径】没配置大模型 API 时，**启动不载入知识库**。
+     * 为什么成立：知识库（BM25 分块索引）唯一的消费方就是四个 AI 功能 ——
+     *   智能对话（doubao.js）、智能写作（smart-writer.js）、AI 对规（smart-check.js）、
+     *   智能体 / 风险研判（agent-core.js）；它们全都要发模型请求。
+     *   而「本地对规」保底走的是纯关键词匹配（smart-check.js 的 localBM25Recall*，完全不碰 KB）
+     *   ⇒ 没 Key 时预热的索引一次也用不上，纯属白烧内存与 CPU
+     *     （8 个源，检查信息可达 4 万条、缓存几十 MB，另加 df 预热）。
+     * 判据与「工作写实 → ✨ 一键修改」按钮完全一致：ds_api_key_v1 有值且不是占位符
+     *   （对齐 diary.js 的 diaryAiHasApiKey / doubao.js 的 DS_PLACEHOLDER_KEY）。
+     * ⚠️ 只判断"有没有配"，**判断不了"配得对不对"**（那要真发一次请求）。配错 Key 时仍会照常载入，
+     *   代价不过是白载入一次索引，不影响数据安全，也不影响本地功能。
+     * 手动入口不受影响：设置 → 知识库 →「载入索引 / 一键重建」随时可点（用户显式操作优先）。
+     */
+    function aiConfigured() {
+        var PH = 'YOUR_API_KEY_HERE';
+        var k = '';
+        try { k = localStorage.getItem('ds_api_key_v1') || ''; } catch (e) { return false; }
+        if (k && k !== PH) return true;
+        // 兜底：多模型配置下 Key 可能还只在 ds_providers_v1 里（ds_api_key_v1 由 doubao.js 在保存/切换时同步），
+        //   此时按「当前选中的模型」再判一次，避免把"其实配好了"误判成"没配"而不载入知识库。
+        try {
+            var arr = JSON.parse(localStorage.getItem('ds_providers_v1') || '[]');
+            if (Array.isArray(arr) && arr.length) {
+                var aid = localStorage.getItem('ds_active_provider_v1') || '';
+                var act = null;
+                for (var i = 0; i < arr.length; i++) {
+                    if (arr[i] && String(arr[i].id) === String(aid)) { act = arr[i]; break; }
+                }
+                if (!act) act = arr[0];
+                if (act && act.apiKey && act.apiKey !== PH) return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    // 启动自动载入是否已经跑过（避免"配置 API 后补载入"重复跑一次）
+    var _autoLoadStarted = false;
+
     function setAutoLoad(on) {
         try { localStorage.setItem('kb_autoload', on ? '1' : '0'); } catch (e) {}
-        if (on) autoLoadCaches();
+        // 用户显式勾选 = 我现在就要索引（即便还没配 API）：直接载入，不套启动门槛
+        if (on) { _autoLoadStarted = true; autoLoadCaches(); }
         return !!on;
+    }
+
+    /**
+     * 配置好 API 之后补一次启动载入（doubao.js 保存配置时调用，无需重启）。
+     * 返回 true 表示已开始载入；false = 没 Key / 开关关着 / 本次已跑过。
+     */
+    function onApiConfigChanged() {
+        try {
+            if (_autoLoadStarted || !autoLoadEnabled() || !aiConfigured()) return false;
+            _autoLoadStarted = true;
+            window.__kbAutoLoad = 'after-api-config';
+            autoLoadCaches().then(function () { warmCommonSources(); });
+            try { console.info('[KB] 已配置大模型 API → 开始载入知识库索引'); } catch (e) {}
+            return true;
+        } catch (e) { return false; }
     }
     function autoLoadCaches() {
         if (!autoLoadEnabled() || !cacheCapable()) return Promise.resolve(0);
@@ -1839,6 +1905,17 @@
         //   正好撞在用户刚打开、开始点按的时间点上（实测两段 320ms 级长任务卡在这里）。
         //   requestIdleCallback 会挑浏览器空闲帧跑；timeout 只作为"最晚也要跑"的兜底。
         function _autoLoadLater() {
+            // 【2026-10-24 用户口径】没配大模型 API ⇒ 知识库在启动时不载入（省内存 / 省 CPU）。
+            //   本地数据（台账、规章、手册、电话、日志）照常可用；知识库只服务于 AI 检索与提示词。
+            //   配好 API 后由 KB.onApiConfigChanged() 补载入（doubao.js 保存配置时调用），无需重启。
+            if (!aiConfigured()) {
+                window.__kbAutoLoad = 'skipped-no-api';
+                try { console.info('[KB] 未配置大模型 API → 启动不载入知识库索引（本地数据照常可用；配置后自动载入）'); } catch (e) {}
+                return;
+            }
+            if (!autoLoadEnabled()) { window.__kbAutoLoad = 'skipped-switch-off'; return; }
+            _autoLoadStarted = true;
+            window.__kbAutoLoad = 'started';
             var kick = function () {
                 // 再等一个空闲帧：此时首屏已画完、台账已就绪，恢复索引不会与它们抢主线程
                 if (typeof requestIdleCallback === 'function') requestIdleCallback(function () {
@@ -1897,6 +1974,9 @@
         warmCommon: warmCommonSources,      // v3.75 空闲预热（诊断/手动触发用）
         setAutoLoad: setAutoLoad,
         getAutoLoad: autoLoadEnabled,
+        // 【2026-10-24】没配大模型 API 时启动不载入知识库（见 aiConfigured 注释）
+        aiConfigured: aiConfigured,
+        onApiConfigChanged: onApiConfigChanged,
         setSwitch: setSwitch,
         SYNONYM_MAP: SYNONYM_MAP,   // 【2026-09-30】同义词表对外暴露（单一来源）：smart-check 等模块可复用，避免两处维护
         getSwitch: getSwitch,

@@ -4007,9 +4007,24 @@
                 dsScrollBottom();
             }
 
+            // 【卡死修复 2026-11-20】滚动到底部在**流式期间**会强制整棵聊天区重新布局。
+            // 实测（3 万字文件 → 4 万字改稿，CPU 4×）：一次 scrollTop=scrollHeight 约 60ms，
+            // 而流式每 60ms 的这次重绘里会调 2~3 次（重绘 + dsRenderAll + dsAppendMsg），
+            // 于是主线程被布局占满 → 相邻分块间隔最长 3.2s、单任务 3.2s，用户看到的就是"卡死"。
+            // 处理：流式期间合并 + 限频（150ms 一次），非流式（点发送、切会话、重渲染）保持原来的同步滚动。
+            var _dsScrollQueued = false;
             function dsScrollBottom() {
-                const box = document.getElementById('ds-chat-box');
-                if (box) box.scrollTop = box.scrollHeight;
+                var box = document.getElementById('ds-chat-box');
+                if (!box) return;
+                if (!_dsStreaming) { box.scrollTop = box.scrollHeight; return; }
+                if (_dsScrollQueued) return;
+                _dsScrollQueued = true;
+                setTimeout(function () {
+                    _dsScrollQueued = false;
+                    var b = document.getElementById('ds-chat-box');
+                    if (!b || !_dsStreaming) return;
+                    b.scrollTop = b.scrollHeight;
+                }, 150);
             }
 
             // ---- 代码块下载 ----
@@ -4092,7 +4107,13 @@
                                     if (!metricsOut.firstDeltaMs && metricsOut.t0) {
                                         metricsOut.firstDeltaMs = Math.round(_nowMs - metricsOut.t0);
                                     }
-                                    if (_nowMs - _lastPaint >= _PAINT_MS) {
+                                    // 【卡死修复 2026-11-20】重绘间隔随正文长度自适应：正文越长，一次"整条气泡
+                                    // 重新 markdown 解析 + innerHTML 替换 + 布局"越贵（4 万字实测 >100ms，手机更久）。
+                                    // 固定 60ms 会让长文档改写时主线程持续满负荷，界面像卡死；长文降到 200ms 仍比逐字刷屏流畅。
+                                    var _paintGap = _PAINT_MS;
+                                    var _clen = dsHistory[idx].content.length;
+                                    if (_clen > 12000) _paintGap = 200; else if (_clen > 4000) _paintGap = 120;
+                                    if (_nowMs - _lastPaint >= _paintGap) {
                                         _lastPaint = _nowMs;
                                         var _cb = document.getElementById('ds-chat-box');
                                         if (_cb) {
@@ -4101,6 +4122,10 @@
                                             if (_lb) dsSetHtmlKeepMedia(_lb, dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>');
                                             dsScrollBottom();
                                         }
+                                        // 【卡死修复】让出一次事件循环：分块成簇到达时 reader.read() 立即 resolve，
+                                        // 整个 while 循环会挤在同一个任务里跑完，浏览器全程没有绘制机会（表现为界面僵住）。
+                                        // 每次重绘后 yield 一次，长任务就不会累积成秒级。
+                                        await new Promise(function (_r) { setTimeout(_r, 0); });
                                     }
                                 }
                             } catch (e) {}

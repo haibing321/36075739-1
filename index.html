@@ -1159,6 +1159,14 @@
                                     </button>
                                 </div>
                                 <div class="ds-input-spacer"></div>
+                                <!-- 【2026-11-23 P3】语音输入（ASR）：点一下开始录音，再点一下结束并转写 -->
+                                <button onclick="dsVoiceInput(this)" id="ds-mic-btn" class="ds-attach-btn" title="语音输入（说完再点一下完成）">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5V5a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 12 15z"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18.5V21"/></svg>
+                                </button>
+                                <!-- 文字识别（OCR）：选图片/PDF → 服务端识别 → 文本回填输入框 -->
+                                <button onclick="dsOcrPick()" id="ds-ocr-btn" class="ds-attach-btn" title="文字识别（图片 / PDF → 文本）">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M4 8.5V6a2 2 0 0 1 2-2h2.5M15.5 4H18a2 2 0 0 1 2 2v2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M8.5 20H6a2 2 0 0 1-2-2v-2.5"/><path d="M8 15.5 10.2 8l2.2 7.5M9 13h2.6"/><path d="M15 8v7.5M15 8h1.6a1.8 1.8 0 0 1 0 3.6H15"/></svg>
+                                </button>
                                 <!-- 附件（DeepSeek：回形针线条图标） -->
                                 <button onclick="dsToggleAttachMenu()" id="ds-attach-btn" class="ds-attach-btn" title="上传附件">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19">

@@ -1152,6 +1152,30 @@
                 // 联网搜索（Web Search）开关：默认走本地工具通道（web_search / web_fetch，**返回明文网址**，可与本地工具同用）；
                 //   仅当端点不支持 function calling 时自动回落到 Anthropic 兼容层的服务端检索（web_search_20250305，无链接）。
                 html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:4px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-websearch"' + (localStorage.getItem('ds_web_search') === '1' ? ' checked' : '') + '> 🌐 联网搜索 (Web Search) — 检索外部实时信息并给出网址（不支持工具调用的端点自动回落到服务端检索）</label>';
+                // 【2026-11-23 P0】服务端联网工具开关：走 DeepSeek 官方 deepseek_web_search / deepseek_read_url ——
+                //   检索、开页、页内找词都在服务端完成，答案自带 citations；思考模式下自动变成「深度思考搜索」。
+                //   关掉则沿用原来的本机工具通道（web_search / web_fetch → /v1/tools/*）。
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:2px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-ws-server"' + (localStorage.getItem('ds_ws_server') === '0' ? '' : ' checked') + '> ⚡ 服务端联网（deepseek_web_search · 自带引用、思考模式下可多步检索）</label>';
+                // 【2026-11-23 P2】服务端文件解析开关：PDF/Word/PPT 走 Files API 的图文混排解析，
+                //   比浏览器端 mammoth / pdf.js 只出纯文本准（PDF 还只取前 10 页）。
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;user-select:none;margin-top:2px;color:var(--text-secondary);"><input type="checkbox" id="ds-pe-files-api"' + (localStorage.getItem('ds_files_api') === '0' ? '' : ' checked') + '> 📄 服务端文件解析（PDF/Office 保留图文混排，扫描件也能读）</label>';
+                // 【2026-11-23 P3】内容安全校验：官方 safety_check，命中风险返回拒答标识。
+                //   内网自用默认关闭；对外提供服务时必须开启（官方口径）。
+                var _sLv = (localStorage.getItem('ds_safety_level') || 'off');
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;user-select:none;margin-top:2px;color:var(--text-secondary);">🛡 内容安全校验'
+                    + '<select id="ds-pe-safety" style="font-size:0.78rem;padding:2px 6px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);">'
+                    + '<option value="off"' + (_sLv === 'off' ? ' selected' : '') + '>关闭（内网自用）</option>'
+                    + '<option value="low"' + (_sLv === 'low' ? ' selected' : '') + '>基础 low</option>'
+                    + '<option value="high"' + (_sLv === 'high' ? ' selected' : '') + '>严格 high</option>'
+                    + '</select><span style="opacity:.65;">对外部署时请开启</span></label>';
+                // 【2026-11-23 P3】朗读引擎：浏览器 speechSynthesis（免费、离线）或官方 TTS（stella/tide，按字符计费）
+                var _ttsE = (localStorage.getItem('ds_tts_engine') || 'browser');
+                html += '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;user-select:none;margin-top:2px;color:var(--text-secondary);">🔊 朗读引擎'
+                    + '<select id="ds-pe-tts" style="font-size:0.78rem;padding:2px 6px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);">'
+                    + '<option value="browser"' + (_ttsE === 'browser' ? ' selected' : '') + '>浏览器（免费）</option>'
+                    + '<option value="stella"' + (_ttsE === 'stella' ? ' selected' : '') + '>DeepSeek · stella（女声）</option>'
+                    + '<option value="tide"' + (_ttsE === 'tide' ? ' selected' : '') + '>DeepSeek · tide（男声）</option>'
+                    + '</select></label>';
                 // 【多模态模型快捷预设】一键填好名称/URL/模型名，免手敲
                 // V4.1 Flash 已原生支持多模态（图文通用），不再需要单独的「视觉模型」配置
                 html += '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><button type="button" class="ds-vision-btn" onclick="dsFillVisionModel()" style="padding:5px 10px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:0.78rem;cursor:pointer;">📷 一键填入 DeepSeek V4.1 Flash</button><span style="font-size:0.72rem;color:#94a3b8;align-self:center;">deepseek-flash · 原生多模态（可看图）；另有纯文本档 deepseek-v4-pro 可手填</span></div>';
@@ -1238,9 +1262,18 @@
                 // 新节点的 checked 来自「保存前」的 localStorage 值；若在其后再读，读到的是旧状态的替身，
                 // 结果是"在表单里改「联网搜索」开关、点保存永远不生效"。
                 var _wsChk = document.getElementById('ds-pe-websearch');
+                var _wsSrvChk = document.getElementById('ds-pe-ws-server');
+                var _filesChk = document.getElementById('ds-pe-files-api');
+                var _safetySel = document.getElementById('ds-pe-safety');
                 addOrUpdateProvider({ id: pid || undefined, name: name, apiUrl: url, model: model, apiKey: key });
                 // 持久化联网搜索开关（全局行为，与具体模型配置无关）；元素不存在时保留原值，避免误重置为 0
                 if (_wsChk) localStorage.setItem('ds_web_search', _wsChk.checked ? '1' : '0');
+                // 服务端联网工具开关（同上，读取必须在 renderModelManager 之前）
+                if (_wsSrvChk) localStorage.setItem('ds_ws_server', _wsSrvChk.checked ? '1' : '0');
+                if (_filesChk) localStorage.setItem('ds_files_api', _filesChk.checked ? '1' : '0');
+                if (_safetySel) localStorage.setItem('ds_safety_level', _safetySel.value || 'off');
+                var _ttsSel = document.getElementById('ds-pe-tts');
+                if (_ttsSel) localStorage.setItem('ds_tts_engine', _ttsSel.value || 'browser');
                 // 同步输入栏地球按钮高亮（两处 UI 共用同一开关）
                 try { if (typeof window.dsSyncWebSearchBtn === 'function') window.dsSyncWebSearchBtn(); } catch (e) {}
                 if (f) { f.style.display = 'none'; f.dataset.pid = ''; }
@@ -2613,11 +2646,74 @@
                 // 4.2 附件处理
                 // ════════════════════════════════════════════
                 const validAttach = (window._dsAttachments || []).filter(Boolean);
+                // ════════════════════════════════════════════════════════════════════
+                // 【2026-11-23 P2 接入 Files API：PDF / Office 交给服务端解析】
+                // 官方 Files API（2026-11-13 全家桶）把「文件输入」做成**服务端能力**：
+                //   POST /files（multipart，purpose 必须写在 file 之前）→ 拿 file_id；
+                //   之后在 user 消息 content 数组里放 {"type":"file","file_id":"…"}，与 text 块并列即可。
+                //   · purpose=rich_layout_recognition：PDF/Word/PPT，服务端做**图文混排解析**（保留版式与图片）；
+                //   · purpose=user_data：图片/文本/表格/电子书，按类型自动解析；
+                //   解析在上传阶段完成，对话时不额外耗时；官方限制：图片 64MiB、文档 100MiB、文本 32MiB。
+                // 为什么值得换：本机解析（mammoth / pdf.js）只出**纯文本**，PDF 还只取前 10 页、
+                //   扫描件（图片型 PDF）直接拿不到字 —— 「上传文件改一遍、保留全部数据」最容易折在这一步。
+                // 不劣化：只有官方端点 + 开关打开 + 类型受支持时才走服务端；
+                //   上传失败 / 超限 / 非官方端点 → 自动回落到本机解析（原路径一字未改）。
+                // 关闭方式：设置里取消勾选「服务端文件解析」，或 localStorage ds_files_api = '0'。
+                // ════════════════════════════════════════════════════════════════════
+                var _fileBlocks = [];
+                var _fileIdsByName = {};
+                try {
+                    var _filesOn = localStorage.getItem('ds_files_api') !== '0';
+                    var _uHost = '';
+                    try { _uHost = new URL(localStorage.getItem('ds_api_url_v1') || '').host.toLowerCase(); } catch (e) { _uHost = 'api.deepseek.com'; }
+                    var _uOfficial = /(^|\.)deepseek\.com$/.test(_uHost) || localStorage.getItem('ds_ws_server_force') === '1';
+                    var _DOC_RE = /\.(pdf|docx?|pptx?|xlsx?)$/i;
+                    var _fKey0 = localStorage.getItem('ds_api_key_v1') || '';
+                    if (_filesOn && _uOfficial && _fKey0 && validAttach.some(function (a) { return a && a._file && _DOC_RE.test(a.name || ''); })) {
+                        var _baseU = (localStorage.getItem('ds_api_url_v1') || '').replace(/\/chat\/completions.*$/, '').replace(/\/+$/, '');
+                        var _upCnt = 0;
+                        for (var _fi = 0; _fi < validAttach.length && _upCnt < 3; _fi++) {
+                            var _aU = validAttach[_fi];
+                            if (!_aU || !_aU._file || !_DOC_RE.test(_aU.name || '')) continue;
+                            if ((_aU._file.size || 0) > 100 * 1024 * 1024) continue;   // 官方文档上限 100MiB
+                            try {
+                                var _fdU = new FormData();
+                                _fdU.append('purpose', 'rich_layout_recognition');   // ⚠️ 必须排在 file 之前
+                                _fdU.append('file', _aU._file, _aU.name || 'upload');
+                                var _urU = await fetch(_baseU + '/files', {
+                                    method: 'POST',
+                                    headers: { 'Authorization': 'Bearer ' + _fKey0 },
+                                    body: _fdU,
+                                    signal: (window._dsAbortController && window._dsAbortController.signal) || undefined
+                                });
+                                if (!_urU.ok) { console.warn('[ds] Files 上传失败(' + _urU.status + ')：' + _aU.name); continue; }
+                                var _ujU = await _urU.json();
+                                if (_ujU && _ujU.id) {
+                                    _fileIdsByName[_aU.name] = _ujU.id;
+                                    _fileBlocks.push({ type: 'file', file_id: _ujU.id });
+                                    _upCnt++;
+                                }
+                            } catch (_ueU) { console.warn('[ds] Files 上传异常：' + ((_ueU && _ueU.message) || _ueU)); }
+                        }
+                        if (_fileBlocks.length) console.log('[ds] 服务端文件解析：' + _fileBlocks.length + ' 个文件已上传（file_id 已就绪）');
+                    }
+                } catch (_feU) { }
+                window.__dsPendingFileBlocks = _fileBlocks;
                 let finalText = userText;
                 let attachNames = [];
                 let visionUserContent = null; // 真实送审内容（含 image_url 块时非字符串）
                 if (validAttach.length > 0) {
                     attachNames = validAttach.map(function(a) { return a.name; });
+                    // 【2026-11-23 P2】已交给服务端解析的文件（拿到 file_id）不再拼正文：
+                    //   否则同一份文件既走 file 块又走文本，prompt 翻倍、还可能出现两处不一致。
+                    //   上传失败的文件自动落回本机解析的文本（能力不降级）。
+                    var _attachTextOf = function () {
+                        var _restA = validAttach.filter(function (a) { return !_fileIdsByName[a.name]; });
+                        if (!_restA.length) return '';
+                        return '\n\n【附件内容】\n' + _restA.map(function (a) {
+                            return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
+                        }).join('\n\n');
+                    };
                     // 用统一助手构建：图片转 image_url 块，文本保持纯文本；无图则退化为纯文本 finalText
                     var _vm = (typeof window.buildVisionMessages === 'function')
                         ? window.buildVisionMessages(userText, validAttach)
@@ -2630,14 +2726,10 @@
                     if (_vm && typeof _vm.content !== 'string' && _visionOk) {
                         visionUserContent = _vm.content; // content 为数组（OpenAI 多模态格式）
                         // 历史/重渲染仍用纯文本（含图片元信息），保证渲染与重新生成兼容
-                        finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) {
-                            return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
-                        }).join('\n\n');
+                        finalText += _attachTextOf();
                     } else {
                         // 纯文本模型 / 无图：统一退化为纯文本（图片以文字说明形式附带）
-                        finalText += '\n\n【附件内容】\n' + validAttach.map(function(a) {
-                            return '--- 文件：' + a.name + ' ---\n' + (a.isImage ? (a.text || '[图片]') : a.text);
-                        }).join('\n\n');
+                        finalText += _attachTextOf();
                         if (_vm && typeof _vm.content !== 'string' && !_visionOk) {
                             // 提示图片不会被识别（避免误以为已看图）。措辞用「系统提示」的第三人称视角：
                             // 若写成「当前模型为纯文本模型」，模型会把它当成自我描述，在后续无关话题里也反复声明「我看不了图」。
@@ -2723,7 +2815,9 @@
                     if (m && m.role === 'assistant' && _i !== _lastAsstIdx) {
                         var _c = String(m.content || '');
                         if (_c.length > 3000) {
-                            return { role: m.role, content: _c.slice(0, 1800) + '\n\n…（此处省略 ' + (_c.length - 2400) + ' 字）\n\n' + _c.slice(-600) };
+                            // 【2026-11-23】截断副本也要带上 server_tool_calls：服务端联网读过页面后，
+                            //   少了这个字段下一轮就"读过的页面不在上下文里"（官方明确该字段需原样回传）
+                            return { role: m.role, content: _c.slice(0, 1800) + '\n\n…（此处省略 ' + (_c.length - 2400) + ' 字）\n\n' + _c.slice(-600), serverToolCalls: m.serverToolCalls || null };
                         }
                     }
                     // ② user：历史消息（非本轮）里的附件正文压缩
@@ -2991,7 +3085,17 @@
                 //   否则会把那条空的 assistant 也发给模型（原实现靠"先建 messages、再 push 气泡"的顺序规避）。
                 var messages = [
                     { role: 'system', content: systemPrompt },
-                    ..._reqHist
+                    // 【2026-11-23 P0】把历史里服务端联网留下的 server_tool_calls 原样带回请求体：
+                    //   官方要求多轮时"pass the assistant message back with server_tool_calls unchanged"，
+                    //   读过的页面才能从 signature 恢复进上下文。其它消息原样透传（含多模态数组）。
+                    ..._reqHist.map(function (m) {
+                        if (m && m.role === 'assistant' && m.serverToolCalls && m.serverToolCalls.length) {
+                            var _mKeep = { role: 'assistant', content: m.content || '', server_tool_calls: m.serverToolCalls };
+                            if (m.reasoning) _mKeep.reasoning_content = m.reasoning;
+                            return _mKeep;
+                        }
+                        return m;
+                    })
                 ];
                 // 多模态：若本次发送含图片块，将最后一条 user 消息的 content 替换为 image_url 数组
                 if (visionUserContent && messages.length) {
@@ -3000,6 +3104,22 @@
                             messages[_mi] = { role: 'user', content: visionUserContent };
                             break;
                         }
+                    }
+                }
+                // 【2026-11-23 P2】服务端文件块：本轮附件已上传到 Files API 时，在最后一条 user 消息里追加
+                //   {"type":"file","file_id":…}（与 text 块并列，官方格式）。附件正文已在拼 finalText 时跳过
+                //   （见 _attachTextOf），所以不会出现"同一份文件既走 file 块又走文本"的重复占用。
+                //   顺序放在多模态替换之后：图片走 image_url 块，文档走 file 块，两者可并存。
+                var _pendingFb = window.__dsPendingFileBlocks || [];
+                window.__dsPendingFileBlocks = null;
+                if (_pendingFb.length && messages.length) {
+                    for (var _mfi = messages.length - 1; _mfi >= 0; _mfi--) {
+                        if (messages[_mfi].role !== 'user') continue;
+                        var _mcNow = messages[_mfi].content;
+                        var _mArrFb = Array.isArray(_mcNow) ? _mcNow.slice() : [{ type: 'text', text: String(_mcNow || '') }];
+                        _pendingFb.forEach(function (fb) { _mArrFb.push(fb); });
+                        messages[_mfi] = { role: 'user', content: _mArrFb };
+                        break;
                     }
                 }
 
@@ -3093,6 +3213,32 @@
                     // 两条通道均支持图片（Anthropic 走 image 内容块、Responses 走 input_image），故不再因图片放弃联网。
                     // 联网证据（检索次数 / 检索词 / 实际通道）——无检索时前端明确告警，杜绝「假成功」
                     dsHistory[assistantIdx].web = null;
+                    // ── 【2026-11-23 P0】本轮是否走「服务端 Web 工具」（deepseek_web_search / deepseek_read_url）──
+                    // 官方 Web Tools（2026-11-13）把联网搜索 / 深度思考搜索 / 阅读链接做成**服务端工具**：
+                    //   在 tools 里声明 {"type":"deepseek_web_search"}（读链接再加 {"type":"deepseek_read_url"}）后，
+                    //   检索、开页、页内找词全在服务端执行，答案自带 citations（Chat Completions 走 message.annotations），
+                    //   思考模式下同一工具自动变成「深度思考搜索」（多步推理里自主检索，官方上限约 20 次调用）。
+                    // 相比本机工具通道（模型调 web_search → 前端请求 /v1/tools/* → 结果回灌 → 模型再答）：
+                    //   · 少一轮甚至多轮 API 往返，首字更快；服务端 web 工具本身不计费，只算 token；
+                    //   · 引用由服务端给出（url/title/snippet），不必靠提示词逼模型自己编号；
+                    //   · 思考模式下可在推理过程中连续检索/开页，不必每步回灌一次。
+                    // ⚠️ 官方硬约束（写错直接 400）：① 不能与其它 tools 同时声明（含本机 function 工具）；
+                    //   ② 不能被 tool_choice 指定；③ 只有官方端点具备该能力（网关需自行同步，见 ds_ws_server_force）。
+                    // 取舍（不劣化能力）：只在「纯时效性问题」这一档启用 ——
+                    //   判据 = 开了联网 + 官方端点 + 判为实时问题 + 问句不含本单位台账/规章术语。
+                    //   这类问题本来用不上台账工具，换来实现「一次请求完成检索 + 带引用作答」；
+                    //   涉及台账/条款的混合问题仍走原本地工具通道（一次回答既给外部依据又给本单位数据）。
+                    // ⚠️ 这一段必须在下面的联网提示词之前算出来：链接预读要靠它决定"要不要自己抓链接"。
+                    var _dsHostNow = '';
+                    try { _dsHostNow = new URL(dsApiUrl).host.toLowerCase(); } catch (e) { _dsHostNow = 'api.deepseek.com'; }
+                    var _isDsOfficialNow = /(^|\.)deepseek\.com$/.test(_dsHostNow);
+                    // 自建网关若已同步该能力，可置 localStorage ds_ws_server_force='1' 强制启用（测试台也用它）
+                    try { if (!_isDsOfficialNow && localStorage.getItem('ds_ws_server_force') === '1') _isDsOfficialNow = true; } catch (e) { }
+                    var _serverWsPref = true;
+                    try { _serverWsPref = localStorage.getItem('ds_ws_server') !== '0'; } catch (e) { }
+                    // 台账/规章类术语：命中即视为"需要本地数据"，不切服务端联网（保住台账工具的可用性）
+                    var _ledgerQ = /检查信息|规章|条款|隐患|典型问题|安监|监察|工务|电务|供电|车务|机务|车辆|通信|房建|客运|货运|日志|写实|报告|手册|项点|台账|考勤|通讯录|资料库|模板|问题库/.test(_dsJudgeText(finalText));
+                    var _wsServerTools = !!(useWebSearch && _isDsOfficialNow && _serverWsPref && _dsRealtimeQ && !_ledgerQ);
                     // 告知模型自身联网状态：联网时提示其优先检索；未联网时引导用户开启，而不是空口拒答
                     if (useWebSearch) {
                         // 关键纪律：联网能力「已开启」不等于「已检索到」。若把两者混为一谈，模型会把内部旧知识
@@ -3162,7 +3308,11 @@
                         // 【2026-09-29 链接抓取增强·第 1 层】**链接预读**：真的把这个网址读一次，正文摘录并入 system。
                         //   治的是老毛病：服务端"按关键词检索"≠ 读该页，模型读不到时倾向顺着域名猜内容。
                         //   零新依赖、零新域名（不动 CSP）；失败如实降级为"未预读"，由上面 9~12 条纪律兜底。
-                        if (_turnLinks.length && typeof window.dsLinkPreRead === 'function') {
+                        // 【2026-11-23 P1】走服务端 deepseek_read_url 时**不再自己抓链接**：
+                        //   服务端会读取用户消息里的链接（官方口径：只看最后一条 user 消息、最多前 10 个不同 URL），
+                        //   页面以加密 signature 随轮次保留，不受浏览器 CORS / CSP / 反爬限制，成功率与保真度都更好。
+                        //   客户端预读保留给"没走服务端工具"的通道（本地工具通道 / 非官方端点）作兜底。
+                        if (_turnLinks.length && !_wsServerTools && typeof window.dsLinkPreRead === 'function') {
                             window.__dsLinkRead = null;
                             try { if (typeof window.dsAppendMsg === 'function') window.dsAppendMsg('system', '🔗 正在读取链接内容…'); } catch (e) {}
                             try {
@@ -3274,14 +3424,35 @@
                     // 【2026-10-18 用户口径「尽量用新功能」】联网模式改走**本地工具通道**（web_search / web_fetch）：
                     //   好处是能拿到明文链接、且不再与本地工具互斥（可以一次回答"规定依据 + 本单位台账"）。
                     //   降级：工具未就绪 / 端点不支持 function calling 时，`_wsViaTools` 为 false，仍走旧的服务端 web_search 通道。
-                    var _wsViaTools = !!(useWebSearch && _useTools);
+                    // ══════════════════════════════════════════════════════════════════
+                    // 【2026-11-23 P0 接入 DeepSeek「全家桶」服务端 Web 工具】
+                    // 官方 Web Tools（2026-11-13）把「联网搜索 / 深度思考搜索 / 阅读链接」做成**服务端工具**：
+                    //   Chat Completions 里在 tools 声明 {"type":"deepseek_web_search"} / {"type":"deepseek_read_url"}，
+                    //   检索、开页、页内找词都由服务端完成，答案自带 citations（message.annotations 里的 url_citation）；
+                    //   思考模式下同一个工具自动变成「深度思考搜索」（多步推理里自主检索，官方上限约 20 次调用）。
+                    // 相比现有的本机工具通道（模型调 web_search → 前端请求 /v1/tools/* → 结果回灌 → 模型再答）：
+                    //   · 少一轮甚至多轮 API 往返，首字更快；服务端 web 工具本身不计费，只算 token；
+                    //   · 引用由服务端给出（url/title/snippet），不再靠提示词约束模型自己编号；
+                    //   · 思考模式下可在推理过程中连续检索/开页，不必每步都回灌一次。
+                    // ⚠️ 官方硬约束（写错直接 400）：
+                    //   ① 服务端 web 工具**不能与其它 tools 同时声明**（含本机 function 工具）；
+                    //   ② 不能被 tool_choice 指定；tool_choice:"none" 会把它们一起关掉；
+                    //   ③ 只有官方端点支持，换网关/其它供应商必须回落原通道。
+                    // 取舍（不劣化能力）：只在「纯时效性问题」这一档启用 ——
+                    //   判据 = 开了联网 + 官方端点 + 本轮判为实时问题 + 问句不含本单位台账/规章术语。
+                    //   这类问题本来就用不上台账工具，换来实现「一次请求完成检索 + 带引用作答」；
+                    //   涉及台账/条款的混合问题仍走原本地工具通道（一次回答既给外部依据又给本单位数据）。
+                    // 关闭方式：「设置 → API 配置」取消勾选「服务端联网」，或 localStorage ds_ws_server = '0'。
+                    // ══════════════════════════════════════════════════════════════════
+                    // （_wsServerTools 已在联网提示词之前算好，见上方「P0 服务端 Web 工具」段）
+                    var _wsViaTools = !!(useWebSearch && _useTools && !_wsServerTools);
                     // ⚠️ 关键：`messages` 是在联网提示词之前构造的（systemPrompt 快照），旧通道走 systemPrompt 发请求、
                     //   所以历史上只改 systemPrompt 就够；改走 chat/completions 后用的是 messages
                     //   ⇒ 必须把本轮累积的提示词（含联网段、链接预读正文）同步进 messages[0]。
                     // 【2026-10-18】改为**无条件同步**：此前只在联网模式同步，其它路径依赖"每处都记得同时改两份"，
                     //   漏一处就是"提示词写了但模型没收到"的静默故障（本次已踩过一次）—— 一行覆盖全部路径。
                     try { if (messages[0] && messages[0].role === 'system') messages[0].content = systemPrompt; } catch (e) {}
-                    var _toolsParamArr = _useTools
+                    var _toolsParamArr = (_useTools && !_wsServerTools)
                         ? window._agentToolsParam(_dsJudgeText(finalText), {
                             roleKey: selectedRole,
                             // 联网模式：强制挂联网工具（不靠关键词召回）；本地核心工具照常挂
@@ -3300,6 +3471,20 @@
                                 : '');
                         systemPrompt += _wsToolNote;
                         try { if (messages[0] && messages[0].role === 'system') messages[0].content += _wsToolNote; } catch (e) {}
+                    }
+                    // 【2026-11-23 P0】服务端联网：不教模型"怎么调工具"（检索由服务端执行），
+                    //   只需约束"有没有真检索到"与引用格式；与本地工具通道的提示词互斥，二者只加一段。
+                    if (_wsServerTools) {
+                        var _wsSrvNote = '\n\n【本轮已开启服务端联网检索】你可以直接使用服务端提供的联网检索（deepseek_web_search）'
+                            + '与链接读取（deepseek_read_url）：需要外部实时信息时自行检索，服务端会把检索结果与引用一并返回，'
+                            + '你不需要描述检索过程。'
+                            + (_dsRealtimeQ
+                                ? '\n**本轮问题涉及时效性信息：请先检索核实再作答**；'
+                                    + '检索不到就如实说明"本次未取得实时信息"，禁止用内部知识冒充最新。'
+                                : '')
+                            + '\n引用时用【来源1】【来源2】… 就地标注，并在末尾列出「来源：标题（网址）」；不要编造未出现在结果里的网址。';
+                        systemPrompt += _wsSrvNote;
+                        try { if (messages[0] && messages[0].role === 'system') messages[0].content += _wsSrvNote; } catch (e) {}
                     }
                     // 【2026-10-18 用户口径「尽量用新功能」】联网不再与本地工具互斥：
                     //   `_wsViaTools` 为真时走 chat/completions + 本地工具通道（web_search / web_fetch 强制挂载），
@@ -3402,7 +3587,7 @@
                     var _respEndpointUsed = '';
                     var _wsKindUsed = '';
                     // 只有"旧服务端通道"才走这一支；联网走工具时（_wsViaTools）落到下面的 chat/completions 分支
-                    if (useWebSearch && !_wsViaTools) {
+                    if (useWebSearch && !_wsViaTools && !_wsServerTools) {
                         // 依次尝试候选通道：仅当「端点/请求不被接受」（400/404/405）才换下一个；
                         // 鉴权失败(401)、余额(402)、限流(429)、5xx 换通道无意义，直接如实报错。
                         var _wsFail = null;
@@ -3453,7 +3638,25 @@
                     var _chatBody = { model: dsModel, messages: messages, stream: true, temperature: _chatTemp, max_tokens: maxTokens };
                     if (thinkingOn) { _chatBody.thinking = { type: 'enabled' }; _chatBody.reasoning_effort = _thinkEffort; }
                     else { _chatBody.thinking = { type: 'disabled' }; }
-                    if (_useTools) { _chatBody.tools = _toolsParamArr; }   // Tool Calls：注入本地工具 schema
+                    // 【2026-11-23 P0】服务端 web 工具与本地 function 工具**不能同轮声明**（官方硬约束，否则 400）：
+                    //   走服务端联网时只声明 deepseek_web_search（用户消息里带链接时再带 deepseek_read_url）。
+                    //   注意：不要给它们设 tool_choice（官方明确 tool_choice 不能指定这两个工具，且 "none" 会连带关掉读链接）。
+                    if (_wsServerTools) {
+                        _chatBody.tools = [{ type: 'deepseek_web_search' }];
+                        var _linksNow = (typeof window.dsExtractLinks === 'function') ? window.dsExtractLinks(finalText) : [];
+                        if (_linksNow && _linksNow.length) _chatBody.tools.push({ type: 'deepseek_read_url' });
+                        try { window.__dsLastWs = Object.assign(window.__dsLastWs || {}, { channel: 'server_tools', links: (_linksNow || []).length }); } catch (e) {}
+                    } else if (_useTools) { _chatBody.tools = _toolsParamArr; }   // Tool Calls：注入本地工具 schema
+                    // 【2026-11-23 P3】内容安全校验（官方 safety_check）：命中风险时服务端返回拒答标识
+                    //   （非流式 finish_reason=content_filter；流式末块 delta.content 为 "*Content Exists Risk*"）。
+                    //   官方口径：「如您对外提供服务，请开启该参数，并承担内容安全审核、大模型登记、AI 标识等义务」。
+                    //   本系统内网自用，默认 off（避免误拒）；对外部署请在设置里开到 low / high。
+                    try {
+                        var _sLvNow = localStorage.getItem('ds_safety_level') || 'off';
+                        if (_sLvNow !== 'off' && (_isDsOfficialNow || localStorage.getItem('ds_ws_server_force') === '1')) {
+                            _chatBody.safety_check = { level: _sLvNow };
+                        }
+                    } catch (e) {}
                     resp = await fetch(dsApiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
@@ -3464,6 +3667,28 @@
 
                     if (!resp.ok) {
                         var errText = await resp.text();
+                        // 【2026-11-23 P0】服务端 web 工具不被端点接受（400 且提到 tool/未知字段）→
+                        //   本轮降级到**本地工具通道**（web_search / web_fetch → /v1/tools/*），并补一行说明，绝不静默失败。
+                        //   典型原因：网关还没同步 deepseek_web_search / deepseek_read_url，或该模型档位不支持。
+                        if (_wsServerTools && resp.status === 400 && /tool|function|deepseek_web_search|read_url|unknown/i.test(String(errText))) {
+                            console.warn('[ds] 服务端联网工具未被接受 → 本轮降级为本地工具通道：' + String(errText).slice(0, 200));
+                            _wsServerTools = false;
+                            _wsViaTools = !!(useWebSearch && _useTools);
+                            _toolsParamArr = _useTools
+                                ? window._agentToolsParam(_dsJudgeText(finalText), { roleKey: selectedRole, forceTools: ['web_search', 'web_fetch'] })
+                                : null;
+                            var _bodyFb = { model: dsModel, messages: messages, stream: true, temperature: _chatTemp, max_tokens: maxTokens };
+                            if (thinkingOn) { _bodyFb.thinking = { type: 'enabled' }; _bodyFb.reasoning_effort = _thinkEffort; } else { _bodyFb.thinking = { type: 'disabled' }; }
+                            if (_toolsParamArr) _bodyFb.tools = _toolsParamArr;
+                            resp = await fetch(dsApiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                                body: JSON.stringify(_bodyFb),
+                                signal: window._dsAbortController.signal
+                            });
+                            try { errText = resp.ok ? '' : await resp.text(); } catch (e) { errText = ''; }
+                            if (resp.ok) systemPrompt += '\n\n（说明：本轮服务端联网工具未被端点接受，已自动降级为本地联网工具通道。）';
+                        }
                         // 【2026-09-21】端点不支持 function calling（400 且错误提到 tool/function）→ 自动降级重试一次：
                         //   去掉 tools 重新请求，并记住本机不再尝试（避免每轮都白失败一次）。降级后会在气泡里补一行说明。
                         // ⚠️ 必须限定在 chat/completions 分支（!useWebSearch）：联网走 Responses 通道，其 400 可能提到
@@ -3505,7 +3730,7 @@
                         return;
                     }
 
-                    if (useWebSearch && !_wsViaTools) {
+                    if (useWebSearch && !_wsViaTools && !_wsServerTools) {
                         // ── 流式读取：按实际生效的通道选择解析器 ──
                         // Anthropic 通道：server_tool_use / web_search_tool_result 内容块；
                         // Responses 通道：web_search_call item（DeepSeek 会忽略该工具，故一般恒为 0 次检索）。
@@ -3586,7 +3811,37 @@
                     } else {
                         // ── chat/completions 流式（支持 P1 Tool Calls 多轮 + P2 前缀续写）──
                         var _pendingToolCalls = [];
-                        await _dsStreamChat(resp, assistantIdx, _pendingToolCalls, _turnMetrics);
+                        // 【2026-11-23 P0】服务端联网：事件/引用/原始调用的收集器
+                        var _serverWsOut = _wsServerTools
+                            ? { events: [], searches: 0, fetches: 0, images: 0, sources: [], pages: [], errors: [], annotations: null, calls: null }
+                            : null;
+                        await _dsStreamChat(resp, assistantIdx, _pendingToolCalls, _turnMetrics, _serverWsOut);
+                        // 收尾：把服务端调用与引用挂到消息上。
+                        // ⚠️ server_tool_calls 必须**原样回传**（下一轮请求的 assistant 消息里带上），
+                        //    否则已读页面不会进上下文 —— 官方："If a framework or gateway drops server_tool_calls,
+                        //    the request still succeeds, but the pages read earlier are no longer in the context."
+                        if (_serverWsOut) {
+                            dsHistory[assistantIdx].serverToolCalls = _serverWsOut.calls || null;
+                            dsHistory[assistantIdx].citations = _serverWsOut.annotations || null;
+                            // 证据条只显示**检索词**（进度卡里已经有"🌐 联网检索：…"的完整文案，避免重复）
+                            var _srvQueries = [];
+                            (_serverWsOut.events || []).forEach(function (_e2) {
+                                if (!_e2) return;
+                                if (_e2.queries && _e2.queries.length) _e2.queries.forEach(function (_q2) { if (_q2) _srvQueries.push(_q2); });
+                                else if (_e2.url) _srvQueries.push(String(_e2.url).replace(/^https?:\/\//, '').slice(0, 40));
+                            });
+                            dsHistory[assistantIdx].web = {
+                                searches: _serverWsOut.searches + _serverWsOut.fetches,
+                                queries: _srvQueries.slice(0, 8),
+                                endpoint: dsApiUrl,
+                                channel: 'server_tools',
+                                linkRead: (window.__dsLinkRead || null),
+                                // 与本地工具通道同一口径：时效性问题 + 零成功检索 ⇒ 如实标记失败（不许假装联网成功）
+                                failed: (!!_dsRealtimeQ && (_serverWsOut.searches + _serverWsOut.fetches) === 0),
+                                timeSensitive: _dsRealtimeQ
+                            };
+                            try { if (window.__dsLastWs) window.__dsLastWs.searches = _serverWsOut.searches + _serverWsOut.fetches; } catch (e) {}
+                        }
                         if (_toolsDegradedNote) {   // 端点不支持工具 → 如实补一行说明（不再静默降级）
                             dsHistory[assistantIdx].content = (dsHistory[assistantIdx].content || '') + '\n\n' + _toolsDegradedNote;
                             _toolsDegradedNote = '';
@@ -3879,6 +4134,16 @@
                         // 输入已被清空 → 恢复置灰态（DeepSeek 行为）
                         if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
                     }
+                    // 【2026-11-23 P3】内容安全校验命中：服务端给的是"拒答标识"而非普通错误，
+                    //   客户端要如实标注，否则用户会以为是断流/卡死（和之前那个"卡死"投诉长得一样）。
+                    if (_turnMetrics.finishReason === 'content_filter') {
+                        try {
+                            dsHistory[assistantIdx].content = (dsHistory[assistantIdx].content || '')
+                                + '\n\n> 🛡 本次回答被内容安全校验拦截（finish_reason=content_filter）。可调整提问后重试，或联系管理员。';
+                            if (typeof dsRenderAll === 'function') dsRenderAll();
+                            if (typeof window.dsSyncSendState === 'function') window.dsSyncSendState();
+                        } catch (e) {}
+                    }
                     // 【P1 指标】本轮落一条记录（失败轮也落，便于区分"慢"与"错"）。
                     //   缓存命中率/首字延迟/结束原因都取自 _dsStreamChat 采集到的 usage 与 finish_reason。
                     try {
@@ -4042,7 +4307,7 @@
             // ---- 气泡内容组装（含思考过程折叠块） ----
             // ---- P1 Tool Calls：通用 chat/completions 流式解析 ----
             // 将 resp 流式写入 dsHistory[idx]，并把增量 tool_calls 累积进 toolCallsOut（按 index 存放，调用方需 filter(Boolean)）
-            async function _dsStreamChat(resp, idx, toolCallsOut, metricsOut) {
+            async function _dsStreamChat(resp, idx, toolCallsOut, metricsOut, serverWsOut) {
                 // 【P1 指标】metricsOut：本轮度量收集器（可缺省）。DeepSeek 流式的**最后一个块默认带 usage
                 //   与 finish_reason**（官方文档：统计信息附加在最后一个内容块上，无需 stream_options），
                 //   所以不新增任何请求参数就能采到缓存命中 token 与"内容是否完整"。
@@ -4056,6 +4321,7 @@
                 //   此时每 3 个就重绘 = 短时间内几十次全量 markdown 重解析 + 媒体池重建（O(n²)），
                 //   手机端明显掉帧；而 delta 稀疏时反而显得迟钝。按时间节流对两种情况都更稳。
                 var _lastPaint = 0;
+                var _lastEvPaint = 0;   // 服务端联网工具事件的进度重绘节流（250ms 一次）
                 var _PAINT_MS = 60;
                 while (true) {
                     var _chunk = await reader.read();
@@ -4069,6 +4335,57 @@
                         if (_trimmed.indexOf('data: ') === 0) {
                             try {
                                 var _json = JSON.parse(_trimmed.slice(6));
+                                // 【2026-11-23 P0】服务端 Web 工具事件（deepseek_web_search / deepseek_read_url）
+                                //   官方 Chat Completions 用扩展字段 choice.server_tool_event 下发进度：
+                                //     step_reasoning_done / call_started / call_completed（call 里带 kind=search|deep_search|read_link|image_search）
+                                //   完整的 server_tool_calls 与 annotations 在**最后一个 chunk 的 delta** 里一次性给（非流式在 message 上）。
+                                //   这里只做三件事：进度可见、引用收集、把 server_tool_calls 原样留存（下一轮回传才不丢已读页面）。
+                                if (serverWsOut) {
+                                    try {
+                                        var _ch0 = _json.choices && _json.choices[0];
+                                        var _ev = _ch0 && _ch0.server_tool_event;
+                                        if (_ev && _ev.type && _ev.call) {
+                                            var _cAct = _ev.call.action || {};
+                                            if (_ev.type === 'call_started') {
+                                                var _evLabel = (_ev.call.kind === 'read_link')
+                                                    ? ('🔗 读取链接：' + String(_cAct.url || '').slice(0, 80))
+                                                    : (_ev.call.kind === 'deep_search')
+                                                        ? ('🌐 深度检索：' + (_cAct.type === 'find_in_page'
+                                                            ? ('页内查找「' + String(_cAct.pattern || '') + '」')
+                                                            : String(_cAct.url || '打开页面').slice(0, 80)))
+                                                        : ('🌐 联网检索' + ((_cAct.queries && _cAct.queries.length) ? '：' + _cAct.queries.join(' / ') : ''));
+                                                serverWsOut.events.push({ kind: _ev.call.kind || '', label: _evLabel, queries: (_cAct.queries || []).slice(0, 4), url: _cAct.url || '' });
+                                                // 进度卡片复用「智能体工具卡」样式；最多留 8 条，避免长回合把气泡撑爆
+                                                var _steps = dsHistory[idx].agentSteps || (dsHistory[idx].agentSteps = []);
+                                                _steps.push({ role: 'agent-tool', content: _evLabel, toolMeta: {} });
+                                                if (_steps.length > 8) _steps.splice(0, _steps.length - 8);
+                                                var _pevNow = (window.performance && performance.now) ? performance.now() : Date.now();
+                                                if (_pevNow - _lastEvPaint >= 250) {
+                                                    _lastEvPaint = _pevNow;
+                                                    var _cbEv = document.getElementById('ds-chat-box');
+                                                    if (_cbEv) {
+                                                        var _bsEv = _cbEv.querySelectorAll('.ds-bubble-assistant');
+                                                        var _lbEv = _bsEv[_bsEv.length - 1];
+                                                        if (_lbEv) dsSetHtmlKeepMedia(_lbEv, dsBubbleInner(idx) + '<span class="ds-cursor">▌</span>');
+                                                    }
+                                                }
+                                            } else if (_ev.type === 'call_completed') {
+                                                if (_ev.call.kind === 'read_link') serverWsOut.fetches++;
+                                                else if (_ev.call.kind === 'image_search' || _ev.call.kind === 'deep_image_search') serverWsOut.images++;
+                                                else serverWsOut.searches++;
+                                                if (_ev.call.sources && _ev.call.sources.length) serverWsOut.sources = serverWsOut.sources.concat(_ev.call.sources);
+                                                if (_ev.call.page && _ev.call.page.url) serverWsOut.pages.push(_ev.call.page);
+                                                if (_ev.call.error) serverWsOut.errors.push(_ev.call.error);
+                                            }
+                                        }
+                                        var _dl0 = _ch0 && _ch0.delta;
+                                        if (_dl0 && _dl0.annotations && _dl0.annotations.length) serverWsOut.annotations = _dl0.annotations;
+                                        if (_dl0 && _dl0.server_tool_calls && _dl0.server_tool_calls.length) serverWsOut.calls = _dl0.server_tool_calls;
+                                        var _msg0 = _ch0 && _ch0.message;
+                                        if (_msg0 && _msg0.annotations && _msg0.annotations.length) serverWsOut.annotations = _msg0.annotations;
+                                        if (_msg0 && _msg0.server_tool_calls && _msg0.server_tool_calls.length) serverWsOut.calls = _msg0.server_tool_calls;
+                                    } catch (_srvErr) {}
+                                }
                                 // 【P1 指标】采集用量与结束原因（末块才有值，前序块为 null）
                                 if (_json.usage) {
                                     metricsOut.usage = _json.usage;
@@ -4588,7 +4905,35 @@ function dsWebChip(m) {
                     txt = '⚠️ 本次未取得实时检索结果' + rf + '，以下内容来自模型内部知识（可能已过时），请勿当作实时信息';
                     style = base + 'rgba(184,118,58,0.35);background:rgba(184,118,58,0.10);color:var(--warning)';
                 }
-                return _lrLine + '<div style="' + style + '">' + dsEsc(txt) + '</div>';
+                // 【2026-11-23 P0】服务端联网的引用（Chat Completions 的 message.annotations → url_citation）
+                //   逐条列成可点击来源，与「链接预读」的来源列表同一个视觉语言。
+                var _citeLine = '';
+                try {
+                    var _cites = (m && m.citations) || [];
+                    if (_cites.length) {
+                        var _seenU = {}, _nCite = 0, _rowsC = '';
+                        _cites.forEach(function (c) {
+                            var cu = (c && (c.url_citation || c)) || {};
+                            var url = cu.url || '';
+                            if (!url || _seenU[url]) return;
+                            _seenU[url] = 1; _nCite++;
+                            var chref = (typeof dsSafeUrl === 'function') ? dsSafeUrl(url) : url;
+                            var clabel = (cu.title && String(cu.title).trim())
+                                ? String(cu.title).trim().slice(0, 46)
+                                : String(url).replace(/^https?:\/\//, '').slice(0, 46);
+                            _rowsC += '<div style="display:flex;gap:6px;align-items:baseline;">'
+                                + '<a href="' + dsEsc(chref) + '" target="_blank" rel="noopener" '
+                                + 'style="color:var(--ds-blue);text-decoration:none;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+                                + '<b>来源' + _nCite + '</b> ' + dsEsc(clabel) + '</a></div>';
+                        });
+                        if (_rowsC) {
+                            _citeLine = '<div style="display:flex;flex-direction:column;gap:2px;margin:0 0 8px;padding:6px 10px;'
+                                + 'border-radius:10px;border:1px solid rgba(77,107,254,0.25);background:rgba(77,107,254,0.05);'
+                                + 'font-size:0.74rem;">' + _rowsC + '</div>';
+                        }
+                    }
+                } catch (e) {}
+                return _lrLine + _citeLine + '<div style="' + style + '">' + dsEsc(txt) + '</div>';
             }
 
             function dsBubbleInner(idx) {
@@ -8144,7 +8489,246 @@ const BM25_POSTINGS_MAX_DOCS = 30000;
       window._addFeedbackButtons = addFeedbackButtons;
 
       // ========== 语音朗读 ==========
+      // ══════════════════════════════════════════════════════════════════════════
+      // 【2026-11-23 P3】语音输入 ASR / 语音合成 TTS / 文字识别 OCR（官方独立接口）
+      //   官方规格（2026-11-13 全家桶，均已核对文档）：
+      //     ASR  POST /v1/tools/asr   multipart **只有 file**；只收 16-bit PCM WAV 或 Ogg Opus；
+      //          ≤8MiB、≤120s、10 分钟内传完；返回 {text, duration_ms}；语言自动检测，无 language 参数。
+      //     TTS  POST /v1/tools/tts   JSON {text, voice_id:'stella'|'tide', format:'wav', filter_markdown}
+      //          → audio/wav；≤10000 计费字符（汉字按 2 计）、请求体 ≤64KiB；不支持语速控制。
+      //     OCR  POST /v1/tools/ocr   multipart **只能有 file + purpose**（多一个字段就 400）；
+      //          purpose=text_recognition（无图 Word/PPT 直接抽文本，其余逐页识别）
+      //          → {page_count, pages:[{index,text,finish_reason}]}，版面以 <｜box｜>[[x1,y1,x2,y2]] 内联保留。
+      //   为什么自己编码 WAV：浏览器 MediaRecorder 产出的是 WebM/Opus 容器，**不是** Ogg Opus，
+      //     官方按文件内容判断格式 ⇒ 直传必然 400。这里用 WebAudio 抓 Float32 再写成 16-bit PCM WAV。
+      //   统一回落：任一接口失败都退回原能力（浏览器 speechSynthesis / 本机解析），不静默失败。
+      // ══════════════════════════════════════════════════════════════════════════
+      function dsApiBase() {
+          return (localStorage.getItem('ds_api_url_v1') || '').replace(/\/chat\/completions.*$/, '').replace(/\/+$/, '');
+      }
+      // 工具接口都在 /v1/tools/*；用户填的地址可能是 https://api.deepseek.com/chat/completions，
+      // 也可能是带 /v1 的完整地址 —— 两种情况都要拼对，不能出现 /v1/v1。
+      function dsToolUrl(path) {
+          var b = dsApiBase();
+          if (/\/v1$/.test(b)) return b + path.replace(/^\/v1/, '');
+          return b + path;
+      }
+      function dsToastMini(msg, ms) {
+          try {
+              if (window.Toast && typeof Toast.info === 'function') { Toast.info(msg); return; }
+          } catch (e) {}
+          try {
+              var t = document.createElement('div');
+              t.textContent = msg;
+              t.style.cssText = 'position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);'
+                  + 'background:rgba(15,23,42,.92);color:#fff;padding:10px 16px;border-radius:10px;font-size:.85rem;z-index:99999;'
+                  + 'max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.25);';
+              document.body.appendChild(t);
+              setTimeout(function () { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320); }, ms || 2600);
+          } catch (e2) {}
+      }
+      // ── 16-bit PCM 单声道 WAV 编码（ASR 只认这个 / Ogg Opus） ──
+      function dsEncodeWav(chunks, rate) {
+          var total = 0, i, j;
+          for (i = 0; i < chunks.length; i++) total += chunks[i].length;
+          var buf = new ArrayBuffer(44 + total * 2);
+          var v = new DataView(buf);
+          var ws = function (o, s) { for (var k = 0; k < s.length; k++) v.setUint8(o + k, s.charCodeAt(k)); };
+          ws(0, 'RIFF'); v.setUint32(4, 36 + total * 2, true); ws(8, 'WAVE');
+          ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+          v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+          ws(36, 'data'); v.setUint32(40, total * 2, true);
+          var off = 44;
+          for (i = 0; i < chunks.length; i++) {
+              var c = chunks[i];
+              for (j = 0; j < c.length; j++) {
+                  var x = c[j];
+                  if (x > 1) x = 1; else if (x < -1) x = -1;
+                  v.setInt16(off, x < 0 ? x * 0x8000 : x * 0x7FFF, true);
+                  off += 2;
+              }
+          }
+          return new Blob([buf], { type: 'audio/wav' });
+      }
+      var _dsAsr = { rec: null, chunks: [], rate: 0, btn: null, t0: 0, maxTimer: 0 };
+      async function dsAsrStop(upload) {
+          var st = _dsAsr;
+          if (!st || !st.rec) return;
+          var btn = st.btn;
+          try { st.rec.proc.disconnect(); } catch (e) {}
+          try { st.rec.src.disconnect(); } catch (e) {}
+          try { st.rec.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+          try { st.rec.ac.close(); } catch (e) {}
+          clearTimeout(st.maxTimer);
+          _dsAsr = { rec: null, chunks: [], rate: 0, btn: null, t0: 0, maxTimer: 0 };
+          if (btn) { btn.style.color = ''; btn.title = '语音输入（说完再点一下完成）'; }
+          if (!upload) return;
+          var secs = (Date.now() - st.t0) / 1000;
+          if (secs < 0.6) { dsToastMini('录音太短，已取消'); return; }
+          dsToastMini('⏳ 正在转写…', 8000);
+          try {
+              var fd = new FormData();
+              fd.append('file', dsEncodeWav(st.chunks, st.rate), 'voice.wav');   // 官方：multipart 只有 file
+              var r = await fetch(dsToolUrl('/v1/tools/asr'), {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('ds_api_key_v1') || '') },
+                  body: fd
+              });
+              if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + String(await r.text()).slice(0, 120));
+              var j = await r.json();
+              var txt = String(j.text || '').trim();
+              if (!txt) { dsToastMini('没有识别到语音内容'); return; }
+              var el = document.getElementById('ds-user-input');
+              if (el) {
+                  el.value = (el.value ? el.value.replace(/\s+$/, '') + ' ' : '') + txt;
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  try { el.focus(); } catch (e) {}
+              }
+              dsToastMini('✅ 已转写 ' + (Math.round((j.duration_ms || secs * 1000) / 100) / 10) + ' 秒');
+          } catch (e) {
+              dsToastMini('转写失败：' + ((e && e.message) || e), 4200);
+          }
+      }
+      window.dsVoiceInput = async function (btn) {
+          if (_dsAsr.rec) { dsAsrStop(true); return; }
+          if (!(localStorage.getItem('ds_api_key_v1') || '')) { dsToastMini('请先在「设置 → API 配置」填写 API Key'); return; }
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { dsToastMini('当前浏览器不支持麦克风录音'); return; }
+          try {
+              var stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+              var AC = window.AudioContext || window.webkitAudioContext;
+              // 16kHz 单声道：120s ≈ 3.8MB，既在官方 8MiB 内，也够语音识别用
+              var ac = new AC({ sampleRate: 16000 });
+              var src = ac.createMediaStreamSource(stream);
+              var proc = ac.createScriptProcessor(4096, 1, 1);
+              var chunks = [];
+              proc.onaudioprocess = function (e) {
+                  if (!_dsAsr.rec) return;
+                  chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));   // inputBuffer 会复用，必须拷
+              };
+              src.connect(proc); proc.connect(ac.destination);
+              _dsAsr = { rec: { stream: stream, src: src, proc: proc, ac: ac }, chunks: chunks, rate: ac.sampleRate || 16000, btn: btn, t0: Date.now(), maxTimer: 0 };
+              if (btn) { btn.style.color = '#ef4444'; btn.title = '录音中… 再点一下结束'; }
+              // 官方上限 120s，到点自动收尾（不静默丢弃）
+              _dsAsr.maxTimer = setTimeout(function () { if (_dsAsr.rec) dsAsrStop(true); }, 120000);
+              dsToastMini('🎤 正在录音，说完再点一下');
+          } catch (e) {
+              dsToastMini('无法使用麦克风：' + ((e && e.message) || e), 4200);
+          }
+      };
+      // ── OCR：选图/PDF → /v1/tools/ocr → 文本回填输入框 ──
+      window.dsOcrPick = function () {
+          var inp = document.getElementById('ds-ocr-file');
+          if (!inp) {
+              inp = document.createElement('input');
+              inp.type = 'file';
+              inp.id = 'ds-ocr-file';
+              inp.accept = '.pdf,.doc,.docx,.ppt,.pptx,image/*';
+              inp.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;';
+              inp.setAttribute('aria-hidden', 'true');
+              inp.onchange = function () { dsOcrRun(this.files && this.files[0]); this.value = ''; };
+              document.body.appendChild(inp);
+          }
+          inp.click();
+      };
+      window.dsOcrRun = async function (file) {
+          if (!file) return;
+          var key = localStorage.getItem('ds_api_key_v1') || '';
+          if (!key) { dsToastMini('请先在「设置 → API 配置」填写 API Key'); return; }
+          if (file.size > 100 * 1024 * 1024) { dsToastMini('文件超过 100MiB，请压缩后重试'); return; }
+          var btn = document.getElementById('ds-ocr-btn');
+          if (btn) { btn.style.color = '#f59e0b'; btn.title = '识别中…'; }
+          dsToastMini('⏳ 正在识别（大文件可能要 1~2 分钟）', 8000);
+          try {
+              var fd = new FormData();
+              fd.append('purpose', 'text_recognition');       // ⚠️ 官方只允许 file + purpose 两个字段
+              fd.append('file', file, file.name || 'upload');
+              var r = await fetch(dsToolUrl('/v1/tools/ocr'), {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + key },
+                  body: fd
+              });
+              var j = null;
+              try { j = await r.json(); } catch (e) { j = null; }
+              if (!r.ok || (j && j.error)) throw new Error((j && j.error && j.error.message) || ('HTTP ' + r.status));
+              var pages = (j && j.pages) || [];
+              var cut = false;
+              var txt = pages.map(function (p, i) {
+                  if (p && p.finish_reason === 'length') cut = true;
+                  return (pages.length > 1 ? '【第' + (i + 1) + '页】\n' : '') + String((p && p.text) || '');
+              }).join('\n\n');
+              // 去掉版面标记（<｜ref｜>/<｜box｜>/归一化坐标），只留可读文字
+              txt = txt.replace(/<｜\/?(ref|box)｜>/g, '').replace(/\[\[\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\]\]/g, '').trim();
+              if (!txt) { dsToastMini('没有识别到文字'); return; }
+              var el = document.getElementById('ds-user-input');
+              if (el) {
+                  el.value = (el.value ? el.value.replace(/\s+$/, '') + '\n\n' : '') + txt;
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              dsToastMini('✅ 已识别 ' + pages.length + ' 页' + (cut ? '（有页面内容被截断）' : ''));
+          } catch (e) {
+              dsToastMini('识别失败：' + ((e && e.message) || e), 4500);
+          } finally {
+              if (btn) { btn.style.color = ''; btn.title = '文字识别（图片 / PDF → 文本）'; }
+          }
+      };
+      // ── TTS：官方 /v1/tools/tts（stella/tide），失败回落浏览器 speechSynthesis ──
+      var _dsTtsAudio = null;
+      async function dsSpeakApi(btn, voice) {
+          if (_dsTtsAudio) {
+              try { _dsTtsAudio.pause(); } catch (e) {}
+              _dsTtsAudio = null;
+              if (btn) btn.textContent = '🔊 朗读';
+              return;
+          }
+          var bubble = btn.closest('.ds-bubble-assistant') || (btn.parentElement && btn.parentElement.closest('.ds-bubble-assistant')) || btn.parentElement;
+          if (!bubble) return;
+          var clone = bubble.cloneNode(true);
+          var bar = clone.querySelector('.ds-feedback-bar');
+          if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+          var text = (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!text) {
+              var w = btn.closest('.ds-bubble-wrapper');
+              if (w) text = (w.innerText || '').replace(/\s+/g, ' ').trim();
+          }
+          if (!text) return;
+          // 官方上限 10000 计费字符、汉字按 2 计 ⇒ 按 4500 字截断更稳（一次朗读不该长到离谱）
+          if (text.length > 4500) text = text.slice(0, 4500);
+          if (btn) btn.textContent = '⏳ 合成中';
+          try {
+              var r = await fetch(dsToolUrl('/v1/tools/tts'), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('ds_api_key_v1') || '') },
+                  body: JSON.stringify({ text: text, voice_id: voice || 'stella', format: 'wav', filter_markdown: true })
+              });
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              var blob = await r.blob();
+              if (!blob || blob.size < 1000) throw new Error('音频为空');
+              var url = URL.createObjectURL(blob);
+              var audio = new Audio(url);
+              _dsTtsAudio = audio;
+              audio.onended = function () { try { URL.revokeObjectURL(url); } catch (e) {} _dsTtsAudio = null; if (btn) btn.textContent = '🔊 朗读'; };
+              if (btn) btn.textContent = '⏹ 停止';
+              await audio.play();
+          } catch (e) {
+              if (btn) btn.textContent = '🔊 朗读';
+              _dsTtsAudio = null;
+              dsToastMini('官方朗读不可用，已回落到浏览器朗读', 2600);
+              try {
+                  var u = new SpeechSynthesisUtterance(text.slice(0, 600));
+                  u.lang = 'zh-CN';
+                  window.speechSynthesis.speak(u);
+              } catch (_) {}
+          }
+      }
       window.dsSpeak = function(btn) {
+        // 【2026-11-23 P3】设置里选了官方音色就走 /v1/tools/tts，否则维持浏览器朗读（原逻辑一字未改）
+        try {
+            var _eng = localStorage.getItem('ds_tts_engine') || 'browser';
+            if (_eng !== 'browser' && (localStorage.getItem('ds_api_key_v1') || '')) {
+                dsSpeakApi(btn, _eng === 'tide' ? 'tide' : 'stella');
+                return;
+            }
+        } catch (e) {}
         if (typeof window.speechSynthesis === 'undefined') {
           // 鸿蒙/华为浏览器等无 Web Speech API：静默 return 会让用户误以为失效，改为友好提示。
           // 仅首次提示一次，避免反复打扰；按钮文字保持原样。
